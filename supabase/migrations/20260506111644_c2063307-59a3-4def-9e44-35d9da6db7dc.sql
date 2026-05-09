@@ -1,0 +1,1 @@
+ALTER TABLE public.lane_tasks ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAULT '[]'::jsonb;

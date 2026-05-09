@@ -1,0 +1,1 @@
+ALTER TABLE public.scene_rounds ADD COLUMN instructions TEXT;

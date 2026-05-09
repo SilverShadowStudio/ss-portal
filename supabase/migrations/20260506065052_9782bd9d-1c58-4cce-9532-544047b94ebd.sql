@@ -1,0 +1,1 @@
+CREATE POLICY "Owner inserts subscription" ON public.subscriptions FOR INSERT TO authenticated WITH CHECK (is_account_owner(account_id));

@@ -1,0 +1,407 @@
+@import '@fontsource/cinzel/400.css';
+@import '@fontsource/cinzel/500.css';
+@import '@fontsource/cinzel/600.css';
+@import '@fontsource/montserrat/400.css';
+@import '@fontsource/montserrat/500.css';
+@import '@fontsource/montserrat/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light mode - Elegant Beige */
+    --background: 38 30% 96%;
+    --foreground: 30 10% 15%;
+
+    --card: 40 25% 94%;
+    --card-foreground: 30 10% 15%;
+
+    --popover: 40 25% 94%;
+    --popover-foreground: 30 10% 15%;
+
+    --primary: 34 35% 45%;
+    --primary-foreground: 40 30% 98%;
+
+    --secondary: 35 20% 88%;
+    --secondary-foreground: 30 15% 25%;
+
+    --muted: 35 15% 90%;
+    --muted-foreground: 30 10% 45%;
+
+    --accent: 34 35% 45%;
+    --accent-foreground: 40 30% 98%;
+
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 40 30% 98%;
+
+    --border: 35 15% 82%;
+    --input: 35 15% 82%;
+    --ring: 34 35% 45%;
+
+    --radius: 0.25rem;
+
+    /* Custom tokens */
+    --gold: 34 35% 45%;
+    --gold-muted: 34 25% 55%;
+    --surface-elevated: 40 22% 92%;
+    --surface-overlay: 38 25% 98%;
+    
+    /* Typography */
+    --font-serif: 'Cinzel', serif;
+    --font-sans: 'Montserrat', system-ui, sans-serif;
+    
+    /* Shadows */
+    --shadow-card: 0 4px 24px -4px hsl(30 15% 40% / 0.12);
+    --shadow-glow: 0 0 40px hsl(34 35% 45% / 0.08);
+    
+    /* Transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 38 25% 94%;
+    --sidebar-foreground: 30 10% 35%;
+    --sidebar-primary: 34 35% 45%;
+    --sidebar-primary-foreground: 40 30% 98%;
+    --sidebar-accent: 35 20% 88%;
+    --sidebar-accent-foreground: 30 10% 15%;
+    --sidebar-border: 35 15% 82%;
+    --sidebar-ring: 34 35% 45%;
+  }
+
+  .dark {
+    /* Dark mode — obsidian charcoal #121110 */
+    --background: 30 7% 7%;
+    --foreground: 36 18% 88%;
+
+    --card: 36 12% 8%;
+    --card-foreground: 36 18% 88%;
+
+    --popover: 36 12% 8%;
+    --popover-foreground: 36 18% 88%;
+
+    --primary: 36 35% 57%;
+    --primary-foreground: 40 12% 5%;
+
+    --secondary: 36 10% 12%;
+    --secondary-foreground: 36 14% 78%;
+
+    --muted: 36 10% 12%;
+    --muted-foreground: 32 8% 52%;
+
+    --accent: 36 35% 57%;
+    --accent-foreground: 40 12% 5%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 36 18% 88%;
+
+    --border: 36 10% 11%;
+    --input: 36 10% 12%;
+    --ring: 36 35% 57%;
+
+    /* Custom tokens — antique gold #B89A6A */
+    --gold: 36 35% 57%;
+    --gold-muted: 36 22% 48%;
+    --surface-elevated: 36 12% 8%;
+    --surface-overlay: 40 9% 7%;
+    
+    /* Shadows */
+    --shadow-card: 0 4px 24px -4px hsl(24 15% 3% / 0.5);
+    --shadow-glow: 0 0 40px hsl(34 26% 65% / 0.1);
+
+    --sidebar-background: 40 12% 5%;
+    --sidebar-foreground: 35 12% 75%;
+    --sidebar-primary: 34 26% 65%;
+    --sidebar-primary-foreground: 40 12% 5%;
+    --sidebar-accent: 36 10% 12%;
+    --sidebar-accent-foreground: 35 15% 90%;
+    --sidebar-border: 36 8% 14%;
+    --sidebar-ring: 34 26% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Atmospheric radial in dark mode — obsidian with subtle top glow. */
+  .dark body {
+    background-color: hsl(var(--background));
+    background-image: radial-gradient(
+      ellipse 1200px 600px at 50% 0%,
+      hsl(30 6% 10%) 0%,
+      hsl(30 7% 7%) 60%
+    );
+    background-attachment: fixed;
+  }
+
+  body {
+    line-height: 1.65;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-style: normal;
+    letter-spacing: 0.02em;
+  }
+
+  .font-serif {
+    font-style: normal !important;
+  }
+}
+
+@layer utilities {
+  .font-serif {
+    font-family: var(--font-serif);
+  }
+
+  .font-sans {
+    font-family: var(--font-sans);
+  }
+
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+
+  .bg-gold {
+    background-color: hsl(var(--gold));
+  }
+
+  .border-gold {
+    border-color: hsl(var(--gold));
+  }
+
+  /* Floating elevation — large soft shadow, no border in dark. */
+  .elevation-float {
+    box-shadow:
+      0 30px 80px -20px rgba(0, 0, 0, 0.36),
+      0 8px 24px -8px rgba(0, 0, 0, 0.28);
+  }
+
+  /* Glassmorphic pill / button surface. */
+  .glass-pill {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background-color: hsl(var(--card) / 0.9);
+    border: 1px solid hsl(var(--border) / 0.4);
+  }
+
+  /* Vertical gold beam used by the timeline NOW indicator. */
+  .now-beam {
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #C5A073 12%,
+      #C5A073 88%,
+      transparent 100%
+    );
+    filter: drop-shadow(0 0 6px rgba(197, 160, 115, 0.55));
+  }
+
+  .text-label {
+    @apply text-xs font-medium tracking-[0.2em] uppercase text-muted-foreground;
+  }
+
+  .text-label-gold {
+    @apply text-xs font-medium tracking-[0.2em] uppercase text-gold;
+  }
+
+  .card-elevated {
+    @apply bg-card border border-border rounded-sm;
+    box-shadow: var(--shadow-card);
+  }
+
+  .glow-gold {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+
+  /* Auth input focus underline glow — theme-aware */
+  .auth-input {
+    @apply w-full border-0 border-b border-border bg-transparent py-3 text-foreground transition-smooth;
+    box-shadow: 0 1px 0 0 transparent;
+  }
+  .auth-input:focus {
+    @apply outline-none;
+    border-color: hsl(var(--gold));
+    box-shadow: 0 1px 0 0 hsl(var(--gold) / 0.6);
+  }
+
+  /* Auth submit button — consistent shadow in both themes */
+  .auth-submit {
+    @apply w-full bg-secondary py-3 text-sm tracking-wider text-foreground transition-smooth hover:bg-secondary/80 disabled:opacity-50;
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 8px 24px -12px hsl(var(--foreground) / 0.18);
+  }
+  .dark .auth-submit {
+    box-shadow: 0 1px 2px hsl(0 0% 0% / 0.4), 0 8px 24px -12px hsl(0 0% 0% / 0.6);
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground));
+    border-radius: 2px;
+  }
+
+  /* Frame corners effect */
+  .frame-corners {
+    position: relative;
+  }
+  
+  .frame-corners::before,
+  .frame-corners::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: hsl(var(--muted-foreground) / 0.5);
+    pointer-events: none;
+  }
+  
+  .frame-corners::before {
+    top: 8px;
+    left: 8px;
+    border-left: 1px solid;
+    border-top: 1px solid;
+  }
+  
+  .frame-corners::after {
+    top: 8px;
+    right: 8px;
+    border-right: 1px solid;
+    border-top: 1px solid;
+  }
+
+  .frame-corners-bottom::before,
+  .frame-corners-bottom::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: hsl(var(--muted-foreground) / 0.5);
+    pointer-events: none;
+  }
+  
+  .frame-corners-bottom::before {
+    bottom: 8px;
+    left: 8px;
+    border-left: 1px solid;
+    border-bottom: 1px solid;
+  }
+  
+  .frame-corners-bottom::after {
+    bottom: 8px;
+    right: 8px;
+    border-right: 1px solid;
+    border-bottom: 1px solid;
+  }
+}
+
+/* Autofill override - prevent yellow background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px hsl(var(--background)) inset !important;
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  caret-color: hsl(var(--foreground)) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-splash-fade-in {
+  animation: splash-fade-in 1s ease-out forwards;
+}
+
+@keyframes splash-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(-8px);
+  }
+}
+
+.animate-splash-rise {
+  animation: splash-rise 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-gold {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(34 26% 65% / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px hsl(34 26% 65% / 0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.4s ease-out forwards;
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 2s ease-in-out infinite;
+}

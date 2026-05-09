@@ -1,0 +1,1 @@
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS bank_account text NOT NULL DEFAULT 'revolut_business';
