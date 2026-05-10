@@ -1,34 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Layers,
-  GanttChart,
-  Inbox,
-  LayoutDashboard,
-  ShoppingBag,
-  FolderOpen,
-  Settings,
-  Sun,
-  Moon,
-  ArrowRightFromLine,
-  Minimize2,
-  Maximize2,
-  CircleUser,
-  type LucideIcon,
-} from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
-import { SIDEBAR, TRANSITION } from "@/lib/design";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
-const navItems: Array<{ path: string; label: string; icon: LucideIcon; rotate?: boolean }> = [
-  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
-  { path: "/timeline",   label: "Timeline",   icon: GanttChart, rotate: true },
-  { path: "/delivery",   label: "Deliveries", icon: Inbox },
+const navItems: Array<{ path: string; label: string }> = [
+  { path: "/portfolio",  label: "Portfolio" },
+  { path: "/timeline",   label: "Timeline" },
+  { path: "/delivery",   label: "Deliveries" },
 ];
 
 interface ClientSidebarProps {
@@ -84,18 +67,17 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   // ── Account hover menu items ───────────────────────────────────────────────
   const accountItems: Array<{
     label: string;
-    icon: LucideIcon;
     onClick: () => void;
     active?: boolean;
     separatorAfter?: boolean;
   }> = [
-    { label: "Overview",   icon: LayoutDashboard,  onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
-    { label: "Orders",     icon: ShoppingBag,       onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
-    { label: "Documents",  icon: FolderOpen,        onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
-    { label: "Settings",   icon: Settings,          onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
-    { label: expanded ? "Compact" : "Expand", icon: expanded ? Minimize2 : Maximize2, onClick: () => onToggleExpand?.() },
-    { label: theme === "dark" ? "Light mode" : "Dark mode", icon: theme === "dark" ? Sun : Moon, onClick: toggleTheme, separatorAfter: true },
-    { label: "Log off",    icon: ArrowRightFromLine, onClick: handleSignOut },
+    { label: "Overview",   onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
+    { label: "Orders",     onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
+    { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
+    { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
+    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
+    { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
+    { label: "Log off",    onClick: handleSignOut },
   ];
 
   return (
@@ -116,20 +98,18 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
             <Link
               key={item.path}
               to={item.path}
-              className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
+              className="flex flex-col items-center justify-center flex-1 h-full transition-all"
               style={{ color: active ? "hsl(var(--gold))" : "hsl(var(--sidebar-foreground) / 0.4)" }}
             >
-              <item.icon className="transition-all" style={{ width: 20, height: 20 }} strokeWidth={1.5} />
               <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>{item.label}</span>
             </Link>
           );
         })}
         <button
           onClick={openMenu}
-          className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
+          className="flex flex-col items-center justify-center flex-1 h-full transition-all"
           style={{ color: "hsl(var(--sidebar-foreground) / 0.4)" }}
         >
-          <CircleUser style={{ width: 20, height: 20 }} strokeWidth={1.5} />
           <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>Account</span>
         </button>
       </nav>
@@ -160,7 +140,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
         {/* Main nav */}
         <TooltipProvider delayDuration={400}>
-          <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
+          <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1 w-full")}>
             {navItems.map((item) => {
               const active = isActive(item.path);
               const link = (
@@ -171,26 +151,21 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                   <Link
                     to={item.path}
                     className={cn(
-                      "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                      expanded ? "w-full pl-5 pr-3 py-3.5" : "h-11 w-12 justify-center mx-auto rounded-lg",
+                      "relative group flex items-center justify-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                      expanded ? "w-full pl-5 pr-3 py-3.5 justify-start" : "h-11 w-full px-1",
                       active
                         ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
                         : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
                     )}
-                    style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                    style={expanded
+                      ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 }
+                      : { fontSize: 9, letterSpacing: "0.18em", fontWeight: 500 }}
                     title={item.label}
                   >
                     {expanded && active && (
                       <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
                     )}
-                    {expanded ? (
-                      <span>{item.label}</span>
-                    ) : (
-                      <item.icon
-                        className={cn("shrink-0 h-5 w-5", item.rotate && "-rotate-90", active && "text-gold")}
-                        strokeWidth={1.5}
-                      />
-                    )}
+                    <span>{item.label}</span>
                   </Link>
                 </div>
               );
@@ -211,7 +186,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
         {/* Account — hover to reveal menu */}
         <div
-          className={cn("group/account pt-4 relative", expanded ? "w-full" : "w-full")}
+          className={cn("group/account pt-4 relative", "w-full")}
           onMouseEnter={openMenu}
           onMouseLeave={scheduleClose}
           onFocus={openMenu}
@@ -235,7 +210,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                             menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
                           ),
                       "flex items-center",
-                      expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5",
+                      expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5 px-1",
                     )}
                     style={{
                       fontSize: 11,
@@ -244,14 +219,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                       transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                     }}
                   >
-                    {expanded ? (
-                      <span className="flex items-center gap-3">
-                        <it.icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                        {it.label}
-                      </span>
-                    ) : (
-                      <it.icon className="h-5 w-5" strokeWidth={1.5} />
-                    )}
+                    <span>{it.label}</span>
                   </button>
                   {it.separatorAfter && (
                     <div
@@ -294,7 +262,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                 )}
               </div>
             ) : (
-              <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+              <span className="font-sans uppercase text-muted-foreground" style={{ fontSize: 9, letterSpacing: "0.18em" }}>Acct</span>
             )}
           </button>
         </div>
