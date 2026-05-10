@@ -259,7 +259,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                   separatorAfter?: boolean;
                 }> = [
                   { label: "Overview", icon: LayoutDashboard, onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard" },
-                  { label: "Orders", icon: ShoppingBag, onClick: () => navigate("/orders"), active: location.pathname === "/orders" },
+                  { label: "Orders", icon: ShoppingBag, onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true },
                   { label: "Documents", icon: FolderOpen, onClick: () => navigate("/documents"), active: location.pathname === "/documents" },
                   { label: "Settings", icon: Settings, onClick: () => navigate("/account"), active: location.pathname === "/account", separatorAfter: true },
                   { label: expanded ? "Compact" : "Expand", icon: expanded ? Minimize2 : Maximize2, onClick: () => onToggleExpand?.() },
