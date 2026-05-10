@@ -4,6 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
+function timeAgo(isoDate: string): string {
+  const seconds = Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days !== 1 ? "s" : ""} ago`;
+}
+
 export function DropboxConnectionStatus() {
   const [status, setStatus] = useState<{
     connected: boolean;
@@ -13,6 +24,13 @@ export function DropboxConnectionStatus() {
   }>({ connected: false, loading: true });
   const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
+
+  // Tick every minute to keep relative time fresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     checkConnectionStatus();
@@ -108,7 +126,12 @@ export function DropboxConnectionStatus() {
           <div>
             <p className="text-sm font-medium text-foreground">Dropbox Connected</p>
             <p className="text-xs text-muted-foreground">
-              Last synced: {status.lastUpdated ? new Date(status.lastUpdated).toLocaleString() : "Never"}
+              Last synced {status.lastUpdated ? timeAgo(status.lastUpdated) : "never"}
+              {status.lastUpdated && (
+                <span className="opacity-50 ml-1">
+                  · {new Date(status.lastUpdated).toLocaleString("en-GB")}
+                </span>
+              )}
             </p>
           </div>
         </div>
