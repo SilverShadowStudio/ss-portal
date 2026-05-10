@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, MoreHorizontal, Mail, Building2, Copy, Check, Trash2, Ghost, Pencil, ChevronDown } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Mail, Building2, Copy, Check, Trash2, Ghost, Pencil, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ClientActivityPanel } from "@/components/admin/ClientActivityPanel";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -35,10 +35,28 @@ interface Client {
   created_at: string;
 }
 
+interface Connection {
+  id: string;
+  started_at: string;
+  path: string | null;
+}
+
+function timeAgo(iso: string) {
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export default function AdminClients() {
   const navigate = useNavigate();
   const { enterGhostMode } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
+  const [connections, setConnections] = useState<Record<string, Connection[]>>({});
+  const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -147,6 +165,24 @@ export default function AdminClients() {
         });
 
       setClients(clientList);
+
+      // Fetch last 10 connections per client
+      const clientUserIds = clientList.map(c => c.owner_user_id).filter(Boolean);
+      if (clientUserIds.length) {
+        const { data: activity } = await supabase
+          .from("client_activity")
+          .select("id, user_id, started_at, path")
+          .in("user_id", clientUserIds)
+          .eq("kind", "session_start")
+          .order("started_at", { ascending: false })
+          .limit(clientUserIds.length * 10);
+        const byUser: Record<string, Connection[]> = {};
+        (activity || []).forEach((row: any) => {
+          if (!byUser[row.user_id]) byUser[row.user_id] = [];
+          if (byUser[row.user_id].length < 10) byUser[row.user_id].push(row);
+        });
+        setConnections(byUser);
+      }
     } catch (error) {
       console.error("Error fetching clients:", error);
       toast({
@@ -617,11 +653,35 @@ export default function AdminClients() {
                 className="flex items-center justify-between p-4 transition-colors hover:bg-muted/30 rounded-lg cursor-pointer"
               >
                 <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                    <span className="font-serif text-lg text-gold">
-                      {client.company_name?.charAt(0) || "?"}
-                    </span>
-                  </div>
+                  {/* Ghost circle — click to enter ghost mode */}
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!client.owner_user_id) return;
+                            const { error } = await enterGhostMode({
+                              userId: client.owner_user_id,
+                              name: client.owner_full_name || client.company_name,
+                            });
+                            if (error) {
+                              toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
+                              return;
+                            }
+                            navigate("/");
+                          }}
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-gold/15 border border-transparent hover:border-gold/40 transition-all shrink-0"
+                          aria-label="Enter Ghost Mode"
+                        >
+                          <Ghost className="h-4 w-4 text-gold/60" strokeWidth={1.5} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        View as {client.owner_full_name || client.company_name}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <div>
                     <h3 className="font-serif text-sm uppercase tracking-wide text-foreground flex items-center gap-2">
                       <Building2 className="h-3 w-3 text-gold" />
@@ -635,6 +695,16 @@ export default function AdminClients() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  {/* Connections toggle */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setExpandedClient(expandedClient === client.id ? null : client.id); }}
+                    className="flex items-center gap-1.5 h-8 px-2 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors text-xs"
+                    title="Last connections"
+                  >
+                    <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    <span>{(connections[client.owner_user_id] || []).length || "—"}</span>
+                    {expandedClient === client.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
                   <TooltipProvider delayDuration={150}>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -702,26 +772,31 @@ export default function AdminClients() {
                   </DropdownMenu>
                 </div>
               </div>
+              {/* Connections panel — expanded inline */}
+              {expandedClient === client.id && (
+                <div className="px-4 pb-4 bg-muted/10 border-t border-border/20" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 pt-3 pb-2">
+                    Last connections
+                  </p>
+                  {(connections[client.owner_user_id] || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-1">No connections recorded yet.</p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {(connections[client.owner_user_id] || []).map((conn) => (
+                        <div key={conn.id} className="flex items-center gap-4 py-1.5 border-t border-border/20 first:border-0">
+                          <div className="h-1.5 w-1.5 rounded-full bg-gold/40 shrink-0" />
+                          <p className="flex-1 text-xs text-foreground/60 truncate">{conn.path || "/"}</p>
+                          <p className="text-xs text-foreground/40 shrink-0">{timeAgo(conn.started_at)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             ))}
             </div>
           </div>
         )}
-      </div>
-
-      {/* Client Activity (collapsed by default) */}
-      <div className="mt-10 animate-fade-in">
-        <Collapsible defaultOpen={false}>
-          <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-xl border border-border bg-card px-6 py-4 text-left shadow-sm hover:bg-muted/30 transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="h-px w-8 bg-gold" />
-              <span className="font-serif text-base uppercase tracking-[0.18em] text-foreground">Client Activity</span>
-            </div>
-            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-6">
-            <ClientActivityPanel />
-          </CollapsibleContent>
-        </Collapsible>
       </div>
     </AdminLayout>
   );
