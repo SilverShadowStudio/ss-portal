@@ -184,20 +184,45 @@ export default function AdminClients() {
 
       setClients(clientList);
 
-      // Fetch last 10 connections per client
+      // Fetch last 10 connections per client with end time and duration
       const clientUserIds = clientList.map(c => c.owner_user_id).filter(Boolean);
       if (clientUserIds.length) {
-        const { data: activity } = await supabase
+        // Fetch session_start events
+        const { data: starts } = await supabase
           .from("client_activity")
-          .select("id, user_id, started_at, ended_at, duration_ms, path")
+          .select("id, user_id, started_at, ended_at, duration_ms, path, session_id")
           .in("user_id", clientUserIds)
           .eq("kind", "session_start")
           .order("started_at", { ascending: false })
           .limit(clientUserIds.length * 10);
+
+        // Fetch corresponding session_end events
+        const sessionIds = (starts || []).map((s: any) => s.session_id).filter(Boolean);
+        let endMap: Record<string, { ended_at: string; duration_ms: number | null }> = {};
+        if (sessionIds.length) {
+          const { data: ends } = await supabase
+            .from("client_activity")
+            .select("session_id, started_at, duration_ms")
+            .in("session_id", sessionIds)
+            .eq("kind", "session_end");
+          (ends || []).forEach((e: any) => {
+            if (e.session_id) endMap[e.session_id] = { ended_at: e.started_at, duration_ms: e.duration_ms };
+          });
+        }
+
         const byUser: Record<string, Connection[]> = {};
-        (activity || []).forEach((row: any) => {
+        (starts || []).forEach((row: any) => {
           if (!byUser[row.user_id]) byUser[row.user_id] = [];
-          if (byUser[row.user_id].length < 10) byUser[row.user_id].push(row);
+          if (byUser[row.user_id].length < 10) {
+            const end = row.session_id ? endMap[row.session_id] : null;
+            byUser[row.user_id].push({
+              id: row.id,
+              started_at: row.started_at,
+              ended_at: end?.ended_at || row.ended_at || null,
+              duration_ms: end?.duration_ms || row.duration_ms || null,
+              path: row.path,
+            });
+          }
         });
         setConnections(byUser);
       }
