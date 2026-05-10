@@ -623,6 +623,11 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           </div>
         )}
       </motion.div>
+      {isAdmin && (
+        <div className="mt-4 mx-auto max-w-sm text-[9px] font-mono text-foreground/30 space-y-0.5">
+          <p>isAdmin: {String(isAdmin)} | sceneId: {sceneId ? "✓" : "✗"} | projectId: {projectId ? "✓" : "✗"}</p>
+        </div>
+      )}
       {isAdmin && sceneId && projectId && (
         <div className="mt-6 w-full max-w-sm mx-auto">
           <DropboxVisualsPanel
