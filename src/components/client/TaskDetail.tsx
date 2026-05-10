@@ -13,9 +13,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { FolderMappingManager } from "@/components/admin/FolderMappingManager";
+import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
+import { DropboxVisualsPanel } from "@/components/admin/DropboxVisualsPanel";
 
 interface TaskDetailProps {
   roundId: string;
+  sceneId?: string;
+  projectId?: string;
   projectName?: string;
   sceneName: string;
   roundNumber: number;
@@ -62,7 +67,7 @@ interface BriefUpload {
   storage_path: string;
 }
 
-export function TaskDetail({ roundId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: TaskDetailProps) {
+export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: TaskDetailProps) {
   // Strict status → UI mapping:
   //   in_production / in_progress / pending → "Production in Progress" (no image)
   //   client_review / delivered             → image + annotation tools
@@ -615,6 +620,30 @@ export function TaskDetail({ roundId, projectName, sceneName, roundNumber, round
                 </>
               )}
             </button>
+          </div>
+        )}
+        {isAdmin && sceneId && projectId && (
+          <div className="mt-6 w-full max-w-sm">
+            <DropboxVisualsPanel
+              sceneId={sceneId}
+              projectId={projectId}
+              sceneName={sceneName}
+              onRoundSelected={(round, link, filename) => {
+                // Could be used to pre-fill the upload or show a preview
+              }}
+            />
+          </div>
+        )}
+        {isAdmin && sceneId && (
+          <div className="mt-4 w-full max-w-sm">
+            <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
+              Airtable
+            </p>
+            <AirtableSyncPanel
+              sceneId={sceneId}
+              sceneName={sceneName}
+              onSynced={onUploaded}
+            />
           </div>
         )}
       </motion.div>
