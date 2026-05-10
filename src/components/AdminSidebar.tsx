@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
+import { SIDEBAR, TRANSITION } from "@/lib/design";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
