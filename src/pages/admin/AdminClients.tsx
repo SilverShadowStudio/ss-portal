@@ -38,6 +38,8 @@ interface Client {
 interface Connection {
   id: string;
   started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
   path: string | null;
 }
 
@@ -49,6 +51,22 @@ function timeAgo(iso: string) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "numeric", month: "short",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function formatDuration(ms: number | null) {
+  if (!ms || ms < 1000) return null;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 export default function AdminClients() {
@@ -171,7 +189,7 @@ export default function AdminClients() {
       if (clientUserIds.length) {
         const { data: activity } = await supabase
           .from("client_activity")
-          .select("id, user_id, started_at, path")
+          .select("id, user_id, started_at, ended_at, duration_ms, path")
           .in("user_id", clientUserIds)
           .eq("kind", "session_start")
           .order("started_at", { ascending: false })
@@ -696,45 +714,20 @@ export default function AdminClients() {
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   {/* Connections toggle */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setExpandedClient(expandedClient === client.id ? null : client.id); }}
-                    className="flex items-center gap-1.5 h-8 px-2 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors text-xs"
-                    title="Last connections"
-                  >
-                    <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    <span>{(connections[client.owner_user_id] || []).length || "—"}</span>
-                    {expandedClient === client.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </button>
                   <TooltipProvider delayDuration={150}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!client.owner_user_id) return;
-                            const { error } = await enterGhostMode({
-                              userId: client.owner_user_id,
-                              name: client.owner_full_name || client.company_name,
-                            });
-                            if (error) {
-                              toast({
-                                title: "Ghost Mode failed",
-                                description: error.message,
-                                variant: "destructive",
-                              });
-                              return;
-                            }
-                            navigate("/");
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-gold transition-colors"
-                          aria-label="Enter Ghost Mode"
+                          onClick={(e) => { e.stopPropagation(); setExpandedClient(expandedClient === client.id ? null : client.id); }}
+                          className="flex items-center gap-1.5 h-8 px-2 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors text-xs"
+                          title="Last connections"
                         >
-                          <Ghost className="h-8 w-8" strokeWidth={1.75} />
+                          <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
+                          <span>{(connections[client.owner_user_id] || []).length || "—"}</span>
+                          {expandedClient === client.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="top">
-                        Enter Ghost Mode as {client.owner_full_name || client.company_name}
-                      </TooltipContent>
+                      <TooltipContent side="top">Last connections</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                   <DropdownMenu>
@@ -783,10 +776,19 @@ export default function AdminClients() {
                   ) : (
                     <div className="space-y-0.5">
                       {(connections[client.owner_user_id] || []).map((conn) => (
-                        <div key={conn.id} className="flex items-center gap-4 py-1.5 border-t border-border/20 first:border-0">
-                          <div className="h-1.5 w-1.5 rounded-full bg-gold/40 shrink-0" />
-                          <p className="flex-1 text-xs text-foreground/60 truncate">{conn.path || "/"}</p>
-                          <p className="text-xs text-foreground/40 shrink-0">{timeAgo(conn.started_at)}</p>
+                        <div key={conn.id} className="flex items-start gap-3 py-2 border-t border-border/20 first:border-0">
+                          <div className="h-1.5 w-1.5 rounded-full bg-gold/40 shrink-0 mt-1.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-foreground/60 truncate">{conn.path || "/"}</p>
+                            <p className="text-[10px] text-foreground/35 mt-0.5">
+                              {formatTime(conn.started_at)}
+                              {conn.ended_at && ` → ${formatTime(conn.ended_at)}`}
+                              {formatDuration(conn.duration_ms) && (
+                                <span className="ml-2 text-foreground/25">{formatDuration(conn.duration_ms)}</span>
+                              )}
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-foreground/30 shrink-0 mt-0.5">{timeAgo(conn.started_at)}</p>
                         </div>
                       ))}
                     </div>
