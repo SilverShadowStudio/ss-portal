@@ -24,11 +24,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const navItems: Array<{ path: string; label: string; icon: LucideIcon }> = [
-  { path: "/dashboard",  label: "Overview",   icon: LayoutDashboard },
+  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
   { path: "/timeline",   label: "Timeline",   icon: GanttChart },
   { path: "/delivery",   label: "Deliveries", icon: Inbox },
-  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
-  { path: "/orders",     label: "Orders",     icon: ShoppingBag },
 ];
 
 interface ClientSidebarProps {
@@ -260,6 +258,8 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                   active?: boolean;
                   separatorAfter?: boolean;
                 }> = [
+                  { label: "Overview", icon: LayoutDashboard, onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard" },
+                  { label: "Orders", icon: ShoppingBag, onClick: () => navigate("/orders"), active: location.pathname === "/orders" },
                   { label: "Documents", icon: FolderOpen, onClick: () => navigate("/documents"), active: location.pathname === "/documents" },
                   { label: "Settings", icon: Settings, onClick: () => navigate("/account"), active: location.pathname === "/account", separatorAfter: true },
                   { label: expanded ? "Compact" : "Expand", icon: expanded ? Minimize2 : Maximize2, onClick: () => onToggleExpand?.() },
