@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, FolderOpen, Image, Loader2, AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
+import { RefreshCw, FolderOpen, ImageIcon, Loader2, AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -282,7 +282,7 @@ export function DropboxVisualsPanel({
                       className="text-foreground/50 hover:text-gold transition-colors"
                       title="Use this render"
                     >
-                      <Image style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                      <ImageIcon style={{ width: 13, height: 13 }} strokeWidth={1.5} />
                     </button>
                     <a
                       href={r.link}
