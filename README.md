@@ -44,3 +44,4 @@ supabase/
   functions/      Edge functions (Deno)
   migrations/     SQL migrations
 ```
+
