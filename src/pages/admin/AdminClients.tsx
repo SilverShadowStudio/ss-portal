@@ -645,8 +645,8 @@ export default function AdminClients() {
           <div className="rounded-xl border border-border bg-card shadow-sm p-2 md:p-3">
             <div className="divide-y divide-border/40">
             {filteredClients.map((client) => (
+              <div key={client.id}>
               <div
-                key={client.id}
                 onClick={() =>
                   navigate(`/admin/projects?client=${client.owner_user_id}`)
                 }
@@ -793,6 +793,7 @@ export default function AdminClients() {
                   )}
                 </div>
               )}
+              </div>
             ))}
             </div>
           </div>
