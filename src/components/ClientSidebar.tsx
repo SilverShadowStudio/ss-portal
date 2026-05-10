@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Layers,
@@ -10,10 +10,11 @@ import {
   Settings,
   Sun,
   Moon,
-  LogOut,
-  User,
-  ChevronsLeft,
-  ChevronsRight,
+  ArrowRightFromLine,
+  Minimize2,
+  Maximize2,
+  CircleUser,
+  type LucideIcon,
 } from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
@@ -21,27 +22,13 @@ import { SIDEBAR, TRANSITION } from "@/lib/design";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { AccountMenuContent, AccountMenuItem, AccountMenuSeparator } from "@/components/account/AccountMenuContent";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
-// Main nav — top 3
-const navItems = [
-  { icon: Layers,      path: "/portfolio",  label: "Portfolio" },
-  { icon: GanttChart,  path: "/timeline",   label: "Timeline",  rotate: true },
-  { icon: Inbox,       path: "/delivery",   label: "Deliveries" },
-];
-
-// Bottom nav — secondary items
-const bottomNavItems = [
-  { icon: LayoutDashboard, path: "/dashboard",  label: "Overview" },
-  { icon: ShoppingBag,     path: "/orders",     label: "Orders" },
-  { icon: FolderOpen,      path: "/documents",  label: "Documents" },
-  { icon: Settings,        path: "/account",    label: "Settings" },
+const navItems: Array<{ path: string; label: string; icon: LucideIcon; rotate?: boolean }> = [
+  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
+  { path: "/timeline",   label: "Timeline",   icon: GanttChart, rotate: true },
+  { path: "/delivery",   label: "Deliveries", icon: Inbox },
 ];
 
 interface ClientSidebarProps {
@@ -55,19 +42,29 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
     full_name: string | null;
     company: string | null;
-    position: string | null;
   } | null>(null);
+
+  const openMenu = () => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    setMenuOpen(true);
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setMenuOpen(false), 5000);
+  };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
   useEffect(() => {
     if (!user) return;
     supabase
       .from("profiles")
-      .select("first_name, last_name, full_name, company, position")
+      .select("first_name, last_name, full_name, company")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => { if (data) setProfile(data); });
@@ -82,8 +79,24 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const sidebarWidth = expanded ? "w-[220px]" : "w-20";
 
   const isActive = (path: string) =>
-    location.pathname === path ||
-    (path !== "/" && location.pathname.startsWith(path));
+    location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
+
+  // ── Account hover menu items ───────────────────────────────────────────────
+  const accountItems: Array<{
+    label: string;
+    icon: LucideIcon;
+    onClick: () => void;
+    active?: boolean;
+    separatorAfter?: boolean;
+  }> = [
+    { label: "Overview",   icon: LayoutDashboard,  onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
+    { label: "Orders",     icon: ShoppingBag,       onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
+    { label: "Documents",  icon: FolderOpen,        onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
+    { label: "Settings",   icon: Settings,          onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
+    { label: expanded ? "Compact" : "Expand", icon: expanded ? Minimize2 : Maximize2, onClick: () => onToggleExpand?.() },
+    { label: theme === "dark" ? "Light mode" : "Dark mode", icon: theme === "dark" ? Sun : Moon, onClick: toggleTheme, separatorAfter: true },
+    { label: "Log off",    icon: ArrowRightFromLine, onClick: handleSignOut },
+  ];
 
   return (
     <>
@@ -104,28 +117,19 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
               key={item.path}
               to={item.path}
               className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
-              style={{
-                color: active ? "hsl(var(--gold))" : "hsl(var(--sidebar-foreground) / 0.4)",
-              }}
+              style={{ color: active ? "hsl(var(--gold))" : "hsl(var(--sidebar-foreground) / 0.4)" }}
             >
-              <item.icon
-                className="transition-all"
-                style={{ width: 20, height: 20 }}
-                strokeWidth={1.5}
-              />
-              <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>
-                {item.label}
-              </span>
+              <item.icon className="transition-all" style={{ width: 20, height: 20 }} strokeWidth={1.5} />
+              <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>{item.label}</span>
             </Link>
           );
         })}
-        {/* Account tab */}
         <button
-          onClick={() => setMenuOpen(true)}
+          onClick={openMenu}
           className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
           style={{ color: "hsl(var(--sidebar-foreground) / 0.4)" }}
         >
-          <User style={{ width: 20, height: 20 }} strokeWidth={1.5} />
+          <CircleUser style={{ width: 20, height: 20 }} strokeWidth={1.5} />
           <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>Account</span>
         </button>
       </nav>
@@ -155,133 +159,147 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         </div>
 
         {/* Main nav */}
-        <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
-          {navItems.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <div key={item.path} className="relative w-full">
-                {active && !expanded && (
-                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
-                )}
-                <Link
-                  to={item.path}
-                  className={cn(
-                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                    expanded
-                      ? "w-full pl-5 pr-3 py-3.5"
-                      : "h-11 w-12 justify-center mx-auto rounded-lg",
-                    active
-                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
-                      : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
+        <TooltipProvider delayDuration={400}>
+          <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
+            {navItems.map((item) => {
+              const active = isActive(item.path);
+              const link = (
+                <div key={item.path} className="relative w-full">
+                  {active && !expanded && (
+                    <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                   )}
-                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
-                  title={item.label}
-                >
-                  {expanded && active && (
-                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                  )}
-                  {expanded ? (
-                    <span>{item.label}</span>
-                  ) : (
-                    <item.icon
-                      className={cn("shrink-0 h-5 w-5", (item as any).rotate && "-rotate-90", active && "text-gold")}
-                      strokeWidth={1.5}
+                  <Link
+                    to={item.path}
+                    className={cn(
+                      "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                      expanded ? "w-full pl-5 pr-3 py-3.5" : "h-11 w-12 justify-center mx-auto rounded-lg",
+                      active
+                        ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+                        : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
+                    )}
+                    style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                    title={item.label}
+                  >
+                    {expanded && active && (
+                      <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                    )}
+                    {expanded ? (
+                      <span>{item.label}</span>
+                    ) : (
+                      <item.icon
+                        className={cn("shrink-0 h-5 w-5", item.rotate && "-rotate-90", active && "text-gold")}
+                        strokeWidth={1.5}
+                      />
+                    )}
+                  </Link>
+                </div>
+              );
+              if (!expanded) {
+                return (
+                  <Tooltip key={item.path}>
+                    <TooltipTrigger asChild>{link}</TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                      {item.label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return link;
+            })}
+          </nav>
+        </TooltipProvider>
+
+        {/* Account — hover to reveal menu */}
+        <div
+          className={cn("group/account pt-4 relative", expanded ? "w-full" : "w-full")}
+          onMouseEnter={openMenu}
+          onMouseLeave={scheduleClose}
+          onFocus={openMenu}
+          onBlur={scheduleClose}
+        >
+          {/* Animated stack above account row */}
+          <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
+            <div className="flex flex-col">
+              {accountItems.map((it, idx) => (
+                <div key={it.label} className="contents">
+                  <button
+                    type="button"
+                    onClick={it.onClick}
+                    title={expanded ? undefined : it.label}
+                    className={cn(
+                      "pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap text-left border-l-2",
+                      it.active
+                        ? "translate-y-0 opacity-100 text-sidebar-foreground border-[hsl(var(--gold))]"
+                        : cn(
+                            "border-transparent text-sidebar-foreground/45 hover:text-sidebar-foreground",
+                            menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+                          ),
+                      "flex items-center",
+                      expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5",
+                    )}
+                    style={{
+                      fontSize: 11,
+                      letterSpacing: "0.12em",
+                      fontWeight: 500,
+                      transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
+                    }}
+                  >
+                    {expanded ? (
+                      <span className="flex items-center gap-3">
+                        <it.icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                        {it.label}
+                      </span>
+                    ) : (
+                      <it.icon className="h-5 w-5" strokeWidth={1.5} />
+                    )}
+                  </button>
+                  {it.separatorAfter && (
+                    <div
+                      aria-hidden
+                      className={cn(
+                        "pointer-events-none transition-all duration-300 ease-out",
+                        menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
+                        expanded ? "mx-4 my-2" : "mx-3 my-2",
+                      )}
+                      style={{
+                        height: 1,
+                        background: "hsl(var(--border) / 0.4)",
+                        transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
+                      }}
                     />
                   )}
-                </Link>
-              </div>
-            );
-          })}
-        </nav>
+                </div>
+              ))}
+            </div>
+          </div>
 
-        {/* Bottom nav */}
-        <nav className={cn("flex flex-col", expanded ? "w-full space-y-2 pb-2" : "items-center gap-1 pb-2")}>
-          {bottomNavItems.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <div key={item.path} className="relative w-full">
-                {active && !expanded && (
-                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
-                )}
-                <Link
-                  to={item.path}
-                  className={cn(
-                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                    expanded ? "w-full pl-5 pr-3 py-3" : "h-11 w-12 justify-center mx-auto rounded-lg",
-                    active
-                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
-                      : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
-                  )}
-                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
-                  title={item.label}
-                >
-                  {expanded && active && (
-                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                  )}
-                  {expanded ? (
-                    <span>{item.label}</span>
-                  ) : (
-                    <item.icon
-                      className={cn("shrink-0 h-5 w-5", active && "text-gold")}
-                      strokeWidth={1.5}
-                    />
-                  )}
-                </Link>
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* Account */}
-        <div className={cn("pt-4", expanded ? "w-full" : "")}>
-          {expanded && (
-            <div aria-hidden className="mb-3" style={{ height: 1, background: "hsl(var(--border) / 0.25)" }} />
-          )}
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  "flex items-center transition-all duration-300 ease-out",
-                  expanded
-                    ? "w-full pl-5 pr-3 py-2"
-                    : "h-11 w-12 justify-center text-muted-foreground hover:text-foreground rounded-xl"
-                )}
-                title="Account"
-              >
-                {expanded ? (
-                  <div className="text-left min-w-0">
-                    <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
-                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Client"}
+          {/* Account row */}
+          <button
+            type="button"
+            className={cn(
+              "flex items-center transition-all w-full",
+              expanded ? "gap-3 px-4 py-3" : "justify-center py-3",
+            )}
+            title={expanded ? undefined : "Account"}
+          >
+            {expanded ? (
+              <>
+                <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                <div className="text-left min-w-0">
+                  <p className="text-[13px] font-medium text-foreground leading-tight whitespace-normal break-words">
+                    {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
+                  </p>
+                  {profile?.company && (
+                    <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70 mt-1 whitespace-normal break-words">
+                      {profile.company}
                     </p>
-                    <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
-                      {profile?.company || ""}
-                    </p>
-                  </div>
-                ) : (
-                  <User className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-                )}
-              </button>
-            </PopoverTrigger>
-            <AccountMenuContent>
-              <AccountMenuItem
-                icon={expanded ? <ChevronsLeft size={16} strokeWidth={1.5} /> : <ChevronsRight size={16} strokeWidth={1.5} />}
-                label={expanded ? "Compact" : "Expand"}
-                onClick={() => { setMenuOpen(false); onToggleExpand?.(); }}
-              />
-              <AccountMenuItem
-                icon={theme === "dark" ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
-                label={theme === "dark" ? "Light mode" : "Dark mode"}
-                onClick={() => { setMenuOpen(false); toggleTheme(); }}
-              />
-              <AccountMenuSeparator />
-              <AccountMenuItem
-                icon={<LogOut size={16} strokeWidth={2} />}
-                label="Log off"
-                destructive
-                onClick={handleSignOut}
-              />
-            </AccountMenuContent>
-          </Popover>
+                  )}
+                </div>
+              </>
+            ) : (
+              <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+            )}
+          </button>
         </div>
       </aside>
     </>
