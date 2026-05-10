@@ -278,24 +278,21 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
             type="button"
             className={cn(
               "flex items-center transition-all w-full",
-              expanded ? "gap-3 px-4 py-3" : "justify-center py-3",
+              expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
             )}
             title={expanded ? undefined : "Account"}
           >
             {expanded ? (
-              <>
-                <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-                <div className="text-left min-w-0">
-                  <p className="text-[13px] font-medium text-foreground leading-tight whitespace-normal break-words">
-                    {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
+              <div className="text-left min-w-0">
+                <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                  {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
+                </p>
+                {profile?.company && (
+                  <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1 whitespace-normal break-words">
+                    {profile.company}
                   </p>
-                  {profile?.company && (
-                    <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70 mt-1 whitespace-normal break-words">
-                      {profile.company}
-                    </p>
-                  )}
-                </div>
-              </>
+                )}
+              </div>
             ) : (
               <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
             )}
