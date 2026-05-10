@@ -622,31 +622,31 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             </button>
           </div>
         )}
-        {isAdmin && sceneId && projectId && (
-          <div className="mt-6 w-full max-w-sm">
-            <DropboxVisualsPanel
-              sceneId={sceneId}
-              projectId={projectId}
-              sceneName={sceneName}
-              onRoundSelected={(round, link, filename) => {
-                // Could be used to pre-fill the upload or show a preview
-              }}
-            />
-          </div>
-        )}
-        {isAdmin && sceneId && (
-          <div className="mt-4 w-full max-w-sm">
-            <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
-              Airtable
-            </p>
-            <AirtableSyncPanel
-              sceneId={sceneId}
-              sceneName={sceneName}
-              onSynced={onUploaded}
-            />
-          </div>
-        )}
       </motion.div>
+      {isAdmin && sceneId && projectId && (
+        <div className="mt-6 w-full max-w-sm mx-auto">
+          <DropboxVisualsPanel
+            sceneId={sceneId}
+            projectId={projectId}
+            sceneName={sceneName}
+            onRoundSelected={(round, link, filename) => {
+              // Could be used to pre-fill the upload or show a preview
+            }}
+          />
+        </div>
+      )}
+      {isAdmin && sceneId && (
+        <div className="mt-4 w-full max-w-sm mx-auto">
+          <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
+            Airtable
+          </p>
+          <AirtableSyncPanel
+            sceneId={sceneId}
+            sceneName={sceneName}
+            onSynced={onUploaded}
+          />
+        </div>
+      )}
       {briefModal}
       </>
     );
