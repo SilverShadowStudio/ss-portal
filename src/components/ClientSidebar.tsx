@@ -1,33 +1,47 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  CircleUser,
-  LayoutDashboard,
-  Inbox,
-  GanttChart,
   Layers,
+  GanttChart,
+  Inbox,
+  LayoutDashboard,
+  ShoppingBag,
   FolderOpen,
   Settings,
-  ShoppingBag,
-  Maximize2,
-  Minimize2,
   Sun,
   Moon,
-  ArrowRightFromLine,
+  LogOut,
+  User,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
 import { SIDEBAR, TRANSITION } from "@/lib/design";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { AccountMenuContent, AccountMenuItem, AccountMenuSeparator } from "@/components/account/AccountMenuContent";
 
-const navItems: Array<{ path: string; label: string; icon: LucideIcon }> = [
-  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
-  { path: "/timeline",   label: "Timeline",   icon: GanttChart },
-  { path: "/delivery",   label: "Deliveries", icon: Inbox },
+// ── Nav items ─────────────────────────────────────────────────────────────────
+// Main nav — top 3
+const navItems = [
+  { icon: Layers,      path: "/portfolio",  label: "Portfolio" },
+  { icon: GanttChart,  path: "/timeline",   label: "Timeline",  rotate: true },
+  { icon: Inbox,       path: "/delivery",   label: "Deliveries" },
+];
+
+// Bottom nav — secondary items
+const bottomNavItems = [
+  { icon: LayoutDashboard, path: "/dashboard",  label: "Overview" },
+  { icon: ShoppingBag,     path: "/orders",     label: "Orders" },
+  { icon: FolderOpen,      path: "/documents",  label: "Documents" },
+  { icon: Settings,        path: "/account",    label: "Settings" },
 ];
 
 interface ClientSidebarProps {
@@ -40,144 +54,93 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
     full_name: string | null;
     company: string | null;
+    position: string | null;
   } | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const isOnSubMenuPage = location.pathname === "/documents" || location.pathname === "/account";
-
-  const openMenu = () => {
-    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
-    setMenuOpen(true);
-  };
-  const scheduleClose = () => {
-    if (isOnSubMenuPage) return;
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setMenuOpen(false), 5000);
-  };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
-  useEffect(() => { if (isOnSubMenuPage) setMenuOpen(true); }, [isOnSubMenuPage]);
 
   useEffect(() => {
     if (!user) return;
     supabase
       .from("profiles")
-      .select("first_name, last_name, full_name, company")
+      .select("first_name, last_name, full_name, company, position")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => { if (data) setProfile(data); });
   }, [user]);
 
   const handleSignOut = async () => {
+    setMenuOpen(false);
     await signOut();
     navigate("/auth");
   };
 
   const sidebarWidth = expanded ? "w-[220px]" : "w-20";
 
-  // ── Mobile bottom tab bar ─────────────────────────────────────────────────
-
-  const MobileTabBar = () => (
-    <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around"
-      style={{
-        background: "hsl(var(--sidebar-background))",
-        borderTop: "1px solid hsl(var(--border) / 0.2)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        height: "calc(56px + env(safe-area-inset-bottom, 0px))",
-      }}
-    >
-      {navItems.map((item) => {
-        const isActive = location.pathname === item.path;
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.path}
-            to={item.path}
-            onClick={() => {
-              if (item.path === "/timeline") {
-                window.dispatchEvent(new CustomEvent("timeline:scroll-to-now"));
-              }
-            }}
-            className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
-            style={{
-              color: isActive ? "hsl(var(--gold))" : "hsl(var(--sidebar-foreground) / 0.4)",
-            }}
-          >
-            <Icon
-              className="transition-all"
-              strokeWidth={isActive ? 2 : 1.5}
-              style={{ width: 20, height: 20 }}
-            />
-            <span
-              className="font-sans uppercase"
-              style={{
-                fontSize: 8,
-                letterSpacing: "0.18em",
-                lineHeight: 1,
-                opacity: isActive ? 1 : 0.7,
-              }}
-            >
-              {item.label}
-            </span>
-            {isActive && (
-              <span
-                className="absolute bottom-0 rounded-full"
-                style={{
-                  width: 3,
-                  height: 3,
-                  background: "hsl(var(--gold))",
-                  marginBottom: "calc(env(safe-area-inset-bottom, 0px) + 4px)",
-                }}
-              />
-            )}
-          </Link>
-        );
-      })}
-      {/* Account */}
-      <button
-        type="button"
-        onClick={() => navigate("/account")}
-        className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
-        style={{
-          color: isOnSubMenuPage
-            ? "hsl(var(--gold))"
-            : "hsl(var(--sidebar-foreground) / 0.4)",
-        }}
-      >
-        <CircleUser strokeWidth={1.5} style={{ width: 20, height: 20 }} />
-        <span
-          className="font-sans uppercase"
-          style={{ fontSize: 8, letterSpacing: "0.18em", lineHeight: 1, opacity: 0.7 }}
-        >
-          More
-        </span>
-      </button>
-    </nav>
-  );
-
-  // ── Desktop sidebar ───────────────────────────────────────────────────────
+  const isActive = (path: string) =>
+    location.pathname === path ||
+    (path !== "/" && location.pathname.startsWith(path));
 
   return (
     <>
-      {/* Mobile tab bar */}
-      <MobileTabBar />
+      {/* ── Mobile bottom tab bar ──────────────────────────────────────── */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around"
+        style={{
+          background: "hsl(var(--sidebar-background))",
+          borderTop: "1px solid hsl(var(--border) / 0.2)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          height: "calc(56px + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        {navItems.map((item) => {
+          const active = isActive(item.path);
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
+              style={{
+                color: active ? "hsl(var(--gold))" : "hsl(var(--sidebar-foreground) / 0.4)",
+              }}
+            >
+              <item.icon
+                className="transition-all"
+                style={{ width: 20, height: 20 }}
+                strokeWidth={1.5}
+              />
+              <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+        {/* Account tab */}
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all"
+          style={{ color: "hsl(var(--sidebar-foreground) / 0.4)" }}
+        >
+          <User style={{ width: 20, height: 20 }} strokeWidth={1.5} />
+          <span className="font-sans uppercase" style={{ fontSize: 8, letterSpacing: "0.18em" }}>Account</span>
+        </button>
+      </nav>
 
-      {/* Desktop sidebar — hidden on mobile */}
+      {/* ── Desktop sidebar ────────────────────────────────────────────── */}
       <aside
         className={cn(
-          "hidden md:flex fixed left-0 top-0 z-50 h-screen flex-col bg-sidebar items-start px-6 pt-12 pb-8",
+          "hidden md:flex fixed left-0 top-0 z-50 h-screen flex-col border-r border-border bg-sidebar transition-all duration-300",
+          expanded ? "items-start p-8" : "items-center py-6",
           sidebarWidth,
         )}
       >
         {/* Logo */}
-        <div className={cn(expanded ? "mb-16 px-2" : "mb-12")}>
-          <Link to="/dashboard" className="block transition-opacity hover:opacity-70">
+        <div className={cn(expanded ? "mb-6 px-4" : "mb-6")}>
+          <a href="https://www.silvershadowstudio.com" target="_blank" rel="noopener noreferrer" className="block transition-smooth hover:opacity-80">
             {expanded ? (
               <img
                 src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png"
@@ -188,167 +151,137 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
             ) : (
               <img src={ssIcon} alt="Silvershadow" className="h-6 w-6 shrink-0 brightness-0 dark:invert" />
             )}
-          </Link>
+          </a>
         </div>
 
-        {/* Navigation */}
-        <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-1" : "items-center gap-2 w-full")}>
-          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              const Icon = item.icon;
-
-              const link = (
+        {/* Main nav */}
+        <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
+          {navItems.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <div key={item.path} className="relative w-full">
+                {active && !expanded && (
+                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
+                )}
                 <Link
-                  key={item.path}
                   to={item.path}
-                  onClick={() => {
-                    if (item.path === "/timeline") {
-                      window.dispatchEvent(new CustomEvent("timeline:scroll-to-now"));
-                    }
-                  }}
                   className={cn(
-                    "relative flex items-center font-sans uppercase whitespace-nowrap transition-all border-l-2",
-                    expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5",
-                    isActive
-                      ? "text-sidebar-foreground border-[hsl(var(--gold))]"
-                      : "text-sidebar-foreground/45 hover:text-sidebar-foreground border-transparent",
+                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                    expanded
+                      ? "w-full pl-5 pr-3 py-3.5"
+                      : "h-11 w-12 justify-center mx-auto rounded-lg",
+                    active
+                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+                      : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
                   )}
-                  style={{ fontSize: 11, letterSpacing: "0.12em", fontWeight: 500 }}
+                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                  title={item.label}
                 >
+                  {expanded && active && (
+                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                  )}
                   {expanded ? (
-                    <span className="flex items-center gap-3">
-                      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                      {item.label}
-                    </span>
+                    <span>{item.label}</span>
                   ) : (
-                    <Icon className="h-5 w-5" strokeWidth={1.5} />
+                    <item.icon
+                      className={cn("shrink-0 h-5 w-5", (item as any).rotate && "-rotate-90", active && "text-gold")}
+                      strokeWidth={1.5}
+                    />
                   )}
                 </Link>
-              );
+              </div>
+            );
+          })}
+        </nav>
 
-              if (expanded) return link;
-              return (
-                <Tooltip key={item.path}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
-                    {item.label}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </TooltipProvider>
+        {/* Bottom nav */}
+        <nav className={cn("flex flex-col", expanded ? "w-full space-y-2 pb-2" : "items-center gap-1 pb-2")}>
+          {bottomNavItems.map((item) => {
+            const active = isActive(item.path);
+            return (
+              <div key={item.path} className="relative w-full">
+                {active && !expanded && (
+                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
+                )}
+                <Link
+                  to={item.path}
+                  className={cn(
+                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                    expanded ? "w-full pl-5 pr-3 py-3" : "h-11 w-12 justify-center mx-auto rounded-lg",
+                    active
+                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+                      : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
+                  )}
+                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                  title={item.label}
+                >
+                  {expanded && active && (
+                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                  )}
+                  {expanded ? (
+                    <span>{item.label}</span>
+                  ) : (
+                    <item.icon
+                      className={cn("shrink-0 h-5 w-5", active && "text-gold")}
+                      strokeWidth={1.5}
+                    />
+                  )}
+                </Link>
+              </div>
+            );
+          })}
         </nav>
 
         {/* Account */}
-        <div
-          className={cn("group/account pt-4 relative", expanded ? "w-full" : "w-full")}
-          onMouseEnter={openMenu}
-          onMouseLeave={scheduleClose}
-          onFocus={openMenu}
-          onBlur={scheduleClose}
-        >
-          {/* Hover-revealed stack */}
-          <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
-            <div className="flex flex-col">
-              {(() => {
-                const items: Array<{
-                  label: string;
-                  icon: LucideIcon;
-                  onClick: () => void;
-                  active?: boolean;
-                  separatorAfter?: boolean;
-                }> = [
-                  { label: "Overview", icon: LayoutDashboard, onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard" },
-                  { label: "Orders", icon: ShoppingBag, onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true },
-                  { label: "Documents", icon: FolderOpen, onClick: () => navigate("/documents"), active: location.pathname === "/documents" },
-                  { label: "Settings", icon: Settings, onClick: () => navigate("/account"), active: location.pathname === "/account", separatorAfter: true },
-                  { label: expanded ? "Compact" : "Expand", icon: expanded ? Minimize2 : Maximize2, onClick: () => onToggleExpand?.() },
-                  { label: theme === "dark" ? "Light mode" : "Dark mode", icon: theme === "dark" ? Sun : Moon, onClick: toggleTheme, separatorAfter: true },
-                  { label: "Log off", icon: ArrowRightFromLine, onClick: handleSignOut },
-                ];
-
-                return items.map((it, idx) => (
-                  <div key={it.label} className="contents">
-                    <button
-                      type="button"
-                      onClick={it.onClick}
-                      title={expanded ? undefined : it.label}
-                      className={cn(
-                        "pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap text-left border-l-2",
-                        it.active
-                          ? "translate-y-0 opacity-100 text-sidebar-foreground border-[hsl(var(--gold))]"
-                          : cn(
-                              "border-transparent text-sidebar-foreground/45 hover:text-sidebar-foreground",
-                              menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-                            ),
-                        "flex items-center",
-                        expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5",
-                      )}
-                      style={{
-                        fontSize: 11,
-                        letterSpacing: "0.12em",
-                        fontWeight: 500,
-                        transitionDelay: `${(items.length - 1 - idx) * 40}ms`,
-                      }}
-                    >
-                      {expanded ? (
-                        <span className="flex items-center gap-3">
-                          <it.icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                          {it.label}
-                        </span>
-                      ) : (
-                        <it.icon className="h-5 w-5" strokeWidth={1.5} />
-                      )}
-                    </button>
-                    {it.separatorAfter && (
-                      <div
-                        aria-hidden
-                        className={cn(
-                          "pointer-events-none transition-all duration-300 ease-out",
-                          menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
-                          expanded ? "mx-4 my-2" : "mx-3 my-2",
-                        )}
-                        style={{
-                          height: 1,
-                          background: "hsl(var(--border) / 0.4)",
-                          transitionDelay: `${(items.length - 1 - idx) * 40}ms`,
-                        }}
-                      />
-                    )}
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* Account row */}
-          <button
-            type="button"
-            className={cn(
-              "flex items-center transition-all w-full",
-              expanded ? "gap-3 px-4 py-3" : "justify-center py-3",
-            )}
-            title={expanded ? undefined : "Account"}
-          >
-            {expanded ? (
-              <>
-                <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-                <div className="text-left min-w-0">
-                  <p className="text-[13px] font-medium text-foreground leading-tight whitespace-normal break-words">
-                    {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
-                  </p>
-                  {profile?.company && (
-                    <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70 mt-1 whitespace-normal break-words">
-                      {profile.company}
+        <div className={cn("pt-4", expanded ? "w-full" : "")}>
+          {expanded && (
+            <div aria-hidden className="mb-3" style={{ height: 1, background: "hsl(var(--border) / 0.25)" }} />
+          )}
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center transition-all duration-300 ease-out",
+                  expanded
+                    ? "w-full pl-5 pr-3 py-2"
+                    : "h-11 w-12 justify-center text-muted-foreground hover:text-foreground rounded-xl"
+                )}
+                title="Account"
+              >
+                {expanded ? (
+                  <div className="text-left min-w-0">
+                    <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Client"}
                     </p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-            )}
-          </button>
+                    <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
+                      {profile?.company || ""}
+                    </p>
+                  </div>
+                ) : (
+                  <User className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+                )}
+              </button>
+            </PopoverTrigger>
+            <AccountMenuContent>
+              <AccountMenuItem
+                icon={expanded ? <ChevronsLeft size={16} strokeWidth={1.5} /> : <ChevronsRight size={16} strokeWidth={1.5} />}
+                label={expanded ? "Compact" : "Expand"}
+                onClick={() => { setMenuOpen(false); onToggleExpand?.(); }}
+              />
+              <AccountMenuItem
+                icon={theme === "dark" ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
+                label={theme === "dark" ? "Light mode" : "Dark mode"}
+                onClick={() => { setMenuOpen(false); toggleTheme(); }}
+              />
+              <AccountMenuSeparator />
+              <AccountMenuItem
+                icon={<LogOut size={16} strokeWidth={2} />}
+                label="Log off"
+                destructive
+                onClick={handleSignOut}
+              />
+            </AccountMenuContent>
+          </Popover>
         </div>
       </aside>
     </>
