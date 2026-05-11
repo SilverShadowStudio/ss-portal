@@ -587,6 +587,8 @@ export default function AdminProjects() {
       return (
         <TaskDetail
           roundId={selectedRound.id}
+          sceneId={selectedScene.id}
+          projectId={selectedProject.id}
           projectName={selectedProject.name}
           sceneName={selectedScene.name}
           roundNumber={selectedRound.round_number}
