@@ -26,6 +26,10 @@ interface ApiResponse {
   count: number;
 }
 
+function isRecordId(s: string | null): boolean {
+  return !!s && /^rec[a-zA-Z0-9]{8,}$/.test(s);
+}
+
 function statusDot(value: string | null): string {
   const v = (value ?? "").toLowerCase();
   if (v.includes("done") || v.includes("approved") || v.includes("complete")) return "bg-emerald-500";
@@ -219,7 +223,7 @@ export function AirtableProductionTable() {
                       {r.modelName ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-foreground/50 whitespace-nowrap">
-                      {r.modeller ?? "—"}
+                      {r.modeller && !isRecordId(r.modeller) ? r.modeller : "—"}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap"><StatusCell value={r.status} /></td>
                     <td className="px-4 py-3 whitespace-nowrap"><StatusCell value={r.approvalStatus} /></td>
