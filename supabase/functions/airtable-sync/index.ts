@@ -15,26 +15,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Default config — reflects Kieran's Airtable setup ────────────────────────
+// ── Default config — reflects Kieran's Airtable Tasks table ──────────────────
 const DEFAULT_CONFIG = {
-  // Airtable table name
+  // Airtable table name (tbleHaU9DxHyvixdL)
   scenes_table: "Tasks",
 
-  // Field names in the Airtable Tasks table
-  field_scene_name: "Name",
-  field_project_name: "Project",
-  field_status: "Status",
-  field_delivery_date: "Deadline",
-  field_round: "Round",
-  field_portal_scene_id: "Portal Scene ID",
+  // Field names in the Tasks table
+  field_scene_name: "Task name",     // singleLineText — the primary field
+  field_project_name: "",            // linked records — skip (leave blank)
+  field_status: "Status",            // singleSelect
+  field_delivery_date: "Deadline",   // dateTime
+  field_round: "",                   // "Round" is a singleSelect ("Round 01" etc.) — skip for now
+  field_portal_scene_id: "",         // no free-text ID field exists — skip; rely on airtable_record_id
 
-  // Airtable status values → portal scene_round status mapping
-  // Format: status_<portal_value>: "<Airtable value>"
-  status_pending: "TO DO",
-  status_in_production: "IN PROGRESS",
-  status_awaiting_review: "REVIEW",
-  status_approved: "DONE",
-  // delivered has no Airtable equivalent; leave blank
+  // Airtable status values → portal scene_round status.
+  // Actual values have emoji prefixes. Pull matching uses substring so "TO DO"
+  // matches "🔴 TO DO". Push writes the exact stored value.
+  status_pending: "🔴 TO DO",
+  status_in_production: "🟡 IN PROGRESS",
+  status_awaiting_review: "🔵 REVIEW",
+  status_approved: "🟢 DONE",
   status_delivered: "",
   status_client_review: "",
 };
@@ -72,16 +72,23 @@ function buildPushMap(config: Config): Record<string, string> {
   return map;
 }
 
-// Build forward map: Airtable value → portal status
-function buildPullMap(config: Config): Record<string, string> {
-  const map: Record<string, string> = {};
+// Match an Airtable status value to a portal status using substring matching.
+// "🔴 TO DO" matches config value "TO DO" or "🔴 TO DO"; order: longest match wins.
+function matchPullStatus(atValue: string, config: Config): string | null {
+  if (!atValue) return null;
+  const upper = atValue.toUpperCase();
+  let best: { portalStatus: string; len: number } | null = null;
   for (const [key, val] of Object.entries(config)) {
-    if (key.startsWith("status_") && typeof val === "string" && val !== "") {
-      const portalStatus = key.replace("status_", "");
-      map[val] = portalStatus;
+    if (!key.startsWith("status_") || typeof val !== "string" || val === "") continue;
+    const portalStatus = key.replace("status_", "");
+    // Exact match first, then substring
+    if (atValue === val || upper.includes(val.toUpperCase())) {
+      if (!best || val.length > best.len) {
+        best = { portalStatus, len: val.length };
+      }
     }
   }
-  return map;
+  return best?.portalStatus ?? null;
 }
 
 function airtableHeaders(): Record<string, string> {
@@ -198,6 +205,39 @@ Deno.serve(async (req) => {
     const atHeaders = airtableHeaders();
     const tableId = config.scenes_table;
 
+    // ── get-fields ────────────────────────────────────────────────────────────
+    // Returns all tables + their field names from the Airtable base metadata API.
+    if (action === "get-fields") {
+      const res = await fetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+        headers: atHeaders,
+      });
+      if (!res.ok) throw new Error(`Airtable metadata API failed: ${await res.text()}`);
+      const data = await res.json() as { tables: Array<{ id: string; name: string; fields: Array<{ id: string; name: string; type: string; options?: unknown }> }> };
+      const summary = data.tables.map(t => ({
+        tableId: t.id,
+        tableName: t.name,
+        fields: t.fields.map(f => ({ id: f.id, name: f.name, type: f.type, options: f.options })),
+      }));
+      return new Response(JSON.stringify({ tables: summary }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── probe-records ─────────────────────────────────────────────────────────
+    // Fetches the first few raw records from the configured table to inspect field values.
+    if (action === "probe-records") {
+      const limit = (body.limit as number) ?? 5;
+      const res = await fetch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableId)}?maxRecords=${limit}`,
+        { headers: atHeaders },
+      );
+      if (!res.ok) throw new Error(`Airtable fetch failed: ${await res.text()}`);
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── push-scene ────────────────────────────────────────────────────────────
     // Creates or updates the scene row in Airtable
     if (action === "push-scene") {
@@ -223,25 +263,28 @@ Deno.serve(async (req) => {
       const pushMap = buildPushMap(config);
       const atStatus = round?.status ? (pushMap[round.status] ?? "") : "";
 
-      const fields: Record<string, unknown> = {
-        [config.field_scene_name]: scene.name,
-        [config.field_project_name]: (scene.projects as { name?: string } | null)?.name ?? "",
-        [config.field_portal_scene_id]: scene.id,
-      };
-      if (atStatus) fields[config.field_status] = atStatus;
-      if (round?.round_number) fields[config.field_round] = round.round_number;
-      if (round?.delivery_due_at) {
+      // Only include fields that have a non-empty field name configured
+      const fields: Record<string, unknown> = {};
+      if (config.field_scene_name) fields[config.field_scene_name] = scene.name;
+      if (config.field_project_name) {
+        fields[config.field_project_name] = (scene.projects as { name?: string } | null)?.name ?? "";
+      }
+      if (config.field_portal_scene_id) fields[config.field_portal_scene_id] = scene.id;
+      if (atStatus && config.field_status) fields[config.field_status] = atStatus;
+      if (round?.round_number && config.field_round) fields[config.field_round] = round.round_number;
+      if (round?.delivery_due_at && config.field_delivery_date) {
         fields[config.field_delivery_date] = (round.delivery_due_at as string).split("T")[0];
       }
 
-      // Find existing Airtable record
+      // Find existing Airtable record — prefer stored ID, fall back to field lookup
       let recordId = scene.airtable_record_id ?? null;
-      if (!recordId) {
+      if (!recordId && config.field_portal_scene_id) {
         const existing = await findAirtableRecord(
           baseId, tableId, config.field_portal_scene_id, scene.id, atHeaders,
         );
         recordId = (existing?.id as string) ?? null;
       }
+      // If still no recordId, upsertAirtableRecord will POST (create)
 
       const result = await upsertAirtableRecord(baseId, tableId, recordId, fields, atHeaders) as { id: string };
 
@@ -318,9 +361,8 @@ Deno.serve(async (req) => {
       const atStatus = record.fields?.[config.field_status] as string | undefined;
       const atDeadline = record.fields?.[config.field_delivery_date] as string | undefined;
 
-      // Map Airtable status → portal status
-      const pullMap = buildPullMap(config);
-      const portalStatus = atStatus ? (pullMap[atStatus] ?? null) : null;
+      // Map Airtable status → portal status using substring matching
+      const portalStatus = atStatus ? matchPullStatus(atStatus, config) : null;
 
       // Find the latest scene_round for this scene
       const { data: round } = await supabase
