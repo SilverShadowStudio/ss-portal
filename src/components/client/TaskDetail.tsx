@@ -84,8 +84,9 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
   useEffect(() => setCurrentStatus(roundStatus), [roundStatus, roundId]);
 
-  // Admin upload state — drag/drop or file picker, single render image.
+  // Admin upload state — drag/drop or file picker, multiple render images.
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const allowedTypes = ["image/jpeg", "image/png", "image/tiff", "image/webp"];
@@ -172,64 +173,71 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     );
   }
 
-  async function uploadRender(file: File) {
-    if (!allowedTypes.includes(file.type)) {
-      alert(`${file.name} is not a supported image format (JPG, PNG, TIFF, WebP).`);
+  async function uploadRenders(files: File[]) {
+    const invalid = files.filter(f => !allowedTypes.includes(f.type));
+    if (invalid.length > 0) {
+      alert(`${invalid.map(f => f.name).join(", ")} — unsupported format. Use JPG, PNG, TIFF, or WebP.`);
       return;
     }
-    if (file.size > maxFileSize) {
-      alert(`${file.name} exceeds the 50MB limit.`);
+    const oversize = files.filter(f => f.size > maxFileSize);
+    if (oversize.length > 0) {
+      alert(`${oversize.map(f => f.name).join(", ")} — exceeds the 50 MB limit.`);
       return;
     }
 
     setUploading(true);
+    setUploadProgress({ current: 0, total: files.length });
+    const uploaded: string[] = [];
     try {
-      const timestamp = Date.now();
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storagePath = `${roundId}/${timestamp}_${safeName}`;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress({ current: i + 1, total: files.length });
+        const timestamp = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `${roundId}/${timestamp}_${safeName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("scene-assets")
-        .upload(storagePath, file, { cacheControl: "3600", upsert: false });
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from("scene-assets")
+          .upload(storagePath, file, { cacheControl: "3600", upsert: false });
+        if (uploadError) throw uploadError;
+        uploaded.push(storagePath);
 
-      const { error: insertError } = await supabase.from("round_assets").insert({
-        scene_round_id: roundId,
-        filename: file.name,
-        file_size: file.size,
-        source: "upload",
-        storage_path: storagePath,
-        version: 1,
-        is_current: true,
-      });
-      if (insertError) {
-        await supabase.storage.from("scene-assets").remove([storagePath]);
-        throw insertError;
+        const { error: insertError } = await supabase.from("round_assets").insert({
+          scene_round_id: roundId,
+          filename: file.name,
+          file_size: file.size,
+          source: "upload",
+          storage_path: storagePath,
+          version: 1,
+          is_current: true,
+        });
+        if (insertError) {
+          await supabase.storage.from("scene-assets").remove([storagePath]);
+          throw insertError;
+        }
       }
 
-      // Mark round as delivered (capping its timeline bar at "now") and
-      // spawn the sibling review round.
       await deliverRoundAndStartReview(roundId);
 
-      // Activity log: single asset upload event.
       await logActivity({
         action: "asset_uploaded",
-        description: `Uploaded ${file.name}`,
+        description: `Uploaded ${files.length} render${files.length !== 1 ? "s" : ""}`,
         entityType: "scene_round",
         entityId: roundId,
         roundId,
         roundNumber,
         sceneName,
-        metadata: { filename: file.name, count: 1 },
+        metadata: { count: files.length, filenames: files.map(f => f.name) },
       });
 
-      setAssetCount((c) => c + 1);
+      setAssetCount((c) => c + files.length);
       onUploaded?.();
     } catch (err) {
       console.error("Render upload failed:", err);
       alert("Upload failed. Please try again.");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -591,18 +599,19 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             onDrop={(e) => {
               e.preventDefault();
               setIsDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) uploadRender(file);
+              const files = Array.from(e.dataTransfer.files ?? []);
+              if (files.length) uploadRenders(files);
             }}
           >
             <input
               ref={fileInputRef}
               type="file"
               accept={allowedTypes.join(",")}
+              multiple
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadRender(file);
+                const files = Array.from(e.target.files ?? []);
+                if (files.length) uploadRenders(files);
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
             />
@@ -616,17 +625,19 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                 <>
                   <Loader2 size={20} className="animate-spin" />
                   <span className="text-sm font-semibold tracking-wide font-sans">
-                    Uploading…
+                    {uploadProgress && uploadProgress.total > 1
+                      ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}…`
+                      : "Uploading…"}
                   </span>
                 </>
               ) : (
                 <>
                   <Upload size={20} />
                   <span className="text-sm font-semibold tracking-[0.14em] uppercase font-sans">
-                    Upload round render
+                    Upload round renders
                   </span>
                   <span className="text-[11px] text-gold/70 font-sans normal-case tracking-normal">
-                    Drag &amp; drop or click to browse · JPG, PNG, TIFF, WebP
+                    Drag &amp; drop or click to browse · JPG, PNG, TIFF, WebP · multiple files supported
                   </span>
                 </>
               )}
