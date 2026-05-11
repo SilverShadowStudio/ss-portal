@@ -26,6 +26,10 @@ interface ApiResponse {
   count: number;
 }
 
+function stripEmoji(s: string): string {
+  return s.replace(/^[\p{Emoji}\s]+/u, "").trim();
+}
+
 function isRecordId(s: string | null): boolean {
   return !!s && /^rec[a-zA-Z0-9]{8,}$/.test(s);
 }
@@ -41,10 +45,11 @@ function statusDot(value: string | null): string {
 
 function StatusCell({ value }: { value: string | null }) {
   if (!value) return <span className="text-foreground/25">—</span>;
+  const label = stripEmoji(value);
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDot(value))} />
-      <span className="text-foreground/70">{value}</span>
+      <span className="text-foreground/70">{label}</span>
     </span>
   );
 }
