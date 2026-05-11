@@ -424,6 +424,17 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     document.body
   );
 
+  const dropboxPanel = isAdmin && sceneId && projectId ? (
+    <div className="mt-6 w-full max-w-sm mx-auto">
+      <DropboxVisualsPanel
+        sceneId={sceneId}
+        projectId={projectId}
+        sceneName={sceneName}
+        onRoundSelected={(round, link, filename) => {}}
+      />
+    </div>
+  ) : null;
+
   // If not delivered yet, show pending state
   if (!isDelivered) {
     const sortedSiblings =
@@ -623,23 +634,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           </div>
         )}
       </motion.div>
-      {isAdmin && (
-        <div className="mt-4 mx-auto max-w-sm text-[9px] font-mono text-foreground/30 space-y-0.5">
-          <p>isAdmin: {String(isAdmin)} | sceneId: {sceneId ? "✓" : "✗"} | projectId: {projectId ? "✓" : "✗"}</p>
-        </div>
-      )}
-      {isAdmin && sceneId && projectId && (
-        <div className="mt-6 w-full max-w-sm mx-auto">
-          <DropboxVisualsPanel
-            sceneId={sceneId}
-            projectId={projectId}
-            sceneName={sceneName}
-            onRoundSelected={(round, link, filename) => {
-              // Could be used to pre-fill the upload or show a preview
-            }}
-          />
-        </div>
-      )}
+      {dropboxPanel}
       {isAdmin && sceneId && (
         <div className="mt-4 w-full max-w-sm mx-auto">
           <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
@@ -670,6 +665,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           <p className="text-muted-foreground text-sm font-sans">No assets delivered yet for this round.</p>
           {briefTrigger}
         </motion.div>
+        {dropboxPanel}
         {briefModal}
       </>
     );
@@ -697,6 +693,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           onSelectRound={onSelectRound}
         />
       </div>
+      {dropboxPanel}
       {briefModal}
     </>
   );
