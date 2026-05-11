@@ -1,5 +1,15 @@
 import { useState, useEffect } from "react";
-import { Table2, AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+
+function AirtableIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="4" width="32" height="11" rx="2" fill="currentColor" opacity="0.9"/>
+      <rect x="4" y="17" width="14" height="19" rx="2" fill="currentColor" opacity="0.7"/>
+      <rect x="22" y="17" width="14" height="19" rx="2" fill="currentColor" opacity="0.5"/>
+    </svg>
+  );
+}
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
@@ -78,7 +88,7 @@ export function AirtableConnectionStatus() {
     return (
       <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-center gap-3">
-          <Table2 className="h-5 w-5 text-primary" />
+          <AirtableIcon className="h-5 w-5 text-primary" />
           <div>
             <p className="text-sm font-medium text-foreground">Airtable Connected</p>
             <p className="text-xs text-muted-foreground">
@@ -101,7 +111,7 @@ export function AirtableConnectionStatus() {
   if (status.state === "misconfigured") {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-gold/20 bg-[#181613] p-4">
-        <AlertTriangle className="h-5 w-5 text-gold shrink-0" />
+        <AirtableIcon className="h-5 w-5 text-gold shrink-0" />
         <div>
           <p className="text-sm font-medium text-foreground">Airtable Not Configured</p>
           <p className="text-xs text-muted-foreground">

@@ -1,5 +1,17 @@
 import { useState, useEffect } from "react";
-import { Cloud, CloudOff, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+
+function DropboxIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 5L4 10.5l8 5.5 8-5.5L12 5z" fill="currentColor"/>
+      <path d="M28 5l-8 5.5 8 5.5 8-5.5L28 5z" fill="currentColor"/>
+      <path d="M4 21.5L12 27l8-5.5-8-5.5-8 5.5z" fill="currentColor"/>
+      <path d="M28 16l-8 5.5 8 5.5 8-5.5L28 16z" fill="currentColor"/>
+      <path d="M12 28.5l8 5.5 8-5.5-8-5.5-8 5.5z" fill="currentColor"/>
+    </svg>
+  );
+}
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -122,7 +134,7 @@ export function DropboxConnectionStatus() {
     return (
       <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-center gap-3">
-          <Cloud className="h-5 w-5 text-primary" />
+          <DropboxIcon className="h-5 w-5 text-primary" />
           <div>
             <p className="text-sm font-medium text-foreground">Dropbox Connected</p>
             <p className="text-xs text-muted-foreground">
@@ -146,7 +158,7 @@ export function DropboxConnectionStatus() {
   return (
     <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-[#181613] p-4">
       <div className="flex items-center gap-3">
-        <CloudOff className="h-5 w-5 text-gold" />
+        <DropboxIcon className="h-5 w-5 text-gold" />
         <div>
           <p className="text-sm font-medium text-foreground">Dropbox Not Connected</p>
           <p className="text-xs text-muted-foreground">
@@ -162,7 +174,7 @@ export function DropboxConnectionStatus() {
           </>
         ) : (
           <>
-            <Cloud className="mr-2 h-3 w-3" />
+            <DropboxIcon className="mr-2 h-3 w-3" />
             Connect Dropbox
           </>
         )}
