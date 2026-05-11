@@ -183,7 +183,7 @@ export function ClientActivityPanel() {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-xl border border-border bg-card shadow-sm p-6">
             <h2 className="font-serif text-lg mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-gold" />
+              <span className="h-px w-6 bg-gold-muted" />
               Sessions ({sessions.length})
             </h2>
             <ul className="divide-y divide-border/40 max-h-[60vh] overflow-y-auto">
@@ -211,7 +211,7 @@ export function ClientActivityPanel() {
           </div>
           <div className="rounded-xl border border-border bg-card shadow-sm p-6">
             <h2 className="font-serif text-lg mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-gold" />
+              <span className="h-px w-6 bg-gold-muted" />
               Pages visited
             </h2>
             <ul className="divide-y divide-border/40 max-h-[60vh] overflow-y-auto">

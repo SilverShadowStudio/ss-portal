@@ -901,11 +901,11 @@ export default function AdminProjects() {
                           <div key={roundNumber}>
                             {subgroups.length > 1 && (
                               <div className="mb-6 flex items-center gap-4">
-                                <div className="h-px w-10 bg-gold" />
+                                <div className="h-px w-10 bg-gold-muted" />
                                 <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-gold font-sans">
                                   Round {roundNumber.toString().padStart(2, "0")}
                                 </span>
-                                <div className="h-px flex-1 bg-gold/30" />
+                                <div className="h-px flex-1 bg-gold-muted" />
                               </div>
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -977,7 +977,7 @@ export default function AdminProjects() {
               >
                 <div>
                   <div className="mb-2 flex items-center gap-3">
-                    <div className="h-px w-8 bg-gold" />
+                    <div className="h-px w-8 bg-gold-muted" />
                     <span className="text-label-gold">Client</span>
                   </div>
                   <h2 className="font-serif text-2xl tracking-tight text-foreground md:text-3xl group-hover:text-primary transition-colors">

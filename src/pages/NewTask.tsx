@@ -585,8 +585,8 @@ export default function NewTask() {
                     fontSize: 10,
                     letterSpacing: "0.28em",
                     padding: "12px 0",
-                    background: active ? "hsl(var(--gold))" : "transparent",
-                    color: active ? "#1A1814" : "rgba(255,255,255,0.6)",
+                    background: "transparent",
+                    color: active ? "hsl(var(--gold))" : "rgba(255,255,255,0.6)",
                     border: `0.5px solid ${active ? "hsl(var(--gold))" : "hsl(var(--gold) / 0.35)"}`,
                     borderRadius: 2,
                   }}
@@ -803,8 +803,8 @@ export default function NewTask() {
                       padding: "10px 6px",
                       borderRadius: 2,
                       border: `0.5px solid ${active ? "hsl(var(--gold))" : "hsl(var(--gold) / 0.2)"}`,
-                      background: active ? "hsl(var(--gold))" : "transparent",
-                      color: active ? "#1A1814" : "rgba(255,255,255,0.65)",
+                      background: "transparent",
+                      color: active ? "hsl(var(--gold))" : "rgba(255,255,255,0.65)",
                       scrollSnapAlign: "start",
                     }}
                   >

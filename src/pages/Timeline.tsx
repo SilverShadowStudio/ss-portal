@@ -1443,7 +1443,7 @@ export default function Timeline() {
             setTaskFiles([]);
             setAddOpen(true);
           }}
-          className="group inline-flex items-center gap-3 px-10 py-3.5 bg-[hsl(var(--gold))] hover:bg-[hsl(var(--gold))]/90 text-background shadow-[0_8px_24px_-8px_hsl(var(--gold)/0.5)] hover:shadow-[0_12px_32px_-8px_hsl(var(--gold)/0.7)] transition-all rounded-sm"
+          className="group inline-flex items-center gap-3 px-10 py-3.5 border border-gold bg-transparent text-gold hover:bg-[#1C1A17] transition-all rounded-sm"
         >
           <Plus className="h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
           <span className="font-serif text-[11px] uppercase tracking-[0.32em]">
@@ -1825,8 +1825,8 @@ export default function Timeline() {
                               fontSize: "10px",
                               letterSpacing: "0.28em",
                               padding: "12px 0",
-                              background: active ? "hsl(var(--gold))" : "transparent",
-                              color: active ? "#1A1814" : hasContent ? "hsl(var(--gold))" : "rgba(255,255,255,0.6)",
+                              background: "transparent",
+                              color: active ? "hsl(var(--gold))" : hasContent ? "hsl(var(--gold))" : "rgba(255,255,255,0.6)",
                               border: `${active ? "1px" : "0.5px"} solid ${active ? "hsl(var(--gold))" : hasContent ? "hsl(var(--gold) / 0.5)" : "rgba(255,255,255,0.18)"}`,
                               borderRadius: 2,
                               boxShadow: active ? "inset 0 0 18px hsl(var(--gold) / 0.2)" : "none",
@@ -2309,7 +2309,7 @@ export default function Timeline() {
                               className={`w-full py-3 rounded-sm text-[10px] font-semibold uppercase tracking-[0.25em] transition-all ${
                                 isCurrent
                                   ? "bg-muted/40 text-muted-foreground cursor-not-allowed"
-                                  : "bg-[hsl(var(--gold))] text-background hover:bg-[hsl(var(--gold))]/90"
+                                  : "border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
                               }`}
                             >
                               {isCurrent ? "Selected" : "Select Plan"}
@@ -2430,7 +2430,7 @@ export default function Timeline() {
                       else await applyLaneDecrease(newCount, effectiveDate);
                       setLaneChangeConfirm(null);
                     }}
-                    className="px-6 py-2.5 rounded-sm bg-[hsl(var(--gold))] text-background text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-[hsl(var(--gold))]/90 transition-all"
+                    className="px-6 py-2.5 rounded-sm border border-gold bg-transparent text-gold text-[10px] font-semibold uppercase tracking-[0.25em] hover:bg-[#1C1A17] transition-all"
                   >
                     {isIncrease ? "Confirm & Pay Pro-rata" : "Confirm Reduction"}
                   </button>

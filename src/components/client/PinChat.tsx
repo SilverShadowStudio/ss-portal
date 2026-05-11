@@ -206,7 +206,7 @@ export function PinChat({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/10 px-2.5 py-1.5">
         <div className="flex items-center gap-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gold/15 text-[10px] font-medium text-gold">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1C1A17] text-[10px] font-medium text-gold border border-gold/30">
             {pinNumber}
           </div>
           <p className="text-[10px] uppercase tracking-[0.18em] text-white/50 font-sans">
@@ -271,7 +271,7 @@ export function PinChat({
                 className={cn(
                   "max-w-[88%] rounded-xl px-2.5 py-1.5 text-[12px] leading-snug font-sans shadow-sm",
                   mine
-                    ? "bg-gold text-[#1a1308] rounded-br-sm"
+                    ? "bg-[#1C1A17] text-gold border border-gold/40 rounded-br-sm"
                     : "bg-white/10 text-white/90 rounded-bl-sm border border-white/10"
                 )}
               >
@@ -396,7 +396,7 @@ export function PinChat({
             className={cn(
               "rounded-full p-1 transition-colors",
               draft.trim() || pending.length > 0
-                ? "bg-gold text-[#1a1308] hover:bg-gold/90"
+                ? "border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
                 : "text-white/30"
             )}
             aria-label="Send"

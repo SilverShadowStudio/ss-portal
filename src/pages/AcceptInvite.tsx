@@ -112,7 +112,7 @@ export default function AcceptInvite() {
     <div className="min-h-screen flex items-center justify-center bg-background px-6">
       <div className="w-full max-w-md card-elevated p-10">
         <div className="mb-8 flex items-center gap-3">
-          <div className="h-px w-8 bg-gold" />
+          <div className="h-px w-8 bg-gold-muted" />
           <span className="text-label-gold">Team invitation</span>
         </div>
 
@@ -136,7 +136,7 @@ export default function AcceptInvite() {
               accept this invitation.
             </p>
             <Link to={`/auth?next=/accept-invite?token=${token}`}>
-              <Button className="w-full bg-gold text-primary-foreground hover:bg-gold/90">
+              <Button className="w-full border border-gold bg-transparent text-gold hover:bg-[#1C1A17]">
                 SIGN IN OR CREATE ACCOUNT
               </Button>
             </Link>
@@ -154,7 +154,7 @@ export default function AcceptInvite() {
             </p>
             <Button
               onClick={handleAccept}
-              className="w-full bg-gold text-primary-foreground hover:bg-gold/90"
+              className="w-full border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
             >
               ACCEPT INVITATION
             </Button>

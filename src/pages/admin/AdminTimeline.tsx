@@ -618,7 +618,7 @@ export default function AdminTimeline() {
     <AdminLayout>
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-8 bg-gold" />
+          <div className="h-px w-8 bg-gold-muted" />
           <span className="text-label-gold">Studio Timeline</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
@@ -639,7 +639,7 @@ export default function AdminTimeline() {
           <div className="flex items-center gap-6 w-full">
             <button
               onClick={scrollToNow}
-              className="px-4 py-1.5 bg-gold/15 border border-gold/40 rounded-full text-[10px] font-bold text-gold uppercase tracking-[0.18em] hover:bg-gold/25 hover:border-gold/60 transition-colors shadow-sm"
+              className="px-4 py-1.5 bg-[#1C1A17] border border-gold/40 rounded-full text-[10px] font-bold text-gold uppercase tracking-[0.18em] hover:border-gold/60 transition-colors shadow-sm"
             >
               Now
             </button>
@@ -680,7 +680,7 @@ export default function AdminTimeline() {
                 <div className="flex flex-1 relative">
                   {nowPos !== null && (
                     <div
-                      className="pointer-events-none absolute bottom-0 -translate-x-1/2 z-50 px-1.5 py-0.5 bg-gold text-primary-foreground text-[10px] font-bold tracking-[0.15em] rounded-t shadow-lg whitespace-nowrap"
+                      className="pointer-events-none absolute bottom-0 -translate-x-1/2 z-50 px-1.5 py-0.5 border border-gold bg-[#1C1A17] text-gold text-[10px] font-bold tracking-[0.15em] rounded-t shadow-lg whitespace-nowrap"
                       style={{ left: `${nowPos - SIDEBAR_W}px` }}
                     >
                       {now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
@@ -691,7 +691,7 @@ export default function AdminTimeline() {
                       key={day.id}
                       className={`flex-1 py-3 border-r flex flex-col items-center justify-center gap-0.5 ${
                         day.date.getDay() === 5 ? "border-foreground/40" : "border-border"
-                      } ${isSameDay(now, day.date) ? "bg-gold/5" : ""}`}
+                      } ${isSameDay(now, day.date) ? "bg-[#181613]" : ""}`}
                       style={{ minWidth: DAY_W }}
                     >
                       <span className={`text-[9px] font-bold tracking-[0.18em] uppercase ${isSameDay(now, day.date) ? "text-gold/80" : "text-muted-foreground/70"}`}>{day.name}</span>
@@ -729,7 +729,7 @@ export default function AdminTimeline() {
                 grouped.map((client) => (
                   <div key={client.clientId} className="contents">
                     {/* Client header row */}
-                    <div className="flex border-b border-border bg-gold/10 sticky top-0 z-30">
+                    <div className="flex border-b border-border bg-[#1C1A17] sticky top-0 z-30">
                       <div
                         className="shrink-0 border-r border-border px-5 py-3 flex items-center justify-center text-center sticky left-0 z-[55] bg-card"
                         style={{ width: SIDEBAR_W }}
@@ -856,18 +856,14 @@ export default function AdminTimeline() {
                                     round.status === "delivered");
                                 const statusOverride =
                                   !isReview && round.status === "in_progress"
-                                    ? "bg-yellow-400/20 border-yellow-400/70 shadow-sm"
+                                    ? "bg-gold/10 border-gold/40 shadow-sm"
                                     : !isReview && round.status === "client_review"
-                                    ? "bg-red-500/20 border-red-500/70 shadow-sm"
+                                    ? "bg-rose-500/20 border-rose-500/50 shadow-sm"
                                     : isApprovedLike
                                     ? "bg-emerald-500/20 border-emerald-500/70 shadow-sm"
                                     : null;
                                 const blockClasses = statusOverride
                                   ? statusOverride
-                                  : isReview
-                                  ? temporal === "current"
-                                    ? "bg-amber-500/15 border-amber-500/60 shadow-md"
-                                    : "bg-amber-500/10 border-amber-500/40"
                                   : temporal === "current"
                                     ? "bg-secondary border-gold/50 shadow-md"
                                     : "bg-card/70 border-border";
@@ -884,13 +880,13 @@ export default function AdminTimeline() {
                                       <>
                                         <div
                                           className={`absolute inset-y-0 left-0 ${
-                                            isReview ? "bg-amber-500/25" : "bg-gold/[0.18]"
+                                            "bg-[#1C1A17]"
                                           }`}
                                           style={{ width: `${fillPx}px` }}
                                         />
                                         <div
                                           className={`absolute inset-y-0 w-px ${
-                                            isReview ? "bg-amber-500/70" : "bg-gold/60"
+                                            "bg-gold/60"
                                           }`}
                                           style={{ left: `${fillPx - 0.5}px` }}
                                         />
@@ -899,20 +895,20 @@ export default function AdminTimeline() {
                                     <div className={`absolute inset-y-0 left-0 w-px ${
                                       temporal === "past"
                                         ? "bg-border"
-                                        : isReview ? "bg-amber-500/60" : "bg-gold/50"
+                                        : "bg-gold/50"
                                     }`} />
                                     <div className={`absolute inset-y-0 right-0 w-px ${
                                       temporal === "past"
                                         ? "bg-border"
                                         : temporal === "current"
-                                        ? isReview ? "bg-amber-500/50" : "bg-gold/40"
+                                        ? "bg-gold/40"
                                         : "bg-border/80"
                                     }`} />
                                     <div className="relative px-3 py-2.5 h-full flex flex-col justify-center gap-0.5">
                                       <div className="flex items-center gap-2">
                                         {temporal === "current" && (
                                           <div className={`h-1.5 w-1.5 rounded-full shrink-0 animate-pulse ${
-                                            isReview ? "bg-amber-500" : "bg-gold"
+                                            "bg-gold"
                                           }`} />
                                         )}
                                         <p className={`text-[11px] font-bold truncate uppercase tracking-wide ${

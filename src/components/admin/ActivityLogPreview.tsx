@@ -92,7 +92,7 @@ export function ActivityLogPreview() {
   return (
     <div className="mb-14 rounded-xl border border-border bg-card shadow-sm p-8 md:p-10 animate-fade-in">
       <div className="mb-6 flex items-center gap-3">
-        <div className="h-px w-6 bg-gold" />
+        <div className="h-px w-6 bg-gold-muted" />
         <Link
           to="/admin/activity"
           className="group inline-flex items-center gap-2 text-label hover:text-foreground transition-colors"

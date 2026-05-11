@@ -239,7 +239,7 @@ export function TeamManagement() {
             <Button
               type="submit"
               disabled={sending || !inviteEmail.trim()}
-              className="bg-gold text-primary-foreground hover:bg-gold/90"
+              className="border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
             >
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

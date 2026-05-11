@@ -935,11 +935,11 @@ export default function Portfolio() {
                                   round, to keep things calm when not needed. */}
                               {subgroups.length > 1 && (
                                 <div className="mb-6 flex items-center gap-4">
-                                  <div className="h-px w-10 bg-gold" />
+                                  <div className="h-px w-10 bg-gold-muted" />
                                   <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-gold font-sans">
                                     Round {roundNumber.toString().padStart(2, "0")}
                                   </span>
-                                  <div className="h-px flex-1 bg-gold/30" />
+                                  <div className="h-px flex-1 bg-gold-muted" />
                                 </div>
                               )}
                               <DndContext
@@ -1072,7 +1072,7 @@ export default function Portfolio() {
       {/* Header */}
       <div className="mb-12 animate-fade-in">
         <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-10 bg-gold" />
+          <div className="h-px w-10 bg-gold-muted" />
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-gold font-sans">Portfolio</span>
         </div>
 

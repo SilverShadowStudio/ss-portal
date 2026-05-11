@@ -691,7 +691,7 @@ export default function Delivery() {
         {/* Page header */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-16">
           <div className="flex items-center gap-4 mb-5">
-            <div className="h-px w-8" style={{ background: "hsl(var(--gold) / 0.5)" }} />
+            <div className="h-px w-8 bg-gold-muted" />
             <span className="text-[9px] uppercase tracking-[0.42em] font-sans" style={{ color: "hsl(var(--gold))" }}>Production</span>
           </div>
           <h1 className="font-serif font-light text-foreground" style={{ fontSize: "clamp(2.2rem, 4vw, 3rem)", letterSpacing: "0.02em" }}>
@@ -703,7 +703,7 @@ export default function Delivery() {
         {tasks.length === 0 && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="py-32">
             <div className="flex items-center gap-4 mb-8">
-              <div className="h-px w-8" style={{ background: "hsl(var(--gold) / 0.18)" }} />
+              <div className="h-px w-8 bg-gold-muted" />
               <span className="text-[9px] uppercase tracking-[0.38em] font-sans text-foreground/22">Nothing in production</span>
             </div>
             <p className="font-serif text-foreground/25 font-light" style={{ fontSize: "1.6rem" }}>No active work</p>
@@ -758,8 +758,8 @@ export default function Delivery() {
                 {/* Delivery notice */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="mb-10">
                   <div className="flex items-center gap-4 mb-3">
-                    <div className="h-px w-6" style={{ background: "hsl(var(--gold) / 0.35)" }} />
-                    <span className="text-[9px] uppercase tracking-[0.38em] font-sans" style={{ color: "hsl(var(--gold) / 0.6)" }}>Delivery ready</span>
+                    <div className="h-px w-6 bg-gold-muted" />
+                    <span className="text-[9px] uppercase tracking-[0.38em] font-sans text-gold-muted">Delivery ready</span>
                     <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "hsl(var(--gold))", boxShadow: "0 0 8px hsl(var(--gold) / 0.55)" }} />
                   </div>
                   {activeTask.delivered_at && (

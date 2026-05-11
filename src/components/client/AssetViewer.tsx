@@ -521,7 +521,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
               existing comments/pins stay visible for reference. */}
           {isLocked && (
             <div
-              className="flex items-start gap-3 rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3 max-w-2xl"
+              className="flex items-start gap-3 rounded-2xl border border-gold/30 bg-[#181613] px-4 py-3 max-w-2xl"
               role="status"
             >
               <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-gold" />
@@ -546,7 +546,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
                     className={cn(
                       "shrink-0 rounded-lg border px-3 py-2 text-xs font-sans transition-colors",
                       selectedAsset?.id === asset.id
-                        ? "border-gold bg-gold/10 text-gold"
+                        ? "border-gold bg-[#1C1A17] text-gold"
                         : "border-border text-muted-foreground hover:border-gold/50"
                     )}
                   >
@@ -1678,7 +1678,7 @@ export function Lightbox({
               className={cn(
                 "rounded-full p-2 transition-colors",
                 annotateMode
-                  ? "bg-gold text-[#1a1308] hover:bg-gold/90"
+                  ? "border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
                   : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
                 isLocked && "opacity-40 cursor-not-allowed hover:bg-white/10 hover:text-white/80"
               )}
@@ -2199,7 +2199,7 @@ export function Lightbox({
                     });
                   }
                 }}
-                className="rounded-full bg-gold p-2 text-[#1a1308] hover:bg-gold/90 transition-colors"
+                className="rounded-full border border-gold bg-transparent p-2 text-gold hover:bg-[#1C1A17] transition-colors"
                 aria-label={saveLabel}
               >
                 <Check size={16} />
@@ -2887,14 +2887,14 @@ function PinMarker({
             "absolute flex items-center justify-center touch-manipulation",
             "-translate-x-1/2 -translate-y-1/2",
             "h-7 w-7 md:h-5 md:w-5",
-            "rounded-full bg-gold text-[#1a1308] shadow-md ring-2 ring-background",
+            "rounded-full border border-gold bg-[#1C1A17] text-gold shadow-md ring-2 ring-background",
             "transition-all duration-150 ease-out",
             // On touch (no hover) keep the badge visible so it's always
             // tappable; on hover-capable devices reveal it on hover/focus.
             "opacity-100 scale-100",
             "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:scale-75",
             "[@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-hover:scale-100",
-            "hover:bg-gold/90 focus:opacity-100 focus:scale-100 focus:outline-none"
+            "focus:opacity-100 focus:scale-100 focus:outline-none"
           )}
         >
           <X className="h-4 w-4 md:h-3 md:w-3" strokeWidth={3} />
@@ -3619,7 +3619,7 @@ function NextRoundCTA({
                 setConfirmOpen(false);
                 onRequestNextRound?.();
               }}
-              className="bg-gold text-[#1a1308] hover:bg-gold/90"
+              className="border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
             >
               Continue
             </AlertDialogAction>

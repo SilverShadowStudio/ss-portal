@@ -179,7 +179,7 @@ export default function AdminClientActivity() {
     <AdminLayout>
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-12 bg-gold" />
+          <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold">Engagement</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
@@ -250,7 +250,7 @@ export default function AdminClientActivity() {
           {/* Sessions */}
           <div className="rounded-xl border border-border bg-card shadow-sm p-6">
             <h2 className="font-serif text-lg mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-gold" />
+              <span className="h-px w-6 bg-gold-muted" />
               Sessions ({sessions.length})
             </h2>
             <ul className="divide-y divide-border/40 max-h-[60vh] overflow-y-auto">
@@ -287,7 +287,7 @@ export default function AdminClientActivity() {
           {/* Pages */}
           <div className="rounded-xl border border-border bg-card shadow-sm p-6">
             <h2 className="font-serif text-lg mb-4 flex items-center gap-2">
-              <span className="h-px w-6 bg-gold" />
+              <span className="h-px w-6 bg-gold-muted" />
               Pages visited
             </h2>
             <ul className="divide-y divide-border/40 max-h-[60vh] overflow-y-auto">

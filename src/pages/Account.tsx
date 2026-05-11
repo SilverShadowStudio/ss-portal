@@ -147,7 +147,7 @@ export default function Account() {
       {/* Header */}
       <div className="mb-12 animate-fade-in">
         <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-10 bg-gold" />
+          <div className="h-px w-10 bg-gold-muted" />
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-gold font-sans">Settings</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl">
@@ -159,7 +159,7 @@ export default function Account() {
         {/* Profile Section */}
         <section className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
           <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold" />
+            <div className="h-px w-8 bg-gold-muted" />
             <h2 className="text-label">Profile</h2>
           </div>
 
@@ -240,7 +240,7 @@ export default function Account() {
         {/* Notification Preferences Section */}
         <section className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
           <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold" />
+            <div className="h-px w-8 bg-gold-muted" />
             <h2 className="text-label">Notification Preferences</h2>
           </div>
 
@@ -308,7 +308,7 @@ export default function Account() {
         {/* Team Management Section */}
         <section className="animate-fade-in" style={{ animationDelay: "0.25s" }}>
           <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold" />
+            <div className="h-px w-8 bg-gold-muted" />
             <h2 className="text-label">Team Management</h2>
           </div>
           <TeamManagement />
@@ -317,7 +317,7 @@ export default function Account() {
         {/* Change Password Section */}
         <section className="animate-fade-in" style={{ animationDelay: "0.28s" }}>
           <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold" />
+            <div className="h-px w-8 bg-gold-muted" />
             <h2 className="text-label">Change Password</h2>
           </div>
 

@@ -51,7 +51,7 @@ export default function AdminActivity() {
     <AdminLayout>
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-12 bg-gold" />
+          <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold">Studio Records</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">

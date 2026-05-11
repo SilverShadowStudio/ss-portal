@@ -141,7 +141,7 @@ export function InvoiceViewer({ invoice, open, onOpenChange }: Props) {
               if (!docRef.current) return;
               void generateInvoicePdf(docRef.current, fileName);
             }}
-            className="pointer-events-auto inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg bg-[#BCA88E] hover:bg-[#a8957c] text-black"
+            className="pointer-events-auto inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
           >
             <Download className="mr-1.5 h-4 w-4" />
             Download

@@ -174,7 +174,7 @@ export default function Onboarding() {
         {/* Header */}
         <div className="mb-12 animate-fade-in">
           <div className="flex items-start gap-4">
-            <div className="w-1 self-stretch bg-gold" />
+            <div className="w-1 self-stretch bg-gold-muted" />
             <div>
               <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl">
                 Client Registration

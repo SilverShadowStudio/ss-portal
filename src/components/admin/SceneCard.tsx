@@ -128,7 +128,7 @@ export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, o
     const labels: Record<string, { text: string; class: string }> = {
       pending_instruction: { text: "AWAITING BRIEF", class: "bg-muted text-muted-foreground" },
       in_production: { text: "IN PRODUCTION", class: "bg-muted text-foreground" },
-      delivered: { text: "CLIENT REVIEW", class: "bg-gold/20 text-gold" },
+      delivered: { text: "CLIENT REVIEW", class: "bg-[#1C1A17] text-gold" },
       approved: { text: "APPROVED", class: "bg-primary/20 text-primary" },
     };
     return labels[status] || labels.pending_instruction;
@@ -194,7 +194,7 @@ export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, o
               <span className="text-xs font-medium tracking-wider text-gold">
                 #{String(index + 1).padStart(3, "0")}
               </span>
-              <div className="h-px w-4 bg-gold" />
+              <div className="h-px w-4 bg-gold-muted" />
               <span className="text-[10px] tracking-wider text-muted-foreground">
                 PRODUCTION SCENE
               </span>
@@ -219,7 +219,7 @@ export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, o
                     <button
                       className={`px-4 py-2 text-[10px] font-medium tracking-wider transition-smooth ${
                         isCurrent
-                          ? "border border-gold bg-gold/10 text-gold"
+                          ? "border border-gold bg-[#1C1A17] text-gold"
                           : isDelivered
                           ? "border border-border text-foreground hover:border-gold/50"
                           : "border border-border/50 text-muted-foreground opacity-60"
@@ -308,7 +308,7 @@ export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, o
               <div className="relative">
                 <div className="h-px w-full bg-border" />
                 <div
-                  className="absolute top-0 h-px bg-gold transition-all duration-700"
+                  className="absolute top-0 h-px bg-gold-muted transition-all duration-700"
                   style={{ width: `${progress}%` }}
                 />
                 <div

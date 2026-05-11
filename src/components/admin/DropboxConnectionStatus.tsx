@@ -144,7 +144,7 @@ export function DropboxConnectionStatus() {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-gold/5 p-4">
+    <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-[#181613] p-4">
       <div className="flex items-center gap-3">
         <CloudOff className="h-5 w-5 text-gold" />
         <div>

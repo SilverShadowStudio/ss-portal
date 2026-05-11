@@ -81,7 +81,7 @@ export default function AdminDashboard() {
       {/* Header */}
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-12 bg-gold" />
+          <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold">Studio Overview</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
@@ -120,7 +120,7 @@ export default function AdminDashboard() {
         style={{ animationDelay: "0.2s" }}
       >
         <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-6 bg-gold" />
+          <div className="h-px w-6 bg-gold-muted" />
           <h2 className="text-label">Quick Actions</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -74,7 +74,7 @@ export default function Unsubscribe() {
     <div className="min-h-screen flex items-center justify-center bg-background px-6">
       <div className="w-full max-w-md card-elevated p-10">
         <div className="mb-8 flex items-center gap-3">
-          <div className="h-px w-8 bg-gold" />
+          <div className="h-px w-8 bg-gold-muted" />
           <span className="text-label-gold">Email preferences</span>
         </div>
 
@@ -93,7 +93,7 @@ export default function Unsubscribe() {
             </p>
             <Button
               onClick={handleConfirm}
-              className="w-full bg-gold text-primary-foreground hover:bg-gold/90"
+              className="w-full border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
             >
               CONFIRM UNSUBSCRIBE
             </Button>

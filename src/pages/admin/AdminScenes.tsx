@@ -265,7 +265,7 @@ export default function AdminScenes() {
       <div className="mb-10 flex items-end justify-between animate-fade-in">
         <div>
           <div className="mb-4 flex items-center gap-3">
-            <div className="h-px w-12 bg-gold" />
+            <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold">Scene Management</span>
           </div>
           <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">

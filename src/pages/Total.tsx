@@ -435,7 +435,7 @@ export default function Total() {
       {/* Page header — matches Timeline / Dashboard editorial style */}
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-8 bg-gold" />
+          <div className="h-px w-8 bg-gold-muted" />
           <span className="text-label-gold tracking-[0.1em]">Total</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl">
@@ -693,17 +693,11 @@ export default function Total() {
                                 );
                               }
                               const isReview = round.kind === "review";
-                              const blockClasses = isReview
-                                ? temporal === "past"
-                                  ? "bg-amber-500/10 border-amber-500/30 opacity-60"
-                                  : temporal === "current"
-                                    ? "bg-amber-500/15 border-amber-500/60 shadow-md"
-                                    : "bg-amber-500/5 border-amber-500/30 border-dashed opacity-90"
-                                : temporal === "past"
-                                  ? "bg-muted/40 border-border/70 opacity-50"
-                                  : temporal === "current"
-                                    ? "bg-secondary border-primary/50 shadow-md"
-                                    : "bg-card/60 border-border border-dashed opacity-90";
+                              const blockClasses = temporal === "past"
+                                ? "bg-muted/40 border-border/70 opacity-50"
+                                : temporal === "current"
+                                  ? "bg-secondary border-gold/50 shadow-md"
+                                  : "bg-card/60 border-border border-dashed opacity-90";
                               return (
                                 <div
                                   key={round.id}
@@ -715,13 +709,13 @@ export default function Total() {
                                     <>
                                       <div
                                         className={`absolute inset-y-0 left-0 ${
-                                          isReview ? "bg-amber-500/25" : "bg-primary/[0.18]"
+                                          "bg-[#1C1A17]"
                                         }`}
                                         style={{ width: `${fillPx}px` }}
                                       />
                                       <div
                                         className={`absolute inset-y-0 w-px ${
-                                          isReview ? "bg-amber-500/70" : "bg-primary/60"
+                                          "bg-gold/60"
                                         }`}
                                         style={{ left: `${fillPx - 0.5}px` }}
                                       />
@@ -732,8 +726,8 @@ export default function Total() {
                                       temporal === "past"
                                         ? "bg-border"
                                         : isReview
-                                          ? "bg-amber-500/60"
-                                          : "bg-primary/50"
+                                          ? "bg-gold/60"
+                                          : "bg-gold/50"
                                     }`}
                                   />
                                   <div
@@ -742,8 +736,8 @@ export default function Total() {
                                         ? "bg-border"
                                         : temporal === "current"
                                           ? isReview
-                                            ? "bg-amber-500/50"
-                                            : "bg-primary/40"
+                                            ? "bg-gold/50"
+                                            : "bg-gold/40"
                                           : "bg-border/80"
                                     }`}
                                   />
@@ -752,7 +746,7 @@ export default function Total() {
                                       {temporal === "current" && (
                                         <div
                                           className={`h-1.5 w-1.5 rounded-full shrink-0 animate-pulse ${
-                                            isReview ? "bg-amber-500" : "bg-primary"
+                                            "bg-gold"
                                           }`}
                                         />
                                       )}
@@ -937,7 +931,7 @@ function ScenesRail({
         style={{ borderBottom: "0.5px solid hsl(var(--border))" }}
       >
         <div className="flex items-center gap-3 w-full">
-          <div className="h-px w-6 bg-gold" />
+          <div className="h-px w-6 bg-gold-muted" />
           <span className="text-[10px] font-bold text-foreground/80 uppercase tracking-[0.22em]">
             Scenes
           </span>

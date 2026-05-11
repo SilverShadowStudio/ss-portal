@@ -415,7 +415,7 @@ export default function AdminClients() {
       <div className="mb-10 flex items-end justify-between animate-fade-in">
         <div>
           <div className="mb-4 flex items-center gap-3">
-            <div className="h-px w-12 bg-gold" />
+            <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold">Client Management</span>
           </div>
           <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
@@ -586,7 +586,7 @@ export default function AdminClients() {
 
               {/* Result banner */}
               {resultBanner && (
-                <div className="rounded-lg border border-gold/40 bg-gold/5 p-4 space-y-3">
+                <div className="rounded-lg border border-gold/40 bg-[#181613] p-4 space-y-3">
                   <div className="text-label-gold">
                     {resultBanner.mode === "invite"
                       ? "INVITATION READY"
@@ -714,7 +714,7 @@ export default function AdminClients() {
                             }
                             navigate("/");
                           }}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-gold/15 border border-transparent hover:border-gold/40 transition-all shrink-0"
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0"
                           aria-label="Enter Ghost Mode"
                         >
                           <Ghost className="h-4 w-4 text-gold/60" strokeWidth={1.5} />

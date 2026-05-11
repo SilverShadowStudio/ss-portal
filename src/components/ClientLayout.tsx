@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { ClientSidebar } from "./ClientSidebar";
 import { NotificationBell } from "./NotificationBell";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 interface ClientLayoutProps {
@@ -9,6 +10,7 @@ interface ClientLayoutProps {
 }
 
 export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps) {
+  const { isGhostMode } = useAuth();
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-sidebar-expanded");
     return stored === null ? true : stored === "true";
@@ -30,6 +32,8 @@ export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps)
           expanded ? "md:ml-[220px]" : "md:ml-20",
           // Mobile: no left margin, bottom padding for tab bar
           "ml-0",
+          // Ghost mode banner is fixed at top — push content below it
+          isGhostMode && "pt-10",
         )}
       >
         <div

@@ -67,7 +67,7 @@ export function statusBadgeClasses(status: string) {
     case "cancelled":
       return "bg-muted text-muted-foreground line-through";
     default:
-      return "bg-amber-500/15 text-amber-600 dark:text-amber-400";
+      return "bg-[#181613] text-gold-muted";
   }
 }
 

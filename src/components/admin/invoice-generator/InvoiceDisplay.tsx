@@ -46,7 +46,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
       <div className="grid grid-cols-12 gap-x-8 mb-12">
         <div className="col-span-7 space-y-8">
           <div className="space-y-3">
-            <h2 className="text-[9px] uppercase tracking-[0.3em] font-bold" style={{ color: "#fecf74" }}>Billed To</h2>
+            <h2 className="text-[9px] uppercase tracking-[0.3em] font-bold" style={{ color: "hsl(var(--gold))" }}>Billed To</h2>
             <div className="space-y-1">
               <p className="text-[13px] font-light tracking-tight leading-none">{data.client.name || "Client Name"}</p>
               <p className="leading-relaxed max-w-[260px]" style={{ color: "rgba(51,51,51,0.8)" }}>{data.client.address || "Address"}</p>
@@ -54,7 +54,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
             </div>
           </div>
           <div className="space-y-3">
-            <h2 className="text-[9px] uppercase tracking-[0.3em] font-bold" style={{ color: "#fecf74" }}>Project</h2>
+            <h2 className="text-[9px] uppercase tracking-[0.3em] font-bold" style={{ color: "hsl(var(--gold))" }}>Project</h2>
             <p className="font-light text-[11px] tracking-tight">{data.client.project || "Project Name"}</p>
           </div>
         </div>
@@ -126,7 +126,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
           <div className="mt-10 pt-8" style={{ borderTop: "1px solid #f8fafc" }}>
             <div className="flex justify-between items-end">
               <div className="space-y-2">
-                <h3 className="font-bold uppercase tracking-[0.3em] text-[9px]" style={{ color: "#fecf74" }}>
+                <h3 className="font-bold uppercase tracking-[0.3em] text-[9px]" style={{ color: "hsl(var(--gold))" }}>
                   {type === "A" ? "Initial Downpayment" : "Final Balance Due"}
                 </h3>
                 <p className="text-[9px] italic tracking-wider" style={{ color: "rgba(51,51,51,0.6)" }}>
@@ -149,7 +149,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
       <div className="mt-auto pt-12" style={{ borderTop: "1px solid #f1f5f9" }}>
         <div className="grid grid-cols-12 gap-8 mb-16">
           <div className="col-span-4 space-y-6">
-            <h2 className="text-[9px] uppercase tracking-[0.4em] font-bold" style={{ color: "#fecf74" }}>Local Settlement</h2>
+            <h2 className="text-[9px] uppercase tracking-[0.4em] font-bold" style={{ color: "hsl(var(--gold))" }}>Local Settlement</h2>
             <div className="space-y-4">
               <div className="flex flex-col">
                 <span className="text-[8px] uppercase tracking-[0.2em] mb-1" style={{ color: "rgba(51,51,51,0.3)" }}>Institution</span>
@@ -169,7 +169,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
           </div>
 
           <div className="col-span-5 space-y-6">
-            <h2 className="text-[9px] uppercase tracking-[0.4em] font-bold" style={{ color: "#fecf74" }}>International Transfer</h2>
+            <h2 className="text-[9px] uppercase tracking-[0.4em] font-bold" style={{ color: "hsl(var(--gold))" }}>International Transfer</h2>
             <div className="space-y-4">
               <div className="flex flex-col">
                 <span className="text-[8px] uppercase tracking-[0.2em] mb-1" style={{ color: "rgba(51,51,51,0.3)" }}>IBAN</span>

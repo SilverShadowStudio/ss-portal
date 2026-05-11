@@ -281,10 +281,10 @@ export function InvoiceGenerator() {
                   </div>
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <Button onClick={() => handlePrint("A")} className="flex-1 bg-gold text-background hover:bg-gold/90">
+                  <Button onClick={() => handlePrint("A")} className="flex-1 border border-gold bg-transparent text-gold hover:bg-[#1C1A17]">
                     <Download className="mr-2 h-4 w-4" /> Invoice A
                   </Button>
-                  <Button onClick={() => handlePrint("B")} className="flex-1 bg-gold text-background hover:bg-gold/90">
+                  <Button onClick={() => handlePrint("B")} className="flex-1 border border-gold bg-transparent text-gold hover:bg-[#1C1A17]">
                     <Download className="mr-2 h-4 w-4" /> Invoice B
                   </Button>
                 </div>
@@ -318,7 +318,7 @@ export function InvoiceGenerator() {
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <h3 className="font-serif text-lg">Invoice Items</h3>
-              <Button size="sm" onClick={addItem} className="bg-gold text-background hover:bg-gold/90">
+              <Button size="sm" onClick={addItem} className="border border-gold bg-transparent text-gold hover:bg-[#1C1A17]">
                 <Plus className="mr-1 h-4 w-4" /> Add Line
               </Button>
             </div>
@@ -361,7 +361,7 @@ export function InvoiceGenerator() {
                 key={t}
                 variant={activePreview === t ? "default" : "outline"}
                 onClick={() => setActivePreview(t)}
-                className={activePreview === t ? "bg-gold text-background hover:bg-gold/90" : ""}
+                className={activePreview === t ? "border border-gold bg-transparent text-gold hover:bg-[#1C1A17]" : ""}
               >
                 Preview Invoice {t}
               </Button>

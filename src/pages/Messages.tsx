@@ -6,7 +6,7 @@ export default function Messages() {
     <ClientLayout>
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-12 bg-gold" />
+          <div className="h-px w-12 bg-gold-muted" />
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-gold font-sans">
             Communication
           </span>

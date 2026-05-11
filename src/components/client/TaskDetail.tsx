@@ -580,8 +580,8 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           <div
             className={`mt-8 w-full max-w-sm rounded-2xl border-2 border-dashed transition-colors ${
               isDragging
-                ? "border-gold bg-gold/10"
-                : "border-gold/40 bg-gold/5 hover:border-gold/70 hover:bg-gold/10"
+                ? "border-gold bg-[#1C1A17]"
+                : "border-gold/40 bg-[#181613] hover:border-gold/70 hover:bg-[#1C1A17]"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
