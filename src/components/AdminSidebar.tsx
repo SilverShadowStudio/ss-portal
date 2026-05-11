@@ -3,22 +3,16 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
-  Image,
   FileText,
   Kanban,
-  Layers,
   Receipt,
   ShoppingBag,
   Sun,
   Moon,
   LogOut,
-  User,
   ChevronsLeft,
   ChevronsRight,
   UploadCloud,
-  Activity,
-  LineChart,
-  Ghost,
 } from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
@@ -27,13 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AccountMenuContent, AccountMenuItem, AccountMenuSeparator } from "@/components/account/AccountMenuContent";
 
 const navItems = [
   { icon: LayoutDashboard, path: "/admin", label: "Dashboard" },
@@ -58,7 +46,6 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState<{ first_name: string | null; last_name: string | null; full_name: string | null; company: string | null } | null>(null);
   const newClientsCount = useNewClientsCount();
 
@@ -246,70 +233,104 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
         </nav>
       </TooltipProvider>
 
-      <div className={cn("pt-4", expanded ? "w-full" : "")}>
-        {expanded && (
+      {/* Bottom actions — Compact / Theme / Log off */}
+      <TooltipProvider delayDuration={0}>
+        <div className={cn("flex flex-col", expanded ? "w-full pt-2" : "items-center pt-2 gap-1")}>
           <div
             aria-hidden
-            className="mb-3"
+            className={cn("mb-3", expanded ? "mx-5" : "w-8")}
             style={{ height: 1, background: "hsl(var(--border) / 0.25)" }}
           />
-        )}
-        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <TooltipProvider delayDuration={0}>
+
+          {/* Profile name — expanded only */}
+          {expanded && (
+            <div className="pl-5 pr-3 py-2 mb-1">
+              <p className="text-[12px] font-medium text-foreground leading-tight" style={{ letterSpacing: "0.02em" }}>
+                {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
+              </p>
+              <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
+                Admin
+              </p>
+            </div>
+          )}
+
+          {/* Compact / Expand */}
+          {expanded ? (
+            <button
+              onClick={onToggleExpand}
+              className="w-full flex items-center pl-5 pr-3 py-3 font-sans uppercase text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+              style={{ fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 }}
+            >
+              <ChevronsLeft size={14} strokeWidth={1.5} className="mr-3 shrink-0" />
+              Compact
+            </button>
+          ) : (
             <Tooltip>
               <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <button
-                    className={cn(
-                      "flex items-center transition-all duration-300 ease-out",
-                      expanded
-                        ? "w-full pl-5 pr-3 py-2"
-                        : "h-11 w-12 justify-center text-muted-foreground hover:text-foreground rounded-xl"
-                    )}
-                  >
-                    {expanded ? (
-                      <div className="text-left min-w-0">
-                        <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
-                          {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
-                        </p>
-                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
-                          Admin
-                        </p>
-                      </div>
-                    ) : (
-                      <User className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-                    )}
-                  </button>
-                </PopoverTrigger>
+                <button
+                  onClick={onToggleExpand}
+                  className="h-11 w-12 flex items-center justify-center mx-auto rounded-lg text-sidebar-foreground/50 hover:text-sidebar-foreground/80 hover:bg-muted/40 transition-colors"
+                >
+                  <ChevronsRight size={18} strokeWidth={1.5} />
+                </button>
               </TooltipTrigger>
-              {!expanded && (
-                <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
-                  Account
-                </TooltipContent>
-              )}
+              <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">Expand</TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <AccountMenuContent>
-            <AccountMenuItem
-              icon={expanded ? <ChevronsLeft size={16} strokeWidth={1.5} /> : <ChevronsRight size={16} strokeWidth={1.5} />}
-              label={expanded ? "Compact" : "Expand"}
-              onClick={() => { setMenuOpen(false); onToggleExpand?.(); }}
-            />
-            <AccountMenuItem
-              icon={theme === "dark" ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
-              label={theme === "dark" ? "Light mode" : "Dark mode"}
-              onClick={() => { setMenuOpen(false); toggleTheme(); }}
-            />
-            <AccountMenuSeparator />
-            <AccountMenuItem
-              icon={<LogOut size={16} strokeWidth={2} />}
-              label="Log off"
-              destructive
+          )}
+
+          {/* Light / Dark mode */}
+          {expanded ? (
+            <button
+              onClick={toggleTheme}
+              className="w-full flex items-center pl-5 pr-3 py-3 font-sans uppercase text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+              style={{ fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 }}
+            >
+              {theme === "dark"
+                ? <Sun size={14} strokeWidth={1.5} className="mr-3 shrink-0" />
+                : <Moon size={14} strokeWidth={1.5} className="mr-3 shrink-0" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleTheme}
+                  className="h-11 w-12 flex items-center justify-center mx-auto rounded-lg text-sidebar-foreground/50 hover:text-sidebar-foreground/80 hover:bg-muted/40 transition-colors"
+                >
+                  {theme === "dark" ? <Sun size={18} strokeWidth={1.5} /> : <Moon size={18} strokeWidth={1.5} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                {theme === "dark" ? "Light mode" : "Dark mode"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Log off */}
+          {expanded ? (
+            <button
               onClick={handleSignOut}
-            />
-          </AccountMenuContent>
-        </Popover>
-      </div>
+              className="w-full flex items-center pl-5 pr-3 py-3 font-sans uppercase text-rose-500/70 hover:text-rose-500 transition-colors"
+              style={{ fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 }}
+            >
+              <LogOut size={14} strokeWidth={1.5} className="mr-3 shrink-0" />
+              Log off
+            </button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleSignOut}
+                  className="h-11 w-12 flex items-center justify-center mx-auto rounded-lg text-rose-500/60 hover:text-rose-500 hover:bg-muted/40 transition-colors"
+                >
+                  <LogOut size={18} strokeWidth={1.5} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">Log off</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </TooltipProvider>
     </aside>
   );
 }
