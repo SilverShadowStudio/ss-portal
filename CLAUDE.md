@@ -15,7 +15,7 @@ Two commercial models:
 
 - **URL**: https://portal.silvershadowstudio.com
 - **Repo**: github.com/SilverShadowStudio/ss-portal (private)
-- **Deploy**: Vercel auto-deploys on push to `main` via SSH
+- **Deploy**: Vercel auto-deploys on push to `main` via SSH from Mac Pro
 
 ## Stack
 
@@ -60,12 +60,14 @@ git config user.name "Fred Colomb"
 git config user.email "fred@silvershadowstudio.com"
 ```
 
+SSH keys are configured on the Mac Pro — `git push` works without a password prompt.
+
 ## Project structure
 
 ```
 src/
   pages/
-    Index.tsx              # Client dashboard — single focused state (what needs attention now)
+    Index.tsx              # Client dashboard — focused single-state view (what needs attention now)
     Portfolio.tsx          # Client portfolio — projects + scenes
     Timeline.tsx           # Client timeline / Gantt
     Delivery.tsx           # Client delivery page
@@ -74,8 +76,8 @@ src/
     Contract.tsx           # Client agreement signing
     Auth.tsx               # Login page
     admin/
-      AdminDashboard.tsx   # Admin studio overview
-      AdminClients.tsx     # Client management — ghost mode, connections, last 10 sessions
+      AdminDashboard.tsx   # Admin studio overview — Dropbox + Airtable status strips, activity log
+      AdminClients.tsx     # Client management — ghost mode, Dropbox/Airtable connection status, last 10 sessions
       AdminProjects.tsx    # Project + scene + round management (main admin workhorse)
       AdminOrders.tsx      # Create and manage orders
       AdminScenes.tsx      # Scene management
@@ -90,16 +92,17 @@ src/
                            # Account hover menu: Overview / Orders / --- / Documents / Settings / --- / Expand / Theme / --- / Logout
     AdminLayout.tsx        # Admin page wrapper
     ClientLayout.tsx       # Client page wrapper
-    GhostModeBanner.tsx    # Banner shown when admin is viewing as a client
+    GhostModeBanner.tsx    # Banner shown when admin is viewing as a client (fixed layout — no sidebar shift)
 
     admin/
-      DropboxVisualsPanel.tsx   # Scans Dropbox VS_Visuals folder for a scene, shows highest version per round
-      DropboxConnectionStatus.tsx # Dropbox connected/disconnected status with relative time
-      AirtableSyncPanel.tsx     # Push/pull Airtable sync per scene
-      ClientActivityPanel.tsx   # Client session history
-      SceneCard.tsx             # Scene summary card
-      InvoiceFormDialog.tsx     # Create invoice dialog
-      AssetUploader.tsx         # Upload renders to Supabase storage
+      DropboxVisualsPanel.tsx      # Scans Dropbox VS_Visuals folder for a scene, shows highest version per round
+      DropboxConnectionStatus.tsx  # Dropbox connected/disconnected strip with relative time
+      AirtableConnectionStatus.tsx # Airtable connected/error strip — shows record count + cache time
+      AirtableSyncPanel.tsx        # Push/pull Airtable sync per scene
+      ClientActivityPanel.tsx      # Client session history
+      SceneCard.tsx                # Scene summary card
+      InvoiceFormDialog.tsx        # Create invoice dialog
+      AssetUploader.tsx            # Upload renders to Supabase storage
 
     client/
       TaskDetail.tsx       # Round detail view — upload zone, Dropbox panel, Airtable panel
@@ -124,24 +127,25 @@ src/
 
   integrations/
     supabase/
-      client.ts            # Supabase client
+      client.ts            # Supabase client — values hardcoded, exports SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY
       types.ts             # Generated database types
 
 supabase/
   functions/               # Deno edge functions
     dropbox-oauth-start/   # Initiates Dropbox OAuth
-    dropbox-oauth-callback/ # Handles Dropbox OAuth callback
-    dropbox-api/           # get-thumbnail, get-temporary-link
+    dropbox-oauth-callback/ # Handles Dropbox OAuth callback — redirects to portal.silvershadowstudio.com
+    dropbox-api/           # get-thumbnail, get-temporary-link, connection-status
     dropbox-webhook/       # Auto-sync on Dropbox file changes
     dropbox-scan-visuals/  # Scans VS_Visuals folder, returns highest version per round
-    airtable-sync/         # Bidirectional Airtable sync (push-scene, pull-status, get-config, set-config)
+    airtable-sync/         # Bidirectional Airtable sync (push-scene, push-status, pull-status, get-config, set-config, get-fields, probe-records)
+    airtable-list-models/  # Lists all rows from the Models table (cached, admin-only)
     accept-agreement/      # Sign client agreement, generate PDF
     admin-create-client/   # Create client account + send invite or provision
     admin-impersonate-client/ # Ghost mode token
     download-invoice-pdf/  # Generate invoice PDF
     send-transactional-email/ # Email sending
 
-  migrations/              # Run in Lovable SQL editor, in filename order
+  migrations/              # Applied in filename order via Supabase Management API
 ```
 
 ## Design system
@@ -177,7 +181,7 @@ Import from `src/lib/design.ts` for any magic value. Both sidebars import from i
 | `account_members` | User ↔ account links |
 | `projects` | Projects (has `project_code`, `project_slug`) |
 | `scenes` | Scenes (has `scene_code`, `scene_slug`, `airtable_record_id`) |
-| `scene_rounds` | Rounds per scene (status: `in_production`, `client_review`, `awaiting_review`, `approved`) |
+| `scene_rounds` | Rounds per scene (status: `pending`, `in_production`, `client_review`, `awaiting_review`, `approved`, `delivered`; also has `delivery_due_at`) |
 | `round_assets` | Render files per round (Supabase storage or Dropbox path) |
 | `lane_tasks` | Subscription lane tasks (delivery_status: `in_production`, `delivered`) |
 | `subscriptions` | Lane subscriptions |
@@ -186,7 +190,7 @@ Import from `src/lib/design.ts` for any magic value. Both sidebars import from i
 | `agreements` | Signed client agreements |
 | `dropbox_connections` | Dropbox OAuth tokens |
 | `client_activity` | Session tracking (kind: `session_start`, `session_end`) |
-| `app_settings` | Key-value config store (Airtable field mappings etc.) |
+| `app_settings` | Key-value config store — `airtable_field_config` key holds Airtable field mapping |
 | `user_roles` | Admin role assignments |
 
 ## Dropbox file naming convention
@@ -203,20 +207,63 @@ CP107-SC05-VS_R01_01.jpg
 
 Set `project_code`, `project_slug`, `scene_code`, `scene_slug` on each project/scene via the DropboxVisualsPanel on the round detail page.
 
+## Airtable sync
+
+Kieran's production tracker lives in Airtable. The portal syncs bidirectionally via the `airtable-sync` edge function.
+
+**Base ID**: `appyidJqOmdNB8WUd`
+**Table**: `Tasks` (table ID `tbleHaU9DxHyvixdL`)
+
+**Field mapping** (stored in `app_settings.airtable_field_config`, editable via set-config):
+
+| Config key | Airtable field | Notes |
+|---|---|---|
+| `field_scene_name` | `Task name` | Primary field (singleLineText) |
+| `field_status` | `Status` | singleSelect with emoji-prefixed values |
+| `field_delivery_date` | `Deadline` | dateTime → stored as `scene_rounds.delivery_due_at` |
+| `field_project_name` | _(blank)_ | Linked records — not writable as text |
+| `field_portal_scene_id` | _(blank)_ | No free-text ID field exists; portal stores Airtable record ID in `scenes.airtable_record_id` |
+
+**Status values** — actual Airtable single-select options have emoji prefixes. Pull matching uses substring so the logic is resilient to emoji changes:
+
+| Airtable value | Portal status |
+|---|---|
+| `🔴 TO DO` | `pending` |
+| `🟡 IN PROGRESS` | `in_production` |
+| `🔵 REVIEW` | `awaiting_review` |
+| `🟢 DONE` | `approved` |
+
+**Actions on `airtable-sync`**:
+- `push-scene` — creates/updates a Task row in Airtable, stores returned record ID in `scenes.airtable_record_id`
+- `push-status` — writes portal round status to Airtable (maps to emoji value)
+- `pull-status` — reads Status + Deadline from Airtable, updates `scene_rounds.status` and `scene_rounds.delivery_due_at`
+- `get-config` / `set-config` — read/write the field mapping from `app_settings`
+- `get-fields` — calls Airtable metadata API, returns all tables + field names (useful for debugging)
+- `probe-records` — fetches raw records from the configured table (useful for inspecting actual field values)
+
+The `airtable-list-models` function is separate — it reads from the **Models** table (`tbls6j4jyNifFyucU`), not Tasks. Used by the admin Production Tracker table.
+
+**Verified**: push-scene + pull-status round-trip confirmed working (record `recCTevx1HCoPQqA1` created for "Entrance" scene, `🔴 TO DO` → `pending` mapped correctly).
+
 ## Ghost mode
 
 Admin can view the portal as any client. Enter via:
-- Clients page — click the ghost icon circle on the left of each client row
+- Clients page — click the ghost icon on the left of each client row
 - `enterGhostMode({ userId, name })` from AuthContext
+
+Ghost mode banner renders above the client layout without shifting the sidebar (fixed positioning).
+
+## Vercel routing
+
+`vercel.json` has a catch-all rewrite so all routes serve `index.html` (required for client-side React Router):
+```json
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+```
 
 ## Known pending issues
 
-- DropboxVisualsPanel not rendering on round page — investigate TaskDetail.tsx, confirm isAdmin/sceneId/projectId are truthy at runtime
-- Airtable sync needs Kieran's field names (scenes table name, status values, delivery date field)
-- Two migrations still need running if not already applied:
-  - `20260510000001_airtable_sync.sql`
-  - `20260510000002_production_codes.sql`
-- Debug line in TaskDetail.tsx showing isAdmin/sceneId/projectId — remove once Dropbox panel issue resolved
+- Email provider not configured — `send-transactional-email` uses a `LOVABLE_API_KEY` that is no longer valid. Delivery notifications and client invitations will not send. Needs Resend or similar wired in.
+- Stripe not configured — `STRIPE_SECRET_KEY` not set; invoice checkout won't work.
 
 ## Clients in database
 
