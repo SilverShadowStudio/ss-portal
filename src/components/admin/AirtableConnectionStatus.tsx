@@ -6,8 +6,8 @@ function AirtableIcon({ className }: { className?: string }) {
     <img
       src="https://assets.streamlinehq.com/image/private/w_240,h_240,ar_1/f_auto/v1/icons/productivities/airtable-1q6cq6vj38vfnecip0p0g7.png/airtable-rajmjfv48marw7wzaiarjp.png?_a=DATAiZiuZAA0"
       alt="Airtable"
-      className={`brightness-0 dark:invert${className ? ` ${className}` : ""}`}
-      style={{ objectFit: "contain" }}
+      className={className}
+      style={{ objectFit: "contain", filter: "brightness(0) invert(1) sepia(1) saturate(1.2) brightness(0.88)" }}
     />
   );
 }
