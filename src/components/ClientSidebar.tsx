@@ -1,11 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Layers,
-  GanttChart,
-  Inbox,
-  type LucideIcon,
-} from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,10 +8,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
-const navItems: Array<{ path: string; label: string; icon: LucideIcon; rotate?: boolean }> = [
-  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
-  { path: "/timeline",   label: "Timeline",   icon: GanttChart, rotate: true },
-  { path: "/delivery",   label: "Deliveries", icon: Inbox },
+const navItems: Array<{ path: string; label: string; abbr: string }> = [
+  { path: "/portfolio",  label: "Portfolio",  abbr: "PO" },
+  { path: "/timeline",   label: "Timeline",   abbr: "TL" },
+  { path: "/delivery",   label: "Deliveries", abbr: "DL" },
 ];
 
 interface ClientSidebarProps {
@@ -172,10 +166,9 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                     {expanded ? (
                       <span>{item.label}</span>
                     ) : (
-                      <item.icon
-                        className={cn("shrink-0 h-5 w-5", item.rotate && "-rotate-90", active && "text-gold")}
-                        strokeWidth={1.5}
-                      />
+                      <span className="text-[9px] font-medium uppercase tracking-[0.12em]">
+                        {item.abbr}
+                      </span>
                     )}
                   </Link>
                 </div>
