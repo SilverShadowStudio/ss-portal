@@ -13,10 +13,26 @@ Two commercial models:
 
 ## Architecture decisions
 
-- **Softr** stays for Kieran's internal production portal — do not touch it
+- **Softr** stays for Kieran's internal production portal — do not touch it, ever
 - **Airtable** stays as Kieran's source of truth — the portal syncs to it, never replaces it
 - Two portals: client-facing (this repo) + production (Kieran's Softr)
 - Supabase is owned by Fred's personal account — no dependency on Lovable
+
+## Kieran — critical context
+
+Kieran is Production Director. He built and maintains the entire Softr portal himself — 25+ blocks, views per user group (management/scene managers/modellers/clients), conditional logic, permissions. He is the only person who touches it.
+
+The new portal replaces only the client-facing layer. Clients previously logged into Softr; they will now log into this portal. Everything else Kieran does in Softr is unchanged.
+
+The handshake between the two worlds is Airtable: when Kieran updates a task status in Airtable, the client sees it in the portal automatically via the sync.
+
+Kieran's stated concern: "My concern with using something configured with AI is we don't ultimately know how it works or how to fix it." This is legitimate. Keep the Airtable sync simple, well-documented, and debuggable by a non-engineer.
+
+Rules:
+- Never ask Kieran to do anything in the portal codebase — all requests go through Fred
+- Never suggest replacing or augmenting Softr unless Kieran explicitly asks for it
+- Never suggest migrating away from Airtable
+- If Kieran ever wants his own admin view inside this portal, build it to his exact spec without touching anything he does in Softr
 
 ## Live
 
