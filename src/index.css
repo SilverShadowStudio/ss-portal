@@ -70,14 +70,14 @@
   }
 
   .dark {
-    /* Dark mode — #151517 */
-    --background: 240 5% 9%;
+    /* Dark mode — warm charcoal stack */
+    --background: 40 9% 7%;
     --foreground: 36 18% 88%;
 
-    --card: 240 4% 11%;
+    --card: 36 11% 9%;
     --card-foreground: 36 18% 88%;
 
-    --popover: 240 4% 11%;
+    --popover: 40 10% 11%;
     --popover-foreground: 36 18% 88%;
 
     --primary: 36 35% 57%;
@@ -109,7 +109,7 @@
     --shadow-card: 0 4px 24px -4px hsl(24 15% 3% / 0.5);
     --shadow-glow: 0 0 40px hsl(34 26% 65% / 0.1);
 
-    --sidebar-background: 240 5% 7%;
+    --sidebar-background: 40 12% 5%;
     --sidebar-foreground: 35 12% 75%;
     --sidebar-primary: 34 26% 65%;
     --sidebar-primary-foreground: 40 12% 5%;

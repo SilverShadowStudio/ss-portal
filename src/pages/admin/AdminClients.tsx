@@ -714,7 +714,7 @@ export default function AdminClients() {
                             }
                             navigate("/");
                           }}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0"
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0 opacity-20 hover:opacity-100"
                           aria-label="Enter Ghost Mode"
                         >
                           <Ghost className="h-4 w-4 text-gold/60" strokeWidth={1.5} />
