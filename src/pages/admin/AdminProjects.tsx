@@ -460,9 +460,21 @@ export default function AdminProjects() {
     }
     setIsCreating(true);
     try {
+      const { data: membership, error: memErr } = await supabase
+        .from("account_members")
+        .select("account_id")
+        .eq("user_id", selectedClientId)
+        .maybeSingle();
+      if (memErr) throw memErr;
+      if (!membership?.account_id) {
+        toast.error("No company account found for this client. Provision them via Admin → Clients first.");
+        return;
+      }
+
       const { error } = await supabase.from("projects").insert({
         name: newProjectName,
         user_id: selectedClientId,
+        account_id: membership.account_id,
         status: "active",
       });
       if (error) throw error;
