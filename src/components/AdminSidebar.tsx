@@ -32,6 +32,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccountMenuContent, AccountMenuItem, AccountMenuSeparator } from "@/components/account/AccountMenuContent";
 
 const navItems = [
@@ -104,123 +105,146 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       </div>
 
       {/* Navigation */}
-      <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path ||
-            (item.path !== "/admin" && location.pathname.startsWith(item.path));
-          const showBadge = item.path === "/admin/clients" && newClientsCount > 0;
-          const badgeLabel = newClientsCount > 99 ? "99+" : String(newClientsCount);
-          return (
-            <div key={item.path} className="relative w-full">
-              {isActive && !expanded && (
-                <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
-              )}
-              <Link
-                to={item.path}
-                className={cn(
-                  "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                  expanded
-                    ? "w-full pl-5 pr-3 py-3.5"
-                    : "h-11 w-12 justify-center mx-auto rounded-lg",
-                  isActive
-                    ? expanded
-                      ? "text-[hsl(var(--gold))]"
-                      : "text-gold"
-                    : cn(
-                        "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                        !expanded && "hover:bg-muted/40",
-                      ),
+      <TooltipProvider delayDuration={0}>
+        <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1")}>
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.path ||
+              (item.path !== "/admin" && location.pathname.startsWith(item.path));
+            const showBadge = item.path === "/admin/clients" && newClientsCount > 0;
+            const badgeLabel = newClientsCount > 99 ? "99+" : String(newClientsCount);
+            const link = (
+              <div key={item.path} className="relative w-full">
+                {isActive && !expanded && (
+                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                 )}
-                style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
-                title={item.label}
-              >
-                {expanded && isActive && (
-                  <span
-                    aria-hidden
-                    className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]"
-                  />
-                )}
-                {expanded ? (
-                  <span className="flex flex-1 items-center justify-between gap-2">
-                    <span>{item.label}</span>
-                    {showBadge && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
-                        {badgeLabel}
-                      </span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="relative shrink-0">
-                    <item.icon
-                      className={cn(
-                        "shrink-0 h-5 w-5",
-                        (item as any).rotate && "-rotate-90",
-                        isActive && "text-gold",
+                <Link
+                  to={item.path}
+                  className={cn(
+                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                    expanded
+                      ? "w-full pl-5 pr-3 py-3.5"
+                      : "h-11 w-12 justify-center mx-auto rounded-lg",
+                    isActive
+                      ? expanded
+                        ? "text-[hsl(var(--gold))]"
+                        : "text-gold"
+                      : cn(
+                          "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                          !expanded && "hover:bg-muted/40",
+                        ),
+                  )}
+                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                >
+                  {expanded && isActive && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]"
+                    />
+                  )}
+                  {expanded ? (
+                    <span className="flex flex-1 items-center justify-between gap-2">
+                      <span>{item.label}</span>
+                      {showBadge && (
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
+                          {badgeLabel}
+                        </span>
                       )}
+                    </span>
+                  ) : (
+                    <span className="relative shrink-0">
+                      <item.icon
+                        className={cn(
+                          "shrink-0 h-5 w-5",
+                          (item as any).rotate && "-rotate-90",
+                          isActive && "text-gold",
+                        )}
+                        strokeWidth={1.5}
+                      />
+                      {showBadge && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
+                          {badgeLabel}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </Link>
+              </div>
+            );
+            if (!expanded) {
+              return (
+                <Tooltip key={item.path}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            return link;
+          })}
+        </nav>
+      </TooltipProvider>
+
+      {/* Bottom nav items (above account) */}
+      <TooltipProvider delayDuration={0}>
+        <nav className={cn("flex flex-col", expanded ? "w-full space-y-2 pb-2" : "items-center gap-1 pb-2")}>
+          {bottomNavItems.map((item) => {
+            const isActive = location.pathname === item.path ||
+              (item.path !== "/admin" && location.pathname.startsWith(item.path));
+            const link = (
+              <div key={item.path} className="relative w-full">
+                {isActive && !expanded && (
+                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
+                )}
+                <Link
+                  to={item.path}
+                  className={cn(
+                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                    expanded
+                      ? "w-full pl-5 pr-3 py-3"
+                      : "h-11 w-12 justify-center mx-auto rounded-lg",
+                    isActive
+                      ? expanded
+                        ? "text-[hsl(var(--gold))]"
+                        : "text-gold"
+                      : cn(
+                          "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                          !expanded && "hover:bg-muted/40",
+                        ),
+                  )}
+                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                >
+                  {expanded && isActive && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]"
+                    />
+                  )}
+                  {expanded ? (
+                    <span>{item.label}</span>
+                  ) : (
+                    <item.icon
+                      className={cn("shrink-0 h-5 w-5", isActive && "text-gold")}
                       strokeWidth={1.5}
                     />
-                    {showBadge && (
-                      <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
-                        {badgeLabel}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </Link>
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Account menu at bottom */}
-      {/* Bottom nav items (above account) */}
-      <nav className={cn("flex flex-col", expanded ? "w-full space-y-2 pb-2" : "items-center gap-1 pb-2")}>
-        {bottomNavItems.map((item) => {
-          const isActive = location.pathname === item.path ||
-            (item.path !== "/admin" && location.pathname.startsWith(item.path));
-          return (
-            <div key={item.path} className="relative w-full">
-              {isActive && !expanded && (
-                <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
-              )}
-              <Link
-                to={item.path}
-                className={cn(
-                  "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                  expanded
-                    ? "w-full pl-5 pr-3 py-3"
-                    : "h-11 w-12 justify-center mx-auto rounded-lg",
-                  isActive
-                    ? expanded
-                      ? "text-[hsl(var(--gold))]"
-                      : "text-gold"
-                    : cn(
-                        "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                        !expanded && "hover:bg-muted/40",
-                      ),
-                )}
-                style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
-                title={item.label}
-              >
-                {expanded && isActive && (
-                  <span
-                    aria-hidden
-                    className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]"
-                  />
-                )}
-                {expanded ? (
-                  <span>{item.label}</span>
-                ) : (
-                  <item.icon
-                    className={cn("shrink-0 h-5 w-5", isActive && "text-gold")}
-                    strokeWidth={1.5}
-                  />
-                )}
-              </Link>
-            </div>
-          );
-        })}
-      </nav>
+                  )}
+                </Link>
+              </div>
+            );
+            if (!expanded) {
+              return (
+                <Tooltip key={item.path}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            return link;
+          })}
+        </nav>
+      </TooltipProvider>
 
       <div className={cn("pt-4", expanded ? "w-full" : "")}>
         {expanded && (
@@ -231,30 +255,40 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
           />
         )}
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center transition-all duration-300 ease-out",
-                expanded
-                  ? "w-full pl-5 pr-3 py-2"
-                  : "h-11 w-12 justify-center text-muted-foreground hover:text-foreground rounded-xl"
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex items-center transition-all duration-300 ease-out",
+                      expanded
+                        ? "w-full pl-5 pr-3 py-2"
+                        : "h-11 w-12 justify-center text-muted-foreground hover:text-foreground rounded-xl"
+                    )}
+                  >
+                    {expanded ? (
+                      <div className="text-left min-w-0">
+                        <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                          {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
+                        </p>
+                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
+                          Admin
+                        </p>
+                      </div>
+                    ) : (
+                      <User className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+                    )}
+                  </button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              {!expanded && (
+                <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                  Account
+                </TooltipContent>
               )}
-              title="Account"
-            >
-              {expanded ? (
-                <div className="text-left min-w-0">
-                  <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
-                    {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
-                  </p>
-                  <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
-                    Admin
-                  </p>
-                </div>
-              ) : (
-                <User className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-              )}
-            </button>
-          </PopoverTrigger>
+            </Tooltip>
+          </TooltipProvider>
           <AccountMenuContent>
             <AccountMenuItem
               icon={expanded ? <ChevronsLeft size={16} strokeWidth={1.5} /> : <ChevronsRight size={16} strokeWidth={1.5} />}
