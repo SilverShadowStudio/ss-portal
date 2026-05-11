@@ -9,9 +9,10 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const navItems = [
-  { path: "/admin",          label: "Dashboard", abbr: "DA" },
-  { path: "/admin/timeline", label: "Timeline",  abbr: "TL" },
-  { path: "/admin/clients",  label: "Clients",   abbr: "CL" },
+  { path: "/admin",                       label: "Dashboard", abbr: "DA" },
+  { path: "/admin/timeline",              label: "Timeline",  abbr: "TL" },
+  { path: "/admin/clients",               label: "Clients",   abbr: "CL" },
+  { path: "/admin/production-tracker",    label: "Tracker",   abbr: "TR" },
 ];
 
 interface AdminSidebarProps {

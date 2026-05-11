@@ -7,13 +7,13 @@ export default function AdminProductionTracker() {
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold">Production</span>
+          <span className="text-label-gold">Airtable</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
           PRODUCTION TRACKER
         </h1>
         <p className="text-sm text-muted-foreground">
-          Live view of model production status synced from Airtable.
+          Live model status from Kieran's Airtable. Cached for 5 minutes.
         </p>
       </div>
 
