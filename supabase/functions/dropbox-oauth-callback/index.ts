@@ -12,8 +12,7 @@ Deno.serve(async (req) => {
     const dropboxAppKey = Deno.env.get("DROPBOX_APP_KEY")!;
     const dropboxAppSecret = Deno.env.get("DROPBOX_APP_SECRET")!;
 
-    // Frontend URL for redirect - use the published app URL
-    const frontendUrl = "https://ss-client.lovable.app";
+    const frontendUrl = "https://portal.silvershadowstudio.com";
 
     if (error) {
       console.error("Dropbox OAuth error:", error);
