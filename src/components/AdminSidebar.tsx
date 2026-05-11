@@ -242,18 +242,6 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
             style={{ height: 1, background: "hsl(var(--border) / 0.25)" }}
           />
 
-          {/* Profile name — expanded only */}
-          {expanded && (
-            <div className="pl-5 pr-3 py-2 mb-1">
-              <p className="text-[12px] font-medium text-foreground leading-tight" style={{ letterSpacing: "0.02em" }}>
-                {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
-              </p>
-              <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">
-                Admin
-              </p>
-            </div>
-          )}
-
           {/* Compact / Expand */}
           {expanded ? (
             <button
@@ -328,6 +316,24 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">Log off</TooltipContent>
             </Tooltip>
+          )}
+
+          {/* Username — always visible at the very bottom */}
+          {expanded ? (
+            <div className="pl-5 pr-3 pt-4 pb-2">
+              <p className="text-[11px] font-medium text-foreground/70 leading-tight truncate" style={{ letterSpacing: "0.02em" }}>
+                {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
+              </p>
+              <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/50 mt-1">Admin</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center pb-2 pt-4">
+              <p className="text-[9px] font-medium text-foreground/40 uppercase tracking-[0.12em] leading-tight text-center">
+                {profile?.first_name
+                  ? `${profile.first_name[0]}${profile?.last_name?.[0] ?? ""}`.toUpperCase()
+                  : "AD"}
+              </p>
+            </div>
           )}
         </div>
       </TooltipProvider>
