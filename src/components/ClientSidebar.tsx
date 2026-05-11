@@ -30,7 +30,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isGhostMode } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<{
@@ -124,7 +124,8 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
       {/* ── Desktop sidebar ────────────────────────────────────────────── */}
       <aside
         className={cn(
-          "hidden md:flex fixed left-0 top-0 z-50 h-screen flex-col border-r border-border bg-sidebar transition-all duration-300",
+          "hidden md:flex fixed left-0 z-50 flex-col border-r border-border bg-sidebar transition-all duration-300",
+          isGhostMode ? "top-10 h-[calc(100vh-2.5rem)]" : "top-0 h-screen",
           expanded ? "items-start p-8" : "items-center py-6",
           sidebarWidth,
         )}
