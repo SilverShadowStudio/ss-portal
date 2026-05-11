@@ -57,10 +57,10 @@ function ActivityTrackerMount() {
 function GhostModeShell({ children }: { children: React.ReactNode }) {
   const { isGhostMode } = useAuth();
   return (
-    <>
+    <div style={{ paddingTop: isGhostMode ? "40px" : undefined }}>
       <GhostModeBanner />
-      <div className={isGhostMode ? "pt-10" : undefined}>{children}</div>
-    </>
+      {children}
+    </div>
   );
 }
 
