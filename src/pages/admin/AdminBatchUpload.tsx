@@ -56,7 +56,7 @@ export default function AdminBatchUpload() {
         const token = sessionData.session?.access_token;
         if (!token) throw new Error("Not authenticated");
 
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID ?? "oodhsoiwnqxcimzmzick";
+        const projectId = "oodhsoiwnqxcimzmzick";
         const url = `https://${projectId}.supabase.co/functions/v1/admin-batch-upload`;
         const res = await fetch(url, {
           method: "POST",
