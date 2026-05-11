@@ -195,23 +195,25 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                   onClick={it.onClick}
                   title={expanded ? undefined : it.label}
                   className={cn(
-                    "pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap text-left border-l-2",
+                    "relative pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap text-left",
                     it.active
-                      ? "translate-y-0 opacity-100 text-sidebar-foreground border-[hsl(var(--gold))]"
+                      ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
                       : cn(
-                          "border-transparent text-sidebar-foreground/45 hover:text-sidebar-foreground",
+                          "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
                           menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
                         ),
-                    "flex items-center",
-                    expanded ? "w-full pl-6 pr-3 py-2.5" : "w-full justify-center py-2.5 px-1",
+                    "flex items-center w-full pl-5 pr-3 py-3.5",
                   )}
                   style={{
                     fontSize: 11,
-                    letterSpacing: "0.12em",
+                    letterSpacing: "0.24em",
                     fontWeight: 500,
                     transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                   }}
                 >
+                  {it.active && (
+                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                  )}
                   <span>{it.label}</span>
                 </button>
                 {it.separatorAfter && (
@@ -220,10 +222,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                     className={cn(
                       "pointer-events-none transition-all duration-300 ease-out",
                       menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
-                      expanded ? "mx-4 my-2" : "mx-3 my-2",
                     )}
                     style={{
                       height: 1,
+                      margin: "2px 20px",
                       background: "hsl(var(--border) / 0.4)",
                       transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                     }}
