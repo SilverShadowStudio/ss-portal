@@ -29,15 +29,17 @@ Two commercial models:
 
 ## Supabase
 
-- Project ID: `mapbrwcrldfofoxzywkn`
-- URL: `https://mapbrwcrldfofoxzywkn.supabase.co`
-- Owned by Lovable's account — access via Lovable Cloud panel or Lovable SQL editor
-- Anon key in Vercel environment variables as `VITE_SUPABASE_PUBLISHABLE_KEY`
+- Project ID: `oodhsoiwnqxcimzmzick`
+- URL: `https://oodhsoiwnqxcimzmzick.supabase.co`
+- Owned by Fred's personal Supabase account (fred@silvershadowstudio.com)
+- Access token: stored in your password manager (Supabase dashboard → Account → Access tokens)
+- Deploy edge functions: `SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy <name> --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt`
+- Connection hardcoded directly in `src/integrations/supabase/client.ts` (Vercel env vars not used)
 
 ## Key environment variables (Vercel)
 
 ```
-VITE_SUPABASE_URL=https://mapbrwcrldfofoxzywkn.supabase.co
+VITE_SUPABASE_URL=https://oodhsoiwnqxcimzmzick.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGci...
 ```
 

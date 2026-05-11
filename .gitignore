@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Migration/export scripts (contain credentials and exported data)
+scripts/
+supabase/.temp/
