@@ -4,6 +4,7 @@ import { Users, FolderKanban, Image, Clock, ArrowRight } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
+import { AirtableConnectionStatus } from "@/components/admin/AirtableConnectionStatus";
 import { ActivityLogPreview } from "@/components/admin/ActivityLogPreview";
 
 interface DashboardStats {
@@ -106,9 +107,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Dropbox Connection Status */}
-      <div className="mb-10 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+      {/* Integration Status */}
+      <div className="mb-10 flex flex-col gap-3 animate-fade-in" style={{ animationDelay: "0.15s" }}>
         <DropboxConnectionStatus />
+        <AirtableConnectionStatus />
       </div>
 
       {/* Activity Log Preview — click a line to dismiss; title to open full log */}
