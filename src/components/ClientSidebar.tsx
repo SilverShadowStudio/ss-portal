@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Layers,
+  GanttChart,
+  Inbox,
+  CircleUser,
+  type LucideIcon,
+} from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,10 +15,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Nav items ─────────────────────────────────────────────────────────────────
-const navItems: Array<{ path: string; label: string }> = [
-  { path: "/portfolio",  label: "Portfolio" },
-  { path: "/timeline",   label: "Timeline" },
-  { path: "/delivery",   label: "Deliveries" },
+const navItems: Array<{ path: string; label: string; icon: LucideIcon; rotate?: boolean }> = [
+  { path: "/portfolio",  label: "Portfolio",  icon: Layers },
+  { path: "/timeline",   label: "Timeline",   icon: GanttChart, rotate: true },
+  { path: "/delivery",   label: "Deliveries", icon: Inbox },
 ];
 
 interface ClientSidebarProps {
@@ -139,7 +146,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         </div>
 
         {/* Main nav */}
-        <TooltipProvider delayDuration={400}>
+        <TooltipProvider delayDuration={0}>
           <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1 w-full")}>
             {navItems.map((item) => {
               const active = isActive(item.path);
@@ -151,21 +158,26 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                   <Link
                     to={item.path}
                     className={cn(
-                      "relative group flex items-center justify-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                      expanded ? "w-full pl-5 pr-3 py-3.5 justify-start" : "h-11 w-full px-1",
+                      "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                      expanded ? "w-full pl-5 pr-3 py-3.5" : "h-11 w-12 justify-center mx-auto rounded-lg",
                       active
                         ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
                         : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
                     )}
-                    style={expanded
-                      ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 }
-                      : { fontSize: 9, letterSpacing: "0.18em", fontWeight: 500 }}
-                    title={item.label}
+                    style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                    title={expanded ? undefined : item.label}
                   >
                     {expanded && active && (
                       <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
                     )}
-                    <span>{item.label}</span>
+                    {expanded ? (
+                      <span>{item.label}</span>
+                    ) : (
+                      <item.icon
+                        className={cn("shrink-0 h-5 w-5", item.rotate && "-rotate-90", active && "text-gold")}
+                        strokeWidth={1.5}
+                      />
+                    )}
                   </Link>
                 </div>
               );
@@ -242,29 +254,39 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
           </div>
 
           {/* Account row */}
-          <button
-            type="button"
-            className={cn(
-              "flex items-center transition-all w-full",
-              expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
-            )}
-            title={expanded ? undefined : "Account"}
-          >
-            {expanded ? (
-              <div className="text-left min-w-0">
-                <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
-                  {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
-                </p>
-                {profile?.company && (
-                  <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1 whitespace-normal break-words">
-                    {profile.company}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <span className="font-sans uppercase text-muted-foreground" style={{ fontSize: 9, letterSpacing: "0.18em" }}>Acct</span>
-            )}
-          </button>
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center transition-all w-full",
+                    expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
+                  )}
+                >
+                  {expanded ? (
+                    <div className="text-left min-w-0">
+                      <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                        {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
+                      </p>
+                      {profile?.company && (
+                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1 whitespace-normal break-words">
+                          {profile.company}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <CircleUser className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              {!expanded && (
+                <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                  Account
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </aside>
     </>
