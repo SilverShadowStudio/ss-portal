@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -200,7 +200,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     try {
       const session = await supabase.auth.getSession();
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`,
+        `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`,
         {
           method: "POST",
           headers: {
@@ -233,7 +233,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       } else if (selectedAsset.source === "dropbox" && selectedAsset.dropbox_path) {
         const session = await supabase.auth.getSession();
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+          `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
           {
             method: "POST",
             headers: {

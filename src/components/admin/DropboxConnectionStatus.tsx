@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -60,7 +60,7 @@ export function DropboxConnectionStatus() {
   async function checkConnectionStatus() {
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dropbox-api?action=connection-status`,
+        `${SUPABASE_URL}/functions/v1/dropbox-api?action=connection-status`,
         {
           method: "POST",
           headers: {

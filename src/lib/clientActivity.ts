@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
 const SESSION_KEY = "ss-client-activity-session";
 const GHOST_KEY = "ss-ghost-mode";
@@ -108,7 +108,7 @@ export function beaconClientActivity(payload: {
 }) {
   if (ghostActive()) return;
   try {
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/client_activity`;
+    const url = `${SUPABASE_URL}/rest/v1/client_activity`;
     const body = JSON.stringify({
       user_id: payload.userId,
       actor_name: payload.actorName,
@@ -121,7 +121,7 @@ export function beaconClientActivity(payload: {
       duration_ms: payload.durationMs,
       metadata: {},
     });
-    const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+    const apikey = SUPABASE_PUBLISHABLE_KEY;
     const token =
       (window as any).__ss_access_token ?? apikey;
     const headers: Record<string, string> = {
