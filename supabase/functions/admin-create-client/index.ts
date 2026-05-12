@@ -47,11 +47,15 @@ interface RequestBody {
 
 function buildInviteEmailHtml(_companyName: string, inviteUrl: string): string {
   const logoUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png'
+  const illustrationUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/portal-invite-illustration.png'
   return `
 <div style="background:#EDE8E0">
   <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:48px 40px">
     <div style="text-align:center;margin-bottom:40px">
       <img src="${logoUrl}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
+    </div>
+    <div style="text-align:center;margin-top:32px;margin-bottom:32px">
+      <img src="${illustrationUrl}" alt="Silvershadow Studio" style="max-width:280px;width:100%;height:auto;border:none;display:inline-block" />
     </div>
     <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;margin:0 auto;max-width:400px;text-align:center">
       Your Silvershadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.
