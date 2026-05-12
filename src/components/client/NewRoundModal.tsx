@@ -86,10 +86,12 @@ function UploadItem({
       className="group flex items-start py-4 border-b cursor-pointer last:border-b-0"
       style={{
         marginLeft: "-3rem", marginRight: "-3rem",
-        paddingLeft: "3rem", paddingRight: "3rem",
+        paddingLeft: active ? "calc(3rem - 2px)" : "3rem", paddingRight: "3rem",
         position: "relative",
-        transition: "background 500ms ease",
+        transition: "background 300ms ease, border-left 300ms ease",
         borderBottomColor: "#2A2820",
+        background: active ? "#1C1A17" : "transparent",
+        borderLeft: active ? "2px solid #B89A6A" : "2px solid transparent",
       }}
     >
       <input
@@ -168,7 +170,7 @@ function UploadItem({
             {files.map((f, i) => (
               <div key={i} className="flex items-center gap-2">
                 <FileIcon size={10} className="shrink-0 text-foreground/25" />
-                <span className="text-[10px] text-foreground/40 truncate flex-1 font-sans">
+                <span className="text-[10px] text-foreground truncate flex-1 font-sans">
                   {f.file.name}
                 </span>
                 {f.uploading && (
