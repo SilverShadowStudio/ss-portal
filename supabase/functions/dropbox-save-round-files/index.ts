@@ -344,6 +344,18 @@ Deno.serve(async (req) => {
     console.log(`[dropbox-save-round-files] Creating round folder: ${roundFolderPath}`);
     await createFolder(accessToken, roundFolderPath, namespaceId);
 
+    const CATEGORY_FOLDERS: Record<string, string> = {
+      floor_plan:               "Floor-Plan",
+      elevations:               "Elevations",
+      rcp:                      "Reflected-Ceiling-Plan",
+      finishes_schedule:        "Finishes-Schedule",
+      furniture_schedule:       "Furniture-Schedule",
+      lighting_plan:            "Lighting-Plan",
+      lighting_mood_reference:  "Lighting-Mood-Reference",
+      models_3d:                "3D-Models",
+      cgi_package:              "CGI-Package",
+    };
+
     let filesCopied = 0;
     let filesErrored = 0;
 
@@ -353,6 +365,19 @@ Deno.serve(async (req) => {
       .select("file_name, storage_path, category")
       .eq("scene_id", sceneId)
       .order("created_at", { ascending: true });
+
+    // Pre-create one subfolder per category that has at least one file
+    const categoriesPresent = new Set(
+      (uploads ?? []).map((u) => u.category as string).filter(Boolean),
+    );
+    const createdFolders = new Set<string>();
+    for (const cat of categoriesPresent) {
+      const folderName = CATEGORY_FOLDERS[cat];
+      if (!folderName) continue;
+      const folderPath = `${roundFolderPath}/${folderName}`;
+      await createFolder(accessToken, folderPath, namespaceId);
+      createdFolders.add(cat);
+    }
 
     for (const upload of uploads ?? []) {
       try {
@@ -369,10 +394,13 @@ Deno.serve(async (req) => {
         }
 
         const bytes = new Uint8Array(await fileData.arrayBuffer());
-        const dropboxPath = `${roundFolderPath}/${upload.file_name}`;
+        const cat = upload.category as string;
+        const folderName = CATEGORY_FOLDERS[cat];
+        const targetFolder = folderName ? `${roundFolderPath}/${folderName}` : roundFolderPath;
+        const dropboxPath = `${targetFolder}/${upload.file_name}`;
         await uploadToDropbox(accessToken, dropboxPath, bytes, namespaceId);
         filesCopied++;
-        console.log(`[dropbox-save-round-files] Uploaded: ${upload.file_name}`);
+        console.log(`[dropbox-save-round-files] Uploaded: ${upload.file_name} → ${targetFolder}`);
       } catch (e) {
         console.error(
           `[dropbox-save-round-files] Error uploading ${upload.file_name}:`,
