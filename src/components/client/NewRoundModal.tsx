@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, FileIcon, Mic, MicOff, Loader2 } from "lucide-react";
+import { X, FileIcon } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -83,12 +83,13 @@ function UploadItem({
       onClick={() => inputRef.current?.click()}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`group flex items-start py-4 border-b border-border/30 cursor-pointer last:border-0`}
+      className="group flex items-start py-4 border-b cursor-pointer last:border-b-0"
       style={{
-        marginLeft: "-2.5rem", marginRight: "-2.5rem",
-        paddingLeft: "2.5rem", paddingRight: "2.5rem",
+        marginLeft: "-3rem", marginRight: "-3rem",
+        paddingLeft: "3rem", paddingRight: "3rem",
         position: "relative",
         transition: "background 500ms ease",
+        borderBottomColor: "#2A2820",
       }}
     >
       <input
@@ -104,7 +105,7 @@ function UploadItem({
         }}
       />
 
-      {/* Subtle rectangle over the whole drop zone */}
+      {/* Subtle hover/drag overlay */}
       <div
         style={{
           position: "absolute",
@@ -134,27 +135,22 @@ function UploadItem({
 
       <div className="flex-1 min-w-0" style={{ position: "relative" }}>
         <div className="flex items-center justify-between gap-3">
-          {/* Label — unchanged on hover */}
           <span
-            className={`text-[12px] font-sans uppercase tracking-[0.16em] ${
+            className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
               active
                 ? "text-foreground"
                 : isDragging
                 ? "text-gold/70"
-                : "text-foreground/45"
+                : "text-foreground/75"
             }`}
           >
             {label}
           </span>
           {!active && (
             <span
-              style={{ transition: "color 500ms ease, opacity 500ms ease" }}
+              style={{ transition: "opacity 300ms ease" }}
               className={`text-[9px] font-sans uppercase tracking-[0.2em] shrink-0 ${
-                isDragging
-                  ? "text-gold/70"
-                  : isHovered
-                  ? "text-foreground/18"
-                  : "text-foreground/08"
+                isDragging ? "text-gold/70" : "text-foreground/40"
               }`}
             >
               Drop or click
@@ -387,8 +383,7 @@ export function NewRoundModal({
   const days = Math.floor(diffSecs / (24 * 3600));
   const hours = Math.floor((diffSecs % (24 * 3600)) / 3600);
   const mins = Math.floor((diffSecs % 3600) / 60);
-  const secs = diffSecs % 60;
-  const deadlineLabel = `${days}d ${hours}h ${mins}m ${secs}s`;
+  const deadlineLabel = `${days}d ${hours}h ${mins}m`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -426,13 +421,13 @@ export function NewRoundModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 14 }}
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-            className="relative bg-card border border-border/50 w-full max-w-lg shadow-[0_40px_100px_-16px_rgba(0,0,0,0.5)] max-h-[92vh] overflow-y-auto"
-            style={{ borderRadius: 4 }}
+            className="relative w-full max-w-[760px] shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)] max-h-[92vh] overflow-y-auto"
+            style={{ borderRadius: 4, background: "#1A1815" }}
           >
             <form onSubmit={handleSubmit}>
 
               {/* ── Header ── */}
-              <div className="px-10 pt-10 pb-7 border-b border-border/30">
+              <div className="px-12 pt-12 pb-7 border-b border-border/30">
                 <div className="flex items-start justify-between">
                   <div>
                     <h2
@@ -442,7 +437,7 @@ export function NewRoundModal({
                       Round {roundNumber.toString().padStart(2, "0")}
                     </h2>
                     {sceneName && (
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.24em] text-foreground/35 font-sans">
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/55 font-sans">
                         {sceneName}
                       </p>
                     )}
@@ -450,27 +445,28 @@ export function NewRoundModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="mt-1 p-1.5 text-foreground/25 hover:text-foreground/60 transition-colors"
+                    className="mt-1 text-foreground/50 hover:text-foreground transition-colors"
+                    style={{ lineHeight: 1 }}
                   >
-                    <X size={15} strokeWidth={1.5} />
+                    <X size={16} strokeWidth={1} />
                   </button>
                 </div>
               </div>
 
-              <div className="px-10 py-8 space-y-10">
+              {/* ── Main content ── */}
+              <div className="px-12 py-8 space-y-10">
 
-                {/* ── Instructions ── */}
+                {/* Instructions */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <label className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
                       Instructions
                     </label>
-                    {/* Dictation button */}
                     <button
                       type="button"
                       onClick={isRecording ? stopDictation : startDictation}
                       disabled={isPolishing}
-                      className={`flex items-center gap-1.5 px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
+                      className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
                         isRecording
                           ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
                           : isPolishing
@@ -479,13 +475,6 @@ export function NewRoundModal({
                       }`}
                       style={{ borderRadius: 2 }}
                     >
-                      {isPolishing ? (
-                        <Loader2 size={10} className="animate-spin" />
-                      ) : isRecording ? (
-                        <MicOff size={10} />
-                      ) : (
-                        <Mic size={10} />
-                      )}
                       {isPolishing ? "Polishing…" : isRecording ? "Stop" : "Dictate"}
                     </button>
                   </div>
@@ -494,20 +483,20 @@ export function NewRoundModal({
                     ref={instructionsRef}
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
-                    placeholder="Describe what you need for this round…"
+                    placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
                     autoFocus
                     rows={3}
                     maxLength={2000}
                     required
                     className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none border-0 border-b border-border/30 focus:border-foreground/25 transition-colors"
-                    style={{ overflow: "hidden", paddingBottom: "2.8em" }}
+                    style={{ overflow: "hidden", paddingBottom: "2.8em", minHeight: "120px" }}
                   />
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
                     Upload what you have. The more detail you share, the better Round 01 we can deliver.
                   </p>
                 </div>
 
-                {/* ── File fields ── */}
+                {/* File fields */}
                 <div>
                   {/* 01 — Architecture */}
                   <SectionLabel>01 — Architecture</SectionLabel>
@@ -534,23 +523,27 @@ export function NewRoundModal({
                   </div>
                 </div>
 
-                {/* ── Delivery timing ── */}
-                <div className="border-t border-border/30 pt-6">
-                  <p className="text-[11px] font-sans text-foreground/30 tracking-wide leading-relaxed">
-                    Delivery on{" "}
-                    <span className="text-foreground/55">{deliveryDateStr}</span>.{" "}
-                    Order within{" "}
-                    <span className="text-gold">{deadlineLabel}</span>.
-                  </p>
-                </div>
+              </div>
+
+              {/* ── Delivery timing — outside space-y to allow 24px top margin ── */}
+              <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
+                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-foreground leading-relaxed">
+                  Delivery — {deliveryDateStr}
+                </p>
+                <p
+                  className="mt-1.5 text-[10px] font-sans uppercase tracking-[0.2em] text-foreground/55 leading-relaxed"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  Order within {deadlineLabel}
+                </p>
               </div>
 
               {/* ── Footer ── */}
-              <div className="px-10 pb-10 flex gap-3">
+              <div className="px-12 pb-12 flex gap-3">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 py-4 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 border border-border/35 hover:text-foreground/55 hover:border-border/55 transition-all"
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/40 hover:text-foreground/60 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Cancel
@@ -558,7 +551,7 @@ export function NewRoundModal({
                 <button
                   type="submit"
                   disabled={!instructions.trim() || isSubmitting}
-                  className="flex-[2] py-4 text-[10px] font-sans uppercase tracking-[0.24em] bg-foreground text-background hover:bg-foreground/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  className="flex-[2] h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-gold/70 bg-transparent text-gold hover:border-gold hover:text-gold/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
                   {isSubmitting ? "Uploading…" : "Request Round"}
