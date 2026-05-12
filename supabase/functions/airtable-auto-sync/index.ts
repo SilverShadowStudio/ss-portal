@@ -26,7 +26,7 @@ const corsHeaders = {
 };
 
 const NOTIFY_EMAILS = ["fred@silvershadowstudio.com", "kieran@silvershadowstudio.com"];
-const FROM_ADDRESS = "Silvershadow Studio | Portal <portal@silvershadowstudio.com>";
+const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
 const PORTAL_ADMIN_URL = "https://portal.silvershadowstudio.com/admin";
 
 // ── Airtable config (mirrors airtable-sync defaults) ─────────────────────────

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, X, Paperclip, ExternalLink, Upload, Loader2 } from "lucide-react";
+import { Clock, X, Paperclip, ExternalLink, Upload, Loader2, File } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
 import { differenceInSeconds, format } from "date-fns";
@@ -67,6 +67,18 @@ interface BriefUpload {
   storage_path: string;
 }
 
+function fmtTimestamp(iso: string): string {
+  return format(new Date(iso), "d MMM yyyy 'at' HH:mm:ss");
+}
+
+function isImageFile(name: string): boolean {
+  return /\.(jpg|jpeg|png|webp)$/i.test(name);
+}
+
+function titleCase(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: TaskDetailProps) {
   // Strict status → UI mapping:
   //   in_production / in_progress / pending → "Production in Progress" (no image)
@@ -98,6 +110,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefUploads, setBriefUploads] = useState<BriefUpload[]>([]);
   const [briefUploadsLoading, setBriefUploadsLoading] = useState(false);
+  const [roundCreatedAt, setRoundCreatedAt] = useState<string | null>(null);
 
   // Validate the temporal window once.
   const window = useMemo(() => {
@@ -129,6 +142,15 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         setAssetCount(count || 0);
         setLoading(false);
       });
+  }, [roundId]);
+
+  useEffect(() => {
+    supabase
+      .from("scene_rounds")
+      .select("created_at")
+      .eq("id", roundId)
+      .maybeSingle()
+      .then(({ data }) => setRoundCreatedAt(data?.created_at ?? null));
   }, [roundId]);
 
   // Lazy-load instructions + uploads on first open.
@@ -331,7 +353,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[60] bg-background/70 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
             onClick={() => setBriefOpen(false)}
           />
           <motion.div
@@ -339,92 +361,122 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="fixed left-1/2 top-1/2 z-[70] w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
+            className="fixed left-1/2 top-1/2 z-[70] w-[min(620px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 bg-[#111113] border border-[#222020] rounded-sm shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Round instructions"
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-semibold tracking-[0.22em] uppercase text-primary/70">
+            {/* Header */}
+            <div className="flex items-start justify-between px-7 py-5 border-b border-[#1c1a18]">
+              <div>
+                <p className="text-[9px] tracking-[0.28em] uppercase text-foreground/35 font-sans mb-1">
                   Round {roundNumber.toString().padStart(2, "0")}
-                </span>
-                <h2 className="font-serif text-lg text-foreground mt-0.5">Instructions</h2>
+                </p>
+                <h2 className="font-serif text-lg text-foreground">Instructions</h2>
+                {(brief?.created_at ?? roundCreatedAt) && (
+                  <p className="mt-1.5 text-[10px] text-[#8a7c6e] font-sans tracking-wide">
+                    Requested: {fmtTimestamp((brief?.created_at ?? roundCreatedAt)!)}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => setBriefOpen(false)}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="mt-0.5 p-1.5 text-foreground/35 hover:text-foreground transition-colors"
                 aria-label="Close"
               >
                 <X size={14} />
               </button>
             </div>
 
-            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+            {/* Body */}
+            <div className="px-7 py-6 max-h-[65vh] overflow-y-auto">
               {briefLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-6">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground py-8">
                   <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
                   Loading…
                 </div>
-              ) : brief?.instructions ? (
-                <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap font-sans">
-                  {brief.instructions}
-                </p>
               ) : (
-                <p className="text-sm text-muted-foreground italic font-sans">
-                  No instructions available.
-                </p>
-              )}
-
-              {!briefLoading && (briefUploadsLoading || briefUploads.length > 0) && (
-                <div className="mt-5 border-t border-border pt-4">
-                  <div className="flex items-center gap-1.5 mb-2.5">
-                    <Paperclip size={10} className="text-muted-foreground" />
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.18em]">
-                      Attachments
-                    </span>
-                  </div>
-                  {briefUploadsLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
-                      Loading files…
-                    </div>
+                <>
+                  {brief?.instructions ? (
+                    <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap font-sans">
+                      {brief.instructions}
+                    </p>
                   ) : (
-                    <div className="space-y-1.5">
-                      {briefUploads.map((file, i) => {
-                        const { data: urlData } = supabase.storage
-                          .from("round-uploads")
-                          .getPublicUrl(file.storage_path);
-                        const categoryLabel = file.category.replace(/_/g, " ");
-                        return (
-                          <a
-                            key={i}
-                            href={urlData.publicUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors group"
-                          >
-                            <span className="text-[9px] font-bold text-primary/50 uppercase tracking-[0.12em] w-20 shrink-0 truncate">
-                              {categoryLabel}
-                            </span>
-                            <span className="truncate flex-1 font-sans">{file.file_name}</span>
-                            <ExternalLink size={10} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </a>
-                        );
-                      })}
+                    <p className="text-sm text-foreground/30 italic font-sans">No instructions provided.</p>
+                  )}
+
+                  {/* File list */}
+                  {(briefUploadsLoading || briefUploads.length > 0) && (
+                    <div className="mt-7">
+                      <p className="text-[9px] tracking-[0.24em] uppercase text-foreground/35 font-sans mb-3">
+                        Attached Files
+                      </p>
+                      {briefUploadsLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                          Loading…
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {briefUploads.map((file, i) => (
+                            <p key={i} className="text-xs text-[#8a7c6e] font-sans">
+                              {titleCase(file.category)}: {file.file_name}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+
+                  {/* Previews */}
+                  {!briefUploadsLoading && briefUploads.length > 0 && (
+                    <div className="mt-7">
+                      <p className="text-[9px] tracking-[0.24em] uppercase text-foreground/35 font-sans mb-3">
+                        Previews
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {briefUploads.map((file, i) => {
+                          const { data: urlData } = supabase.storage
+                            .from("round-uploads")
+                            .getPublicUrl(file.storage_path);
+                          if (isImageFile(file.file_name)) {
+                            return (
+                              <a
+                                key={i}
+                                href={urlData.publicUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group relative aspect-square overflow-hidden bg-[#1a1816]"
+                              >
+                                <img
+                                  src={urlData.publicUrl}
+                                  alt={file.file_name}
+                                  className="w-full h-full object-cover group-hover:opacity-75 transition-opacity"
+                                />
+                              </a>
+                            );
+                          }
+                          return (
+                            <a
+                              key={i}
+                              href={urlData.publicUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex flex-col items-center justify-center gap-2 aspect-square bg-[#1a1816] hover:bg-[#201e1b] transition-colors p-3"
+                            >
+                              <File size={18} className="text-[#8a7c6e]" />
+                              <span className="text-[9px] text-[#8a7c6e] text-center break-all font-sans leading-snug">
+                                {file.file_name}
+                              </span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-
-            {!briefLoading && brief?.created_at && (
-              <div className="px-6 py-3 border-t border-border bg-muted/30">
-                <p className="text-[10px] tracking-[0.14em] uppercase text-muted-foreground/80 font-sans">
-                  Submitted {format(new Date(brief.created_at), "d MMM yyyy 'at' HH:mm")}
-                </p>
-              </div>
-            )}
           </motion.div>
         </>
       )}
@@ -516,6 +568,11 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           </div>
         </div>
         <h3 className="font-serif text-2xl text-foreground mb-2">Production in Progress</h3>
+        {roundCreatedAt && (
+          <p className="text-[11px] text-muted-foreground/60 font-sans mb-2 tracking-wide">
+            Requested: {fmtTimestamp(roundCreatedAt)}
+          </p>
+        )}
         <p className="text-muted-foreground text-sm max-w-md font-sans">
           Round {roundNumber.toString().padStart(2, "0")} is currently in production.
           {endDate && (() => {
