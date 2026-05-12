@@ -14,7 +14,7 @@
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const PROJECTS_ROOT = "/00_Production/PRD01_Client-Projects";
 
@@ -184,61 +184,141 @@ function wrapText(text: string, maxCharsPerLine: number): string[] {
   return result;
 }
 
+function spacedCaps(s: string): string {
+  return s.split("").join(" ");
+}
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long", day: "numeric", year: "numeric",
+  }).format(new Date(iso));
+}
+
 async function buildInstructionsPdf(
+  projectName: string,
   sceneName: string,
+  projectCode: string,
+  sceneCode: string,
   roundNumber: number,
+  roundCreatedAt: string,
   instructions: string,
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const margin = 50;
-  const lineHeight = 16;
-  const fontSize = 11;
-  const titleSize = 16;
+  const A4_W = 595.28;
+  const A4_H = 841.89;
+  const M = 50;
+  const CW = A4_W - M * 2;
 
-  let page = doc.addPage();
-  let { width, height } = page.getSize();
-  let y = height - margin;
+  const DARK = rgb(0.1, 0.1, 0.1);
+  const MID = rgb(0.45, 0.45, 0.45);
+  const BG = rgb(0.961, 0.961, 0.969);
 
-  // Title
-  page.drawText(`Round ${String(roundNumber).padStart(2, "0")} Instructions`, {
-    x: margin, y, size: titleSize, font: boldFont,
-    color: { type: "rgb", red: 0.1, green: 0.1, blue: 0.1 } as any,
-  });
-  y -= titleSize + 8;
+  const TOP_M = 60;
+  const FOOTER_DIV_Y = 78;
+  const CONTENT_BOTTOM = FOOTER_DIV_Y + 22;
 
-  // Scene name
-  page.drawText(sceneName, {
-    x: margin, y, size: fontSize, font,
-    color: { type: "rgb", red: 0.4, green: 0.4, blue: 0.4 } as any,
-  });
-  y -= lineHeight * 2;
+  const CONF1 =
+    "CONFIDENTIAL: This document contains proprietary information intended for the named recipient only. " +
+    "Unauthorized use, disclosure, or distribution is strictly prohibited.";
+  const CONF2 = "If received in error, please notify the sender and destroy all copies.";
+  const FOOTER_SIZE = 8;
+  const FOOTER_LH = 11;
 
-  // Divider
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: width - margin, y },
-    thickness: 0.5,
-    color: { type: "rgb", red: 0.8, green: 0.8, blue: 0.8 } as any,
-  });
-  y -= lineHeight * 1.5;
+  const footerMaxChars = Math.floor(CW / (FOOTER_SIZE * 0.52));
+  const footerLines = [...wrapText(CONF1, footerMaxChars), ...wrapText(CONF2, footerMaxChars)];
 
-  // Instructions text
-  const maxChars = Math.floor((width - margin * 2) / (fontSize * 0.55));
-  const lines = wrapText(instructions, maxChars);
+  function newPage(): [ReturnType<typeof doc.addPage>, number] {
+    const page = doc.addPage([A4_W, A4_H]);
+    page.drawRectangle({ x: 0, y: 0, width: A4_W, height: A4_H, color: BG });
 
-  for (const line of lines) {
-    if (y < margin + lineHeight) {
-      page = doc.addPage();
-      ({ height } = page.getSize());
-      y = height - margin;
+    page.drawLine({
+      start: { x: M, y: FOOTER_DIV_Y },
+      end: { x: A4_W - M, y: FOOTER_DIV_Y },
+      thickness: 0.5,
+      color: DARK,
+    });
+
+    let fy = FOOTER_DIV_Y - 12;
+    for (const line of footerLines) {
+      if (!line.trim()) { fy -= FOOTER_LH; continue; }
+      const tw = font.widthOfTextAtSize(line, FOOTER_SIZE);
+      page.drawText(line, { x: (A4_W - tw) / 2, y: fy, size: FOOTER_SIZE, font, color: MID });
+      fy -= FOOTER_LH;
     }
-    if (line) {
-      page.drawText(line, { x: margin, y, size: fontSize, font });
+
+    return [page, A4_H - TOP_M];
+  }
+
+  let [page, y] = newPage();
+
+  // ── HEADER ────────────────────────────────────────────────────────────────
+  const LOGO_SIZE = 17;
+  const logoText = spacedCaps("SILVERSHADOW");
+  const logoW = boldFont.widthOfTextAtSize(logoText, LOGO_SIZE);
+  page.drawText(logoText, { x: (A4_W - logoW) / 2, y, size: LOGO_SIZE, font: boldFont, color: DARK });
+  y -= LOGO_SIZE + 5;
+
+  const STUDIO_SIZE = 9;
+  const studioText = spacedCaps("STUDIO");
+  const studioW = font.widthOfTextAtSize(studioText, STUDIO_SIZE);
+  page.drawText(studioText, { x: (A4_W - studioW) / 2, y, size: STUDIO_SIZE, font, color: DARK });
+  y -= STUDIO_SIZE + 18;
+
+  // Divider 1 — full width, dark
+  page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 0.75, color: DARK });
+  y -= 22;
+
+  // ── TITLE BLOCK ───────────────────────────────────────────────────────────
+  const TITLE_SIZE = 14;
+  const titleText = `${projectName} — ${sceneName}`;
+  const titleMaxChars = Math.floor(CW / (TITLE_SIZE * 0.52));
+  for (const tl of wrapText(titleText, titleMaxChars)) {
+    const tw = boldFont.widthOfTextAtSize(tl, TITLE_SIZE);
+    page.drawText(tl, { x: Math.max(M, (A4_W - tw) / 2), y, size: TITLE_SIZE, font: boldFont, color: DARK });
+    y -= TITLE_SIZE + 4;
+  }
+  y -= 10;
+
+  // Divider 2
+  page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 0.5, color: DARK });
+  y -= 22;
+
+  // ── METADATA ──────────────────────────────────────────────────────────────
+  const META_SIZE = 9;
+  const META_LH = 17;
+
+  const dateLabel = "DATE:   ";
+  page.drawText(dateLabel, { x: M, y, size: META_SIZE, font, color: MID });
+  page.drawText(formatDate(roundCreatedAt), {
+    x: M + font.widthOfTextAtSize(dateLabel, META_SIZE), y,
+    size: META_SIZE, font: boldFont, color: DARK,
+  });
+  y -= META_LH;
+
+  const rnLabel = "ROUND NUMBER:   ";
+  page.drawText(rnLabel, { x: M, y, size: META_SIZE, font, color: MID });
+  page.drawText(String(roundNumber).padStart(2, "0"), {
+    x: M + font.widthOfTextAtSize(rnLabel, META_SIZE), y,
+    size: META_SIZE, font: boldFont, color: DARK,
+  });
+  y -= META_LH + 14;
+
+  // ── BODY ──────────────────────────────────────────────────────────────────
+  const BODY_SIZE = 11;
+  const BODY_LH = 18;
+  const bodyMaxChars = Math.floor(CW / (BODY_SIZE * 0.52));
+
+  for (const line of wrapText(instructions, bodyMaxChars)) {
+    if (y < CONTENT_BOTTOM) {
+      [page, y] = newPage();
     }
-    y -= lineHeight;
+    if (line.trim()) {
+      page.drawText(line, { x: M, y, size: BODY_SIZE, font, color: DARK });
+    }
+    y -= BODY_LH;
   }
 
   return doc.save();
@@ -298,15 +378,22 @@ Deno.serve(async (req) => {
     // Resolve scene folder — poll up to 5×2s for scene trigger to finish
     let sceneFolder: string | null = null;
     let sceneName = "";
+    let sceneCode = "";
+    let projectCode = "";
+    let projectName = "";
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data: scene } = await supabase
         .from("scenes")
-        .select("dropbox_folder, scene_code, project_id, name, projects(project_code, dropbox_folder)")
+        .select("dropbox_folder, scene_code, project_id, name, projects(name, project_code, dropbox_folder)")
         .eq("id", sceneId)
         .single();
 
       sceneName = (scene?.name as string) ?? "";
+      sceneCode = (scene?.scene_code as string) ?? "";
+      const proj = scene?.projects as Record<string, unknown> | null;
+      projectCode = (proj?.project_code as string) ?? "";
+      projectName = (proj?.name as string) ?? "";
 
       if (scene?.dropbox_folder) {
         sceneFolder = scene.dropbox_folder as string;
@@ -314,7 +401,6 @@ Deno.serve(async (req) => {
       }
 
       // Fallback: resolve via project + scene codes via prefix search
-      const proj = scene?.projects as Record<string, unknown> | null;
       if (proj?.dropbox_folder && scene?.scene_code) {
         sceneFolder = await findFolderByPrefix(
           accessToken,
@@ -413,8 +499,13 @@ Deno.serve(async (req) => {
     // ── 2. Generate instructions PDF ──────────────────────────────────────────
     if (instructions) {
       try {
-        const pdfBytes = await buildInstructionsPdf(sceneName, roundNumber, instructions);
-        const pdfPath = `${roundFolderPath}/Round-${roundPad}_Instructions.pdf`;
+        const roundCreatedAt = (record.created_at as string) ?? new Date().toISOString();
+        const pdfBytes = await buildInstructionsPdf(
+          projectName, sceneName, projectCode, sceneCode,
+          roundNumber, roundCreatedAt, instructions,
+        );
+        const pdfName = `${projectCode}-${sceneCode}_Round-${roundPad}_Instructions.pdf`;
+        const pdfPath = `${roundFolderPath}/${pdfName}`;
         await uploadToDropbox(accessToken, pdfPath, pdfBytes, namespaceId);
         console.log(`[dropbox-save-round-files] Instructions PDF uploaded: ${pdfPath}`);
       } catch (e) {
