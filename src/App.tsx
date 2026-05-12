@@ -42,6 +42,7 @@ import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
 import AdminProductionTracker from "./pages/admin/AdminProductionTracker";
+import AdminSettings from "./pages/admin/AdminSettings";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
@@ -305,6 +306,15 @@ const App = () => (
               }
             />
             
+            <Route
+              path="/admin/settings"
+              element={
+                <AdminProtectedRoute>
+                  <AdminSettings />
+                </AdminProtectedRoute>
+              }
+            />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
           </GhostModeShell>
