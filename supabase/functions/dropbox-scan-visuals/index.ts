@@ -64,14 +64,21 @@ async function refreshToken(connection: any, supabase: any): Promise<string | nu
 
 // List immediate children of a Dropbox folder. Returns null on error.
 async function listFolder(accessToken: string, path: string): Promise<any[] | null> {
+  console.log("[DEBUG] list_folder path:", path);
   const res = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ path, recursive: false }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const errText = await res.text();
+    console.log("[DEBUG] list_folder error:", res.status, errText);
+    return null;
+  }
   const data = await res.json();
-  return data.entries || [];
+  const entries = data.entries || [];
+  console.log("[DEBUG] list_folder results for", path, "->", entries.map((e: any) => `[${e[".tag"]}] ${e.name}`));
+  return entries;
 }
 
 // Find the first folder inside `parentPath` whose name starts with `{code}_` (case-insensitive).
@@ -83,6 +90,7 @@ async function findFolderByCode(
   const entries = await listFolder(accessToken, parentPath);
   if (!entries) return null;
   const prefix = code.toLowerCase() + "_";
+  console.log("[DEBUG] searching for prefix:", prefix, "among", entries.filter((e: any) => e[".tag"] === "folder").map((e: any) => e.name));
   const match = entries.find(
     (e: any) => e[".tag"] === "folder" && e.name.toLowerCase().startsWith(prefix),
   );
@@ -159,6 +167,16 @@ Deno.serve(async (req) => {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Log token metadata (first 8 chars only, not the full token)
+    console.log("[DEBUG] token prefix:", accessToken?.slice(0, 8), "| expires_at:", connection.token_expires_at);
+    const scopeRes = await fetch("https://api.dropboxapi.com/2/check/user", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "scope-check" }),
+    });
+    const scopeData = await scopeRes.json();
+    console.log("[DEBUG] Dropbox /check/user response:", JSON.stringify(scopeData));
 
     // Resolve project folder by searching for a folder beginning with `{projectCode}_`
     const projectFolderPath = await findFolderByCode(accessToken, DROPBOX_ROOT, projectCode);
