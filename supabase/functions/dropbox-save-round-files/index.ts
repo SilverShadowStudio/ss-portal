@@ -339,7 +339,7 @@ Deno.serve(async (req) => {
     }
 
     const roundPad = String(roundNumber).padStart(2, "0");
-    const roundFolderPath = `${sceneFolder}/AS_Assets/Round-${roundPad}`;
+    const roundFolderPath = `${sceneFolder}/INS_Instructions/Round-${roundPad}`;
 
     console.log(`[dropbox-save-round-files] Creating round folder: ${roundFolderPath}`);
     await createFolder(accessToken, roundFolderPath, namespaceId);
