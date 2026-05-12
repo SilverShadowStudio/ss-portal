@@ -55,13 +55,15 @@ interface LogActivityInput {
   metadata?: Record<string, unknown>;
 }
 
-let cachedActor: { name: string | null; role: string | null } | null = null;
+// Cache is keyed by userId so it stays valid for the current session only.
+let cachedActor: { userId: string; name: string | null; role: string } | null = null;
 
 async function getActor() {
-  if (cachedActor) return cachedActor;
   const { data: session } = await supabase.auth.getSession();
   const user = session?.session?.user;
-  if (!user) return { name: null, role: null };
+  if (!user) return { name: null, role: "client" };
+
+  if (cachedActor?.userId === user.id) return cachedActor;
 
   const [{ data: profile }, { data: roleRow }] = await Promise.all([
     supabase
@@ -82,7 +84,8 @@ async function getActor() {
     user.email ||
     null;
 
-  cachedActor = { name, role: roleRow?.role ?? null };
+  // Only admins have a row in user_roles; everyone else is a client.
+  cachedActor = { userId: user.id, name, role: roleRow?.role ?? "client" };
   return cachedActor;
 }
 
