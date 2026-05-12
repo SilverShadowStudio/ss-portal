@@ -197,7 +197,7 @@ function UploadItem({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-2 pb-1 first:pt-0">
+    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-5 pb-1 first:pt-0">
       {children}
     </p>
   );
@@ -429,7 +429,7 @@ export function NewRoundModal({
             exit={{ opacity: 0, scale: 0.97, y: 14 }}
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
             className="relative w-full max-w-[760px] shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)] max-h-[92vh] overflow-y-auto"
-            style={{ borderRadius: 4, background: "#1A1815" }}
+            style={{ borderRadius: 4, background: "#1E1C18", border: "1px solid #2A2820" }}
           >
             <form onSubmit={handleSubmit}>
 
@@ -444,7 +444,7 @@ export function NewRoundModal({
                       Round {roundNumber.toString().padStart(2, "0")}
                     </h2>
                     {sceneName && (
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/55 font-sans">
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/45 font-sans">
                         {sceneName}
                       </p>
                     )}
@@ -495,8 +495,8 @@ export function NewRoundModal({
                     rows={3}
                     maxLength={2000}
                     required
-                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-foreground/25 transition-colors"
-                    style={{ overflow: "hidden", minHeight: "120px" }}
+                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[#B89A6A]"
+                    style={{ overflow: "hidden", minHeight: "120px", transition: "border-color 160ms ease" }}
                   />
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
                     Upload what you have. The more detail you share, the better Round 01 we can deliver.
@@ -534,11 +534,11 @@ export function NewRoundModal({
 
               {/* ── Delivery timing — outside space-y to allow 24px top margin ── */}
               <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
-                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-foreground leading-relaxed">
+                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
                   Delivery — {deliveryDateStr}
                 </p>
                 <p
-                  className="mt-1.5 text-[12px] font-sans text-foreground/55 leading-relaxed"
+                  className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   Order within {deadlineLabel}
@@ -550,18 +550,25 @@ export function NewRoundModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/40 hover:text-foreground/60 transition-colors"
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 hover:text-foreground/55 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  disabled={!instructions.trim() || isSubmitting}
-                  className="flex-[2] h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-gold bg-transparent text-gold hover:text-gold/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  type="button"
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/70 hover:text-foreground/90 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
-                  {isSubmitting ? "Uploading…" : "Request Round"}
+                  Save Draft
+                </button>
+                <button
+                  type="submit"
+                  disabled={!instructions.trim() || isSubmitting}
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#B89A6A] bg-transparent text-gold hover:text-gold/80 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  style={{ borderRadius: 2 }}
+                >
+                  {isSubmitting ? "Uploading…" : "Submit for Production"}
                 </button>
               </div>
 
