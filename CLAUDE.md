@@ -18,6 +18,15 @@ Two commercial models:
 - Two portals: client-facing (this repo) + production (Kieran's Softr)
 - Supabase is owned by Fred's personal account — no dependency on Lovable
 
+### Two-database design (intentional and permanent)
+
+Supabase (Postgres) and Airtable coexist by design and serve different purposes:
+
+- **Supabase** — authentication, RLS, client-facing data (projects, scenes, rounds, assets, orders, invoices, agreements, activity log)
+- **Airtable** — Kieran's production team workflow (task assignment, modeller tracking, scene status, deadlines). Kieran owns this entirely.
+
+Automatic outbound sync is in place: Supabase DB triggers on `scene_rounds` fire `net.http_post` calls to the `airtable-auto-sync` edge function whenever a round is created, a status changes, or instructions are submitted. The sync is one-way (portal → Airtable) for these events. Inbound sync (Airtable → portal) uses the existing manual `pull-status` action in `airtable-sync` and the Dropbox webhook for file arrivals.
+
 ## Kieran — critical context
 
 Kieran is Production Director. He built and maintains the entire Softr portal himself — 25+ blocks, views per user group (management/scene managers/modellers/clients), conditional logic, permissions. He is the only person who touches it.
@@ -49,6 +58,7 @@ Rules:
 - Vercel (hosting)
 - Dropbox API (render delivery)
 - Airtable API (Kieran's production tracker)
+- Resend (transactional email — `RESEND_API_KEY` set in Supabase secrets, `silvershadowstudio.com` domain verified, DNS records applied via Squarespace)
 
 ## Supabase
 
@@ -113,9 +123,12 @@ src/
       AdminFinance.tsx          # Invoices and finance
       AdminTimeline.tsx         # Production timeline
       AdminBatchUpload.tsx      # Bulk render upload
-      AdminActivity.tsx         # Full activity log — badge filters + date range, 2000 row limit
-      AdminSettings.tsx         # Admin settings — profile, password, Dropbox connection, Airtable config
-      AdminProductionTracker.tsx # Live Airtable model status via airtable-list-models (cached 5 min)
+      AdminActivity.tsx          # Full activity log — badge filters by event type + date range, 2000 row limit
+      AdminSettings.tsx          # Admin settings — profile, password, Dropbox connection, Airtable config
+      AdminProductionTracker.tsx # /admin/production-tracker — live Airtable model status
+                                 # via airtable-list-models edge function (cached 5 min)
+                                 # Status dots + plain labels (emoji stripped), modeller names,
+                                 # deadline, cost, budgeted hours, search + status filter
 
   components/
     AdminSidebar.tsx       # Admin sidebar — text-only nav, animated hover-reveal account menu
@@ -175,17 +188,27 @@ supabase/
     dropbox-oauth-callback/     # Handles callback — redirects to portal.silvershadowstudio.com
     dropbox-api/                # get-thumbnail, get-temporary-link, connection-status
     dropbox-webhook/            # Auto-sync on Dropbox file changes (webhook registered)
+                                # Parses round number from filename (R01, R02…), restricted to
+                                # VS_Visuals subfolder only
     dropbox-scan-visuals/       # Scans VS_Visuals folder, returns highest version per round
-    airtable-sync/              # Bidirectional Airtable sync (see Airtable section below)
+                                # Takes project_code + scene_code (e.g. CP107, SC05); resolves
+                                # full folder path via prefix search. Detects Dropbox Business
+                                # team namespace and sets Dropbox-API-Path-Root header automatically
+    airtable-sync/              # Bidirectional Airtable sync — manual admin actions (see Airtable section)
+    airtable-auto-sync/         # Automatic outbound sync — called by DB triggers, not admin actions
+                                # Events: round_created, status_changed, instructions_submitted
+                                # Also sends Resend email to fred@ + kieran@ on each event
+                                # Deploy: npx supabase functions deploy airtable-auto-sync --no-verify-jwt
     airtable-list-models/       # Lists all rows from the Models table (cached 5 min, admin-only)
     accept-agreement/           # Sign client agreement, generate PDF
     admin-create-client/        # Create client account + send invite or provision
     admin-impersonate-client/   # Ghost mode token
     download-invoice-pdf/       # Generate invoice PDF
-    send-transactional-email/   # Email sending (currently broken — see pending issues)
+    send-transactional-email/   # Template-based email via queue — uses LOVABLE_API_KEY (no longer valid)
+                                # For internal notifications use airtable-auto-sync (Resend) instead
 
   migrations/              # Applied in filename order via Supabase Management API
-                           # All migrations up to 20260511000001_scene_rounds_airtable.sql are applied
+                           # All migrations up to 20260512000001_airtable_auto_sync_triggers.sql are applied
 ```
 
 ## Client dashboard — state machine (Index.tsx)
@@ -250,6 +273,7 @@ All up to and including:
 - `20260510000001_airtable_sync.sql`
 - `20260510000002_production_codes.sql`
 - `20260511000001_scene_rounds_airtable.sql` — adds `delivery_due_at` to `scene_rounds`, adds `awaiting_review` to status constraint
+- `20260512000001_airtable_auto_sync_triggers.sql` — three `pg_net` triggers on `scene_rounds`: `airtable_round_created` (INSERT), `airtable_status_changed` (UPDATE when status changes), `airtable_instructions_submitted` (UPDATE when instructions set/changed). Each calls `net.http_post()` async to `airtable-auto-sync`.
 
 ## Dropbox
 
@@ -328,7 +352,7 @@ All production-critical actions are recorded in the `activity_log` table. The fu
 | `project_restored` | AdminProjects | admin |
 | `scene_created` | AdminScenes | admin |
 | `round_created` | AdminScenes (Round 01), dropbox-webhook (auto-created rounds) | admin / system |
-| `asset_uploaded` | AssetUploader | admin |
+| `asset_uploaded` | TaskDetail (multi-file upload), AssetUploader | admin |
 | `asset_approved` | AssetViewer | client |
 | `revision_requested` | AssetViewer | client |
 | `client_created` | AdminClients | admin |
@@ -364,11 +388,12 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 
 ## Pending — must do before first client invite
 
-- **Client instructions not reaching Kieran** — when a client submits Round 01 instructions or revision notes via NewRoundModal, the data is written to `scene_rounds.instructions` and uploaded files go to the `round-uploads` storage bucket. Nothing is pushed to Airtable, nothing is emailed. Kieran will not know a client has submitted unless Fred checks the portal manually. This gap needs either: (a) an automatic `push-scene` + Airtable update on round creation, or (b) an email notification to Fred/Kieran. Neither exists yet.
-- **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets.
+- **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets. Currently admin-only round creation.
 - **New commission brief flow not built** — 3-step overlay from idle dashboard state.
-- **Airtable webhook not set up** — `pull-status` is currently manual only; no automatic sync when Kieran updates Airtable.
+- **Airtable inbound webhook not set up** — `pull-status` is currently manual only; no automatic sync when Kieran updates Airtable status or deadline. Would need a registered Airtable automation or polling cron.
 - **Pre-launch ghost mode test** — ghost as Simon Tomlinson (Winch, `7880c015`) and Marie Soliman (Bergman) and walk through the full client flow.
 - **Set `delivery_due_at`** on at least one Winch scene round to test the countdown state on the client dashboard.
-- **Email provider** — `send-transactional-email` uses a `LOVABLE_API_KEY` that is no longer valid. Delivery notifications and client invitations will not send. Needs Resend or similar wired in.
 - **Stripe** — `STRIPE_SECRET_KEY` not set; invoice checkout won't work.
+- **Brief field in Airtable** — Kieran needs to add a single-line or long-text field named exactly `Brief` to the Tasks table in Airtable for instructions sync to work. Until then, `airtable-auto-sync` logs a warning and skips instructions push without failing.
+- **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm this address is verified as a sender in Resend, or update `FROM_ADDRESS` constant in the function.
+- **`send-transactional-email` / `process-email-queue`** — still uses `LOVABLE_API_KEY` which is no longer valid. Client-facing emails (invitations, delivery notices) will not send. These functions are separate from `airtable-auto-sync` and need Resend wired in independently if client emails are required.
