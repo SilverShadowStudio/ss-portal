@@ -40,13 +40,19 @@ export default function AdminSettings() {
     setEmail(user.email ?? "");
     supabase
       .from("profiles")
-      .select("first_name, last_name")
+      .select("first_name, last_name, full_name")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setFirstName(data.first_name ?? "");
-          setLastName(data.last_name ?? "");
+          if (data.first_name || data.last_name) {
+            setFirstName(data.first_name ?? "");
+            setLastName(data.last_name ?? "");
+          } else if (data.full_name) {
+            const parts = data.full_name.trim().split(/\s+/);
+            setFirstName(parts[0] ?? "");
+            setLastName(parts.slice(1).join(" "));
+          }
         }
       });
   }, [user]);
@@ -56,11 +62,19 @@ export default function AdminSettings() {
     setSavingProfile(true);
     try {
       const updates: Promise<any>[] = [
-        supabase
-          .from("profiles")
-          .update({ first_name: firstName, last_name: lastName, full_name: [firstName, lastName].filter(Boolean).join(" ") })
-          .eq("user_id", user.id)
-          .then(({ error }) => { if (error) throw error; }),
+        (() => {
+          const trimFirst = firstName.trim();
+          const trimLast = lastName.trim();
+          return supabase
+            .from("profiles")
+            .update({
+              first_name: trimFirst || null,
+              last_name: trimLast || null,
+              full_name: [trimFirst, trimLast].filter(Boolean).join(" ") || null,
+            })
+            .eq("user_id", user.id)
+            .then(({ error }) => { if (error) throw error; });
+        })(),
       ];
       if (email !== user.email) {
         updates.push(
