@@ -34,6 +34,7 @@ export function DropboxConnectionStatus() {
     lastUpdated?: string;
     loading: boolean;
   }>({ connected: false, loading: true });
+  const [lastAssetAt, setLastAssetAt] = useState<string | null | undefined>(undefined);
   const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
 
@@ -45,8 +46,18 @@ export function DropboxConnectionStatus() {
   }, []);
 
   useEffect(() => {
+    supabase
+      .from("round_assets")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setLastAssetAt(data?.created_at ?? null));
+  }, []);
+
+  useEffect(() => {
     checkConnectionStatus();
-    
+
     // Check for OAuth callback results
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("dropbox_connected") === "true") {
@@ -138,12 +149,11 @@ export function DropboxConnectionStatus() {
           <div>
             <p className="text-sm font-medium text-foreground">Dropbox Connected</p>
             <p className="text-xs text-muted-foreground">
-              Last synced {status.lastUpdated ? timeAgo(status.lastUpdated) : "never"}
-              {status.lastUpdated && (
-                <span className="opacity-50 ml-1">
-                  · {new Date(status.lastUpdated).toLocaleString("en-GB")}
-                </span>
-              )}
+              {lastAssetAt === undefined
+                ? null
+                : lastAssetAt
+                  ? <>Last file updated {timeAgo(lastAssetAt)}</>
+                  : "No files received yet"}
             </p>
           </div>
         </div>
