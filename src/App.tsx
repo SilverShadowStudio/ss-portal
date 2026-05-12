@@ -21,6 +21,8 @@ import Invoices from "./pages/Invoices";
 import InvoicePreview from "./pages/InvoicePreview";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import SetPassword from "./pages/SetPassword";
+import SignAgreement from "./pages/SignAgreement";
 import Onboarding from "./pages/Onboarding";
 import Contract from "./pages/Contract";
 import NotFound from "./pages/NotFound";
@@ -78,6 +80,8 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/set-password" element={<SetPassword />} />
+            <Route path="/sign-agreement" element={<SignAgreement />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/contract" element={<Contract />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />

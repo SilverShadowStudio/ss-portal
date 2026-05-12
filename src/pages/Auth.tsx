@@ -239,19 +239,6 @@ export default function Auth() {
 
       {/* Toggle */}
       <div className="mt-8 flex flex-col items-center gap-3 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-        <button
-          onClick={() => {
-            if (isLogin) {
-              navigate("/onboarding");
-            } else {
-              setIsLogin(true);
-              setErrors({});
-            }
-          }}
-          className="text-label-gold transition-smooth hover:opacity-80"
-        >
-          {isLogin ? "FIRST TIME CONNECTION" : "ALREADY HAVE ACCESS"}
-        </button>
         {isLogin && !isForgotPassword && (
           <button
             onClick={() => {

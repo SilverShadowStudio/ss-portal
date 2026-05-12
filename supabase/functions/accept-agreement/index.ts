@@ -248,9 +248,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  let payload: AcceptPayload;
+  let rawBody: Record<string, unknown>;
   try {
-    payload = await req.json();
+    rawBody = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
       status: 400,
@@ -258,6 +258,165 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ── Invite mode: user already provisioned, just sign the agreement ─────────
+  if (rawBody.inviteMode === true) {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { createClient: cc } = await import("https://esm.sh/@supabase/supabase-js@2.45.0");
+    const userClient = cc(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const acceptance = rawBody.acceptance as {
+      checkboxText: string;
+      versionCode: string;
+      acceptedAtClient: string;
+    };
+    if (!acceptance?.checkboxText || !acceptance?.versionCode) {
+      return new Response(JSON.stringify({ error: "Missing acceptance metadata" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const [{ data: profile }, { data: member }] = await Promise.all([
+      admin.from("profiles").select("first_name, last_name, full_name, position").eq("user_id", user.id).maybeSingle(),
+      admin.from("account_members").select("account_id, accounts(company_name, country, registration_number, building_number, street_name, city, postcode)").eq("user_id", user.id).maybeSingle(),
+    ]);
+
+    if (!member?.account_id) {
+      return new Response(JSON.stringify({ error: "Account not found" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const accountId = member.account_id as string;
+    const acc = (member as any).accounts as Record<string, string | null> | null ?? {};
+
+    const firstName = (profile as any)?.first_name ?? "";
+    const lastName = (profile as any)?.last_name ?? "";
+    const fullName = [firstName, lastName].filter(Boolean).join(" ") || (profile as any)?.full_name || "";
+
+    const inviteFormData: AcceptPayload["formData"] = {
+      companyName: (acc.company_name as string) ?? "",
+      country: (acc.country as string) ?? "",
+      registrationNumber: (acc.registration_number as string) ?? "",
+      buildingNumber: (acc.building_number as string) ?? "",
+      streetName: (acc.street_name as string) ?? "",
+      city: (acc.city as string) ?? "",
+      postcode: (acc.postcode as string) ?? "",
+      firstName,
+      familyName: lastName,
+      position: (profile as any)?.position ?? "",
+      emailAddress: user.email ?? "",
+      password: "",
+    };
+
+    const acceptedAtIso = new Date().toISOString();
+    const agreementUid = crypto.randomUUID();
+    const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+    const userAgent = req.headers.get("user-agent") ?? "unknown";
+
+    let pdfBytes: Uint8Array;
+    try {
+      pdfBytes = generateAgreementPdf({
+        formData: inviteFormData,
+        versionCode: acceptance.versionCode,
+        acceptedAt: acceptedAtIso,
+        agreementUid,
+        accountId,
+        ipAddress,
+      });
+    } catch (err) {
+      console.error("invite mode PDF generation failed", err);
+      return new Response(JSON.stringify({ error: "Failed to generate agreement PDF" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const pdfSha256 = await sha256Hex(pdfBytes);
+    const safeCompany = inviteFormData.companyName.replace(/[^a-zA-Z0-9]+/g, "_");
+    const fileName = `Services_Agreement_${safeCompany}_${Date.now()}.pdf`;
+    const storagePath = `${user.id}/${fileName}`;
+
+    const { error: uploadErr } = await admin.storage
+      .from("agreements")
+      .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });
+
+    if (uploadErr) {
+      console.error("invite mode PDF upload failed", uploadErr);
+      return new Response(JSON.stringify({ error: "Failed to store agreement PDF" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await admin.from("agreements").insert({
+      user_id: user.id,
+      account_id: accountId,
+      company_name: inviteFormData.companyName,
+      signatory_name: fullName,
+      signatory_position: inviteFormData.position,
+      storage_path: storagePath,
+      file_name: fileName,
+      file_size: pdfBytes.byteLength,
+      agreement_version: acceptance.versionCode,
+      agreement_uid: agreementUid,
+      accepted_at: acceptedAtIso,
+      accepted_by_name: fullName,
+      accepted_by_email: user.email ?? "",
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      checkbox_text: acceptance.checkboxText,
+      pdf_sha256: pdfSha256,
+    });
+
+    await admin.from("agreement_audit_log").insert({
+      user_id: user.id,
+      account_id: accountId,
+      agreement_uid: agreementUid,
+      agreement_version: acceptance.versionCode,
+      checkbox_text: acceptance.checkboxText,
+      accepted_at: acceptedAtIso,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      storage_path: storagePath,
+      pdf_sha256: pdfSha256,
+    }).catch((e: unknown) => console.warn("invite mode audit log failed", e));
+
+    await admin.from("activity_log").insert({
+      actor_user_id: user.id,
+      actor_name: fullName,
+      actor_role: "client",
+      action: "agreement_signed",
+      description: `${fullName} signed ${acceptance.versionCode}`,
+      metadata: { company_name: inviteFormData.companyName, version_code: acceptance.versionCode },
+    }).catch((e: unknown) => console.warn("invite mode activity log failed", e));
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Normal (onboarding) flow ───────────────────────────────────────────────
+  const payload = rawBody as AcceptPayload;
   const { formData, acceptance } = payload || ({} as AcceptPayload);
   if (!formData || !acceptance) {
     return new Response(JSON.stringify({ error: "Missing payload" }), {

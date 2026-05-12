@@ -92,6 +92,7 @@ export default function AdminClients() {
     position: "",
     email: "",
     tempPassword: "",
+    accountType: "partnership",
   });
   const [isCreating, setIsCreating] = useState(false);
   const [resultBanner, setResultBanner] = useState<{
@@ -322,6 +323,7 @@ export default function AdminClients() {
               lastName: form.lastName.trim() || null,
               position: form.position.trim() || null,
             },
+            accountType: form.accountType,
             ...(mode === "provision" && form.tempPassword.trim()
               ? { tempPassword: form.tempPassword.trim() }
               : {}),
@@ -494,6 +496,17 @@ export default function AdminClients() {
                       onChange={(e) => updateForm("companyName", e.target.value)}
                       placeholder="Maybourne Hotels"
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Account type</label>
+                    <select
+                      value={form.accountType}
+                      onChange={(e) => updateForm("accountType", e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="partnership">Partnership</option>
+                      <option value="project">Project</option>
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Country</label>

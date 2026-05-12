@@ -13,13 +13,6 @@ function json(data: Record<string, unknown>, status = 200) {
   })
 }
 
-function generateToken(): string {
-  const bytes = new Uint8Array(32)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
 
 const APP_BASE_URL =
   Deno.env.get('APP_BASE_URL') || 'https://portal.silvershadowstudio.com'
@@ -47,8 +40,39 @@ interface RequestBody {
   mode: 'invite' | 'provision'
   company: CompanyDetails
   contact: ContactDetails
+  accountType?: 'partnership' | 'project'
   // Required when mode === 'provision'. If absent, a random one is generated.
   tempPassword?: string
+}
+
+function buildInviteEmailHtml(companyName: string, inviteUrl: string): string {
+  const logoUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png'
+  const btnStyle = [
+    'display:inline-block',
+    'padding:14px 32px',
+    'background:#B89A6A',
+    'color:#ffffff',
+    'font-family:Arial,sans-serif',
+    'font-size:11px',
+    'letter-spacing:0.18em',
+    'text-transform:uppercase',
+    'text-decoration:none',
+  ].join(';')
+  return `
+<div style="font-family:Arial,sans-serif;background:#FAFAF8;max-width:520px;margin:0 auto;padding:48px 40px">
+  <div style="text-align:center;margin-bottom:40px">
+    <img src="${logoUrl}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
+  </div>
+  <p style="font-size:14px;color:#1A1814;line-height:1.65;margin-bottom:32px;text-align:center">
+    Your client portal is ready.
+  </p>
+  <div style="text-align:center;margin-bottom:32px">
+    <a href="${inviteUrl}" style="${btnStyle}">ACCESS YOUR PORTAL</a>
+  </div>
+  <p style="font-size:10px;color:#8A8070;letter-spacing:0.08em;text-align:center;margin:0">
+    silvershadowstudio.com
+  </p>
+</div>`
 }
 
 Deno.serve(async (req) => {
@@ -195,20 +219,116 @@ Deno.serve(async (req) => {
         409,
       )
     }
-  } else {
-    // invite mode: ensure no active invite exists already for this email
-    // across any account (we'd be creating a fresh account anyway).
-    // We'll re-check after the account row is created, scoped to it.
   }
 
-  // ---- Step 2: Create the account (company) ----
-  // owner_user_id: in 'provision' we set the real user; in 'invite' we have to
-  // temporarily set the calling admin as owner_user_id (it's NOT NULL). When
-  // the invitation is accepted, the accept-invitation function will swap
-  // ownership.
-  const ownerForInsert =
-    mode === 'provision' ? targetUserId! : callerUserId
+  const accountType = body.accountType === 'project' ? 'project' : 'partnership'
 
+  // ---- invite branch: generateLink then create account ----
+  if (mode === 'invite') {
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        redirectTo: `${APP_BASE_URL}/set-password`,
+        data: { full_name: fullName ?? undefined },
+      },
+    })
+
+    if (linkErr || !linkData?.user) {
+      console.error('generateLink failed', linkErr)
+      return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
+    }
+
+    const invitedUserId = linkData.user.id
+    const inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+
+    const { data: account, error: accountErr } = await admin
+      .from('accounts')
+      .insert({
+        company_name: companyName,
+        country: body.company.country ?? null,
+        registration_number: body.company.registrationNumber ?? null,
+        street_name: body.company.streetName ?? null,
+        building_number: body.company.buildingNumber ?? null,
+        city: body.company.city ?? null,
+        postcode: body.company.postcode ?? null,
+        owner_user_id: invitedUserId,
+        account_type: accountType,
+      })
+      .select('id, company_name')
+      .single()
+
+    if (accountErr || !account) {
+      console.error('Failed to create account', accountErr)
+      await admin.auth.admin.deleteUser(invitedUserId).catch(() => {})
+      return json({ error: 'Failed to create account' }, 500)
+    }
+
+    await Promise.all([
+      admin.from('profiles').insert({
+        user_id: invitedUserId,
+        full_name: fullName,
+        first_name: body.contact.firstName ?? null,
+        last_name: body.contact.lastName ?? null,
+        position: body.contact.position ?? null,
+        company: companyName,
+        account_id: account.id,
+      }),
+      admin.from('account_members').insert({
+        account_id: account.id,
+        user_id: invitedUserId,
+        role: 'owner',
+        joined_at: new Date().toISOString(),
+        invited_by: callerUserId,
+      }),
+      admin.from('user_roles').upsert(
+        { user_id: invitedUserId, role: 'client' },
+        { onConflict: 'user_id,role' },
+      ),
+    ])
+
+    await admin.from('account_user_audit').insert({
+      account_id: account.id,
+      actor_user_id: callerUserId,
+      target_user_id: invitedUserId,
+      target_email: email,
+      event_type: 'admin_created_account_with_invite',
+      metadata: { company_name: companyName, account_type: accountType },
+    }).catch(() => {})
+
+    // Send branded invitation email via Resend
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    let emailSent = false
+    if (resendKey && inviteUrl) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
+            to: [email],
+            subject: 'You have been invited to the Silvershadow Studio Client Portal',
+            html: buildInviteEmailHtml(companyName, inviteUrl),
+          }),
+        })
+        emailSent = res.ok
+        if (!res.ok) console.error('Resend error:', await res.text())
+      } catch (e) {
+        console.error('Resend exception:', e)
+      }
+    }
+
+    return json({
+      success: true,
+      mode,
+      accountId: account.id,
+      userId: invitedUserId,
+      inviteUrl,
+      emailSent,
+    })
+  }
+
+  // ---- Step 2: Create the account (provision mode) ----
   const { data: account, error: accountErr } = await admin
     .from('accounts')
     .insert({
@@ -219,7 +339,8 @@ Deno.serve(async (req) => {
       building_number: body.company.buildingNumber ?? null,
       city: body.company.city ?? null,
       postcode: body.company.postcode ?? null,
-      owner_user_id: ownerForInsert,
+      owner_user_id: targetUserId!,
+      account_type: accountType,
     })
     .select('id, company_name')
     .single()
@@ -313,88 +434,6 @@ Deno.serve(async (req) => {
     })
   }
 
-  // ---- Step 3b: invite branch — create invitation + send email ----
-  const token = generateToken()
-
-  const { data: invite, error: inviteErr } = await admin
-    .from('account_invitations')
-    .insert({
-      account_id: account.id,
-      email,
-      role: 'owner',
-      token,
-      invited_by: callerUserId,
-    })
-    .select('id, expires_at')
-    .single()
-
-  if (inviteErr || !invite) {
-    console.error('Failed to create invitation', inviteErr)
-    return json({ error: 'Failed to create invitation' }, 500)
-  }
-
-  await admin.from('account_user_audit').insert({
-    account_id: account.id,
-    actor_user_id: callerUserId,
-    event_type: 'admin_created_account_with_invite',
-    target_email: email,
-    metadata: {
-      invitation_id: invite.id,
-      company_name: companyName,
-    },
-  })
-
-  const inviteUrl = `${APP_BASE_URL}/accept-invite?token=${token}`
-
-  // Inviter name (the calling admin's display name)
-  const { data: inviterProfile } = await admin
-    .from('profiles')
-    .select('full_name, first_name, last_name')
-    .eq('user_id', callerUserId)
-    .maybeSingle()
-  const inviterName =
-    inviterProfile?.full_name ||
-    [inviterProfile?.first_name, inviterProfile?.last_name]
-      .filter(Boolean)
-      .join(' ') ||
-    userData.user.email ||
-    'Silver Shadow Studio'
-
-  const { error: sendError } = await admin.functions.invoke(
-    'send-transactional-email',
-    {
-      body: {
-        templateName: 'team-invitation',
-        recipientEmail: email,
-        idempotencyKey: `admin-client-invite-${invite.id}`,
-        templateData: {
-          inviterName,
-          companyName,
-          inviteUrl,
-        },
-      },
-    },
-  )
-
-  if (sendError) {
-    console.error('Failed to enqueue invitation email', sendError)
-    return json({
-      success: true,
-      mode,
-      accountId: account.id,
-      invitationId: invite.id,
-      inviteUrl,
-      emailQueued: false,
-      warning: 'Account created but invitation email could not be queued',
-    })
-  }
-
-  return json({
-    success: true,
-    mode,
-    accountId: account.id,
-    invitationId: invite.id,
-    inviteUrl,
-    emailQueued: true,
-  })
+  // provision mode — should never reach here (handled above), but return cleanly
+  return json({ success: true, mode, accountId: account.id })
 })

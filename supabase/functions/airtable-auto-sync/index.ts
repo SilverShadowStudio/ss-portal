@@ -94,6 +94,23 @@ async function upsertAirtableRecord(
   return res.json() as Promise<{ id: string }>;
 }
 
+// ── Slack notification (fire-and-forget) ─────────────────────────────────────
+function notifySlack(
+  supabase: ReturnType<typeof createClient>,
+  payload: {
+    event: string;
+    project?: string;
+    scene?: string;
+    round?: string;
+    detail?: string;
+    portalUrl?: string;
+  },
+): void {
+  supabase.functions
+    .invoke("slack-notify", { body: { ...payload, timestamp: new Date().toISOString() } })
+    .catch((e: unknown) => console.warn("[airtable-auto-sync] Slack notification failed:", e));
+}
+
 // ── Email via Resend ──────────────────────────────────────────────────────────
 async function sendNotification(subject: string, htmlBody: string): Promise<void> {
   const key = Deno.env.get("RESEND_API_KEY");
@@ -295,6 +312,14 @@ Deno.serve(async (req) => {
           dropboxUrl: dropboxFolderUrl,
         }),
       );
+      notifySlack(supabase, {
+        event: "round_created",
+        project: projectName,
+        scene: sceneName,
+        round: roundLabel,
+        detail: deliveryDueAt ? `Deadline: ${fmtDate(deliveryDueAt)}` : undefined,
+        portalUrl: PORTAL_ADMIN_URL,
+      });
 
       return new Response(JSON.stringify({ success: true, airtableId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -346,6 +371,14 @@ Deno.serve(async (req) => {
           dropboxUrl: dropboxFolderUrl,
         }),
       );
+      notifySlack(supabase, {
+        event: "status_changed",
+        project: projectName,
+        scene: sceneName,
+        round: roundLabel,
+        detail: `${oldStatus ?? "—"} → ${newStatus}`,
+        portalUrl: PORTAL_ADMIN_URL,
+      });
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -393,6 +426,13 @@ Deno.serve(async (req) => {
           dropboxUrl: dropboxFolderUrl,
         }),
       );
+      notifySlack(supabase, {
+        event: "instructions_submitted",
+        project: projectName,
+        scene: sceneName,
+        round: roundLabel,
+        portalUrl: PORTAL_ADMIN_URL,
+      });
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

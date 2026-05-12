@@ -284,14 +284,14 @@ function IdleView() {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function Index() {
-  const { user } = useAuth();
+  const { user, accountType } = useAuth();
   const navigate = useNavigate();
   const [focus, setFocus] = useState<FocusState>({ kind: "loading" });
 
   useEffect(() => {
     if (!user) return;
     fetchFocus();
-  }, [user]);
+  }, [user, accountType]);
 
   async function fetchFocus() {
     setFocus({ kind: "loading" });
@@ -305,35 +305,40 @@ export default function Index() {
       if (!member?.account_id) { setFocus({ kind: "idle" }); return; }
       const aid = member.account_id;
 
-      // 1. Lane task delivered — awaiting feedback
-      const { data: deliveredTasks } = await supabase
-        .from("lane_tasks")
-        .select("id, title, description, delivery_status, delivery_due_at, delivery_image_url, delivered_at, lane_index")
-        .eq("account_id", aid)
-        .eq("delivery_status", "delivered")
-        .order("delivered_at", { ascending: false })
-        .limit(1);
+      // Lane tasks — only for partnership accounts (or unknown type)
+      if (accountType !== 'project') {
+        // 1. Lane task delivered — awaiting feedback
+        const { data: deliveredTasks } = await supabase
+          .from("lane_tasks")
+          .select("id, title, description, delivery_status, delivery_due_at, delivery_image_url, delivered_at, lane_index")
+          .eq("account_id", aid)
+          .eq("delivery_status", "delivered")
+          .order("delivered_at", { ascending: false })
+          .limit(1);
 
-      if (deliveredTasks && deliveredTasks.length > 0) {
-        setFocus({ kind: "delivered", task: deliveredTasks[0] as LaneTask });
-        return;
+        if (deliveredTasks && deliveredTasks.length > 0) {
+          setFocus({ kind: "delivered", task: deliveredTasks[0] as LaneTask });
+          return;
+        }
+
+        // 2. Lane task in production — countdown
+        const { data: inProdTasks } = await supabase
+          .from("lane_tasks")
+          .select("id, title, description, delivery_status, delivery_due_at, delivery_image_url, delivered_at, lane_index")
+          .eq("account_id", aid)
+          .eq("delivery_status", "in_production")
+          .order("delivery_due_at", { ascending: true })
+          .limit(1);
+
+        if (inProdTasks && inProdTasks.length > 0) {
+          setFocus({ kind: "countdown", task: inProdTasks[0] as LaneTask });
+          return;
+        }
       }
 
-      // 2. Lane task in production — countdown
-      const { data: inProdTasks } = await supabase
-        .from("lane_tasks")
-        .select("id, title, description, delivery_status, delivery_due_at, delivery_image_url, delivered_at, lane_index")
-        .eq("account_id", aid)
-        .eq("delivery_status", "in_production")
-        .order("delivery_due_at", { ascending: true })
-        .limit(1);
-
-      if (inProdTasks && inProdTasks.length > 0) {
-        setFocus({ kind: "countdown", task: inProdTasks[0] as LaneTask });
-        return;
-      }
-
-      // 3. Scene round awaiting client review
+      // Scene rounds — only for project accounts (or unknown type)
+      if (accountType !== 'partnership') {
+        // 3. Scene round awaiting client review
       const { data: reviewRounds } = await supabase
         .from("scene_rounds")
         .select(`
@@ -374,6 +379,7 @@ export default function Index() {
         });
         return;
       }
+      } // end accountType !== 'partnership'
 
       // 4. Pending order
       const { data: orders } = await supabase

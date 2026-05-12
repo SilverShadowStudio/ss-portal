@@ -7,11 +7,15 @@ import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// ── Nav items ─────────────────────────────────────────────────────────────────
-const navItems: Array<{ path: string; label: string; abbr: string }> = [
-  { path: "/portfolio",  label: "Portfolio",  abbr: "PO" },
-  { path: "/timeline",   label: "Timeline",   abbr: "TL" },
-  { path: "/delivery",   label: "Deliveries", abbr: "DL" },
+type NavItem = { path: string; label: string; abbr: string };
+
+const PARTNERSHIP_NAV: NavItem[] = [
+  { path: "/timeline",  label: "Timeline",   abbr: "TL" },
+  { path: "/delivery",  label: "Deliveries", abbr: "DL" },
+];
+
+const PROJECT_NAV: NavItem[] = [
+  { path: "/portfolio", label: "Portfolio",  abbr: "PO" },
 ];
 
 interface ClientSidebarProps {
@@ -23,7 +27,8 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { user, signOut } = useAuth();
+  const { user, signOut, accountType } = useAuth();
+  const navItems = accountType === 'project' ? PROJECT_NAV : PARTNERSHIP_NAV;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<{

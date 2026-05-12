@@ -45,6 +45,10 @@ interface AuthContextType {
   realUser: User | null;
   enterGhostMode: (target: { userId: string; name: string }) => Promise<{ error: Error | null }>;
   exitGhostMode: () => Promise<void>;
+  /** 'partnership' | 'project' | null — null for admins or while loading. */
+  accountType: 'partnership' | 'project' | null;
+  /** False = must sign agreement. Null = still loading. True = signed (or admin). */
+  hasSignedAgreement: boolean | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [accountType, setAccountType] = useState<'partnership' | 'project' | null>(null);
+  const [hasSignedAgreement, setHasSignedAgreement] = useState<boolean | null>(null);
   const [ghostTarget, setGhostTarget] = useState<GhostState | null>(() => {
     try {
       const raw = localStorage.getItem(GHOST_KEY);
@@ -163,6 +169,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [authUser?.id, ghostTarget?.adminUserId]);
+
+  // Fetch account type + agreement status whenever the live user changes.
+  useEffect(() => {
+    if (!authUser) {
+      setAccountType(null);
+      setHasSignedAgreement(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        // Check admin role first — admins skip the agreement gate entirely.
+        const { data: roleRow } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", authUser.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        if (cancelled) return;
+        if (roleRow) {
+          setAccountType(null);
+          setHasSignedAgreement(true);
+          return;
+        }
+        // Client: fetch account type and whether they've signed.
+        const [{ data: member }, { data: agreements }] = await Promise.all([
+          supabase
+            .from("account_members")
+            .select("accounts(account_type)")
+            .eq("user_id", authUser.id)
+            .maybeSingle(),
+          supabase
+            .from("agreements")
+            .select("id")
+            .eq("user_id", authUser.id)
+            .limit(1),
+        ]);
+        if (cancelled) return;
+        const at = (member as any)?.accounts?.account_type;
+        setAccountType(at === 'project' ? 'project' : at === 'partnership' ? 'partnership' : null);
+        setHasSignedAgreement(Array.isArray(agreements) && agreements.length > 0);
+      } catch {
+        if (!cancelled) {
+          setAccountType(null);
+          setHasSignedAgreement(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authUser?.id]);
 
   // Defensive clear: only if a ghost flag exists with NO admin backup
   // (i.e. someone forged the flag client-side). We can't rely on the RLS
@@ -321,6 +377,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         realUser,
         enterGhostMode,
         exitGhostMode,
+        accountType,
+        hasSignedAgreement,
       }}
     >
       {children}
