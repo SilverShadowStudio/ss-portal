@@ -216,14 +216,12 @@ async function buildInstructionsPdf(
   const MID = rgb(0.45, 0.45, 0.45);
   const BG = rgb(0.882, 0.843, 0.800);  // #E1D7CC
 
-  const TOP_M = 52;
+  const LOGO_PAD = 36;  // equal padding above and below logo
   const FOOTER_DIV_Y = 72;
   const CONTENT_BOTTOM = FOOTER_DIV_Y + 20;
 
-  const CONF1 =
-    "CONFIDENTIAL: This document contains proprietary information intended for the named recipient only. " +
-    "Unauthorized use, disclosure, or distribution is strictly prohibited.";
-  const CONF2 = "If received in error, please notify the sender and destroy all copies.";
+  const CONF1 = "CONFIDENTIAL: This document contains proprietary information intended for the named recipient only.";
+  const CONF2 = "Unauthorised use, disclosure, or distribution is strictly prohibited. If received in error, please notify the sender and destroy all copies.";
   const FOOTER_SIZE = 7.5;
   const FOOTER_LH = 11;
 
@@ -254,7 +252,7 @@ async function buildInstructionsPdf(
     page.drawText(CONF1, { x: (A4_W - l1w) / 2, y: FOOTER_DIV_Y - 12, size: FOOTER_SIZE, font, color: MID });
     page.drawText(CONF2, { x: (A4_W - l2w) / 2, y: FOOTER_DIV_Y - 12 - FOOTER_LH, size: FOOTER_SIZE, font, color: MID });
 
-    return [page, A4_H - TOP_M];
+    return [page, A4_H - LOGO_PAD];
   }
 
   let [page, y] = newPage();
@@ -266,23 +264,30 @@ async function buildInstructionsPdf(
     width: LOGO_W,
     height: LOGO_H,
   });
-  y -= LOGO_H + 20;
+  y -= LOGO_H + LOGO_PAD;
 
   // Divider 1 — dark, full content width
   page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 0.75, color: DARK });
-  y -= 22;
+  const div1Y = y;
 
-  // ── TITLE + METADATA (between the two dividers) ───────────────────────────
+  // ── TITLE centred between the two dividers ────────────────────────────────
   const TITLE_SIZE = 14;
+  const TITLE_PAD = 20;  // equal gap above first baseline and below last baseline
   const titleText = `${projectName} — ${sceneName}`;
   const titleMaxChars = Math.floor(CW / (TITLE_SIZE * 0.52));
-  for (const tl of wrapText(titleText, titleMaxChars)) {
-    const tw = boldFont.widthOfTextAtSize(tl, TITLE_SIZE);
-    page.drawText(tl, { x: Math.max(M, (A4_W - tw) / 2), y, size: TITLE_SIZE, font: boldFont, color: DARK });
-    y -= TITLE_SIZE + 4;
+  const titleLines = wrapText(titleText, titleMaxChars);
+  for (let i = 0; i < titleLines.length; i++) {
+    const lineY = div1Y - TITLE_PAD - i * (TITLE_SIZE + 4);
+    const tw = boldFont.widthOfTextAtSize(titleLines[i], TITLE_SIZE);
+    page.drawText(titleLines[i], { x: Math.max(M, (A4_W - tw) / 2), y: lineY, size: TITLE_SIZE, font: boldFont, color: DARK });
   }
-  y -= 10;
+  y = div1Y - 2 * TITLE_PAD - (titleLines.length - 1) * (TITLE_SIZE + 4);
 
+  // Divider 2
+  page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 0.5, color: DARK });
+  y -= 20;
+
+  // ── METADATA (below divider 2) ────────────────────────────────────────────
   const META_SIZE = 9;
   const META_LH = 16;
 
@@ -300,11 +305,7 @@ async function buildInstructionsPdf(
     x: M + font.widthOfTextAtSize(rnLabel, META_SIZE), y,
     size: META_SIZE, font: boldFont, color: DARK,
   });
-  y -= META_LH + 10;
-
-  // Divider 2
-  page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 0.5, color: DARK });
-  y -= 22;
+  y -= META_LH + 18;
 
   // ── BODY ──────────────────────────────────────────────────────────────────
   const BODY_SIZE = 11;
