@@ -249,6 +249,24 @@
     box-shadow: 0 1px 2px hsl(0 0% 0% / 0.4), 0 8px 24px -12px hsl(0 0% 0% / 0.6);
   }
 
+  /* SetPassword page inputs */
+  .sp-input {
+    @apply w-full bg-transparent border-0 border-b outline-none transition-colors duration-200;
+    height: 48px;
+    border-color: #3A3530;
+    color: hsl(var(--foreground) / 0.85);
+    font-size: 14px;
+  }
+  .sp-input:focus {
+    border-color: #B89A6A;
+  }
+
+  /* SetPassword page submit button */
+  .sp-submit {
+    @apply w-full border border-gold bg-transparent text-gold text-xs uppercase tracking-wider transition-colors duration-200 hover:bg-gold/5 disabled:opacity-50;
+    height: 48px;
+  }
+
   /* Custom scrollbar */
   .scrollbar-thin::-webkit-scrollbar {
     width: 4px;

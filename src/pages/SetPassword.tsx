@@ -3,6 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
 
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontFamily: "Arial, sans-serif",
+  fontSize: "10px",
+  textTransform: "uppercase",
+  letterSpacing: "0.15em",
+  opacity: 0.5,
+  marginBottom: "10px",
+};
+
 export default function SetPassword() {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
@@ -54,7 +64,7 @@ export default function SetPassword() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <div className="mb-10 animate-fade-in">
+      <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
         <img
           src={silvershadowLogo}
           alt="Silvershadow Studio"
@@ -62,46 +72,39 @@ export default function SetPassword() {
         />
       </div>
 
-      <h1
-        className="font-serif text-foreground/90 mb-10 text-center animate-fade-in"
-        style={{ fontSize: "28px", letterSpacing: "-0.01em", animationDelay: "0.05s" }}
-      >
-        Welcome to Silvershadow Studio
-      </h1>
-
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md space-y-6 animate-fade-in"
-        style={{ animationDelay: "0.1s" }}
+        className="w-full animate-fade-in"
+        style={{ maxWidth: "360px", animationDelay: "0.05s" }}
       >
-        <div className="space-y-2">
-          <label className="text-label text-muted-foreground">SET YOUR PASSWORD</label>
+        <div style={{ marginBottom: "32px" }}>
+          <label style={labelStyle}>Set your password</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="auth-input"
+            className="sp-input"
             required
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-label text-muted-foreground">CONFIRM PASSWORD</label>
+        <div style={{ marginBottom: "32px" }}>
+          <label style={labelStyle}>Confirm password</label>
           <input
             type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className="auth-input"
+            className="sp-input"
             required
           />
         </div>
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="mb-4 text-xs text-destructive">{error}</p>}
 
-        <button type="submit" disabled={isLoading} className="auth-submit">
+        <button type="submit" disabled={isLoading} className="sp-submit">
           {isLoading ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               SETTING UP...
             </span>
           ) : (
