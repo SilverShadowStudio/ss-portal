@@ -352,6 +352,7 @@ export default function AdminClients() {
       await logActivity({
         action: "client_created",
         description: `Added client ${clientLabel}`,
+        actorRole: "admin",
       });
       resetForm();
       fetchClients();

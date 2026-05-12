@@ -136,6 +136,7 @@ export function AssetUploader({ sceneRoundId, onUploadComplete }: AssetUploaderP
         await logActivity({
           action: "asset_uploaded",
           description: `Uploaded ${successCount} ${successCount === 1 ? "asset" : "assets"}`,
+          actorRole: "admin",
           entityType: "scene_round",
           entityId: sceneRoundId,
           roundId: sceneRoundId,

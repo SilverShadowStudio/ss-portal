@@ -234,6 +234,7 @@ export default function AdminScenes() {
         logActivity({
           action: "scene_created",
           description: `Created scene "${newSceneName}"`,
+          actorRole: "admin",
           entityType: "scene",
           entityId: newScene.id,
           sceneId: newScene.id,
@@ -243,6 +244,7 @@ export default function AdminScenes() {
         logActivity({
           action: "round_created",
           description: `Created Round 01 for "${newSceneName}"`,
+          actorRole: "admin",
           entityType: "scene_round",
           sceneId: newScene.id,
           sceneName: newSceneName,

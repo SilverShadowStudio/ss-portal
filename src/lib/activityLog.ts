@@ -44,6 +44,8 @@ export const ACTION_LABELS: Record<string, string> = {
 interface LogActivityInput {
   action: ActivityAction;
   description: string;
+  /** Explicit role override — pass "admin" from admin-only code paths to bypass the DB lookup. */
+  actorRole?: string;
   entityType?: string;
   entityId?: string;
   projectId?: string | null;
@@ -104,7 +106,7 @@ export async function logActivity(input: LogActivityInput): Promise<void> {
     await supabase.from("activity_log").insert({
       actor_user_id: user.id,
       actor_name: actor.name,
-      actor_role: actor.role,
+      actor_role: input.actorRole ?? actor.role,
       action: input.action,
       description: input.description,
       entity_type: input.entityType ?? null,

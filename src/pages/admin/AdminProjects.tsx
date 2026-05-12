@@ -485,6 +485,7 @@ export default function AdminProjects() {
       await logActivity({
         action: "project_created",
         description: `Created project "${newProjectName}"`,
+        actorRole: "admin",
         entityType: "project",
         projectName: newProjectName,
       });
@@ -517,6 +518,7 @@ export default function AdminProjects() {
       await logActivity({
         action: "project_restored",
         description: `Restored project "${project.name}"`,
+        actorRole: "admin",
         entityType: "project",
         projectId: project.id,
         projectName: project.name,

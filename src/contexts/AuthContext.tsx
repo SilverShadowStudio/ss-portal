@@ -76,14 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userId = session.user.id;
           (async () => {
             try {
-              // Skip admin logins
-              const { data: roleRow } = await supabase
+              // Skip admin logins. Also skip if the role lookup errors — better
+              // to miss a log entry than to misclassify an admin as a client.
+              const { data: roleRow, error: roleError } = await supabase
                 .from("user_roles")
                 .select("role")
                 .eq("user_id", userId)
                 .eq("role", "admin")
                 .maybeSingle();
-              if (roleRow) return;
+              if (roleRow || roleError) return;
 
               const [{ data: profile }, { data: priorSessions }] = await Promise.all([
                 supabase

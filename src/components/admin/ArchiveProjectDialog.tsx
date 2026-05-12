@@ -76,6 +76,7 @@ export function ArchiveProjectDialog({
       await logActivity({
         action: "project_archived",
         description: `Archived project "${projectName}"`,
+        actorRole: "admin",
         entityType: "project",
         projectId,
         projectName,
