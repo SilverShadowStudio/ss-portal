@@ -50,12 +50,18 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("profiles")
-      .select("first_name, last_name, full_name, company")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => { if (data) setProfile(data); });
+    Promise.all([
+      supabase.from("profiles").select("first_name, last_name, full_name, company").eq("user_id", user.id).maybeSingle(),
+      supabase.from("account_members").select("accounts(company_name)").eq("user_id", user.id).maybeSingle(),
+    ]).then(([{ data: profileData }, { data: memberData }]) => {
+      const accountCompany = (memberData as any)?.accounts?.company_name ?? null;
+      setProfile({
+        first_name: profileData?.first_name ?? null,
+        last_name: profileData?.last_name ?? null,
+        full_name: profileData?.full_name ?? null,
+        company: profileData?.company ?? accountCompany,
+      });
+    });
   }, [user]);
 
   const handleSignOut = async () => {
@@ -134,7 +140,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
               <img
                 src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png"
                 alt="Silvershadow Studio"
-                className="h-6 w-auto object-contain"
+                className="h-7 w-auto object-contain"
                 style={{ filter: theme === "dark" ? "brightness(0) invert(1)" : "brightness(0)" }}
               />
             ) : (

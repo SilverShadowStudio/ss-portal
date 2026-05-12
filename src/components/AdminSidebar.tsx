@@ -94,7 +94,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
             <img
               src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png"
               alt="Silvershadow Studio"
-              className="h-6 w-auto object-contain"
+              className="h-7 w-auto object-contain"
               style={{ filter: theme === "dark" ? "brightness(0) invert(1)" : "brightness(0)" }}
             />
           ) : (
