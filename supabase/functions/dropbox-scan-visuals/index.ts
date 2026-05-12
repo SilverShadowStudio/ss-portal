@@ -6,6 +6,10 @@
 // CP107_ inside /00_Production/PRD01_Client-Projects/, then inside that
 // for any folder beginning with SC05_, and uses whatever it finds.
 //
+// For Dropbox Business/Team accounts, files live in a team namespace.
+// We detect this via /2/users/get_current_account and set the
+// Dropbox-API-Path-Root header on all subsequent API calls.
+//
 // File naming convention: CP107-SC05-VS_R01_01.jpg
 //   R01 = round number  |  01 = version within round
 //
@@ -62,12 +66,30 @@ async function refreshToken(connection: any, supabase: any): Promise<string | nu
   } catch { return null; }
 }
 
+// Build base headers for all Dropbox API calls.
+// If a root namespace ID is known, include Dropbox-API-Path-Root so that
+// paths resolve inside the team namespace rather than the personal root.
+function dropboxHeaders(accessToken: string, namespaceId: string | null): Record<string, string> {
+  const h: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  if (namespaceId) {
+    h["Dropbox-API-Path-Root"] = JSON.stringify({ ".tag": "namespace_id", "namespace_id": namespaceId });
+  }
+  return h;
+}
+
 // List immediate children of a Dropbox folder. Returns null on error.
-async function listFolder(accessToken: string, path: string): Promise<any[] | null> {
-  console.log("[DEBUG] list_folder path:", path);
+async function listFolder(
+  accessToken: string,
+  path: string,
+  namespaceId: string | null,
+): Promise<any[] | null> {
+  console.log("[DEBUG] list_folder path:", path, "| namespace:", namespaceId ?? "none");
   const res = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    headers: dropboxHeaders(accessToken, namespaceId),
     body: JSON.stringify({ path, recursive: false }),
   });
   if (!res.ok) {
@@ -77,7 +99,10 @@ async function listFolder(accessToken: string, path: string): Promise<any[] | nu
   }
   const data = await res.json();
   const entries = data.entries || [];
-  console.log("[DEBUG] list_folder results for", path, "->", entries.map((e: any) => `[${e[".tag"]}] ${e.name}`));
+  console.log(
+    "[DEBUG] list_folder results for", path, "->",
+    entries.map((e: any) => `[${e[".tag"]}] ${e.name}`),
+  );
   return entries;
 }
 
@@ -86,14 +111,14 @@ async function findFolderByCode(
   accessToken: string,
   parentPath: string,
   code: string,
+  namespaceId: string | null,
 ): Promise<string | null> {
-  const entries = await listFolder(accessToken, parentPath);
+  const entries = await listFolder(accessToken, parentPath, namespaceId);
   if (!entries) return null;
   const prefix = code.toLowerCase() + "_";
-  console.log("[DEBUG] searching for prefix:", prefix, "among", entries.filter((e: any) => e[".tag"] === "folder").map((e: any) => e.name));
-  const match = entries.find(
-    (e: any) => e[".tag"] === "folder" && e.name.toLowerCase().startsWith(prefix),
-  );
+  const folders = entries.filter((e: any) => e[".tag"] === "folder");
+  console.log("[DEBUG] searching for prefix:", prefix, "among folders:", folders.map((e: any) => e.name));
+  const match = folders.find((e: any) => e.name.toLowerCase().startsWith(prefix));
   return match ? match.path_display : null;
 }
 
@@ -149,7 +174,7 @@ Deno.serve(async (req) => {
     const projectCode: string = project.project_code;
     const sceneCode: string = scene.scene_code;
 
-    // Get Dropbox connection (needed for folder search and scan)
+    // Get Dropbox connection
     const { data: connection } = await supabase
       .from("dropbox_connections")
       .select("id, access_token, refresh_token, token_expires_at")
@@ -168,18 +193,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Log token metadata (first 8 chars only, not the full token)
-    console.log("[DEBUG] token prefix:", accessToken?.slice(0, 8), "| expires_at:", connection.token_expires_at);
-    const scopeRes = await fetch("https://api.dropboxapi.com/2/check/user", {
+    // --- Detect team namespace ---
+    // /2/users/get_current_account returns root_info which tells us whether
+    // this is a personal or team account and what the root namespace ID is.
+    const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query: "scope-check" }),
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const scopeData = await scopeRes.json();
-    console.log("[DEBUG] Dropbox /check/user response:", JSON.stringify(scopeData));
+    const accountData = accountRes.ok ? await accountRes.json() : null;
+    console.log("[DEBUG] /2/users/get_current_account:", JSON.stringify(accountData));
+
+    // root_info.root_namespace_id is present on both personal and team accounts;
+    // for team accounts the .tag will be "team" and root_namespace_id points to
+    // the team shared space. Use it whenever it exists.
+    const rootNamespaceId: string | null =
+      accountData?.root_info?.root_namespace_id ?? null;
+
+    console.log("[DEBUG] root_namespace_id:", rootNamespaceId ?? "none (personal root)");
+
+    // Optionally also fetch team info if the account is a team member
+    if (accountData?.team) {
+      const teamRes = await fetch("https://api.dropboxapi.com/2/team/get_info", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      });
+      if (teamRes.ok) {
+        const teamData = await teamRes.json();
+        console.log("[DEBUG] /2/team/get_info:", JSON.stringify(teamData));
+      }
+    }
 
     // Resolve project folder by searching for a folder beginning with `{projectCode}_`
-    const projectFolderPath = await findFolderByCode(accessToken, DROPBOX_ROOT, projectCode);
+    const projectFolderPath = await findFolderByCode(accessToken, DROPBOX_ROOT, projectCode, rootNamespaceId);
     if (!projectFolderPath) {
       return new Response(JSON.stringify({
         error: `No folder starting with "${projectCode}_" found in ${DROPBOX_ROOT}`,
@@ -189,7 +234,7 @@ Deno.serve(async (req) => {
     }
 
     // Resolve scene folder inside the project folder
-    const sceneFolderPath = await findFolderByCode(accessToken, projectFolderPath, sceneCode);
+    const sceneFolderPath = await findFolderByCode(accessToken, projectFolderPath, sceneCode, rootNamespaceId);
     if (!sceneFolderPath) {
       return new Response(JSON.stringify({
         error: `No folder starting with "${sceneCode}_" found inside ${projectFolderPath}`,
@@ -209,10 +254,7 @@ Deno.serve(async (req) => {
     // List VS_Visuals folder
     const listRes = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+      headers: dropboxHeaders(accessToken, rootNamespaceId),
       body: JSON.stringify({ path: folderPath, recursive: false }),
     });
 
@@ -265,7 +307,7 @@ Deno.serve(async (req) => {
       try {
         const linkRes = await fetch("https://api.dropboxapi.com/2/files/get_temporary_link", {
           method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          headers: dropboxHeaders(accessToken, rootNamespaceId),
           body: JSON.stringify({ path: r.path }),
         });
         if (!linkRes.ok) return { ...r, link: null };
