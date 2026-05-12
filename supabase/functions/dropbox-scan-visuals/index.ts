@@ -74,7 +74,7 @@ async function listFolder(accessToken: string, path: string): Promise<any[] | nu
   return data.entries || [];
 }
 
-// Find the first folder inside `parentPath` whose name starts with `prefix_`.
+// Find the first folder inside `parentPath` whose name starts with `{code}_` (case-insensitive).
 async function findFolderByCode(
   accessToken: string,
   parentPath: string,
@@ -82,9 +82,9 @@ async function findFolderByCode(
 ): Promise<string | null> {
   const entries = await listFolder(accessToken, parentPath);
   if (!entries) return null;
-  const prefix = code.toUpperCase() + "_";
+  const prefix = code.toLowerCase() + "_";
   const match = entries.find(
-    (e: any) => e[".tag"] === "folder" && e.name.toUpperCase().startsWith(prefix),
+    (e: any) => e[".tag"] === "folder" && e.name.toLowerCase().startsWith(prefix),
   );
   return match ? match.path_display : null;
 }
@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
       const parsed = parseFilename(entry.name);
       if (!parsed) continue;
 
-      if (!entry.name.includes("-VS_")) continue;
+      if (!entry.name.toLowerCase().includes("-vs_")) continue;
 
       allFiles.push({
         round: parsed.round,
