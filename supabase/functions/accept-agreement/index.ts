@@ -388,27 +388,31 @@ Deno.serve(async (req) => {
       pdf_sha256: pdfSha256,
     });
 
-    await admin.from("agreement_audit_log").insert({
-      user_id: user.id,
-      account_id: accountId,
-      agreement_uid: agreementUid,
-      agreement_version: acceptance.versionCode,
-      checkbox_text: acceptance.checkboxText,
-      accepted_at: acceptedAtIso,
-      ip_address: ipAddress,
-      user_agent: userAgent,
-      storage_path: storagePath,
-      pdf_sha256: pdfSha256,
-    }).catch((e: unknown) => console.warn("invite mode audit log failed", e));
+    try {
+      await admin.from("agreement_audit_log").insert({
+        user_id: user.id,
+        account_id: accountId,
+        agreement_uid: agreementUid,
+        agreement_version: acceptance.versionCode,
+        checkbox_text: acceptance.checkboxText,
+        accepted_at: acceptedAtIso,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        storage_path: storagePath,
+        pdf_sha256: pdfSha256,
+      });
+    } catch (e) { console.warn("invite mode audit log failed", e) }
 
-    await admin.from("activity_log").insert({
-      actor_user_id: user.id,
-      actor_name: fullName,
-      actor_role: "client",
-      action: "agreement_signed",
-      description: `${fullName} signed ${acceptance.versionCode}`,
-      metadata: { company_name: inviteFormData.companyName, version_code: acceptance.versionCode },
-    }).catch((e: unknown) => console.warn("invite mode activity log failed", e));
+    try {
+      await admin.from("activity_log").insert({
+        actor_user_id: user.id,
+        actor_name: fullName,
+        actor_role: "client",
+        action: "agreement_signed",
+        description: `${fullName} signed ${acceptance.versionCode}`,
+        metadata: { company_name: inviteFormData.companyName, version_code: acceptance.versionCode },
+      });
+    } catch (e) { console.warn("invite mode activity log failed", e) }
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -647,7 +651,7 @@ Deno.serve(async (req) => {
   if (agreementErr || !agreementRow) {
     console.error("agreement insert failed", agreementErr);
     // Best-effort cleanup
-    await admin.storage.from("agreements").remove([storagePath]).catch(() => {});
+    try { await admin.storage.from("agreements").remove([storagePath]) } catch { /* ignore */ }
     await admin.auth.admin.deleteUser(userId).catch(() => {});
     return new Response(
       JSON.stringify({
@@ -676,14 +680,16 @@ Deno.serve(async (req) => {
   });
 
   // 8b. Activity log: agreement signed.
-  await admin.from("activity_log").insert({
-    actor_user_id: userId,
-    actor_name: `${formData.firstName} ${formData.familyName}`,
-    actor_role: "client",
-    action: "agreement_signed",
-    description: `${formData.firstName} ${formData.familyName} signed ${acceptance.versionCode}`,
-    metadata: { company_name: formData.companyName, version_code: acceptance.versionCode },
-  }).catch((err: unknown) => console.warn("activity log (agreement_signed) failed", err));
+  try {
+    await admin.from("activity_log").insert({
+      actor_user_id: userId,
+      actor_name: `${formData.firstName} ${formData.familyName}`,
+      actor_role: "client",
+      action: "agreement_signed",
+      description: `${formData.firstName} ${formData.familyName} signed ${acceptance.versionCode}`,
+      metadata: { company_name: formData.companyName, version_code: acceptance.versionCode },
+    });
+  } catch (err) { console.warn("activity log (agreement_signed) failed", err) }
 
   // 8c. Notify all admins by email (best-effort; never blocks signup).
   try {
