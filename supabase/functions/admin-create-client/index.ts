@@ -45,33 +45,22 @@ interface RequestBody {
   tempPassword?: string
 }
 
-function buildInviteEmailHtml(companyName: string, inviteUrl: string): string {
+function buildInviteEmailHtml(_companyName: string, inviteUrl: string): string {
   const logoUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png'
-  const btnStyle = [
-    'display:inline-block',
-    'padding:14px 32px',
-    'background:#B89A6A',
-    'color:#ffffff',
-    'font-family:Arial,sans-serif',
-    'font-size:11px',
-    'letter-spacing:0.18em',
-    'text-transform:uppercase',
-    'text-decoration:none',
-  ].join(';')
   return `
-<div style="font-family:Arial,sans-serif;background:#FAFAF8;max-width:520px;margin:0 auto;padding:48px 40px">
+<div style="font-family:Arial,sans-serif;background:#FFFFFF;max-width:520px;margin:0 auto;padding:48px 40px">
   <div style="text-align:center;margin-bottom:40px">
     <img src="${logoUrl}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
   </div>
-  <p style="font-size:14px;color:#1A1814;line-height:1.65;margin-bottom:32px;text-align:center">
-    Your client portal is ready.
+  <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;margin:0 auto;max-width:400px;text-align:center">
+    Your Silvershadow Studio portal is ready. You can now access your projects, review deliveries, and communicate directly with the studio.
   </p>
-  <div style="text-align:center;margin-bottom:32px">
-    <a href="${inviteUrl}" style="${btnStyle}">ACCESS YOUR PORTAL</a>
+  <div style="text-align:center;margin-top:32px;margin-bottom:32px">
+    <a href="${inviteUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #B89A6A;padding-bottom:3px">ACCESS YOUR PORTAL</a>
   </div>
-  <p style="font-size:10px;color:#8A8070;letter-spacing:0.08em;text-align:center;margin:0">
-    silvershadowstudio.com
-  </p>
+  <div style="text-align:center">
+    <a href="https://silvershadowstudio.com" style="font-size:11px;color:rgba(26,24,20,0.45);text-decoration:none">silvershadowstudio.com</a>
+  </div>
 </div>`
 }
 
@@ -312,7 +301,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
-            subject: 'You have been invited to the Silvershadow Studio Client Portal',
+            subject: 'Your Silvershadow Studio portal is ready.',
             html: buildInviteEmailHtml(companyName, inviteUrl),
           }),
         })
