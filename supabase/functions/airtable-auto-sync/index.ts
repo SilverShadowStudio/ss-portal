@@ -141,12 +141,14 @@ function emailRowLarge(label: string, value: string | number | null | undefined)
   </tr>`;
 }
 
-function buildEmailHtml(rows: string[], noteLines?: string[]): string {
-  const header = `
-    <div style="text-align:center;padding:28px 0 20px">
-      <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#1A1814;font-weight:600">SILVERSHADOW STUDIO</div>
-      <div style="margin-top:14px;border-top:1px solid #C8BFB0"></div>
-    </div>`;
+interface EmailOpts {
+  noteLines?: string[];
+  airtableId?: string | null;
+  dropboxUrl?: string | null;
+}
+
+function buildEmailHtml(rows: string[], opts: EmailOpts = {}): string {
+  const { noteLines, airtableId, dropboxUrl } = opts;
 
   const metaBlock = `<table style="border-collapse:collapse;margin-bottom:20px;width:100%">${rows.join("")}</table>`;
 
@@ -156,14 +158,21 @@ function buildEmailHtml(rows: string[], noteLines?: string[]): string {
       <div style="font-size:13px;color:#1A1814;line-height:1.65">${noteLines.join("<br>")}</div>
     </div>` : "";
 
+  const linkStyle = `font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline`;
+  const airtableHref = airtableId
+    ? `https://airtable.com/appyidJqOmdNB8WUd/tbleHaU9DxHyvixdL/${airtableId}`
+    : "https://airtable.com";
+  const dropboxHref = dropboxUrl ?? "https://www.dropbox.com/home";
+
   const footer = `
     <div style="border-top:1px solid #C8BFB0;padding-top:16px;margin-top:20px">
-      <a href="${PORTAL_ADMIN_URL}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #1A1814;padding-bottom:1px">VIEW IN PORTAL</a>
-      <div style="margin-top:14px;color:#8A8070;font-size:10px;letter-spacing:0.06em">Silvershadow Studio · London · silvershadowstudio.com</div>
+      <div><a href="${PORTAL_ADMIN_URL}" style="${linkStyle}">View in Portal</a></div>
+      <div style="margin-top:8px"><a href="${airtableHref}" style="${linkStyle}">View in Airtable</a></div>
+      <div style="margin-top:8px"><a href="${dropboxHref}" style="${linkStyle}">View in Dropbox</a></div>
     </div>`;
 
-  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#1A1814;background:#FAFAF8;padding:0 32px 32px">
-    ${header}${metaBlock}${instrBlock}${footer}
+  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#1A1814;background:#FAFAF8;padding:32px 32px 32px">
+    ${metaBlock}${instrBlock}${footer}
   </div>`;
 }
 
@@ -207,7 +216,7 @@ Deno.serve(async (req) => {
     // Load scene + project name for all events
     const { data: scene } = await supabase
       .from("scenes")
-      .select("id, name, airtable_record_id, projects(name)")
+      .select("id, name, airtable_record_id, projects(name, project_code)")
       .eq("id", sceneId)
       .single();
 
@@ -219,8 +228,21 @@ Deno.serve(async (req) => {
     }
 
     const sceneName = scene.name as string;
-    const projectName = (scene.projects as { name?: string } | null)?.name ?? "";
+    const proj = scene.projects as { name?: string; project_code?: string } | null;
+    const projectName = proj?.name ?? "";
+    const projectCode = proj?.project_code ?? null;
     const roundLabel = `Round ${String(roundNumber).padStart(2, "0")}`;
+
+    // Try to fetch the project's Dropbox folder URL — falls back to null if field not set
+    let dropboxFolderUrl: string | null = null;
+    if (projectCode) {
+      const { data: projData } = await supabase
+        .from("projects")
+        .select("dropbox_folder_url")
+        .eq("project_code", projectCode)
+        .maybeSingle();
+      dropboxFolderUrl = (projData as Record<string, unknown> | null)?.dropbox_folder_url as string | null ?? null;
+    }
 
     // If Airtable is not configured, notify by email but skip Airtable sync
     const airtableConfigured = !!(airtablePat && airtableBaseId);
@@ -260,20 +282,18 @@ Deno.serve(async (req) => {
         console.log(`[airtable-auto-sync] round_created synced → Airtable ${airtableId}`);
       }
 
-      const airtableLink = airtableId
-        ? `<a href="https://airtable.com/appyidJqOmdNB8WUd/tbleHaU9DxHyvixdL/${airtableId}" style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #8A8070">View in Airtable</a>`
-        : null;
-
       await sendNotification(
-        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName}`,
+        `New Round — ${projectName} / ${sceneName} / ${roundLabel}`,
         buildEmailHtml([
           emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
-          emailRow("Scene", sceneName),
           emailRow("Project", projectName),
-          emailRow("Status", status ?? "pending"),
-          emailRow("Deadline", fmtDate(deliveryDueAt)),
-          airtableLink ? emailRow("", airtableLink) : "",
-        ], instructions ? [instructions] : undefined),
+          emailRow("Scene", sceneName),
+          deliveryDueAt ? emailRow("Deadline", fmtDate(deliveryDueAt)) : "",
+        ], {
+          noteLines: instructions ? [instructions] : undefined,
+          airtableId,
+          dropboxUrl: dropboxFolderUrl,
+        }),
       );
 
       return new Response(JSON.stringify({ success: true, airtableId }), {
@@ -313,15 +333,18 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName} — ${newStatus}`,
+        `Round ${String(roundNumber).padStart(2, "0")} — ${projectName} / ${sceneName} — ${newStatus}`,
         buildEmailHtml([
           emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
-          emailRow("Scene", sceneName),
           emailRow("Project", projectName),
+          emailRow("Scene", sceneName),
           emailRow("Status", newStatus),
           emailRow("Previous", oldStatus ?? "—"),
-          emailRow("Deadline", fmtDate(deliveryDueAt)),
-        ]),
+          deliveryDueAt ? emailRow("Deadline", fmtDate(deliveryDueAt)) : "",
+        ], {
+          airtableId: scene.airtable_record_id ?? null,
+          dropboxUrl: dropboxFolderUrl,
+        }),
       );
 
       return new Response(JSON.stringify({ success: true }), {
@@ -359,15 +382,16 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName} — Instructions`,
-        buildEmailHtml(
-          [
-            emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
-            emailRow("Scene", sceneName),
-            emailRow("Project", projectName),
-          ],
-          instructions.split("\n"),
-        ),
+        `Round ${String(roundNumber).padStart(2, "0")} — ${projectName} / ${sceneName} — Instructions`,
+        buildEmailHtml([
+          emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
+          emailRow("Project", projectName),
+          emailRow("Scene", sceneName),
+        ], {
+          noteLines: instructions.split("\n"),
+          airtableId: scene.airtable_record_id ?? null,
+          dropboxUrl: dropboxFolderUrl,
+        }),
       );
 
       return new Response(JSON.stringify({ success: true }), {
