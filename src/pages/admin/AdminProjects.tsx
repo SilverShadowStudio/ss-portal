@@ -513,6 +513,14 @@ export default function AdminProjects() {
         .eq("id", project.id);
       if (error) throw error;
       toast.success(`"${project.name}" restored`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "project_restored",
+        description: `Restored project "${project.name}"`,
+        entityType: "project",
+        projectId: project.id,
+        projectName: project.name,
+      });
       fetchData();
     } catch (err: any) {
       console.error("restore project failed", err);

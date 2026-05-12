@@ -229,17 +229,27 @@ export default function AdminScenes() {
         title: "Scene Created",
         description: `${newSceneName} has been created. Now link a Dropbox folder to start syncing assets.`,
       });
-      // Activity log: scene creation.
       const { logActivity } = await import("@/lib/activityLog");
-      await logActivity({
-        action: "scene_created",
-        description: `Created scene "${newSceneName}"`,
-        entityType: "scene",
-        entityId: newScene.id,
-        sceneId: newScene.id,
-        sceneName: newSceneName,
-        projectId: selectedProjectId,
-      });
+      await Promise.all([
+        logActivity({
+          action: "scene_created",
+          description: `Created scene "${newSceneName}"`,
+          entityType: "scene",
+          entityId: newScene.id,
+          sceneId: newScene.id,
+          sceneName: newSceneName,
+          projectId: selectedProjectId,
+        }),
+        logActivity({
+          action: "round_created",
+          description: `Created Round 01 for "${newSceneName}"`,
+          entityType: "scene_round",
+          sceneId: newScene.id,
+          sceneName: newSceneName,
+          projectId: selectedProjectId,
+          roundNumber: 1,
+        }),
+      ]);
       
       setIsAddDialogOpen(false);
       setNewSceneName("");

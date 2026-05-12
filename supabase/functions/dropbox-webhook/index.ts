@@ -172,7 +172,7 @@ async function processChanges(
     }
 
     // Create a map of paths to their targets (only for paths within allowed root)
-    const pathMap = new Map<string, { sceneId?: string; projectId?: string }>();
+    const pathMap = new Map<string, { sceneId?: string; projectId?: string; sceneName?: string; projectName?: string }>();
     for (const mapping of mappings) {
       const path = mapping.dropbox_folder_path.toLowerCase();
 
@@ -185,6 +185,8 @@ async function processChanges(
       pathMap.set(path, {
         sceneId: mapping.scene_id,
         projectId: mapping.project_id,
+        sceneName: mapping.scenes?.name ?? null,
+        projectName: mapping.projects?.name ?? null,
       });
     }
 
@@ -288,6 +290,18 @@ async function processChanges(
           }
           sceneRoundId = newRound.id;
           console.log("Created scene round", roundNumber, "for scene", matchedMapping.sceneId);
+          // Activity log: new round auto-created by Dropbox sync.
+          supabase.from("activity_log").insert({
+            actor_name: "Dropbox",
+            actor_role: "system",
+            action: "round_created",
+            description: `Round ${String(roundNumber).padStart(2, "0")} created via Dropbox sync${matchedMapping.sceneName ? ` — ${matchedMapping.sceneName}` : ""}`,
+            scene_id: matchedMapping.sceneId ?? null,
+            scene_name: matchedMapping.sceneName ?? null,
+            project_id: matchedMapping.projectId ?? null,
+            project_name: matchedMapping.projectName ?? null,
+            round_number: roundNumber,
+          }).catch((err: unknown) => console.warn("activity log (round_created) failed", err));
         }
       }
 
@@ -344,6 +358,23 @@ async function processChanges(
         });
 
         console.log("Created new asset:", entry.name);
+
+        // Activity log: new file received from Dropbox.
+        const projectPart = matchedMapping.projectName ?? null;
+        const scenePart = matchedMapping.sceneName ?? null;
+        const locationLabel = [projectPart, scenePart, `Round ${String(roundNumber).padStart(2, "0")}`].filter(Boolean).join(" / ");
+        supabase.from("activity_log").insert({
+          actor_name: "Dropbox",
+          actor_role: "system",
+          action: "dropbox_file_received",
+          description: `File received: ${entry.name}${locationLabel ? ` — ${locationLabel}` : ""}`,
+          scene_id: matchedMapping.sceneId ?? null,
+          scene_name: scenePart,
+          project_id: matchedMapping.projectId ?? null,
+          project_name: projectPart,
+          round_number: roundNumber,
+          metadata: { filename: entry.name, dropbox_path: entry.path_lower },
+        }).catch((err: unknown) => console.warn("activity log (dropbox_file_received) failed", err));
 
         // Update scene round status to delivered
         await supabase

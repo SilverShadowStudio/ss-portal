@@ -14,7 +14,32 @@ export type ActivityAction =
   | "asset_deleted"
   | "asset_approved"
   | "revision_requested"
-  | "scene_status_changed";
+  | "scene_status_changed"
+  | "client_created"
+  | "client_registered"
+  | "client_login"
+  | "agreement_signed"
+  | "dropbox_file_received";
+
+/** Shared badge labels used by both the dashboard preview and the full log page. */
+export const ACTION_LABELS: Record<string, string> = {
+  project_created: "Project",
+  project_archived: "Project",
+  project_restored: "Project",
+  scene_created: "Scene",
+  round_created: "Round",
+  round_delivered: "Delivery",
+  asset_uploaded: "Upload",
+  asset_deleted: "Removed",
+  asset_approved: "Approved",
+  revision_requested: "Revision",
+  scene_status_changed: "Status",
+  client_created: "Client",
+  client_registered: "Client",
+  client_login: "Client",
+  agreement_signed: "Agreement",
+  dropbox_file_received: "Delivery",
+};
 
 interface LogActivityInput {
   action: ActivityAction;

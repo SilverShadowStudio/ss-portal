@@ -70,6 +70,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setAuthUser(session?.user ?? null);
         setLoading(false);
+
+        // Track client logins — best-effort, never blocks auth.
+        if (event === "SIGNED_IN" && session?.user && !isGhostModeActive()) {
+          const userId = session.user.id;
+          (async () => {
+            try {
+              // Skip admin logins
+              const { data: roleRow } = await supabase
+                .from("user_roles")
+                .select("role")
+                .eq("user_id", userId)
+                .eq("role", "admin")
+                .maybeSingle();
+              if (roleRow) return;
+
+              const [{ data: profile }, { data: priorSessions }] = await Promise.all([
+                supabase
+                  .from("profiles")
+                  .select("full_name, first_name, last_name")
+                  .eq("user_id", userId)
+                  .maybeSingle(),
+                supabase
+                  .from("client_activity")
+                  .select("id")
+                  .eq("user_id", userId)
+                  .eq("kind", "session_start")
+                  .limit(1),
+              ]);
+
+              const name =
+                [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+                profile?.full_name ||
+                session.user.email ||
+                "Client";
+
+              const isFirst = !priorSessions || priorSessions.length === 0;
+              await supabase.from("activity_log").insert({
+                actor_user_id: userId,
+                actor_name: name,
+                actor_role: "client",
+                action: isFirst ? "client_registered" : "client_login",
+                description: isFirst
+                  ? `${name} logged in for the first time`
+                  : `${name} logged in`,
+              });
+            } catch {
+              // Best-effort — never surface errors to the user
+            }
+          })();
+        }
       }
     );
 

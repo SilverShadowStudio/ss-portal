@@ -347,6 +347,12 @@ export default function AdminClients() {
             ? `An invitation email has been queued for ${form.email}.`
             : `${form.email} can now sign in.`,
       });
+      const clientLabel = [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(" ") || form.companyName.trim();
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "client_created",
+        description: `Added client ${clientLabel}`,
+      });
       resetForm();
       fetchClients();
     } catch (err: any) {

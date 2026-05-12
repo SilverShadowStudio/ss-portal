@@ -72,6 +72,15 @@ export function ArchiveProjectDialog({
       toast.success(
         `"${projectName}" archived${filesDeleted ? ` — ${filesDeleted} file${filesDeleted === 1 ? "" : "s"} removed` : ""}`,
       );
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "project_archived",
+        description: `Archived project "${projectName}"`,
+        entityType: "project",
+        projectId,
+        projectName,
+        metadata: { files_deleted: filesDeleted },
+      });
       onOpenChange(false);
       onArchived?.();
     } catch (err) {

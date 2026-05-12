@@ -516,7 +516,17 @@ Deno.serve(async (req) => {
     pdf_sha256: pdfSha256,
   });
 
-  // 8b. Notify all admins by email (best-effort; never blocks signup).
+  // 8b. Activity log: agreement signed.
+  await admin.from("activity_log").insert({
+    actor_user_id: userId,
+    actor_name: `${formData.firstName} ${formData.familyName}`,
+    actor_role: "client",
+    action: "agreement_signed",
+    description: `${formData.firstName} ${formData.familyName} signed ${acceptance.versionCode}`,
+    metadata: { company_name: formData.companyName, version_code: acceptance.versionCode },
+  }).catch((err: unknown) => console.warn("activity log (agreement_signed) failed", err));
+
+  // 8c. Notify all admins by email (best-effort; never blocks signup).
   try {
     const { data: adminRoles } = await admin
       .from("user_roles")

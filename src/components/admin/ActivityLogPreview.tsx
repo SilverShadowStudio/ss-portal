@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { ACTION_LABELS } from "@/lib/activityLog";
 
 interface ActivityRow {
   id: string;
@@ -17,18 +18,6 @@ interface ActivityRow {
   scene_name: string | null;
   round_number: number | null;
 }
-
-const actionLabel: Record<string, string> = {
-  project_created: "Project",
-  scene_created: "Scene",
-  round_created: "Round",
-  round_delivered: "Delivery",
-  asset_uploaded: "Upload",
-  asset_deleted: "Removed",
-  asset_approved: "Approved",
-  revision_requested: "Revision",
-  scene_status_changed: "Status",
-};
 
 /**
  * Compact preview of the production activity log shown on the admin
@@ -129,7 +118,7 @@ export function ActivityLogPreview() {
                 title="Click to dismiss from your preview"
               >
                 <span className="mt-1 inline-flex h-5 min-w-[60px] items-center justify-center rounded bg-muted/60 px-2 text-[9px] font-bold tracking-[0.18em] uppercase text-muted-foreground">
-                  {actionLabel[row.action] ?? row.action}
+                  {ACTION_LABELS[row.action] ?? row.action}
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-foreground truncate">{row.description}</p>
