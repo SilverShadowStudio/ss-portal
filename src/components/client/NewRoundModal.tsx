@@ -86,12 +86,13 @@ function UploadItem({
       className="group flex items-start py-4 border-b cursor-pointer last:border-b-0"
       style={{
         marginLeft: "-3rem", marginRight: "-3rem",
-        paddingLeft: active ? "calc(3rem - 2px)" : "3rem", paddingRight: "3rem",
+        paddingLeft: active ? "calc(3rem - 3px)" : "3rem", paddingRight: "3rem",
         position: "relative",
-        transition: "background 300ms ease, border-left 300ms ease",
+        transition: "background 300ms ease",
         borderBottomColor: "#2A2820",
-        background: active ? "#1C1A17" : "transparent",
-        borderLeft: active ? "2px solid #B89A6A" : "2px solid transparent",
+        background: active ? "#252018" : "transparent",
+        borderLeft: active ? "3px solid #B89A6A" : "3px solid transparent",
+        boxShadow: active ? "inset 0 0 0 1px rgba(184,154,106,0.15)" : "none",
       }}
     >
       <input
@@ -140,7 +141,7 @@ function UploadItem({
           <span
             className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
               active
-                ? "text-foreground"
+                ? "text-gold font-medium"
                 : isDragging
                 ? "text-gold/70"
                 : "text-foreground/75"
@@ -170,7 +171,7 @@ function UploadItem({
             {files.map((f, i) => (
               <div key={i} className="flex items-center gap-2">
                 <FileIcon size={10} className="shrink-0 text-foreground/25" />
-                <span className="text-[10px] text-foreground truncate flex-1 font-sans">
+                <span className="text-[10px] text-foreground/85 truncate flex-1 font-sans">
                   {f.file.name}
                 </span>
                 {f.uploading && (
@@ -196,7 +197,7 @@ function UploadItem({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-10 pb-1 first:pt-0">
+    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-2 pb-1 first:pt-0">
       {children}
     </p>
   );
@@ -385,7 +386,11 @@ export function NewRoundModal({
   const days = Math.floor(diffSecs / (24 * 3600));
   const hours = Math.floor((diffSecs % (24 * 3600)) / 3600);
   const mins = Math.floor((diffSecs % 3600) / 60);
-  const deadlineLabel = `${days}d ${hours}h ${mins}m`;
+  const deadlineLabel = [
+    days > 0 ? `${days} ${days === 1 ? "day" : "days"}` : null,
+    hours > 0 ? `${hours} ${hours === 1 ? "hour" : "hours"}` : null,
+    `${mins} ${mins === 1 ? "minute" : "minutes"}`,
+  ].filter(Boolean).join(", ");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -490,8 +495,8 @@ export function NewRoundModal({
                     rows={3}
                     maxLength={2000}
                     required
-                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none border-0 border-b border-border/30 focus:border-foreground/25 transition-colors"
-                    style={{ overflow: "hidden", paddingBottom: "2.8em", minHeight: "120px" }}
+                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-foreground/25 transition-colors"
+                    style={{ overflow: "hidden", minHeight: "120px" }}
                   />
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
                     Upload what you have. The more detail you share, the better Round 01 we can deliver.
@@ -533,7 +538,7 @@ export function NewRoundModal({
                   Delivery — {deliveryDateStr}
                 </p>
                 <p
-                  className="mt-1.5 text-[10px] font-sans uppercase tracking-[0.2em] text-foreground/55 leading-relaxed"
+                  className="mt-1.5 text-[12px] font-sans text-foreground/55 leading-relaxed"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   Order within {deadlineLabel}
@@ -553,7 +558,7 @@ export function NewRoundModal({
                 <button
                   type="submit"
                   disabled={!instructions.trim() || isSubmitting}
-                  className="flex-[2] h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-gold/70 bg-transparent text-gold hover:border-gold hover:text-gold/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  className="flex-[2] h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-gold bg-transparent text-gold hover:text-gold/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
                   {isSubmitting ? "Uploading…" : "Request Round"}
