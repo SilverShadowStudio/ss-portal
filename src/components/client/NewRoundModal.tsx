@@ -429,7 +429,7 @@ export function NewRoundModal({
             exit={{ opacity: 0, scale: 0.97, y: 14 }}
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
             className="relative w-full max-w-[760px] shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)] max-h-[92vh] overflow-y-auto"
-            style={{ borderRadius: 4, background: "#1E1C18", border: "1px solid #2A2820" }}
+            style={{ borderRadius: 4, background: "#181614", border: "1px solid #2A2820" }}
           >
             <form onSubmit={handleSubmit}>
 
@@ -507,7 +507,7 @@ export function NewRoundModal({
                 <div>
                   {/* 01 — Architecture */}
                   <SectionLabel>01 — Architecture</SectionLabel>
-                  <div className="border-t border-border/30" style={{ position: "relative" }}>
+                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                     <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                     <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
                     <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
@@ -515,7 +515,7 @@ export function NewRoundModal({
 
                   {/* 02 — Design & Finishes */}
                   <SectionLabel>02 — Design & Finishes</SectionLabel>
-                  <div className="border-t border-border/30" style={{ position: "relative" }}>
+                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                     <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
                     <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
                     <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
@@ -523,7 +523,7 @@ export function NewRoundModal({
 
                   {/* 03 — References & Assets */}
                   <SectionLabel>03 — References & Assets</SectionLabel>
-                  <div className="border-t border-border/30" style={{ position: "relative" }}>
+                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                     <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
                     <UploadItem label="3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
                     <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
@@ -557,7 +557,7 @@ export function NewRoundModal({
                 </button>
                 <button
                   type="button"
-                  className="h-12 px-8 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/70 hover:text-foreground/90 transition-colors"
+                  className="h-12 px-8 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/65 hover:text-foreground/85 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Save Draft
@@ -565,7 +565,7 @@ export function NewRoundModal({
                 <button
                   type="submit"
                   disabled={!instructions.trim() || isSubmitting}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#B89A6A] bg-transparent text-gold hover:text-gold/80 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#B89A6A] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
                   {isSubmitting ? "Uploading…" : "Submit for Production"}
