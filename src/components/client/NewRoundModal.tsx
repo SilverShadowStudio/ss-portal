@@ -550,14 +550,14 @@ export function NewRoundModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 hover:text-foreground/55 transition-colors"
+                  className="h-12 px-6 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 hover:text-foreground/55 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/70 hover:text-foreground/90 transition-colors"
+                  className="h-12 px-8 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/70 hover:text-foreground/90 transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Save Draft
