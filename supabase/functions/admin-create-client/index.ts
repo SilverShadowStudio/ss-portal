@@ -287,14 +287,16 @@ Deno.serve(async (req) => {
       ),
     ])
 
-    await admin.from('account_user_audit').insert({
-      account_id: account.id,
-      actor_user_id: callerUserId,
-      target_user_id: invitedUserId,
-      target_email: email,
-      event_type: 'admin_created_account_with_invite',
-      metadata: { company_name: companyName, account_type: accountType },
-    }).catch(() => {})
+    try {
+      await admin.from('account_user_audit').insert({
+        account_id: account.id,
+        actor_user_id: callerUserId,
+        target_user_id: invitedUserId,
+        target_email: email,
+        event_type: 'admin_created_account_with_invite',
+        metadata: { company_name: companyName, account_type: accountType },
+      })
+    } catch { /* best-effort audit */ }
 
     // Send branded invitation email via Resend
     const resendKey = Deno.env.get('RESEND_API_KEY')
