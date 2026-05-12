@@ -1184,6 +1184,8 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          project_code: string | null
+          project_slug: string | null
           status: string
           updated_at: string
           user_id: string
@@ -1196,6 +1198,8 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          project_code?: string | null
+          project_slug?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -1208,6 +1212,8 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          project_code?: string | null
+          project_slug?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -1554,6 +1560,7 @@ export type Database = {
       }
       scenes: {
         Row: {
+          airtable_record_id: string | null
           created_at: string
           current_round: number
           id: string
@@ -1562,11 +1569,14 @@ export type Database = {
           paid_rounds: number
           project_id: string
           review_deadline: string | null
+          scene_code: string | null
+          scene_slug: string | null
           sort_order: number
           status: string
           updated_at: string
         }
         Insert: {
+          airtable_record_id?: string | null
           created_at?: string
           current_round?: number
           id?: string
@@ -1575,11 +1585,14 @@ export type Database = {
           paid_rounds?: number
           project_id: string
           review_deadline?: string | null
+          scene_code?: string | null
+          scene_slug?: string | null
           sort_order?: number
           status?: string
           updated_at?: string
         }
         Update: {
+          airtable_record_id?: string | null
           created_at?: string
           current_round?: number
           id?: string
@@ -1588,6 +1601,8 @@ export type Database = {
           paid_rounds?: number
           project_id?: string
           review_deadline?: string | null
+          scene_code?: string | null
+          scene_slug?: string | null
           sort_order?: number
           status?: string
           updated_at?: string

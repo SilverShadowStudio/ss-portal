@@ -45,9 +45,10 @@ export function DropboxVisualsPanel({
   const [loading, setLoading] = useState(false);
   const [missingCodes, setMissingCodes] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
-  const [projectFolder, setProjectFolder] = useState("");
-  const [sceneFolder, setSceneFolder] = useState("");
+  const [projectCode, setProjectCode] = useState("");
+  const [sceneCode, setSceneCode] = useState("");
   const [savingCodes, setSavingCodes] = useState(false);
 
   useEffect(() => {
@@ -57,38 +58,40 @@ export function DropboxVisualsPanel({
   async function loadCodes() {
     try {
       const [{ data: project }, { data: scene }] = await Promise.all([
-        supabase.from("projects").select("project_slug").eq("id", projectId).single(),
-        supabase.from("scenes").select("scene_slug").eq("id", sceneId).single(),
+        supabase.from("projects").select("project_code").eq("id", projectId).single(),
+        supabase.from("scenes").select("scene_code").eq("id", sceneId).single(),
       ]);
-      const pf = project?.project_slug || "";
-      const sf = scene?.scene_slug || "";
-      setProjectFolder(pf);
-      setSceneFolder(sf);
-      if (pf && sf) {
+      const pc = project?.project_code || "";
+      const sc = scene?.scene_code || "";
+      setProjectCode(pc);
+      setSceneCode(sc);
+      if (pc && sc) {
         await scan();
       } else {
         setMissingCodes(true);
         setShowCodeEditor(true);
       }
-    } catch (e) {
+    } catch {
       setMissingCodes(true);
       setShowCodeEditor(true);
     }
   }
 
   async function saveCodes() {
-    if (!projectFolder || !sceneFolder) return;
+    if (!projectCode || !sceneCode) return;
     setSavingCodes(true);
     try {
       await Promise.all([
-        supabase.from("projects").update({ project_slug: projectFolder }).eq("id", projectId),
-        supabase.from("scenes").update({ scene_slug: sceneFolder }).eq("id", sceneId),
+        supabase.from("projects").update({ project_code: projectCode.toUpperCase() }).eq("id", projectId),
+        supabase.from("scenes").update({ scene_code: sceneCode.toUpperCase() }).eq("id", sceneId),
       ]);
+      setProjectCode(projectCode.toUpperCase());
+      setSceneCode(sceneCode.toUpperCase());
       setShowCodeEditor(false);
       setMissingCodes(false);
       await scan();
     } catch (e: any) {
-      toast({ title: "Failed to save folder names", description: e?.message, variant: "destructive" });
+      toast({ title: "Failed to save codes", description: e?.message, variant: "destructive" });
     } finally {
       setSavingCodes(false);
     }
@@ -96,6 +99,7 @@ export function DropboxVisualsPanel({
 
   async function scan() {
     setLoading(true);
+    setScanError(null);
     try {
       const { data, error } = await supabase.functions.invoke("dropbox-scan-visuals", {
         body: { sceneId, action: "scan" },
@@ -104,6 +108,12 @@ export function DropboxVisualsPanel({
       if (data?.missingCodes) {
         setMissingCodes(true);
         setShowCodeEditor(true);
+        return;
+      }
+      if (data?.error) {
+        setScanError(data.error);
+        setFolderExists(false);
+        setRounds([]);
         return;
       }
       setRounds(data?.rounds || []);
@@ -116,7 +126,7 @@ export function DropboxVisualsPanel({
     }
   }
 
-  const inputCls = "w-full bg-transparent border-b border-border/50 py-1.5 text-sm text-foreground focus:outline-none focus:border-gold transition-colors placeholder:text-foreground/25";
+  const inputCls = "w-full bg-transparent border-b border-border/50 py-1.5 text-sm text-foreground focus:outline-none focus:border-gold transition-colors placeholder:text-foreground/25 uppercase";
   const labelCls = "block text-[9px] uppercase tracking-[0.26em] text-foreground/40 mb-1";
 
   return (
@@ -128,7 +138,7 @@ export function DropboxVisualsPanel({
             onClick={() => setShowCodeEditor(!showCodeEditor)}
             className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/35 hover:text-foreground transition-colors"
           >
-            {projectFolder && sceneFolder ? `${projectFolder.split("_")[0]}-${sceneFolder.split("_")[0]}` : "Set folders"}
+            {projectCode && sceneCode ? `${projectCode}-${sceneCode}` : "Set codes"}
           </button>
           <button
             onClick={() => scan()}
@@ -146,21 +156,39 @@ export function DropboxVisualsPanel({
           {missingCodes && (
             <div className="flex items-center gap-2 text-gold" style={{ fontSize: 11 }}>
               <AlertCircle style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-              Set Dropbox folder names to enable sync.
+              Set the project code and scene code to enable Dropbox sync.
             </div>
           )}
           <div className="space-y-4">
-            <div><label className={labelCls}>Project folder (e.g. CP107_Charles-Street)</label><input type="text" value={projectFolder} onChange={(e) => setProjectFolder(e.target.value)} placeholder="CP107_Charles-Street" className={inputCls} /></div>
-            <div><label className={labelCls}>Scene folder (e.g. SC05_Facade)</label><input type="text" value={sceneFolder} onChange={(e) => setSceneFolder(e.target.value)} placeholder="SC05_Facade" className={inputCls} /></div>
+            <div>
+              <label className={labelCls}>Project code (e.g. CP107)</label>
+              <input
+                type="text"
+                value={projectCode}
+                onChange={(e) => setProjectCode(e.target.value)}
+                placeholder="CP107"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Scene code (e.g. SC05)</label>
+              <input
+                type="text"
+                value={sceneCode}
+                onChange={(e) => setSceneCode(e.target.value)}
+                placeholder="SC05"
+                className={inputCls}
+              />
+            </div>
           </div>
-          {projectFolder && sceneFolder && (
+          {projectCode && sceneCode && (
             <p className="text-foreground/30 font-mono truncate" style={{ fontSize: 9 }}>
-              → /00_Production/PRD01_Client-Projects/{projectFolder}/{sceneFolder}/VS_Visuals
+              → /00_Production/PRD01_Client-Projects/{projectCode.toUpperCase()}_…/{sceneCode.toUpperCase()}_…/VS_Visuals
             </p>
           )}
           <button
             onClick={saveCodes}
-            disabled={savingCodes || !projectFolder || !sceneFolder}
+            disabled={savingCodes || !projectCode || !sceneCode}
             className="flex items-center gap-2 bg-foreground text-background font-sans uppercase hover:opacity-80 disabled:opacity-40 transition-opacity"
             style={{ height: 34, paddingLeft: 16, paddingRight: 16, fontSize: 10, letterSpacing: "0.26em" }}
           >
@@ -180,7 +208,14 @@ export function DropboxVisualsPanel({
         </div>
       )}
 
-      {!loading && folderExists === false && (
+      {!loading && scanError && (
+        <div className="flex items-start gap-2 py-3 text-foreground/50" style={{ fontSize: 11 }}>
+          <AlertCircle style={{ width: 13, height: 13, marginTop: 1 }} strokeWidth={1.5} className="shrink-0 text-gold" />
+          {scanError}
+        </div>
+      )}
+
+      {!loading && !scanError && folderExists === false && (
         <div className="flex items-center gap-2 py-3 text-foreground/35" style={{ fontSize: 12 }}>
           <FolderOpen style={{ width: 14, height: 14 }} strokeWidth={1.5} />
           Folder not found in Dropbox.

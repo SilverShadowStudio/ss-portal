@@ -1,8 +1,10 @@
 // dropbox-scan-visuals/index.ts
 //
 // Scans the VS_Visuals folder for a scene and returns the highest version
-// per round. Path is built from project_slug and scene_slug, which store
-// the exact Dropbox folder names (e.g. CP107_Charles-Street, SC05_Facade).
+// per round. project_code and scene_code (e.g. CP107, SC05) are stored in
+// the DB. The function searches Dropbox for any folder beginning with
+// CP107_ inside /00_Production/PRD01_Client-Projects/, then inside that
+// for any folder beginning with SC05_, and uses whatever it finds.
 //
 // File naming convention: CP107-SC05-VS_R01_01.jpg
 //   R01 = round number  |  01 = version within round
@@ -29,7 +31,6 @@ interface VisualFile {
 }
 
 function parseFilename(filename: string): { round: number; version: number } | null {
-  // Match: CPXXX-SCXX-VS_RXX_XX.jpg (case insensitive)
   const match = filename.match(/_R(\d+)_(\d+)\.(jpg|jpeg|png|tiff|tif)$/i);
   if (!match) return null;
   return {
@@ -59,6 +60,33 @@ async function refreshToken(connection: any, supabase: any): Promise<string | nu
     }).eq("id", connection.id);
     return data.access_token;
   } catch { return null; }
+}
+
+// List immediate children of a Dropbox folder. Returns null on error.
+async function listFolder(accessToken: string, path: string): Promise<any[] | null> {
+  const res = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ path, recursive: false }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.entries || [];
+}
+
+// Find the first folder inside `parentPath` whose name starts with `prefix_`.
+async function findFolderByCode(
+  accessToken: string,
+  parentPath: string,
+  code: string,
+): Promise<string | null> {
+  const entries = await listFolder(accessToken, parentPath);
+  if (!entries) return null;
+  const prefix = code.toUpperCase() + "_";
+  const match = entries.find(
+    (e: any) => e[".tag"] === "folder" && e.name.toUpperCase().startsWith(prefix),
+  );
+  return match ? match.path_display : null;
 }
 
 Deno.serve(async (req) => {
@@ -93,7 +121,7 @@ Deno.serve(async (req) => {
     // Get scene + project codes
     const { data: scene, error: sceneErr } = await supabase
       .from("scenes")
-      .select("id, name, scene_slug, project_id, projects(id, name, project_slug)")
+      .select("id, name, scene_code, project_id, projects(id, name, project_code)")
       .eq("id", sceneId)
       .single();
 
@@ -103,24 +131,17 @@ Deno.serve(async (req) => {
 
     const project = scene.projects as any;
 
-    if (!project?.project_slug || !scene.scene_slug) {
+    if (!project?.project_code || !scene.scene_code) {
       return new Response(JSON.stringify({
-        error: "Dropbox folder names not set. Please configure the project and scene folder names in the admin panel.",
+        error: "Project code and scene code not set. Please configure them in the admin panel.",
         missingCodes: true,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Build path using the exact Dropbox folder names stored in project_slug / scene_slug
-    const folderPath = `${DROPBOX_ROOT}/${project.project_slug}/${scene.scene_slug}/VS_Visuals`;
+    const projectCode: string = project.project_code;
+    const sceneCode: string = scene.scene_code;
 
-    // If just returning the path
-    if (action === "get-path") {
-      return new Response(JSON.stringify({ path: folderPath }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get Dropbox connection
+    // Get Dropbox connection (needed for folder search and scan)
     const { data: connection } = await supabase
       .from("dropbox_connections")
       .select("id, access_token, refresh_token, token_expires_at")
@@ -139,7 +160,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    // List folder
+    // Resolve project folder by searching for a folder beginning with `{projectCode}_`
+    const projectFolderPath = await findFolderByCode(accessToken, DROPBOX_ROOT, projectCode);
+    if (!projectFolderPath) {
+      return new Response(JSON.stringify({
+        error: `No folder starting with "${projectCode}_" found in ${DROPBOX_ROOT}`,
+        folderExists: false,
+        rounds: [],
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Resolve scene folder inside the project folder
+    const sceneFolderPath = await findFolderByCode(accessToken, projectFolderPath, sceneCode);
+    if (!sceneFolderPath) {
+      return new Response(JSON.stringify({
+        error: `No folder starting with "${sceneCode}_" found inside ${projectFolderPath}`,
+        folderExists: false,
+        rounds: [],
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const folderPath = `${sceneFolderPath}/VS_Visuals`;
+
+    if (action === "get-path") {
+      return new Response(JSON.stringify({ path: folderPath }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // List VS_Visuals folder
     const listRes = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
       method: "POST",
       headers: {
@@ -151,7 +200,6 @@ Deno.serve(async (req) => {
 
     if (!listRes.ok) {
       const err = await listRes.text();
-      // Folder doesn't exist yet — not an error, just empty
       if (err.includes("not_found") || err.includes("path/not_found")) {
         return new Response(JSON.stringify({ rounds: [], folderPath, folderExists: false }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -171,7 +219,6 @@ Deno.serve(async (req) => {
       const parsed = parseFilename(entry.name);
       if (!parsed) continue;
 
-      // Only VS files
       if (!entry.name.includes("-VS_")) continue;
 
       allFiles.push({
@@ -193,7 +240,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Sort by round number
     const rounds = Array.from(byRound.values()).sort((a, b) => a.round - b.round);
 
     // Generate temporary links for each
