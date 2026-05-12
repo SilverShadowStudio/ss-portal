@@ -249,10 +249,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               >
                 {expanded ? (
                   <div className="text-left min-w-0">
-                    <p className="text-[11px] font-medium text-foreground/70 leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                    <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
                       {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Admin"}
                     </p>
-                    <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/50 mt-1">Admin</p>
+                    <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">Admin</p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
