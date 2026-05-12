@@ -267,9 +267,9 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     <button
       type="button"
       onClick={() => setBriefOpen(true)}
-      className="mt-6 text-[11px] tracking-[0.14em] uppercase text-muted-foreground/70 hover:text-foreground transition-colors underline-offset-4 hover:underline font-sans"
+      className="text-[11px] tracking-[0.14em] uppercase text-foreground/60 hover:text-foreground hover:underline underline-offset-4 transition-colors font-sans"
     >
-      View instructions
+      View Instructions
     </button>
   );
 
@@ -369,40 +369,37 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             {/* Header */}
             <div className="flex items-start justify-between px-7 py-5 border-b border-[#1c1a18]">
               <div>
-                <p className="text-[9px] tracking-[0.28em] uppercase text-foreground/35 font-sans mb-1">
+                <p className="text-[10px] tracking-[0.15em] uppercase text-foreground/55 font-sans mb-2">
                   Round {roundNumber.toString().padStart(2, "0")}
                 </p>
-                <h2 className="font-serif text-lg text-foreground">Instructions</h2>
+                <h2 className="font-serif text-[22px] font-normal text-foreground leading-tight">{sceneName}</h2>
                 {(brief?.created_at ?? roundCreatedAt) && (
-                  <p className="mt-1.5 text-[10px] text-[#8a7c6e] font-sans tracking-wide">
+                  <p className="mt-1.5 text-[10px] text-foreground/45 font-sans">
                     Requested: {fmtTimestamp((brief?.created_at ?? roundCreatedAt)!)}
                   </p>
                 )}
               </div>
               <button
                 onClick={() => setBriefOpen(false)}
-                className="mt-0.5 p-1.5 text-foreground/35 hover:text-foreground transition-colors"
+                className="mt-1 text-foreground/50 hover:text-foreground transition-colors text-lg leading-none"
                 aria-label="Close"
               >
-                <X size={14} />
+                ×
               </button>
             </div>
 
             {/* Body */}
             <div className="px-7 py-6 max-h-[65vh] overflow-y-auto">
               {briefLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-8">
-                  <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
-                  Loading…
-                </div>
+                <p className="text-[11px] text-foreground/45 font-sans py-8">Retrieving files…</p>
               ) : (
                 <>
                   {brief?.instructions ? (
-                    <p className="text-sm text-foreground/85 leading-relaxed whitespace-pre-wrap font-sans">
+                    <p className="text-[13px] text-foreground/85 leading-[1.7] whitespace-pre-wrap font-sans mt-6">
                       {brief.instructions}
                     </p>
                   ) : (
-                    <p className="text-sm text-foreground/30 italic font-sans">No instructions provided.</p>
+                    <p className="text-[13px] text-foreground/45 italic font-sans mt-6">No instructions submitted for this round.</p>
                   )}
 
                   {/* File list */}
@@ -412,10 +409,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                         Attached Files
                       </p>
                       {briefUploadsLoading ? (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
-                          Loading…
-                        </div>
+                        <p className="text-[11px] text-foreground/45 font-sans">Retrieving files…</p>
                       ) : (
                         <div className="space-y-1.5">
                           {briefUploads.map((file, i) => (
@@ -560,86 +554,39 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col items-center justify-center py-20 text-center"
+        className="py-8"
       >
-        <div className="relative mb-6">
-          <div className="h-16 w-16 rounded-full border-2 border-primary/20 flex items-center justify-center">
-            <Clock className="h-8 w-8 text-primary animate-pulse" />
-          </div>
-        </div>
-        <h3 className="font-serif text-2xl text-foreground mb-2">Production in Progress</h3>
-        {roundCreatedAt && (
-          <p className="text-[11px] text-muted-foreground/60 font-sans mb-2 tracking-wide">
-            Requested: {fmtTimestamp(roundCreatedAt)}
+        {/* Status block */}
+        <div>
+          <p className="text-[10px] tracking-[0.15em] uppercase text-foreground/55 font-sans mb-1">
+            Status
           </p>
-        )}
-        <p className="text-muted-foreground text-sm max-w-md font-sans">
-          Round {roundNumber.toString().padStart(2, "0")} is currently in production.
+          <p className="text-[12px] tracking-[0.12em] uppercase text-[#B89A6A] font-sans mb-4">
+            In Production
+          </p>
+          <div className="h-px bg-[#2A2820] mb-4" />
+          {roundCreatedAt && (
+            <p className="text-[11px] text-foreground/50 font-sans mb-1.5">
+              Requested {fmtTimestamp(roundCreatedAt)}
+            </p>
+          )}
           {endDate && (() => {
             const d = new Date(endDate);
             d.setHours(11, 0, 0, 0);
             const dateStr = d.toLocaleDateString("en-GB", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
+              weekday: "long", day: "numeric", month: "long", year: "numeric",
             });
             return (
-              <>
-                {" "}It will be ready for review on
-                <br />
-                {dateStr} at 11:00am.
-              </>
+              <p className="text-[12px] text-foreground/80 font-sans">
+                Delivery scheduled for {dateStr} at 11:00am
+              </p>
             );
           })()}
-        </p>
+        </div>
 
-        {/* Live progress bar — only when both timestamps form a valid window */}
-        {window && (() => {
-          const { start, end } = window;
-          const totalSecs = differenceInSeconds(end, start);
-          const elapsedSecs = differenceInSeconds(now, start);
-          const ratio = elapsedSecs / totalSecs;
-          const progress = Math.min(100, Math.max(0, ratio * 100));
-          const remainingSecs = Math.max(0, differenceInSeconds(end, now));
-
-          let remainingLabel: string;
-          if (now < start) {
-            remainingLabel = "Production has not started";
-          } else if (remainingSecs <= 0) {
-            remainingLabel = "Delivery expected at any moment";
-          } else if (remainingSecs >= 86400) {
-            const days = Math.ceil(remainingSecs / 86400);
-            remainingLabel = `${days} day${days !== 1 ? "s" : ""} remaining`;
-          } else if (remainingSecs >= 3600) {
-            const hours = Math.ceil(remainingSecs / 3600);
-            remainingLabel = `${hours} hour${hours !== 1 ? "s" : ""} remaining`;
-          } else {
-            const mins = Math.max(1, Math.ceil(remainingSecs / 60));
-            remainingLabel = `${mins} minute${mins !== 1 ? "s" : ""} remaining`;
-          }
-
-          return (
-            <div className="mt-10 w-full max-w-sm">
-              <div className="relative h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                {/* Plain CSS transition keeps the bar fluid without re-animating
-                    on every tick (no jitter, no overshoot). */}
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-primary/60 transition-[width] duration-700 ease-linear"
-                  style={{ width: `${progress}%` }}
-                  role="progressbar"
-                  aria-valuenow={Math.round(progress)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                />
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground font-sans tracking-wide">
-                {remainingLabel}
-              </p>
-            </div>
-          );
-        })()}
-        {briefTrigger}
+        <div className="mt-10">
+          {briefTrigger}
+        </div>
 
         {isAdmin && (
           <div

@@ -303,19 +303,20 @@ async function buildInstructionsPdf(
   const META_LH = 12;
   const roundPad = String(roundNumber).padStart(2, "0");
   const ts = formatTimestamp(roundCreatedAt);
-  const datePart = ts.split(" at ")[0];
 
-  function drawMeta(label: string, value: string) {
-    const lw = regFont.widthOfTextAtSize(label, META_SIZE);
-    page.drawText(label, { x: ML, y, size: META_SIZE, font: regFont, color: RULE_C });
-    page.drawText(value, { x: ML + lw + 6, y, size: META_SIZE, font: regFont, color: WARM_BLACK });
-    y -= META_LH;
-  }
+  // ROUND — label then large serif value
+  page.drawText("ROUND", { x: ML, y, size: 7.5, font: regFont, color: RULE_C });
+  y -= 8;
+  const roundValW = titleFont.widthOfTextAtSize(roundPad, 28);
+  page.drawText(roundPad, { x: ML, y: y - 28, size: 28, font: titleFont, color: WARM_BLACK });
+  y -= 28 + 16;
 
-  drawMeta("DATE", datePart);
-  drawMeta("ROUND NUMBER", roundPad);
-  drawMeta("SUBMITTED", ts);
-  y -= 40;
+  // SUBMITTED
+  const subLabel = "SUBMITTED";
+  const subLW = regFont.widthOfTextAtSize(subLabel, META_SIZE);
+  page.drawText(subLabel, { x: ML, y, size: META_SIZE, font: regFont, color: RULE_C });
+  page.drawText(ts, { x: ML + subLW + 6, y, size: META_SIZE, font: regFont, color: WARM_BLACK });
+  y -= META_LH + 40;
 
   // ── Body text ─────────────────────────────────────────────────────────────────
   const BODY_SIZE = 10;
@@ -374,15 +375,31 @@ async function buildInstructionsPdf(
     prevType = "body";
   }
 
-  // ── Uploaded files list ───────────────────────────────────────────────────────
+  // ── Attachments list ──────────────────────────────────────────────────────────
   if (uploads.length > 0) {
-    y -= 16;
-    const FILE_SIZE = 9;
-    const FILE_LH = 13;
-    for (const u of uploads) {
+    if (prevType !== null) y -= 16;
+    if (y < CONTENT_BOTTOM_Y) [page, y] = newPage();
+
+    // Section header
+    page.drawText("ATTACHMENTS", { x: ML, y, size: 7.5, font: regFont, color: RULE_C });
+    y -= 7.5 + 6;
+
+    const NUM_W = 24;    // width of "01  " prefix column
+    const CAT_W = 120;   // fixed-width category column
+    const FILE_SIZE = 8;
+    const FILE_LH = 8 + 8; // 8pt text + 8pt gap between items
+
+    for (let idx = 0; idx < uploads.length; idx++) {
       if (y < CONTENT_BOTTOM_Y) [page, y] = newPage();
-      const cat = CATEGORY_DISPLAY[u.category] ?? u.category.replace(/_/g, " ");
-      page.drawText(`${cat}: ${u.file_name}`, { x: ML, y, size: FILE_SIZE, font: regFont, color: RULE_C });
+      const num = String(idx + 1).padStart(2, "0");
+      const cat = CATEGORY_DISPLAY[uploads[idx].category] ?? uploads[idx].category.replace(/_/g, " ");
+
+      // "01" in warm grey
+      page.drawText(num, { x: ML, y, size: FILE_SIZE, font: regFont, color: RULE_C });
+      // category in bold (medium weight approximation)
+      page.drawText(cat, { x: ML + NUM_W, y, size: FILE_SIZE, font: boldFont, color: WARM_BLACK });
+      // filename in serif regular, starting at fixed column
+      page.drawText(uploads[idx].file_name, { x: ML + NUM_W + CAT_W, y, size: FILE_SIZE, font: titleFont, color: WARM_BLACK });
       y -= FILE_LH;
     }
   }

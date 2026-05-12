@@ -125,14 +125,45 @@ function fmtDate(iso: string | null): string {
 
 function emailRow(label: string, value: string | number | null | undefined): string {
   if (value == null || value === "") return "";
-  return `<tr><td style="padding:4px 12px 4px 0;color:#888;font-size:13px;white-space:nowrap">${label}</td><td style="padding:4px 0;font-size:13px">${value}</td></tr>`;
+  return `<tr>
+    <td style="padding:5px 20px 5px 0;color:#8A8070;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;vertical-align:top">${label}</td>
+    <td style="padding:5px 0;font-size:13px;color:#1A1814;vertical-align:top">${value}</td>
+  </tr>`;
+}
+
+function emailRowLarge(label: string, value: string | number | null | undefined): string {
+  if (value == null || value === "") return "";
+  return `<tr>
+    <td colspan="2" style="padding:8px 0 4px">
+      <div style="color:#8A8070;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2px">${label}</div>
+      <div style="color:#1A1814;font-size:26px;font-family:Georgia,serif;font-weight:400;line-height:1">${value}</div>
+    </td>
+  </tr>`;
 }
 
 function buildEmailHtml(rows: string[], noteLines?: string[]): string {
-  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#111">
-    <table style="border-collapse:collapse;margin-bottom:16px">${rows.join("")}</table>
-    ${noteLines ? `<div style="margin-top:12px;padding:12px;background:#f5f5f5;border-left:3px solid #ccc;font-size:13px">${noteLines.join("<br>")}</div>` : ""}
-    <p style="margin-top:20px"><a href="${PORTAL_ADMIN_URL}" style="color:#9a7d4f;font-size:13px">View in portal →</a></p>
+  const header = `
+    <div style="text-align:center;padding:28px 0 20px">
+      <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#1A1814;font-weight:600">SILVERSHADOW STUDIO</div>
+      <div style="margin-top:14px;border-top:1px solid #C8BFB0"></div>
+    </div>`;
+
+  const metaBlock = `<table style="border-collapse:collapse;margin-bottom:20px;width:100%">${rows.join("")}</table>`;
+
+  const instrBlock = noteLines ? `
+    <div style="margin-bottom:20px">
+      <div style="color:#8A8070;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px">INSTRUCTIONS</div>
+      <div style="font-size:13px;color:#1A1814;line-height:1.65">${noteLines.join("<br>")}</div>
+    </div>` : "";
+
+  const footer = `
+    <div style="border-top:1px solid #C8BFB0;padding-top:16px;margin-top:20px">
+      <a href="${PORTAL_ADMIN_URL}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #1A1814;padding-bottom:1px">VIEW IN PORTAL</a>
+      <div style="margin-top:14px;color:#8A8070;font-size:10px;letter-spacing:0.06em">Silvershadow Studio · London · silvershadowstudio.com</div>
+    </div>`;
+
+  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#1A1814;background:#FAFAF8;padding:0 32px 32px">
+    ${header}${metaBlock}${instrBlock}${footer}
   </div>`;
 }
 
@@ -229,15 +260,19 @@ Deno.serve(async (req) => {
         console.log(`[airtable-auto-sync] round_created synced → Airtable ${airtableId}`);
       }
 
+      const airtableLink = airtableId
+        ? `<a href="https://airtable.com/appyidJqOmdNB8WUd/tbleHaU9DxHyvixdL/${airtableId}" style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #8A8070">View in Airtable</a>`
+        : null;
+
       await sendNotification(
-        `New round — ${projectName} - ${sceneName} - ${roundLabel}`,
+        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName}`,
         buildEmailHtml([
-          emailRow("Project", projectName),
+          emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
           emailRow("Scene", sceneName),
-          emailRow("Round", roundLabel),
+          emailRow("Project", projectName),
           emailRow("Status", status ?? "pending"),
           emailRow("Deadline", fmtDate(deliveryDueAt)),
-          emailRow("Airtable", airtableId ? `<a href="https://airtable.com" style="color:#9a7d4f">Record linked</a>` : "Not yet linked"),
+          airtableLink ? emailRow("", airtableLink) : "",
         ], instructions ? [instructions] : undefined),
       );
 
@@ -278,13 +313,13 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `Status changed — ${projectName} - ${sceneName} - ${roundLabel} → ${newStatus}`,
+        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName} — ${newStatus}`,
         buildEmailHtml([
-          emailRow("Project", projectName),
+          emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
           emailRow("Scene", sceneName),
-          emailRow("Round", roundLabel),
-          emailRow("New status", newStatus),
-          emailRow("Previous status", oldStatus ?? "—"),
+          emailRow("Project", projectName),
+          emailRow("Status", newStatus),
+          emailRow("Previous", oldStatus ?? "—"),
           emailRow("Deadline", fmtDate(deliveryDueAt)),
         ]),
       );
@@ -324,12 +359,12 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `Instructions submitted — ${projectName} - ${sceneName} - ${roundLabel}`,
+        `Round ${String(roundNumber).padStart(2, "0")} — ${sceneName} / ${projectName} — Instructions`,
         buildEmailHtml(
           [
-            emailRow("Project", projectName),
+            emailRowLarge("Round", String(roundNumber).padStart(2, "0")),
             emailRow("Scene", sceneName),
-            emailRow("Round", roundLabel),
+            emailRow("Project", projectName),
           ],
           instructions.split("\n"),
         ),
