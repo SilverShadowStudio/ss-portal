@@ -385,7 +385,12 @@ async function buildInstructionsPdf(
   const subLW = regFont.widthOfTextAtSize(subLabel, META_SIZE);
   page.drawText(subLabel, { x: ML, y, size: META_SIZE, font: regFont, color: RULE_C });
   page.drawText(ts, { x: ML + subLW + 6, y, size: META_SIZE, font: regFont, color: WARM_BLACK });
-  y -= META_LH + 40;
+  y -= META_LH + 16;
+
+  // ── Instructions header ───────────────────────────────────────────────────────
+  if (y < CONTENT_BOTTOM_Y) [page, y] = newPage();
+  page.drawText("INSTRUCTIONS", { x: ML, y, size: 7.5, font: regFont, color: RULE_C });
+  y -= 7.5 + 6;
 
   // ── Body text ─────────────────────────────────────────────────────────────────
   const BODY_SIZE = 10;
