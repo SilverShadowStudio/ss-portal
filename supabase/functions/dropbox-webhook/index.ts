@@ -231,10 +231,11 @@ async function processChanges(
 
       const parentPath = filePath.substring(0, filePath.lastIndexOf("/"));
       
-      // Find matching folder mapping
+      // Find matching folder mapping — file must be inside the VS_Visuals subfolder
       let matchedMapping = null;
       for (const [mappedPath, target] of pathMap) {
-        if (filePath.startsWith(mappedPath + "/") || parentPath === mappedPath) {
+        const vsPath = mappedPath + "/vs_visuals";
+        if (filePath.startsWith(vsPath + "/") || parentPath === vsPath) {
           matchedMapping = { path: mappedPath, ...target };
           break;
         }
