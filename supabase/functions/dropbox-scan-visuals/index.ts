@@ -86,24 +86,14 @@ async function listFolder(
   path: string,
   namespaceId: string | null,
 ): Promise<any[] | null> {
-  console.log("[DEBUG] list_folder path:", path, "| namespace:", namespaceId ?? "none");
   const res = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
     method: "POST",
     headers: dropboxHeaders(accessToken, namespaceId),
     body: JSON.stringify({ path, recursive: false }),
   });
-  if (!res.ok) {
-    const errText = await res.text();
-    console.log("[DEBUG] list_folder error:", res.status, errText);
-    return null;
-  }
+  if (!res.ok) return null;
   const data = await res.json();
-  const entries = data.entries || [];
-  console.log(
-    "[DEBUG] list_folder results for", path, "->",
-    entries.map((e: any) => `[${e[".tag"]}] ${e.name}`),
-  );
-  return entries;
+  return data.entries || [];
 }
 
 // Find the first folder inside `parentPath` whose name starts with `{code}_` (case-insensitive).
@@ -116,9 +106,9 @@ async function findFolderByCode(
   const entries = await listFolder(accessToken, parentPath, namespaceId);
   if (!entries) return null;
   const prefix = code.toLowerCase() + "_";
-  const folders = entries.filter((e: any) => e[".tag"] === "folder");
-  console.log("[DEBUG] searching for prefix:", prefix, "among folders:", folders.map((e: any) => e.name));
-  const match = folders.find((e: any) => e.name.toLowerCase().startsWith(prefix));
+  const match = entries.find(
+    (e: any) => e[".tag"] === "folder" && e.name.toLowerCase().startsWith(prefix),
+  );
   return match ? match.path_display : null;
 }
 
@@ -201,27 +191,12 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const accountData = accountRes.ok ? await accountRes.json() : null;
-    console.log("[DEBUG] /2/users/get_current_account:", JSON.stringify(accountData));
 
     // root_info.root_namespace_id is present on both personal and team accounts;
     // for team accounts the .tag will be "team" and root_namespace_id points to
-    // the team shared space. Use it whenever it exists.
+    // the team shared space. Use it whenever it exists so paths resolve correctly.
     const rootNamespaceId: string | null =
       accountData?.root_info?.root_namespace_id ?? null;
-
-    console.log("[DEBUG] root_namespace_id:", rootNamespaceId ?? "none (personal root)");
-
-    // Optionally also fetch team info if the account is a team member
-    if (accountData?.team) {
-      const teamRes = await fetch("https://api.dropboxapi.com/2/team/get_info", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      });
-      if (teamRes.ok) {
-        const teamData = await teamRes.json();
-        console.log("[DEBUG] /2/team/get_info:", JSON.stringify(teamData));
-      }
-    }
 
     // Resolve project folder by searching for a folder beginning with `{projectCode}_`
     const projectFolderPath = await findFolderByCode(accessToken, DROPBOX_ROOT, projectCode, rootNamespaceId);
