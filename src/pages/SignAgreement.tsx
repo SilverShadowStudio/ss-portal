@@ -13,7 +13,7 @@ import silvershadowLogo from "@/assets/silvershadow-logo.png";
 
 export default function SignAgreement() {
   const navigate = useNavigate();
-  const { user, loading } = useAuth();
+  const { user, loading, refreshAgreementStatus } = useAuth();
   const { toast } = useToast();
 
   const [accepted, setAccepted] = useState(false);
@@ -67,6 +67,7 @@ export default function SignAgreement() {
       }
 
       toast({ title: "Agreement accepted", description: "Welcome to Silvershadow Studio." });
+      await refreshAgreementStatus();
       navigate("/");
     } catch (err: any) {
       toast({

@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Failed to create account' }, 500)
     }
 
-    const profileInsert = await admin.from('profiles').insert({
+    const profileInsert = await admin.from('profiles').upsert({
       user_id: invitedUserId,
       full_name: fullName,
       first_name: body.contact.firstName ?? null,
@@ -263,8 +263,8 @@ Deno.serve(async (req) => {
       position: body.contact.position ?? null,
       company: companyName,
       account_id: account.id,
-    })
-    if (profileInsert.error) console.error('profiles insert error', profileInsert.error)
+    }, { onConflict: 'user_id' })
+    if (profileInsert.error) console.error('profiles upsert error', profileInsert.error)
 
     const memberInsert = await admin.from('account_members').insert({
       account_id: account.id,

@@ -52,18 +52,26 @@ export default function Account() {
       if (!user) return;
 
       try {
-        // Fetch profile
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("first_name, last_name, company, position")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        // Fetch profile + account company name in parallel
+        const [{ data: profileData }, { data: memberData }] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("first_name, last_name, company, position")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("account_members")
+            .select("accounts(company_name)")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+        ]);
 
+        const accountCompany = (memberData as any)?.accounts?.company_name || "";
         setProfile({
           firstName: profileData?.first_name || "",
           lastName: profileData?.last_name || "",
           email: user.email || "",
-          company: profileData?.company || "",
+          company: profileData?.company || accountCompany,
           position: profileData?.position || ""
         });
 

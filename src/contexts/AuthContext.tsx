@@ -49,6 +49,8 @@ interface AuthContextType {
   accountType: 'partnership' | 'project' | null;
   /** False = must sign agreement. Null = still loading. True = signed (or admin). */
   hasSignedAgreement: boolean | null;
+  /** Re-checks the agreements table and updates hasSignedAgreement. Call after signing. */
+  refreshAgreementStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -321,6 +323,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshAgreementStatus = async () => {
+    if (!authUser) return;
+    try {
+      const { data: agreements } = await supabase
+        .from("agreements")
+        .select("id")
+        .eq("user_id", authUser.id)
+        .limit(1);
+      setHasSignedAgreement(Array.isArray(agreements) && agreements.length > 0);
+    } catch {
+      // best-effort
+    }
+  };
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -379,6 +395,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         exitGhostMode,
         accountType,
         hasSignedAgreement,
+        refreshAgreementStatus,
       }}
     >
       {children}
