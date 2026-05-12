@@ -1,14 +1,11 @@
 // dropbox-scan-visuals/index.ts
 //
 // Scans the VS_Visuals folder for a scene and returns the highest version
-// per round. Path is built automatically from project_code + scene_code.
+// per round. Path is built from project_slug and scene_slug, which store
+// the exact Dropbox folder names (e.g. CP107_Charles-Street, SC05_Facade).
 //
 // File naming convention: CP107-SC05-VS_R01_01.jpg
-//   CP107  = project code
-//   SC05   = scene code
-//   VS     = asset type (we only process VS files)
-//   R01    = round number
-//   01     = version within round
+//   R01 = round number  |  01 = version within round
 //
 // Returns: array of { round, version, filename, path, modified_at, link }
 // One entry per round — the highest version only.
@@ -96,7 +93,7 @@ Deno.serve(async (req) => {
     // Get scene + project codes
     const { data: scene, error: sceneErr } = await supabase
       .from("scenes")
-      .select("id, name, scene_code, scene_slug, project_id, projects(id, name, project_code, project_slug)")
+      .select("id, name, scene_slug, project_id, projects(id, name, project_slug)")
       .eq("id", sceneId)
       .single();
 
@@ -106,15 +103,15 @@ Deno.serve(async (req) => {
 
     const project = scene.projects as any;
 
-    if (!project?.project_code || !project?.project_slug || !scene.scene_code || !scene.scene_slug) {
+    if (!project?.project_slug || !scene.scene_slug) {
       return new Response(JSON.stringify({
-        error: "Project code or scene code not set. Please set project_code, project_slug, scene_code, and scene_slug in the admin panel.",
+        error: "Dropbox folder names not set. Please configure the project and scene folder names in the admin panel.",
         missingCodes: true,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Build path
-    const folderPath = `${DROPBOX_ROOT}/${project.project_code}_${project.project_slug}/${scene.scene_code}_${scene.scene_slug}/VS_Visuals`;
+    // Build path using the exact Dropbox folder names stored in project_slug / scene_slug
+    const folderPath = `${DROPBOX_ROOT}/${project.project_slug}/${scene.scene_slug}/VS_Visuals`;
 
     // If just returning the path
     if (action === "get-path") {
@@ -217,8 +214,6 @@ Deno.serve(async (req) => {
       rounds: roundsWithLinks,
       folderPath,
       folderExists: true,
-      projectCode: project.project_code,
-      sceneCode: scene.scene_code,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
