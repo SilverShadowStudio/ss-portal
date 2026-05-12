@@ -111,13 +111,15 @@ export function DropboxConnectionStatus() {
     }
   }
 
-  async function handleConnect() {
+  async function handleConnect(reconnect = false) {
     setIsConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("dropbox-oauth-start");
-      
+      const { data, error } = await supabase.functions.invoke("dropbox-oauth-start", {
+        body: { reconnect },
+      });
+
       if (error) throw error;
-      
+
       if (data?.authUrl) {
         window.location.href = data.authUrl;
       }
@@ -157,10 +159,25 @@ export function DropboxConnectionStatus() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={checkConnectionStatus}>
-          <RefreshCw className="mr-2 h-3 w-3" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={checkConnectionStatus}>
+            <RefreshCw className="mr-2 h-3 w-3" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleConnect(true)} disabled={isConnecting}>
+            {isConnecting ? (
+              <>
+                <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                Reconnecting...
+              </>
+            ) : (
+              <>
+                <DropboxIcon className="mr-2 h-3 w-3" />
+                Reconnect
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     );
   }

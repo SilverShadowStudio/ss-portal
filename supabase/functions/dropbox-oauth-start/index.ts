@@ -71,6 +71,13 @@ Deno.serve(async (req) => {
     // For simplicity, encode user_id and state together
     const statePayload = btoa(JSON.stringify({ userId: user.id, state, exp: Date.now() + 600000 }));
 
+    // Parse optional reconnect flag from request body
+    let reconnect = false;
+    try {
+      const body = await req.json().catch(() => ({}));
+      reconnect = !!body.reconnect;
+    } catch { /* no body is fine */ }
+
     // Build Dropbox OAuth URL
     const redirectUri = `${supabaseUrl}/functions/v1/dropbox-oauth-callback`;
     const authUrl = new URL("https://www.dropbox.com/oauth2/authorize");
@@ -79,6 +86,10 @@ Deno.serve(async (req) => {
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("token_access_type", "offline"); // Get refresh token
     authUrl.searchParams.set("state", statePayload);
+    if (reconnect) {
+      // Force Dropbox to show the consent screen so a new token is issued with current scopes
+      authUrl.searchParams.set("force_reapprove", "true");
+    }
 
     console.log("Generated Dropbox OAuth URL for user:", user.id);
 
