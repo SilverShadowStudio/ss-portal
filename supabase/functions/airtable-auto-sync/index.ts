@@ -26,7 +26,7 @@ const corsHeaders = {
 };
 
 const NOTIFY_EMAILS = ["fred@silvershadowstudio.com", "kieran@silvershadowstudio.com"];
-const FROM_ADDRESS = "Silvershadow Portal <portal@silvershadowstudio.com>";
+const FROM_ADDRESS = "Silvershadow Studio | Portal <portal@silvershadowstudio.com>";
 const PORTAL_ADMIN_URL = "https://portal.silvershadowstudio.com/admin";
 
 // ── Airtable config (mirrors airtable-sync defaults) ─────────────────────────
@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `[Portal] New round — ${sceneName} ${roundLabel}`,
+        `New round — ${projectName} - ${sceneName} - ${roundLabel}`,
         buildEmailHtml([
           emailRow("Project", projectName),
           emailRow("Scene", sceneName),
@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `[Portal] Status changed — ${sceneName} ${roundLabel} → ${newStatus}`,
+        `Status changed — ${projectName} - ${sceneName} - ${roundLabel} → ${newStatus}`,
         buildEmailHtml([
           emailRow("Project", projectName),
           emailRow("Scene", sceneName),
@@ -324,7 +324,7 @@ Deno.serve(async (req) => {
       }
 
       await sendNotification(
-        `[Portal] Instructions submitted — ${sceneName} ${roundLabel}`,
+        `Instructions submitted — ${projectName} - ${sceneName} - ${roundLabel}`,
         buildEmailHtml(
           [
             emailRow("Project", projectName),
