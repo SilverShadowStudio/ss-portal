@@ -104,15 +104,18 @@ src/
     Contract.tsx           # Client agreement signing (SSS-CA-v2.0)
     Auth.tsx               # Login page
     admin/
-      AdminDashboard.tsx   # Admin studio overview — Dropbox + Airtable status strips, activity log
-      AdminClients.tsx     # Client management — ghost circle left, clock/connections right,
-                           #   last 10 sessions with start/end/duration
-      AdminProjects.tsx    # Project + scene + round management (main admin workhorse)
-      AdminOrders.tsx      # Create and manage orders
-      AdminScenes.tsx      # Scene management
-      AdminFinance.tsx     # Invoices and finance
-      AdminTimeline.tsx    # Production timeline
-      AdminBatchUpload.tsx # Bulk render upload
+      AdminDashboard.tsx        # Admin studio overview — Dropbox + Airtable status strips, activity log preview
+      AdminClients.tsx          # Client management — ghost circle left, clock/connections right,
+                                #   last 10 sessions with start/end/duration
+      AdminProjects.tsx         # Project + scene + round management (main admin workhorse)
+      AdminOrders.tsx           # Create and manage orders
+      AdminScenes.tsx           # Scene management
+      AdminFinance.tsx          # Invoices and finance
+      AdminTimeline.tsx         # Production timeline
+      AdminBatchUpload.tsx      # Bulk render upload
+      AdminActivity.tsx         # Full activity log — badge filters + date range, 2000 row limit
+      AdminSettings.tsx         # Admin settings — profile, password, Dropbox connection, Airtable config
+      AdminProductionTracker.tsx # Live Airtable model status via airtable-list-models (cached 5 min)
 
   components/
     AdminSidebar.tsx       # Admin sidebar — text-only nav, animated hover-reveal account menu
@@ -125,9 +128,13 @@ src/
 
     admin/
       DropboxVisualsPanel.tsx      # Scans Dropbox VS_Visuals folder, shows highest version per round
-      DropboxConnectionStatus.tsx  # Dropbox connected/disconnected strip with relative time
+                                   # Admin enters project_code + scene_code (e.g. CP107, SC05);
+                                   # edge function resolves full folder path by prefix search
+      DropboxConnectionStatus.tsx  # Dropbox connected/disconnected strip — shows "Last file updated X ago"
+                                   # from round_assets.created_at, or "No files received yet"
       AirtableConnectionStatus.tsx # Airtable connected/error strip — record count + cache time
       AirtableSyncPanel.tsx        # Per-scene push-scene / pull-status UI
+      ActivityLogPreview.tsx       # Dashboard preview of last N activity log entries
       ClientActivityPanel.tsx      # Client session history (removed from AdminClients, still exists)
       SceneCard.tsx                # Scene summary card
       InvoiceFormDialog.tsx        # Create invoice dialog
@@ -148,7 +155,9 @@ src/
                            # Both sidebars and all layout components use this
                            # Exports: LABEL, PAGE, BORDER, SURFACE, STATUS, BTN, RADIUS, SIDEBAR, TRANSITION, GLOW
     agreementTerms.ts      # Client Agreement v2.0 content (SSS-CA-v2.0, 14 clauses)
-    activityLog.ts         # Logging helper
+    activityLog.ts         # logActivity() helper + ACTION_LABELS map + ActivityAction type
+                           # Pass actorRole: "admin" explicitly in all admin-only call sites —
+                           # do not rely on the DB lookup for admin detection
     reviewWindow.ts        # Deliver round and start review window
     clientActivity.ts      # Client session tracking (session_start / session_end / page_view)
 
@@ -220,8 +229,10 @@ Single focused view. Shows exactly one state per client at a time:
 | `account_members` | User ↔ account links |
 | `projects` | Projects (`project_code`, `project_slug`) |
 | `scenes` | Scenes (`scene_code`, `scene_slug`, `airtable_record_id`) |
-| `scene_rounds` | Rounds per scene — status: `pending` / `in_production` / `client_review` / `awaiting_review` / `approved` / `delivered`; also `delivery_due_at TIMESTAMPTZ` |
+| `scene_rounds` | Rounds per scene — `instructions` (client brief text), status: `pending` / `in_production` / `client_review` / `awaiting_review` / `approved` / `delivered`; also `delivery_due_at TIMESTAMPTZ` |
 | `round_assets` | Render files per round (Supabase storage or Dropbox path) |
+| `round_uploads` | Client briefing files uploaded via NewRoundModal — `scene_id`, `category`, `file_name`, `storage_path` (bucket: `round-uploads`) |
+| `activity_log` | Immutable record of production-critical actions — `actor_name`, `actor_role`, `action`, `description`, plus optional `project_id/name`, `scene_id/name`, `round_number` |
 | `lane_tasks` | Subscription lane tasks (`delivery_status`: `in_production` / `delivered`) |
 | `subscriptions` | Lane subscriptions |
 | `orders` | Project orders (status: `pending_acceptance`, `accepted`, etc.) |
@@ -255,7 +266,13 @@ CP107-SC05-VS_R01_01.jpg
   01    = version number (app shows highest version per round)
 ```
 
-Set `project_code`, `project_slug`, `scene_code`, `scene_slug` on each project/scene via the DropboxVisualsPanel on the round detail page.
+### Setting up a scene for Dropbox sync
+
+In DropboxVisualsPanel, enter only the short codes — `project_code` (e.g. `CP107`) and `scene_code` (e.g. `SC05`). The `dropbox-scan-visuals` edge function resolves the full folder path by searching for a folder whose name starts with `CP107_` inside `/00_Production/PRD01_Client-Projects/`, then `SC05_` inside that. All matching is case-insensitive. The admin never needs to know or type the full folder name.
+
+### Team namespace (Dropbox Business)
+
+The Dropbox account is a Business team account. All files live in the team namespace, not the personal root. The `dropbox-scan-visuals` and `dropbox-webhook` functions detect this by calling `/2/users/get_current_account` on startup, reading `root_info.root_namespace_id`, and passing a `Dropbox-API-Path-Root` header on every subsequent API call. Without this header, all path operations return `path/not_found`.
 
 ## Airtable sync
 
@@ -298,6 +315,32 @@ Actual Airtable single-select options have emoji prefixes. Pull matching uses su
 
 **Verified**: push-scene + pull-status round-trip confirmed working. Record `recCTevx1HCoPQqA1` created for "Entrance" scene; `🔴 TO DO` → `pending` mapped correctly.
 
+## Activity log
+
+All production-critical actions are recorded in the `activity_log` table. The full log is at `/admin/activity` (badge filters + date range). A preview appears on the admin dashboard via `ActivityLogPreview`.
+
+### Events tracked
+
+| Action | Logged by | Actor role |
+|---|---|---|
+| `project_created` | AdminProjects | admin |
+| `project_archived` | ArchiveProjectDialog | admin |
+| `project_restored` | AdminProjects | admin |
+| `scene_created` | AdminScenes | admin |
+| `round_created` | AdminScenes (Round 01), dropbox-webhook (auto-created rounds) | admin / system |
+| `asset_uploaded` | AssetUploader | admin |
+| `asset_approved` | AssetViewer | client |
+| `revision_requested` | AssetViewer | client |
+| `client_created` | AdminClients | admin |
+| `client_registered` | AuthContext — first login detected | client |
+| `client_login` | AuthContext — subsequent logins | client |
+| `agreement_signed` | accept-agreement edge function | client |
+| `dropbox_file_received` | dropbox-webhook — new file synced | system |
+
+### Actor role reliability
+
+`logActivity()` accepts an optional `actorRole` override. All admin-only call sites pass `actorRole: "admin"` explicitly — this bypasses the `user_roles` DB lookup which can return null under certain timing/RLS conditions. Mixed-context callers (TaskDetail, AssetViewer) rely on the DB lookup. Client login entries always hardcode `actor_role: "client"`. Dropbox/system events hardcode `actor_role: "system"`.
+
 ## Ghost mode
 
 Admin can view the portal as any client:
@@ -321,7 +364,7 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 
 ## Pending — must do before first client invite
 
-- **DropboxVisualsPanel not rendering on round page** — `TaskDetail.tsx` still has a debug line showing `isAdmin`/`sceneId`/`projectId`. Remove it once the panel is confirmed working.
+- **Client instructions not reaching Kieran** — when a client submits Round 01 instructions or revision notes via NewRoundModal, the data is written to `scene_rounds.instructions` and uploaded files go to the `round-uploads` storage bucket. Nothing is pushed to Airtable, nothing is emailed. Kieran will not know a client has submitted unless Fred checks the portal manually. This gap needs either: (a) an automatic `push-scene` + Airtable update on round creation, or (b) an email notification to Fred/Kieran. Neither exists yet.
 - **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets.
 - **New commission brief flow not built** — 3-step overlay from idle dashboard state.
 - **Airtable webhook not set up** — `pull-status` is currently manual only; no automatic sync when Kieran updates Airtable.
