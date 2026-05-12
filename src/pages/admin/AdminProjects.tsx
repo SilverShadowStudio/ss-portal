@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
-import { Plus, Clock, ChevronRight, MoreVertical, Trash2, ArchiveRestore } from "lucide-react";
+import { Plus, Clock, ChevronRight, MoreVertical, Trash2, ArchiveRestore, Pencil } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,6 +69,7 @@ interface Project {
   user_id: string;
   scenes: Scene[];
   archived_at?: string | null;
+  dropbox_folder_url?: string | null;
 }
 
 interface Client {
@@ -104,8 +105,15 @@ export default function AdminProjects() {
   // Create project modal
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDropboxUrl, setNewProjectDropboxUrl] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  // Edit project dialog (Dropbox folder URL)
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
+  const [editProjectTarget, setEditProjectTarget] = useState<Project | null>(null);
+  const [editProjectDropboxUrl, setEditProjectDropboxUrl] = useState("");
+  const [isSavingProject, setIsSavingProject] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -215,7 +223,7 @@ export default function AdminProjects() {
 
       const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
-        .select("id, name, status, user_id, created_at, archived_at")
+        .select("id, name, status, user_id, created_at, archived_at, dropbox_folder_url")
         .order("created_at", { ascending: false });
       if (projectsError) throw projectsError;
 
@@ -321,6 +329,7 @@ export default function AdminProjects() {
           user_id: p.user_id,
           scenes: scenesByProject.get(p.id) || [],
           archived_at: p.archived_at ?? null,
+          dropbox_folder_url: (p as any).dropbox_folder_url ?? null,
         });
       }
 
@@ -476,6 +485,7 @@ export default function AdminProjects() {
         user_id: selectedClientId,
         account_id: membership.account_id,
         status: "active",
+        ...(newProjectDropboxUrl.trim() ? { dropbox_folder_url: newProjectDropboxUrl.trim() } : {}),
       });
       if (error) throw error;
 
@@ -491,6 +501,7 @@ export default function AdminProjects() {
       });
       setIsAddDialogOpen(false);
       setNewProjectName("");
+      setNewProjectDropboxUrl("");
       setSelectedClientId("");
       fetchData();
     } catch (error: any) {
@@ -498,6 +509,25 @@ export default function AdminProjects() {
       toast.error(error.message || "Failed to create project");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleSaveProjectDropbox = async () => {
+    if (!editProjectTarget) return;
+    setIsSavingProject(true);
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .update({ dropbox_folder_url: editProjectDropboxUrl.trim() || null })
+        .eq("id", editProjectTarget.id);
+      if (error) throw error;
+      setEditProjectOpen(false);
+      setEditProjectTarget(null);
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save project settings");
+    } finally {
+      setIsSavingProject(false);
     }
   };
 
@@ -584,16 +614,29 @@ export default function AdminProjects() {
                   {restoring === project.id ? "Restoring…" : "Restore project"}
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setProjectToArchive(project);
-                  }}
-                >
-                  <Trash2 size={14} className="mr-2" />
-                  Archive project…
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setEditProjectTarget(project);
+                      setEditProjectDropboxUrl(project.dropbox_folder_url ?? "");
+                      setEditProjectOpen(true);
+                    }}
+                  >
+                    <Pencil size={14} className="mr-2" />
+                    Edit project…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setProjectToArchive(project);
+                    }}
+                  >
+                    <Trash2 size={14} className="mr-2" />
+                    Archive project…
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1143,6 +1186,17 @@ export default function AdminProjects() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-label text-muted-foreground">
+                      DROPBOX FOLDER
+                    </label>
+                    <Input
+                      type="url"
+                      value={newProjectDropboxUrl}
+                      onChange={(e) => setNewProjectDropboxUrl(e.target.value)}
+                      placeholder="https://www.dropbox.com/home/..."
+                    />
+                  </div>
                   <Button
                     className="w-full"
                     onClick={handleCreateProject}
@@ -1172,6 +1226,37 @@ export default function AdminProjects() {
           {renderContent()}
         </motion.div>
       </AnimatePresence>
+
+      <Dialog open={editProjectOpen} onOpenChange={(open) => {
+        setEditProjectOpen(open);
+        if (!open) setEditProjectTarget(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editProjectTarget?.name ?? "Edit Project"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-label text-muted-foreground">
+                DROPBOX FOLDER
+              </label>
+              <Input
+                type="url"
+                value={editProjectDropboxUrl}
+                onChange={(e) => setEditProjectDropboxUrl(e.target.value)}
+                placeholder="https://www.dropbox.com/home/..."
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleSaveProjectDropbox}
+              disabled={isSavingProject}
+            >
+              {isSavingProject ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {projectToArchive && (
         <ArchiveProjectDialog
