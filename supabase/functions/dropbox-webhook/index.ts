@@ -164,7 +164,7 @@ async function processChanges(
     // Get folder mappings to know which paths to track
     const { data: mappings } = await supabase
       .from("folder_mappings")
-      .select("*, scenes(id, name, project_id, current_round), projects(id, name)");
+      .select("*, scenes(id, name, project_id), projects(id, name)");
 
     if (!mappings || mappings.length === 0) {
       console.log("No folder mappings configured");
@@ -172,20 +172,19 @@ async function processChanges(
     }
 
     // Create a map of paths to their targets (only for paths within allowed root)
-    const pathMap = new Map<string, { sceneId?: string; projectId?: string; roundNumber: number }>();
+    const pathMap = new Map<string, { sceneId?: string; projectId?: string }>();
     for (const mapping of mappings) {
       const path = mapping.dropbox_folder_path.toLowerCase();
-      
+
       // SECURITY: Only include mappings within allowed root
       if (!isPathAllowed(path)) {
         console.warn(`SECURITY: Skipping folder mapping outside allowed root: ${path}`);
         continue;
       }
-      
+
       pathMap.set(path, {
         sceneId: mapping.scene_id,
         projectId: mapping.project_id,
-        roundNumber: mapping.scenes?.current_round || 1,
       });
     }
 
@@ -251,21 +250,48 @@ async function processChanges(
 
       console.log("Processing file:", entry.path_display, "for scene:", matchedMapping.sceneId);
 
+      // Parse round number from filename: _R{n}_ pattern (e.g. CP107-SC05-VS_R02_10.jpg → 2)
+      const roundMatch = entry.name.match(/_R(\d+)_/i);
+      if (!roundMatch) {
+        console.log("Skipping file with no round pattern in name:", entry.name);
+        continue;
+      }
+      const roundNumber = parseInt(roundMatch[1], 10);
+
       // Get or create scene round
       let sceneRoundId: string | null = null;
       if (matchedMapping.sceneId) {
-        const { data: round } = await supabase
+        const { data: existingRound } = await supabase
           .from("scene_rounds")
           .select("id")
           .eq("scene_id", matchedMapping.sceneId)
-          .eq("round_number", matchedMapping.roundNumber)
-          .single();
+          .eq("round_number", roundNumber)
+          .maybeSingle();
 
-        sceneRoundId = round?.id;
+        if (existingRound) {
+          sceneRoundId = existingRound.id;
+        } else {
+          const { data: newRound, error: createError } = await supabase
+            .from("scene_rounds")
+            .insert({
+              scene_id: matchedMapping.sceneId,
+              round_number: roundNumber,
+              status: "in_production",
+            })
+            .select("id")
+            .single();
+
+          if (createError) {
+            console.error("Failed to create scene round:", roundNumber, createError.message);
+            continue;
+          }
+          sceneRoundId = newRound.id;
+          console.log("Created scene round", roundNumber, "for scene", matchedMapping.sceneId);
+        }
       }
 
       if (!sceneRoundId) {
-        console.log("No scene round found, skipping file");
+        console.log("No scene round resolved, skipping file:", entry.name);
         continue;
       }
 
