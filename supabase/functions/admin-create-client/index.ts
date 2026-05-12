@@ -264,28 +264,31 @@ Deno.serve(async (req) => {
       return json({ error: 'Failed to create account' }, 500)
     }
 
-    await Promise.all([
-      admin.from('profiles').insert({
-        user_id: invitedUserId,
-        full_name: fullName,
-        first_name: body.contact.firstName ?? null,
-        last_name: body.contact.lastName ?? null,
-        position: body.contact.position ?? null,
-        company: companyName,
-        account_id: account.id,
-      }),
-      admin.from('account_members').insert({
-        account_id: account.id,
-        user_id: invitedUserId,
-        role: 'owner',
-        joined_at: new Date().toISOString(),
-        invited_by: callerUserId,
-      }),
-      admin.from('user_roles').upsert(
-        { user_id: invitedUserId, role: 'client' },
-        { onConflict: 'user_id,role' },
-      ),
-    ])
+    const profileInsert = await admin.from('profiles').insert({
+      user_id: invitedUserId,
+      full_name: fullName,
+      first_name: body.contact.firstName ?? null,
+      last_name: body.contact.lastName ?? null,
+      position: body.contact.position ?? null,
+      company: companyName,
+      account_id: account.id,
+    })
+    if (profileInsert.error) console.error('profiles insert error', profileInsert.error)
+
+    const memberInsert = await admin.from('account_members').insert({
+      account_id: account.id,
+      user_id: invitedUserId,
+      role: 'owner',
+      joined_at: new Date().toISOString(),
+      invited_by: callerUserId,
+    })
+    if (memberInsert.error) console.error('account_members insert error', memberInsert.error)
+
+    const roleUpsert = await admin.from('user_roles').upsert(
+      { user_id: invitedUserId, role: 'client' },
+      { onConflict: 'user_id,role' },
+    )
+    if (roleUpsert.error) console.error('user_roles upsert error', roleUpsert.error)
 
     try {
       await admin.from('account_user_audit').insert({

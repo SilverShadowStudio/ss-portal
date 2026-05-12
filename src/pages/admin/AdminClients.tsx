@@ -78,7 +78,6 @@ export default function AdminClients() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [mode, setMode] = useState<"invite" | "provision">("invite");
   const [form, setForm] = useState({
     companyName: "",
     country: "",
@@ -91,15 +90,12 @@ export default function AdminClients() {
     lastName: "",
     position: "",
     email: "",
-    tempPassword: "",
     accountType: "partnership",
   });
   const [isCreating, setIsCreating] = useState(false);
   const [resultBanner, setResultBanner] = useState<{
-    mode: "invite" | "provision";
     email: string;
     inviteUrl?: string;
-    tempPassword?: string;
   } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const { toast } = useToast();
@@ -263,7 +259,7 @@ export default function AdminClients() {
       lastName: "",
       position: "",
       email: "",
-      tempPassword: "",
+      accountType: "partnership",
     });
 
   const handleCopy = async (label: string, value: string) => {
@@ -291,15 +287,6 @@ export default function AdminClients() {
         return;
       }
     }
-    if (mode === "provision" && form.tempPassword && form.tempPassword.length < 8) {
-      toast({
-        title: "Password too short",
-        description: "Temporary password must be at least 8 characters (or leave blank to auto-generate).",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsCreating(true);
     setResultBanner(null);
     try {
@@ -307,7 +294,7 @@ export default function AdminClients() {
         "admin-create-client",
         {
           body: {
-            mode,
+            mode: "invite",
             company: {
               companyName: form.companyName.trim(),
               country: form.country.trim() || null,
@@ -324,9 +311,6 @@ export default function AdminClients() {
               position: form.position.trim() || null,
             },
             accountType: form.accountType,
-            ...(mode === "provision" && form.tempPassword.trim()
-              ? { tempPassword: form.tempPassword.trim() }
-              : {}),
           },
         },
       );
@@ -334,20 +318,12 @@ export default function AdminClients() {
       if (data?.error) throw new Error(data.error);
 
       setResultBanner({
-        mode,
         email: form.email.trim(),
         inviteUrl: data?.inviteUrl,
-        tempPassword: data?.tempPassword,
       });
       toast({
-        title:
-          mode === "invite"
-            ? "Client account created — invitation sent"
-            : "Client account provisioned",
-        description:
-          mode === "invite"
-            ? `An invitation email has been queued for ${form.email}.`
-            : `${form.email} can now sign in.`,
+        title: "Client account created — invitation sent",
+        description: `An invitation email has been queued for ${form.email}.`,
       });
       const clientLabel = [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(" ") || form.companyName.trim();
       const { logActivity } = await import("@/lib/activityLog");
@@ -439,7 +415,6 @@ export default function AdminClients() {
             if (!open) {
               setResultBanner(null);
               resetForm();
-              setMode("invite");
             }
           }}
         >
@@ -454,35 +429,8 @@ export default function AdminClients() {
               <DialogTitle>Add a new client</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 pt-2">
-              {/* Mode selector */}
-              <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-secondary/40 p-1">
-                <button
-                  type="button"
-                  onClick={() => setMode("invite")}
-                  className={`rounded-md px-3 py-2 text-xs uppercase tracking-wider transition-colors ${
-                    mode === "invite"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Send invite link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("provision")}
-                  className={`rounded-md px-3 py-2 text-xs uppercase tracking-wider transition-colors ${
-                    mode === "provision"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Provision now
-                </button>
-              </div>
-              <p className="-mt-3 text-xs text-muted-foreground">
-                {mode === "invite"
-                  ? "We'll create the account with the company details below and email the contact a link to set their own password."
-                  : "We'll create the account and the login immediately. You'll receive a temporary password to share with the client."}
+              <p className="text-xs text-muted-foreground">
+                We'll create the account with the company details below and email the contact a link to set their own password.
               </p>
 
               {/* Company section */}
@@ -588,34 +536,15 @@ export default function AdminClients() {
                       placeholder="contact@company.com"
                     />
                   </div>
-                  {mode === "provision" && (
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className="text-xs text-muted-foreground">
-                        Temporary password (optional — leave blank to auto-generate)
-                      </label>
-                      <Input
-                        type="text"
-                        value={form.tempPassword}
-                        onChange={(e) => updateForm("tempPassword", e.target.value)}
-                        placeholder="Auto-generated if empty"
-                      />
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* Result banner */}
               {resultBanner && (
                 <div className="rounded-lg border border-gold/40 bg-[#181613] p-4 space-y-3">
-                  <div className="text-label-gold">
-                    {resultBanner.mode === "invite"
-                      ? "INVITATION READY"
-                      : "ACCOUNT PROVISIONED"}
-                  </div>
+                  <div className="text-label-gold">INVITATION READY</div>
                   <p className="text-sm text-foreground">
-                    {resultBanner.mode === "invite"
-                      ? `An email is on its way to ${resultBanner.email}. You can also share the link below directly.`
-                      : `${resultBanner.email} can now sign in. Share the temporary password below — they should change it on first login.`}
+                    An email is on its way to {resultBanner.email}. You can also share the link below directly.
                   </p>
                   {resultBanner.inviteUrl && (
                     <div className="flex items-center gap-2 rounded-md bg-background border border-border px-3 py-2">
@@ -624,35 +553,11 @@ export default function AdminClients() {
                       </span>
                       <button
                         type="button"
-                        onClick={() =>
-                          handleCopy("invite", resultBanner.inviteUrl!)
-                        }
+                        onClick={() => handleCopy("invite", resultBanner.inviteUrl!)}
                         className="flex h-7 w-7 items-center justify-center rounded hover:bg-secondary"
                         title="Copy invite link"
                       >
                         {copied === "invite" ? (
-                          <Check className="h-3.5 w-3.5 text-gold" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-                  {resultBanner.tempPassword && (
-                    <div className="flex items-center gap-2 rounded-md bg-background border border-border px-3 py-2">
-                      <span className="text-xs text-muted-foreground">Temp password:</span>
-                      <code className="text-xs text-foreground flex-1">
-                        {resultBanner.tempPassword}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCopy("password", resultBanner.tempPassword!)
-                        }
-                        className="flex h-7 w-7 items-center justify-center rounded hover:bg-secondary"
-                        title="Copy password"
-                      >
-                        {copied === "password" ? (
                           <Check className="h-3.5 w-3.5 text-gold" />
                         ) : (
                           <Copy className="h-3.5 w-3.5 text-muted-foreground" />
@@ -668,11 +573,7 @@ export default function AdminClients() {
                 onClick={handleAddClient}
                 disabled={isCreating}
               >
-                {isCreating
-                  ? "Working…"
-                  : mode === "invite"
-                    ? "Create account & send invite"
-                    : "Create account & login"}
+                {isCreating ? "Working…" : "Create account & send invite"}
               </Button>
             </div>
           </DialogContent>
