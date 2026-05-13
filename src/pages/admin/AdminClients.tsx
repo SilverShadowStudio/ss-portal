@@ -317,6 +317,7 @@ export default function AdminClients() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
+      setIsAddDialogOpen(false);
       setResultBanner({
         email: form.email.trim(),
         inviteUrl: data?.inviteUrl,
@@ -539,35 +540,6 @@ export default function AdminClients() {
                 </div>
               </div>
 
-              {/* Result banner */}
-              {resultBanner && (
-                <div className="rounded-lg border border-gold/40 bg-[#181613] p-4 space-y-3">
-                  <div className="text-label-gold">INVITATION READY</div>
-                  <p className="text-sm text-foreground">
-                    An email is on its way to {resultBanner.email}. You can also share the link below directly.
-                  </p>
-                  {resultBanner.inviteUrl && (
-                    <div className="flex items-center gap-2 rounded-md bg-background border border-border px-3 py-2">
-                      <span className="text-xs text-muted-foreground truncate flex-1">
-                        {resultBanner.inviteUrl}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy("invite", resultBanner.inviteUrl!)}
-                        className="flex h-7 w-7 items-center justify-center rounded hover:bg-secondary"
-                        title="Copy invite link"
-                      >
-                        {copied === "invite" ? (
-                          <Check className="h-3.5 w-3.5 text-gold" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <Button
                 className="w-full"
                 onClick={handleAddClient}
@@ -747,6 +719,49 @@ export default function AdminClients() {
           </div>
         )}
       </div>
+      {/* Invitation success overlay */}
+      {resultBanner && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+          onClick={() => setResultBanner(null)}
+        >
+          <div
+            className="w-full max-w-sm mx-4 border border-gold/30 bg-[#181613] p-8 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-label-gold">Invitation sent</p>
+            <p className="text-sm text-foreground/70 leading-relaxed">
+              An email is on its way to {resultBanner.email}.
+            </p>
+            {resultBanner.inviteUrl && (
+              <div className="flex items-center gap-2 border border-border/50 bg-background px-3 py-2">
+                <span className="text-xs text-muted-foreground truncate flex-1">
+                  {resultBanner.inviteUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy("invite", resultBanner.inviteUrl!)}
+                  className="flex h-7 w-7 items-center justify-center hover:bg-secondary shrink-0"
+                  title="Copy invite link"
+                >
+                  {copied === "invite" ? (
+                    <Check className="h-3.5 w-3.5 text-gold" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setResultBanner(null)}
+              className="w-full text-[10px] uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground/60 transition-colors pt-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }
