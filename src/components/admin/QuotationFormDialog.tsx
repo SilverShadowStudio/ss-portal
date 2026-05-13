@@ -174,6 +174,11 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
         entity_id: created.id,
       }));
       if (rows.length) await supabase.from("client_notifications").insert(rows as any);
+
+      // Send branded email to account owner — fire and forget
+      supabase.functions
+        .invoke("send-quotation-email", { body: { quotationId: created.id } })
+        .catch((e) => console.warn("[QuotationFormDialog] Email send failed:", e));
     }
 
     setSaving(false);
