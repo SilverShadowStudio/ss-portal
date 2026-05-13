@@ -50,6 +50,7 @@ interface Row {
   subtotal: number | null;
   vat_rate: number | null;
   vat_amount: number | null;
+  deposit_percentage: number | null;
   account_company?: string | null;
 }
 
@@ -59,6 +60,7 @@ export function QuotationsTab() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
   const [viewing, setViewing] = useState<QuotationViewerData | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -262,7 +264,10 @@ export function QuotationsTab() {
                           <DropdownMenuItem onClick={() => view(r)}>
                             <Eye className="mr-2 h-4 w-4" /> View quotation
                           </DropdownMenuItem>
-                          {r.status === "draft" && (
+                          <DropdownMenuItem onClick={() => { setEditingRow(r); setOpenMenuId(null); }}>
+                            Edit quotation
+                          </DropdownMenuItem>
+                          {["draft", "sent"].includes(r.status) && (
                             <DropdownMenuItem onClick={() => sendQuotation(r.id)}>
                               Send quotation
                             </DropdownMenuItem>
@@ -271,17 +276,15 @@ export function QuotationsTab() {
                           {r.status !== "signed" && <DropdownMenuItem onClick={() => updateStatus(r.id, "signed")}>Mark as signed</DropdownMenuItem>}
                           {r.status !== "declined" && <DropdownMenuItem onClick={() => updateStatus(r.id, "declined")}>Mark as declined</DropdownMenuItem>}
                           {r.status !== "cancelled" && <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>}
-                          {["draft", "declined", "cancelled"].includes(r.status) && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-rose-500 focus:text-rose-500 focus:bg-rose-500/10"
-                                onSelect={(e) => { e.preventDefault(); setConfirmingDeleteId(r.id); }}
-                              >
-                                Delete quotation
-                              </DropdownMenuItem>
-                            </>
-                          )}
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-rose-500 focus:text-rose-500 focus:bg-rose-500/10"
+                              onSelect={(e) => { e.preventDefault(); setConfirmingDeleteId(r.id); }}
+                            >
+                              Delete quotation
+                            </DropdownMenuItem>
+                          </>
                         </>
                       )}
                     </DropdownMenuContent>
@@ -294,6 +297,12 @@ export function QuotationsTab() {
       </div>
 
       <QuotationFormDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={fetchRows} />
+      <QuotationFormDialog
+        open={!!editingRow}
+        onOpenChange={(o) => !o && setEditingRow(null)}
+        onSaved={fetchRows}
+        quotation={editingRow ?? undefined}
+      />
       <QuotationViewer
         quotation={viewing}
         open={!!viewing}

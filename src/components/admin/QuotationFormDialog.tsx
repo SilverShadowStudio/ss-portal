@@ -35,13 +35,28 @@ interface ProjectOption {
   account_id: string | null;
 }
 
+interface EditableQuotation {
+  id: string;
+  quotation_number: string;
+  line_items: any[];
+  vat_rate: number | null;
+  deposit_percentage: number | null;
+  currency: string | null;
+  notes: string | null;
+  project_name: string | null;
+  status: string;
+  account_id: string | null;
+  project_id: string | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  quotation?: EditableQuotation;
 }
 
-export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
+export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: Props) {
   const { toast } = useToast();
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -60,7 +75,23 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setQuotationNumber(suggestQuotationNumber());
+    if (!open) return;
+    if (quotation) {
+      setAccountId(quotation.account_id || "");
+      setProjectId(quotation.project_id || "none");
+      setQuotationNumber(quotation.quotation_number);
+      setProjectName(quotation.project_name || "");
+      setStatus(quotation.status);
+      setCurrency(quotation.currency || "GBP");
+      setVatRate(quotation.vat_rate ?? 20);
+      setDepositPercentage(quotation.deposit_percentage ?? 50);
+      setNotes(quotation.notes || "");
+      setItems(Array.isArray(quotation.line_items) && quotation.line_items.length > 0
+        ? quotation.line_items
+        : [{ description: "", quantity: 1, unit_price: 0 }]);
+    } else {
+      setQuotationNumber(suggestQuotationNumber());
+    }
   }, [open]);
 
   useEffect(() => {
@@ -146,6 +177,23 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
       sent_at: status === "sent" ? new Date().toISOString() : null,
     };
 
+    if (quotation) {
+      const { error } = await supabase
+        .from("quotation_documents")
+        .update(payload as any)
+        .eq("id", quotation.id);
+      setSaving(false);
+      if (error) {
+        toast({ title: "Failed to update quotation", description: error.message, variant: "destructive" });
+        return;
+      }
+      toast({ title: "Quotation updated" });
+      reset();
+      onSaved();
+      onOpenChange(false);
+      return;
+    }
+
     const { data: created, error } = await supabase
       .from("quotation_documents")
       .insert(payload as any)
@@ -194,14 +242,14 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New quotation</DialogTitle>
+          <DialogTitle>{quotation ? "Edit quotation" : "New quotation"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); setProjectName(""); }}>
+              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); setProjectName(""); }} disabled={!!quotation}>
                 <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   {accounts.map((a) => (
@@ -378,7 +426,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Creating..." : "Create quotation"}
+            {saving ? (quotation ? "Saving..." : "Creating...") : (quotation ? "Update quotation" : "Create quotation")}
           </Button>
         </DialogFooter>
       </DialogContent>
