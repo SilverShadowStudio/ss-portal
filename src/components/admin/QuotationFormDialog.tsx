@@ -60,7 +60,10 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (open) setQuotationNumber(suggestQuotationNumber());
+  }, [open]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       const { data: accs } = await supabase
@@ -75,10 +78,9 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
       if (cancelled) return;
       setAccounts(accs || []);
       setProjects(projs || []);
-      setQuotationNumber(suggestQuotationNumber());
     })();
     return () => { cancelled = true; };
-  }, [open]);
+  }, []);
 
   function suggestQuotationNumber() {
     const rand = Math.floor(100 + Math.random() * 900);
