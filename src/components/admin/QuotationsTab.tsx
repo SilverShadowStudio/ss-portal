@@ -122,6 +122,20 @@ export function QuotationsTab() {
     else fetchRows();
   }
 
+  async function sendQuotation(id: string) {
+    const patch: any = { status: "sent", sent_at: new Date().toISOString() };
+    const { error } = await supabase.from("quotation_documents").update(patch).eq("id", id);
+    if (error) {
+      toast({ title: "Failed to send quotation", description: error.message, variant: "destructive" });
+      return;
+    }
+    supabase.functions
+      .invoke("send-quotation-email", { body: { quotationId: id } })
+      .catch((e) => console.warn("[QuotationsTab] Email send failed:", e));
+    toast({ title: "Quotation sent" });
+    fetchRows();
+  }
+
   function view(r: Row) {
     setViewing({
       id: r.id,
@@ -248,6 +262,11 @@ export function QuotationsTab() {
                           <DropdownMenuItem onClick={() => view(r)}>
                             <Eye className="mr-2 h-4 w-4" /> View quotation
                           </DropdownMenuItem>
+                          {r.status === "draft" && (
+                            <DropdownMenuItem onClick={() => sendQuotation(r.id)}>
+                              Send quotation
+                            </DropdownMenuItem>
+                          )}
                           {r.status !== "sent" && <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>}
                           {r.status !== "signed" && <DropdownMenuItem onClick={() => updateStatus(r.id, "signed")}>Mark as signed</DropdownMenuItem>}
                           {r.status !== "declined" && <DropdownMenuItem onClick={() => updateStatus(r.id, "declined")}>Mark as declined</DropdownMenuItem>}
