@@ -205,7 +205,10 @@ export default function Auth() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-smooth"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 p-1 transition-smooth"
+                  style={{ background: "none", border: "none", opacity: 0.35 }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.65")}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = "0.35")}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
