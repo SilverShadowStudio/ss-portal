@@ -66,11 +66,11 @@ export default function SetPassword() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="flex w-full max-w-[360px] flex-col items-center">
-          <div className="animate-fade-in" style={{ marginBottom: "56px" }}>
+          <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
             <img
               src={silvershadowLogo}
               alt="Silvershadow Studio"
-              className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
+              className="h-7 w-auto brightness-0 invert-0 dark:invert"
             />
           </div>
           <div className="w-full animate-fade-in text-center" style={{ animationDelay: "0.05s" }}>
@@ -99,11 +99,11 @@ export default function SetPassword() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex w-full max-w-[360px] flex-col items-center">
-      <div className="animate-fade-in" style={{ marginBottom: "56px" }}>
+      <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
         <img
           src={silvershadowLogo}
           alt="Silvershadow Studio"
-          className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
+          className="h-7 w-auto brightness-0 invert-0 dark:invert"
         />
       </div>
 
