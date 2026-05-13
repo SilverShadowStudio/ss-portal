@@ -170,6 +170,10 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
         entity_id: created.id,
       }));
       if (rows.length) await supabase.from("client_notifications").insert(rows as any);
+
+      supabase.functions
+        .invoke("send-invoice-email", { body: { invoiceId: created.id } })
+        .catch((e) => console.warn("[InvoiceFormDialog] Invoice email send failed:", e));
     }
     setSaving(false);
     toast({ title: "Invoice created" });

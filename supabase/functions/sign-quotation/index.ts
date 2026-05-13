@@ -108,5 +108,16 @@ Deno.serve(async (req) => {
 
   if (invoiceErr) console.error('Failed to create deposit invoice', invoiceErr)
 
+  if (invoice?.id) {
+    fetch(`${supabaseUrl}/functions/v1/send-invoice-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ invoiceId: invoice.id }),
+    }).catch((e: unknown) => console.warn('[sign-quotation] Invoice email failed:', e))
+  }
+
   return json({ success: true, signedAt, depositAmount, invoiceId: invoice?.id ?? null })
 })
