@@ -120,6 +120,12 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
     const grand = Number(data.amount ?? subtotal + vatAmount);
     const number = data.quotation_number || data.reference_number || "—";
 
+    const projectDisplayName = data.project_name?.trim() || null;
+    // Omit PROJECT row if the value is a UUID or a short code with no spaces
+    const showProject = !!projectDisplayName &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(projectDisplayName) &&
+      !/^[A-Z0-9_-]{2,10}$/i.test(projectDisplayName);
+
     const addressParts = (data.client_address || "")
       .split("\n")
       .map((l) => l.trim())
@@ -134,6 +140,8 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
     const ruleLine = (heavy = false): React.CSSProperties => ({
       height: 0,
       borderTop: heavy ? `1px solid ${ruleHeavy}` : `1px solid ${ruleLight}`,
+      width: "calc(100% - 120px)",
+      marginLeft: "60px",
     });
 
     const Section = ({ children }: { children: React.ReactNode }) => (
@@ -199,12 +207,20 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
 
           <div style={{ ...ruleLine(false), marginTop: 36 }} />
 
-          {/* Title block — Quotation at 32pt, Date at 18pt; labels recessive at 7pt */}
+          {/* Title block — project (if present) full-width at top, then quotation / date grid */}
           <div style={{ marginTop: 28 }}>
+            {showProject && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={metaLabel}>Project</div>
+                <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 400, color: ink, marginTop: 6, lineHeight: 1.15 }}>
+                  {projectDisplayName}
+                </div>
+              </div>
+            )}
             <Section>
               <div>
                 <div style={metaLabel}>Quotation</div>
-                <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 400, color: ink, marginTop: 6, lineHeight: 1.1, fontVariantNumeric: "tabular-nums", fontVariantLigatures: "none" }}>
+                <div style={{ fontFamily: serif, fontSize: showProject ? 18 : 32, fontWeight: 400, color: ink, marginTop: 6, lineHeight: 1.1, fontVariantNumeric: "tabular-nums", fontVariantLigatures: "none" }}>
                   {number}
                 </div>
               </div>
@@ -217,23 +233,16 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
             </Section>
           </div>
 
-          {/* Project / client — project row omitted if null */}
+          {/* Client block */}
           <div style={{ marginTop: 24 }}>
-            {data.project_name ? (
-              <Section>
-                <MetaField heading="Project">{data.project_name}</MetaField>
-                <ClientBlock />
-              </Section>
-            ) : (
-              <ClientBlock />
-            )}
+            <ClientBlock />
           </div>
 
           {/* Brief */}
           <div style={{ ...ruleLine(false), marginTop: 28 }} />
           <div style={{ marginTop: 20 }}>
             <div style={label}>Brief</div>
-            <div style={{ ...prose, marginTop: 10 }}>
+            <div style={{ ...prose, marginTop: 10, maxWidth: 480 }}>
               The Client hereby commissions the production of the deliverables
               listed below. These will be produced to Silvershadow Studio's
               signature standard, suitable for premium presentations and
@@ -320,7 +329,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
             <div
               style={{
                 fontFamily: serif,
-                fontSize: 32,
+                fontSize: 36,
                 fontWeight: 300,
                 color: ink,
                 fontVariantNumeric: "lining-nums tabular-nums",
@@ -340,17 +349,17 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
               The following comprehensive architectural and decorative documentation must be provided:
             </div>
             <div style={{ ...prose, marginTop: 8 }}>
-              <span style={{ fontFamily: sans, fontWeight: 500 }}>Architectural Plans</span>
+              <span style={{ fontFamily: "sans-serif", fontWeight: 500 }}>Architectural Plans</span>
               {" — "}
               <span>DWG floor plans, elevations, and ceiling plans.</span>
             </div>
             <div style={{ ...prose, marginTop: 6 }}>
-              <span style={{ fontFamily: sans, fontWeight: 500 }}>Design and Finishes</span>
+              <span style={{ fontFamily: "sans-serif", fontWeight: 500 }}>Design and Finishes</span>
               {" — "}
               <span>Detailed finishes schedule (walls, windows, fabrics, etc.), FF&amp;E layout plan, lighting and atmosphere mood board.</span>
             </div>
             <div style={{ ...prose, marginTop: 6 }}>
-              <span style={{ fontFamily: sans, fontWeight: 500 }}>Reference Material</span>
+              <span style={{ fontFamily: "sans-serif", fontWeight: 500 }}>Reference Material</span>
               {" — "}
               <span>Site photography, existing 3D models.</span>
             </div>
