@@ -98,6 +98,9 @@ export default function AdminClients() {
     inviteUrl?: string;
   } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [signature, setSignature] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsedConfirm, setParsedConfirm] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -246,7 +249,7 @@ export default function AdminClients() {
   const updateForm = (key: keyof typeof form, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
 
-  const resetForm = () =>
+  const resetForm = () => {
     setForm({
       companyName: "",
       country: "",
@@ -261,6 +264,44 @@ export default function AdminClients() {
       email: "",
       accountType: "partnership",
     });
+    setSignature("");
+    setParsedConfirm(false);
+  };
+
+  const handleParseSignature = async () => {
+    if (!signature.trim()) return;
+    setIsParsing(true);
+    setParsedConfirm(false);
+    try {
+      const { data, error } = await supabase.functions.invoke("parse-signature", {
+        body: { signature: signature.trim() },
+      });
+      if (error) throw error;
+      if (!data?.data) throw new Error("No data returned");
+      const p = data.data;
+      const fill = (cur: string, val: unknown) =>
+        cur.trim() ? cur : typeof val === "string" && val ? val : cur;
+      setForm((prev) => ({
+        ...prev,
+        firstName:          fill(prev.firstName,          p.first_name),
+        lastName:           fill(prev.lastName,           p.last_name),
+        position:           fill(prev.position,           p.position),
+        companyName:        fill(prev.companyName,        p.company_name),
+        email:              fill(prev.email,              p.email),
+        country:            fill(prev.country,            p.country),
+        city:               fill(prev.city,               p.city),
+      }));
+      setParsedConfirm(true);
+    } catch (err: any) {
+      toast({
+        title: "Failed to parse signature",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   const handleCopy = async (label: string, value: string) => {
     try {
@@ -433,6 +474,33 @@ export default function AdminClients() {
               <p className="text-xs text-muted-foreground">
                 We'll create the account with the company details below and email the contact a link to set their own password.
               </p>
+
+              {/* Signature parser */}
+              <div className="space-y-2">
+                <div className="text-label text-muted-foreground">PASTE EMAIL SIGNATURE</div>
+                <textarea
+                  value={signature}
+                  onChange={(e) => { setSignature(e.target.value); setParsedConfirm(false); }}
+                  placeholder="Paste a contact's email signature here to auto-populate the fields below."
+                  rows={4}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleParseSignature}
+                    disabled={isParsing || !signature.trim()}
+                    className="text-[11px] uppercase tracking-[0.15em] font-medium border border-input bg-background px-3 py-1.5 rounded-sm hover:bg-muted transition-colors disabled:opacity-40"
+                  >
+                    {isParsing ? "Parsing…" : "Parse Signature"}
+                  </button>
+                  {parsedConfirm && (
+                    <span className="text-[11px] text-muted-foreground" style={{ opacity: 0.45 }}>
+                      Fields populated from signature
+                    </span>
+                  )}
+                </div>
+              </div>
 
               {/* Company section */}
               <div className="space-y-3">

@@ -21,6 +21,12 @@ export default function SetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
 
+  // Detect Supabase error params embedded in the URL hash (e.g. expired magic link).
+  // Supabase appends these before the JS loads, so reading window.location.hash is safe.
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const urlErrorCode = hashParams.get("error_code");
+  const urlError = hashParams.get("error");
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setSessionReady(true);
@@ -53,6 +59,34 @@ export default function SetPassword() {
       setIsLoading(false);
     }
   };
+
+  // Show error immediately — no spinner, no blank screen
+  if (urlError || urlErrorCode) {
+    const isExpired = urlErrorCode === "otp_expired";
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="flex w-full max-w-[360px] flex-col items-center">
+          <div className="animate-fade-in" style={{ marginBottom: "56px" }}>
+            <img
+              src={silvershadowLogo}
+              alt="Silvershadow Studio"
+              className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
+            />
+          </div>
+          <div className="w-full animate-fade-in text-center" style={{ animationDelay: "0.05s" }}>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-8">
+              {isExpired
+                ? "This invitation link has expired. Please contact Silvershadow Studio to receive a new one."
+                : "This link is invalid. Please contact Silvershadow Studio."}
+            </p>
+            <button onClick={() => navigate("/")} className="sp-submit">
+              Return to login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!sessionReady) {
     return (

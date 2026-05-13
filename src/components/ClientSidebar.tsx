@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SB } from "@/lib/sidebarConstants";
 
 type NavItem = { path: string; label: string; abbr: string };
 
@@ -70,7 +71,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     navigate("/auth");
   };
 
-  const sidebarWidth = expanded ? "w-[220px]" : "w-20";
+  const sidebarWidth = expanded ? SB.widthExpanded : SB.widthCollapsed;
 
   const isActive = (path: string) =>
     location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
@@ -134,7 +135,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         )}
       >
         {/* Logo */}
-        <div className={cn(expanded ? "mb-6 px-4" : "mb-6")}>
+        <div className={cn(expanded ? `${SB.logoMarginExpanded} px-4` : SB.logoMarginCollapsed)}>
           <a href="https://www.silvershadowstudio.com" target="_blank" rel="noopener noreferrer" className="block transition-smooth hover:opacity-80">
             {expanded ? (
               <img
@@ -168,7 +169,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                         ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
                         : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
                     )}
-                    style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                    style={expanded ? SB.navStyle : undefined}
                     title={expanded ? undefined : item.label}
                   >
                     {expanded && active && (
@@ -177,7 +178,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                     {expanded ? (
                       <span>{item.label}</span>
                     ) : (
-                      <span className="text-[9px] font-medium uppercase tracking-[0.12em]">
+                      <span className={SB.abbrClass}>
                         {item.abbr}
                       </span>
                     )}
@@ -188,7 +189,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                 return (
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
                       {item.label}
                     </TooltipContent>
                   </Tooltip>
@@ -227,9 +228,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                       "flex items-center w-full pl-5 pr-3 py-3.5",
                     )}
                     style={{
-                      fontSize: 11,
-                      letterSpacing: "0.24em",
-                      fontWeight: 500,
+                      ...SB.menuItemStyle,
                       transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                     }}
                   >
@@ -246,9 +245,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                         menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
                       )}
                       style={{
-                        height: 1,
-                        margin: "2px 20px",
-                        background: "hsl(var(--border) / 0.4)",
+                        ...SB.separatorStyle,
                         transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                       }}
                     />
@@ -271,18 +268,18 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                 >
                   {expanded ? (
                     <div className="text-left min-w-0">
-                      <p className="text-[11px] font-medium text-foreground/70 leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                      <p className={SB.accountNameClass} style={SB.accountNameStyle}>
                         {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || "Account"}
                       </p>
                       {profile?.company && (
-                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/50 mt-1 whitespace-normal break-words">
+                        <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1 whitespace-normal break-words`}>
                           {profile.company}
                         </p>
                       )}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center">
-                      <p className="text-[9px] font-medium text-foreground/40 uppercase tracking-[0.12em] leading-tight text-center">
+                      <p className={SB.accountInitialsClass}>
                         {profile?.first_name
                           ? `${profile.first_name[0]}${profile?.last_name?.[0] ?? ""}`.toUpperCase()
                           : "··"}
@@ -292,7 +289,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
                 </button>
               </TooltipTrigger>
               {!expanded && (
-                <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
                   Account
                 </TooltipContent>
               )}

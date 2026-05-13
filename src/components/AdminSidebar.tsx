@@ -7,6 +7,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SB } from "@/lib/sidebarConstants";
 
 const navItems = [
   { path: "/admin",                       label: "Dashboard", abbr: "DA" },
@@ -61,7 +62,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     navigate("/auth");
   };
 
-  const sidebarWidth = expanded ? "w-64" : "w-20";
+  const sidebarWidth = expanded ? SB.widthExpanded : SB.widthCollapsed;
 
   const accountItems: Array<{
     label: string;
@@ -69,15 +70,15 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     active?: boolean;
     separatorAfter?: boolean;
   }> = [
-    { label: "Orders",       onClick: () => navigate("/admin/orders"),       active: location.pathname.startsWith("/admin/orders") },
-    { label: "Finance",      onClick: () => navigate("/admin/invoices"),     active: location.pathname.startsWith("/admin/invoices") },
-    { label: "Documents",    onClick: () => navigate("/admin/documents"),    active: location.pathname.startsWith("/admin/documents") },
-    { label: "Batch Upload", onClick: () => navigate("/admin/batch-upload"), active: location.pathname.startsWith("/admin/batch-upload") },
-    { label: "Settings",    onClick: () => navigate("/admin/settings"),     active: location.pathname.startsWith("/admin/settings") },
+    { label: "Orders",        onClick: () => navigate("/admin/orders"),        active: location.pathname.startsWith("/admin/orders") },
+    { label: "Finance",       onClick: () => navigate("/admin/invoices"),      active: location.pathname.startsWith("/admin/invoices") },
+    { label: "Documents",     onClick: () => navigate("/admin/documents"),     active: location.pathname.startsWith("/admin/documents") },
+    { label: "Batch Upload",  onClick: () => navigate("/admin/batch-upload"),  active: location.pathname.startsWith("/admin/batch-upload") },
+    { label: "Settings",      onClick: () => navigate("/admin/settings"),      active: location.pathname.startsWith("/admin/settings") },
     { label: "Email Preview", onClick: () => navigate("/admin/email-preview"), active: location.pathname.startsWith("/admin/email-preview"), separatorAfter: true },
     { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
     { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
-    { label: "Log off",      onClick: handleSignOut },
+    { label: "Log off", onClick: handleSignOut },
   ];
 
   return (
@@ -89,7 +90,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       )}
     >
       {/* Logo */}
-      <div className={cn(expanded ? "mb-12 px-4" : "mb-6")}>
+      <div className={cn(expanded ? `${SB.logoMarginExpanded} px-4` : SB.logoMarginCollapsed)}>
         <a href="https://www.silvershadowstudio.com" target="_blank" rel="noopener noreferrer" className="block transition-smooth hover:opacity-80">
           {expanded ? (
             <img
@@ -132,7 +133,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                           !expanded && "hover:bg-muted/40",
                         ),
                   )}
-                  style={expanded ? { fontSize: 11, letterSpacing: "0.24em", fontWeight: 500 } : undefined}
+                  style={expanded ? SB.navStyle : undefined}
                 >
                   {expanded && isActive && (
                     <span
@@ -151,7 +152,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                     </span>
                   ) : (
                     <span className="relative shrink-0 flex items-center justify-center">
-                      <span className="text-[9px] font-medium uppercase tracking-[0.12em]">
+                      <span className={SB.abbrClass}>
                         {item.abbr}
                       </span>
                       {showBadge && (
@@ -168,7 +169,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               return (
                 <Tooltip key={item.path}>
                   <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+                  <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
@@ -207,9 +208,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                     "flex items-center w-full pl-5 pr-3 py-3.5",
                   )}
                   style={{
-                    fontSize: 11,
-                    letterSpacing: "0.24em",
-                    fontWeight: 500,
+                    ...SB.menuItemStyle,
                     transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                   }}
                 >
@@ -226,9 +225,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                       menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
                     )}
                     style={{
-                      height: 1,
-                      margin: "2px 20px",
-                      background: "hsl(var(--border) / 0.4)",
+                      ...SB.separatorStyle,
                       transitionDelay: `${(accountItems.length - 1 - idx) * 40}ms`,
                     }}
                   />
@@ -251,14 +248,14 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               >
                 {expanded ? (
                   <div className="text-left min-w-0">
-                    <p className="text-[12px] font-medium text-foreground leading-tight whitespace-normal break-words" style={{ letterSpacing: "0.02em" }}>
+                    <p className={SB.accountNameClass} style={SB.accountNameStyle}>
                       {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.full_name || user?.user_metadata?.full_name || "Admin"}
                     </p>
-                    <p className="text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]/55 mt-1">Admin</p>
+                    <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1`}>Admin</p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
-                    <p className="text-[9px] font-medium text-foreground/40 uppercase tracking-[0.12em] leading-tight text-center">
+                    <p className={SB.accountInitialsClass}>
                       {profile?.first_name
                         ? `${profile.first_name[0]}${profile?.last_name?.[0] ?? ""}`.toUpperCase()
                         : "AD"}
@@ -268,7 +265,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               </button>
             </TooltipTrigger>
             {!expanded && (
-              <TooltipContent side="right" sideOffset={12} className="text-[10px] uppercase tracking-[0.18em]">
+              <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
                 Account
               </TooltipContent>
             )}
