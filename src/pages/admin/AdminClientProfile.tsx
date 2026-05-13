@@ -47,6 +47,9 @@ export default function AdminClientProfile() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  const [hasSigned, setHasSigned] = useState<boolean | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   useEffect(() => {
     if (!accountId) return;
@@ -64,6 +67,13 @@ export default function AdminClientProfile() {
         if (!account) throw new Error("Account not found");
 
         setOwnerUserId(account.owner_user_id);
+
+        const { data: agreementRow } = await supabase
+          .from("agreements")
+          .select("id")
+          .eq("user_id", account.owner_user_id)
+          .maybeSingle();
+        setHasSigned(!!agreementRow);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -123,6 +133,40 @@ export default function AdminClientProfile() {
 
   const update = (key: keyof FormState, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
+
+  const handleResend = async () => {
+    if (!accountId || !form.email) return;
+    setResendLoading(true);
+    setResendSent(false);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-create-client",
+        {
+          body: {
+            mode: "resend",
+            accountId,
+            contact: {
+              email: form.email.trim(),
+              firstName: form.firstName || null,
+              lastName: form.lastName || null,
+            },
+          },
+        },
+      );
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setResendSent(true);
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "Failed to resend invitation",
+        description: err?.message || "Unexpected error",
+        variant: "destructive",
+      });
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!accountId) return;
@@ -240,6 +284,31 @@ export default function AdminClientProfile() {
                 onChange={(v) => update("email", v)}
                 placeholder={ownerUserId ? undefined : ""}
               />
+            </div>
+
+            {hasSigned === false && ownerUserId && (
+              <div className="mt-5">
+                {resendSent ? (
+                  <span
+                    className="text-[11px] uppercase tracking-[0.15em]"
+                    style={{ color: "var(--gold)", opacity: 0.45 }}
+                  >
+                    Invitation sent.
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleResend}
+                    disabled={resendLoading}
+                    className="text-[11px] uppercase tracking-[0.15em] bg-transparent border-0 p-0 cursor-pointer hover:opacity-60 transition-opacity disabled:opacity-40"
+                    style={{ color: "var(--gold)", textDecoration: "none" }}
+                  >
+                    {resendLoading ? "SENDING…" : "RESEND INVITATION →"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4">
               <Field
                 label="New password"
                 type="password"

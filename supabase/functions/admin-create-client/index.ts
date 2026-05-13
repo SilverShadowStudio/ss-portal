@@ -38,12 +38,12 @@ interface ContactDetails {
 }
 
 interface RequestBody {
-  mode: 'invite' | 'provision'
-  company: CompanyDetails
+  mode: 'invite' | 'provision' | 'resend'
+  company?: CompanyDetails
   contact: ContactDetails
   accountType?: 'partnership' | 'project'
-  // Required when mode === 'provision'. If absent, a random one is generated.
   tempPassword?: string
+  accountId?: string
 }
 
 Deno.serve(async (req) => {
@@ -93,18 +93,99 @@ Deno.serve(async (req) => {
   }
 
   const mode = body.mode
-  if (mode !== 'invite' && mode !== 'provision') {
-    return json({ error: 'mode must be "invite" or "provision"' }, 400)
-  }
-
-  const companyName = body.company?.companyName?.trim()
-  if (!companyName) {
-    return json({ error: 'company.companyName is required' }, 400)
+  if (mode !== 'invite' && mode !== 'provision' && mode !== 'resend') {
+    return json({ error: 'mode must be "invite", "provision", or "resend"' }, 400)
   }
 
   const email = body.contact?.email?.trim().toLowerCase()
   if (!email || !EMAIL_REGEX.test(email)) {
     return json({ error: 'A valid contact.email is required' }, 400)
+  }
+
+  // ---- Resend mode: re-invite an existing client ----
+  if (mode === 'resend') {
+    const targetAccountId = body.accountId?.trim()
+    if (!targetAccountId) {
+      return json({ error: 'accountId is required for resend mode' }, 400)
+    }
+
+    const { data: acct } = await admin
+      .from('accounts')
+      .select('id, company_name')
+      .eq('id', targetAccountId)
+      .maybeSingle()
+    if (!acct) return json({ error: 'Account not found' }, 404)
+
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: { redirectTo: `${APP_BASE_URL}/set-password` },
+    })
+
+    if (linkErr || !linkData?.user) {
+      console.error('generateLink failed for resend', linkErr)
+      return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
+    }
+
+    const inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+
+    try {
+      await admin.from('account_user_audit').insert({
+        account_id: acct.id,
+        actor_user_id: callerUserId,
+        target_user_id: linkData.user.id,
+        target_email: email,
+        event_type: 'admin_resent_invite',
+        metadata: { company_name: acct.company_name },
+      })
+    } catch { /* best-effort audit */ }
+
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    let emailSent = false
+
+    let emailConfig: InviteEmailConfig = {}
+    try {
+      const { data: cfgRow } = await admin
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'email_invite_config')
+        .maybeSingle()
+      if (cfgRow?.value) emailConfig = cfgRow.value as InviteEmailConfig
+    } catch { /* use defaults */ }
+
+    if (resendKey && inviteUrl) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
+            to: [email],
+            subject: 'Your Silvershadow Studio portal is ready.',
+            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
+            headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
+            tags: [{ name: 'category', value: 'reinvite' }],
+          }),
+        })
+        emailSent = res.ok
+        if (!res.ok) console.error('Resend error (resend mode):', await res.text())
+      } catch (e) {
+        console.error('Resend exception (resend mode):', e)
+      }
+    }
+
+    return json({
+      success: true,
+      mode,
+      accountId: acct.id,
+      inviteUrl,
+      emailSent,
+    })
+  }
+
+  const companyName = body.company?.companyName?.trim()
+  if (!companyName) {
+    return json({ error: 'company.companyName is required' }, 400)
   }
 
   const fullName = [body.contact?.firstName, body.contact?.lastName]
