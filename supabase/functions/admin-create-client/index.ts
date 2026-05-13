@@ -296,8 +296,13 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: 'Your Silvershadow Studio portal is ready.',
-            // ctaUrl always uses the real invite link, not any stored preview URL
             html: buildInviteEmailHtml(companyName, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
+            headers: {
+              'X-Entity-Ref-ID': crypto.randomUUID(),
+            },
+            tags: [
+              { name: 'category', value: 'invite' },
+            ],
           }),
         })
         emailSent = res.ok
