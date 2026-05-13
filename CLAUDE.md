@@ -59,6 +59,7 @@ Rules:
 - Dropbox API (render delivery)
 - Airtable API (Kieran's production tracker)
 - Resend (transactional email — `RESEND_API_KEY` set in Supabase secrets, `silvershadowstudio.com` domain verified, DNS records applied via Squarespace)
+- Stripe (payment processing — account created, keys pending; see Stripe section)
 
 ## Supabase
 
@@ -68,6 +69,7 @@ Rules:
 - Access token: stored in your password manager (Supabase dashboard → Account → Access tokens)
 - Deploy edge functions: `SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy <name> --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt`
 - Connection is hardcoded in `src/integrations/supabase/client.ts` — Vercel env vars are not used (they were previously injected by Lovable's integration and caused conflicts)
+- **OTP expiry**: extended to 604800 seconds (7 days) via Supabase Auth settings API — invitation links are valid for 7 days
 
 ## Git / Deploy workflow
 
@@ -112,50 +114,66 @@ src/
     Orders.tsx             # Client orders confirmation (Uber-style flow)
     Documents.tsx          # Client documents hub (agreement + invoices)
     Contract.tsx           # Client agreement signing (SSS-CA-v2.0)
+    SetPassword.tsx        # Password setup from invite link — reads URL hash for
+                           # Supabase error params (otp_expired → expired message,
+                           # other error → invalid link message), shows clean UI
+                           # before the spinner so errors are never hidden
     Auth.tsx               # Login page
     admin/
       AdminDashboard.tsx        # Admin studio overview — Dropbox + Airtable status strips, activity log preview
       AdminClients.tsx          # Client management — ghost circle left, clock/connections right,
                                 #   last 10 sessions with start/end/duration
+                                #   Add Client dialog includes email signature parser (Anthropic API)
+                                #   and 3-letter client code chip suggestions
       AdminProjects.tsx         # Project + scene + round management (main admin workhorse)
       AdminOrders.tsx           # Create and manage orders
       AdminScenes.tsx           # Scene management
       AdminFinance.tsx          # Invoices and finance
+      AdminInvoices.tsx         # Invoices + Quotations tabs
       AdminTimeline.tsx         # Production timeline
       AdminBatchUpload.tsx      # Bulk render upload
-      AdminActivity.tsx          # Full activity log — badge filters by event type + date range, 2000 row limit
-      AdminSettings.tsx          # Admin settings — profile, password, Dropbox connection, Airtable config
+      AdminActivity.tsx         # Full activity log — badge filters by event type + date range, 2000 row limit
+      AdminSettings.tsx         # Admin settings — profile, password, Dropbox connection, Airtable config
       AdminProductionTracker.tsx # /admin/production-tracker — live Airtable model status
                                  # via airtable-list-models edge function (cached 5 min)
-                                 # Status dots + plain labels (emoji stripped), modeller names,
-                                 # deadline, cost, budgeted hours, search + status filter
+      AdminDocuments.tsx        # /admin/documents — three-tab hub:
+                                #   Agreements tab: signed agreements list, preview, download
+                                #   Design tab: document_design_config editor + preview cards
+                                #   Email tab: invitation email configurator + subject line
+                                #   (replaces the standalone AdminEmailPreview page)
+      AdminClientProfile.tsx    # Client profile — account details, resend invitation button
+                                #   (appears only when agreement not yet signed, uses magiclink type)
 
   components/
-    AdminSidebar.tsx       # Admin sidebar — text-only nav, animated hover-reveal account menu
-    ClientSidebar.tsx      # Client sidebar — same structure and hover-reveal as AdminSidebar
-                           # Main nav: Portfolio / Timeline / Deliveries
-                           # Account hover: Overview / Orders / --- / Documents / Settings / --- / Expand / Theme / --- / Logout
+    AdminSidebar.tsx       # Admin sidebar — imports shared constants from src/lib/sidebarConstants.ts
+                           # "Email Preview" removed from account menu (now in Documents → Email tab)
+    ClientSidebar.tsx      # Client sidebar — imports same shared constants, synced with AdminSidebar
     AdminLayout.tsx        # Admin page wrapper
     ClientLayout.tsx       # Client page wrapper
     GhostModeBanner.tsx    # Fixed-position banner when admin views as client; sidebar offsets by banner height
 
     admin/
       DropboxVisualsPanel.tsx      # Scans Dropbox VS_Visuals folder, shows highest version per round
-                                   # Admin enters project_code + scene_code (e.g. CP107, SC05);
-                                   # edge function resolves full folder path by prefix search
-      DropboxConnectionStatus.tsx  # Dropbox connected/disconnected strip — shows "Last file updated X ago"
-                                   # from round_assets.created_at, or "No files received yet"
-      AirtableConnectionStatus.tsx # Airtable connected/error strip — record count + cache time
+      DropboxConnectionStatus.tsx  # Dropbox connected/disconnected strip
+      AirtableConnectionStatus.tsx # Airtable connected/error strip
       AirtableSyncPanel.tsx        # Per-scene push-scene / pull-status UI
       ActivityLogPreview.tsx       # Dashboard preview of last N activity log entries
-      ClientActivityPanel.tsx      # Client session history (removed from AdminClients, still exists)
+      ClientActivityPanel.tsx      # Client session history
       SceneCard.tsx                # Scene summary card
       InvoiceFormDialog.tsx        # Create invoice dialog
+      QuotationFormDialog.tsx      # Create quotation dialog — includes deposit % field
+                                   # stores deposit_percentage, net_total, gross_total, deposit_amount
+      QuotationsTab.tsx            # Quotations list in AdminInvoices
       AssetUploader.tsx            # Upload renders to Supabase storage
+
+    quotations/
+      QuotationViewer.tsx  # Full-screen quotation preview dialog — Sign button appears for 'sent'
+                           # quotations; clicking opens sign modal, calls sign-quotation edge function,
+                           # auto-creates deposit invoice on success
+      QuotationDocument.tsx # Client-facing quotation renderer (A4-style HTML)
 
     client/
       TaskDetail.tsx       # Round detail view — upload zone, Dropbox panel, Airtable panel
-                           # Props: roundId, sceneId, projectId, isAdmin, onUploaded
       AssetViewer.tsx      # Full render viewer with pin/annotation tools
       PinChat.tsx          # Per-pin comment thread
       LaneCard.tsx         # Subscription lane card
@@ -165,14 +183,14 @@ src/
 
   lib/
     design.ts              # SHARED DESIGN CONSTANTS — always import from here, never hardcode
-                           # Both sidebars and all layout components use this
-                           # Exports: LABEL, PAGE, BORDER, SURFACE, STATUS, BTN, RADIUS, SIDEBAR, TRANSITION, GLOW
+    sidebarConstants.ts    # SHARED SIDEBAR CONSTANTS — SB object imported by both AdminSidebar
+                           # and ClientSidebar. Single source of truth for widths, nav styles,
+                           # account name styles, tooltip styles, separator styles
     agreementTerms.ts      # Client Agreement v2.0 content (SSS-CA-v2.0, 14 clauses)
     activityLog.ts         # logActivity() helper + ACTION_LABELS map + ActivityAction type
-                           # Pass actorRole: "admin" explicitly in all admin-only call sites —
-                           # do not rely on the DB lookup for admin detection
     reviewWindow.ts        # Deliver round and start review window
     clientActivity.ts      # Client session tracking (session_start / session_end / page_view)
+    invoiceUtils.ts        # lineItemsTotal(), formatCurrency(), generateInvoicePdf()
 
   contexts/
     AuthContext.tsx        # Auth + ghost mode. enterGhostMode({ userId, name })
@@ -188,27 +206,45 @@ supabase/
     dropbox-oauth-callback/     # Handles callback — redirects to portal.silvershadowstudio.com
     dropbox-api/                # get-thumbnail, get-temporary-link, connection-status
     dropbox-webhook/            # Auto-sync on Dropbox file changes (webhook registered)
-                                # Parses round number from filename (R01, R02…), restricted to
-                                # VS_Visuals subfolder only
     dropbox-scan-visuals/       # Scans VS_Visuals folder, returns highest version per round
-                                # Takes project_code + scene_code (e.g. CP107, SC05); resolves
-                                # full folder path via prefix search. Detects Dropbox Business
-                                # team namespace and sets Dropbox-API-Path-Root header automatically
-    airtable-sync/              # Bidirectional Airtable sync — manual admin actions (see Airtable section)
-    airtable-auto-sync/         # Automatic outbound sync — called by DB triggers, not admin actions
-                                # Events: round_created, status_changed, instructions_submitted
+    airtable-sync/              # Bidirectional Airtable sync — manual admin actions
+    airtable-auto-sync/         # Automatic outbound sync — called by DB triggers
                                 # Also sends Resend email to fred@ + kieran@ on each event
-                                # Deploy: npx supabase functions deploy airtable-auto-sync --no-verify-jwt
     airtable-list-models/       # Lists all rows from the Models table (cached 5 min, admin-only)
-    accept-agreement/           # Sign client agreement, generate PDF
-    admin-create-client/        # Create client account + send invite or provision
+    accept-agreement/           # Sign client agreement, generate PDF (.catch() fix applied)
+    admin-create-client/        # Create client account + send invite or provision or resend
+                                # Modes: invite (new user), provision (existing), resend (magiclink)
+                                # Accepts clientCode (stored on account), uses emailConfig.subject
     admin-impersonate-client/   # Ghost mode token
     download-invoice-pdf/       # Generate invoice PDF
-    send-transactional-email/   # Template-based email via queue — uses LOVABLE_API_KEY (no longer valid)
-                                # For internal notifications use airtable-auto-sync (Resend) instead
+    parse-signature/            # Admin-only — calls Anthropic claude-sonnet-4-20250514 to extract
+                                # contact fields from a pasted email signature. Returns JSON with
+                                # first_name, last_name, position, company_name, email, country, city.
+                                # Requires ANTHROPIC_API_KEY Supabase secret.
+    sign-quotation/             # Signs a quotation (status: sent → signed), records signed_by_name
+                                # and signed_by_position, auto-creates a deposit invoice (type: deposit)
+                                # due 5 days after signing. Caller must be account member or admin.
+    stripe-webhook/             # Handles Stripe webhook events — checkout.session.completed marks
+                                # invoice paid and records stripe_payment_intent_id. Requires
+                                # STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY Supabase secrets.
+    create-invoice-checkout/    # Stripe checkout session creator — reads STRIPE_SECRET_KEY;
+                                # returns { pending: true } if key not set (graceful degradation)
+    preview-email/              # Returns rendered invitation email HTML for preview iframe
+    update-email-config/        # GET returns email_invite_config from app_settings;
+                                # POST saves it. Config now includes subject field.
+    slack-notify/               # Slack notifications (new)
+    send-transactional-email/   # Legacy — uses LOVABLE_API_KEY (no longer valid); do not use
+
+    _shared/
+      emailTemplates.ts   # buildInviteEmailHtml() — InviteEmailConfig interface now includes
+                          # subject?: string field used by admin-create-client for both invite
+                          # and resend modes
+      pdfUtils.ts         # DocumentDesignConfig type, DESIGN_DEFAULTS, loadDesignConfig() helper
+                          # for edge functions that generate PDFs — reads document_design_config
+                          # from app_settings at generation time
+      brandLogo.ts        # SILVERSHADOW_LOGO_DATA_URL base64 constant
 
   migrations/              # Applied in filename order via Supabase Management API
-                           # All migrations up to 20260512000001_airtable_auto_sync_triggers.sql are applied
 ```
 
 ## Client dashboard — state machine (Index.tsx)
@@ -244,36 +280,143 @@ Single focused view. Shows exactly one state per client at a time:
 - Sharp rectangular components (`rounded-sm` at most)
 - All design tokens in `src/lib/design.ts` — import from there, never hardcode
 
+### Sidebar constants
+
+Both `AdminSidebar` and `ClientSidebar` import from `src/lib/sidebarConstants.ts` (the `SB` object). Do not hardcode sidebar widths, nav font sizes, or account row styles in the sidebar components — always use `SB.*`.
+
+Key values: `SB.widthExpanded = "w-64"`, nav label `fontSize: 11, letterSpacing: "0.24em"`, account name `12px text-foreground`.
+
 ## Database key tables
 
 | Table | Purpose |
 |-------|---------|
-| `accounts` | Client accounts |
+| `accounts` | Client accounts — now includes `client_code TEXT UNIQUE` (3-letter code for quotation numbering) |
 | `account_members` | User ↔ account links |
 | `projects` | Projects (`project_code`, `project_slug`) |
 | `scenes` | Scenes (`scene_code`, `scene_slug`, `airtable_record_id`) |
-| `scene_rounds` | Rounds per scene — `instructions` (client brief text), status: `pending` / `in_production` / `client_review` / `awaiting_review` / `approved` / `delivered`; also `delivery_due_at TIMESTAMPTZ` |
+| `scene_rounds` | Rounds per scene — `instructions`, status, `delivery_due_at` |
 | `round_assets` | Render files per round (Supabase storage or Dropbox path) |
-| `round_uploads` | Client briefing files uploaded via NewRoundModal — `scene_id`, `category`, `file_name`, `storage_path` (bucket: `round-uploads`) |
-| `activity_log` | Immutable record of production-critical actions — `actor_name`, `actor_role`, `action`, `description`, plus optional `project_id/name`, `scene_id/name`, `round_number` |
-| `lane_tasks` | Subscription lane tasks (`delivery_status`: `in_production` / `delivered`) |
+| `round_uploads` | Client briefing files |
+| `activity_log` | Immutable production-critical actions |
+| `lane_tasks` | Subscription lane tasks |
 | `subscriptions` | Lane subscriptions |
-| `orders` | Project orders (status: `pending_acceptance`, `accepted`, etc.) |
-| `invoices` | Invoices |
+| `orders` | Project orders |
+| `invoices` | Invoices — extended with `quotation_id`, `type` (deposit/balance/standalone), `stripe_payment_intent_id`, `stripe_checkout_url`; also has `invoice_number`, `line_items`, `account_id`, `currency`, `vat_rate`, `subtotal`, `vat_amount` |
+| `quotation_documents` | Quotations — `quotation_number`, `line_items`, `deposit_percentage` (default 50), `signed_by_name`, `signed_by_position`, `net_total`, `gross_total`, `deposit_amount`, `signed_at`, status: draft/sent/signed/declined/cancelled |
 | `agreements` | Signed client agreements (SSS-CA-v2.0) |
+| `client_notifications` | In-app notifications for clients |
 | `dropbox_connections` | Dropbox OAuth tokens |
 | `client_activity` | Session tracking (`kind`: `session_start` / `session_end` / `page_view`) |
-| `app_settings` | Key-value config — `airtable_field_config` key holds Airtable field mapping |
+| `app_settings` | Key-value config — `airtable_field_config`, `email_invite_config` (incl. `subject`), `document_design_config` |
 | `user_roles` | Admin role assignments |
 
 ### Migrations applied (in order)
+
 All up to and including:
 - `20260509000001_account_type.sql`
 - `20260509000002_orders_table.sql`
 - `20260510000001_airtable_sync.sql`
 - `20260510000002_production_codes.sql`
-- `20260511000001_scene_rounds_airtable.sql` — adds `delivery_due_at` to `scene_rounds`, adds `awaiting_review` to status constraint
-- `20260512000001_airtable_auto_sync_triggers.sql` — three `pg_net` triggers on `scene_rounds`: `airtable_round_created` (INSERT), `airtable_status_changed` (UPDATE when status changes), `airtable_instructions_submitted` (UPDATE when instructions set/changed). Each calls `net.http_post()` async to `airtable-auto-sync`.
+- `20260511000001_scene_rounds_airtable.sql`
+- `20260512000001_airtable_auto_sync_triggers.sql`
+- `20260512000002_dropbox_folder_triggers.sql`
+- `20260512000003_projects_dropbox_folder_url.sql`
+- `20260512000004_round_uploads_dropbox_url.sql`
+- `20260513000001_client_codes.sql` — adds `client_code TEXT UNIQUE` to accounts
+- `20260513000002_quotation_enhancements.sql` — adds deposit_percentage, signed_by_name, signed_by_position, net_total, gross_total, deposit_amount to quotation_documents
+- `20260513000003_invoice_enhancements.sql` — adds quotation_id, type (deposit/balance/standalone), stripe_payment_intent_id, stripe_checkout_url to invoices
+- `20260513000004_document_design_config.sql` — seeds default document_design_config in app_settings
+
+## Client codes
+
+Every client account can have a 3-letter `client_code` (e.g. `WIN` for Winch Design). Used as a prefix for quotation numbers (e.g. `WIN-001`). Set during account creation in the Add Client dialog — the dialog suggests up to 8 codes derived from the company name as clickable chips. Stored in `accounts.client_code`.
+
+## Quotation system
+
+- **Table**: `quotation_documents`
+- **Created via**: `QuotationFormDialog` in AdminInvoices
+- **Viewed via**: `QuotationViewer` (full-screen dialog) + `QuotationDocument` (A4 HTML renderer)
+- **Signing flow**: QuotationViewer shows a gold "Sign" button when status is `sent`. Admin or client clicks it, enters name + position, calls `sign-quotation` edge function which:
+  - Sets `status = 'signed'`, records `signed_at`, `signed_by_name`, `signed_by_position`
+  - Auto-creates a deposit invoice with `type = 'deposit'`, due 5 days after signing
+- **Deposit %**: stored as `deposit_percentage` (default 50). Shown in QuotationFormDialog and reflected in auto-created deposit invoice amount.
+
+## Invoice system
+
+- **Table**: `invoices` (extended, see Database tables above)
+- **Types**: `deposit` (auto-created on quotation signing), `balance` (manual), `standalone` (default, legacy)
+- **Stripe**: `stripe_checkout_url` stored on invoice when Stripe checkout session created. `stripe_payment_intent_id` stored when webhook fires `checkout.session.completed`.
+
+## Stripe integration
+
+- **Account**: Created for Silvershadow Studio Limited
+- **Bank**: Revolut Business — sort code 04-00-75, account 75913542
+- **Payout**: weekly automatic on Monday
+- **Statement descriptor**: SILVERSHADOW
+- **Secrets** (add to Supabase once live account verified):
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_PUBLISHABLE_KEY`
+  - `STRIPE_WEBHOOK_SECRET`
+- **Webhook URL** (register in Stripe Dashboard once keys are set):
+  `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/stripe-webhook`
+- **Edge functions**: `create-invoice-checkout` (existing, gracefully returns `{ pending: true }` if key not set), `stripe-webhook` (new stub, handles `checkout.session.completed`)
+
+## Document design system
+
+All PDF-generating edge functions read their visual config from `app_settings` key `document_design_config` at generation time via `_shared/pdfUtils.ts → loadDesignConfig()`. Default values:
+
+```json
+{
+  "background_color": "#EDE8E0",
+  "warm_black": "#1A1814",
+  "warm_grey": "#8A8070",
+  "gold": "#B89A6A",
+  "body_font": "Times-Roman",
+  "heading_font": "Helvetica-Bold",
+  "meta_font": "Helvetica",
+  "logo_width": 180,
+  "margin_left": 72,
+  "margin_right": 72,
+  "margin_top": 64,
+  "margin_bottom": 80
+}
+```
+
+Config is editable in the admin at `/admin/documents` → Design tab. Changes affect new PDFs only; existing documents are unaffected.
+
+## Documents admin page (`/admin/documents`)
+
+Three-tab hub replacing the old single-view agreements page and the standalone `/admin/email-preview` page:
+
+- **Agreements tab**: signed agreements list, preview (AgreementViewer), download PDF
+- **Design tab**: document_design_config editor (colour pickers, font name inputs, margin numbers) + three preview cards (Quotation, Invoice, Round Instructions) that update reactively
+- **Email tab**: full invitation email configurator — subject line, illustration URL, body copy, CTA label/URL, footer text, background colour — with live iframe preview. Saves to `email_invite_config` in app_settings via `update-email-config` edge function. Subject is used by `admin-create-client` for both invite and resend modes.
+
+The `/admin/email-preview` route still exists but is no longer linked from the sidebar (now accessed via Documents → Email).
+
+## Email invite configuration
+
+Stored in `app_settings` key `email_invite_config`. Fields:
+- `subject` — email subject line (default: "Your Silvershadow Studio portal is ready.")
+- `illustrationUrl`, `bodyCopy`, `ctaLabel`, `ctaUrl`, `footerText`, `backgroundColor`
+
+The `subject` field is read by `admin-create-client` in both `invite` and `resend` modes. Falls back to the default if not set.
+
+## Email signature parser
+
+In the Add Client dialog, admins can paste an email signature into a textarea and click "Parse Signature". This calls the `parse-signature` edge function (admin-only), which sends the text to Anthropic's `claude-sonnet-4-20250514` and returns a JSON object with `first_name`, `last_name`, `position`, `company_name`, `email`, `country`, `city`. Only empty form fields are populated — existing values are never overwritten. Requires `ANTHROPIC_API_KEY` in Supabase secrets.
+
+## Resend invitation
+
+On the admin client profile page (`AdminClientProfile.tsx`), a "RESEND INVITATION →" button appears when the client has not yet signed the agreement (checked against the `agreements` table). Clicking it calls `admin-create-client` with `mode: 'resend'`, which generates a new `magiclink` (not `invite` — that fails with `email_exists` for existing users) and sends the branded invitation email. After success, shows "Invitation sent." at 45% opacity. The button disappears once the client signs.
+
+## /set-password error handling
+
+`SetPassword.tsx` reads the URL hash on load (before any async work). Supabase appends error params to the hash when an invite link is invalid or expired:
+- `error_code=otp_expired` → "This invitation link has expired. Please contact Silvershadow Studio to receive a new one."
+- Any other `error` → "This link is invalid. Please contact Silvershadow Studio."
+
+Error state renders immediately with no spinner, so clients always see a clear message. The "Return to login" button navigates to `/`.
 
 ## Dropbox
 
@@ -292,7 +435,7 @@ CP107-SC05-VS_R01_01.jpg
 
 ### Setting up a scene for Dropbox sync
 
-In DropboxVisualsPanel, enter only the short codes — `project_code` (e.g. `CP107`) and `scene_code` (e.g. `SC05`). The `dropbox-scan-visuals` edge function resolves the full folder path by searching for a folder whose name starts with `CP107_` inside `/00_Production/PRD01_Client-Projects/`, then `SC05_` inside that. All matching is case-insensitive. The admin never needs to know or type the full folder name.
+In DropboxVisualsPanel, enter only the short codes — `project_code` (e.g. `CP107`) and `scene_code` (e.g. `SC05`). The `dropbox-scan-visuals` edge function resolves the full folder path by searching for a folder whose name starts with `CP107_` inside `/00_Production/PRD01_Client-Projects/`, then `SC05_` inside that. All matching is case-insensitive.
 
 ### Team namespace (Dropbox Business)
 
@@ -318,8 +461,6 @@ The `airtable-list-models` function is separate — it reads from the **Models**
 | `field_portal_scene_id` | _(blank)_ | — | No free-text ID field in Tasks; portal stores Airtable record ID in `scenes.airtable_record_id` instead |
 
 ### Status values
-
-Actual Airtable single-select options have emoji prefixes. Pull matching uses substring so logic is resilient to emoji changes. Push writes the exact stored value.
 
 | Airtable value | Portal status |
 |---|---|
@@ -363,7 +504,7 @@ All production-critical actions are recorded in the `activity_log` table. The fu
 
 ### Actor role reliability
 
-`logActivity()` accepts an optional `actorRole` override. All admin-only call sites pass `actorRole: "admin"` explicitly — this bypasses the `user_roles` DB lookup which can return null under certain timing/RLS conditions. Mixed-context callers (TaskDetail, AssetViewer) rely on the DB lookup. Client login entries always hardcode `actor_role: "client"`. Dropbox/system events hardcode `actor_role: "system"`.
+`logActivity()` accepts an optional `actorRole` override. All admin-only call sites pass `actorRole: "admin"` explicitly. Mixed-context callers (TaskDetail, AssetViewer) rely on the DB lookup. Client login entries always hardcode `actor_role: "client"`. Dropbox/system events hardcode `actor_role: "system"`.
 
 ## Ghost mode
 
@@ -386,14 +527,14 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 | Bergman Design House | Marie Soliman | (check DB) |
 | Silvershadow Studio | Fred Colomb | `a09b2cdd-2c98-4415-a58d-ec6420d69bd6` |
 
-## Pending — must do before first client invite
+## Pending
 
+- **Stripe keys**: Add `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` to Supabase secrets once Stripe live account is verified. Then deploy `stripe-webhook` and register the webhook URL in Stripe Dashboard.
+- **Quotation + invoice PDF generation**: edge functions for generating quotation and invoice PDFs using `_shared/pdfUtils.ts` design config — not yet built.
+- **Client-facing quotation and invoice views**: clients can view sent quotations (via `Documents.tsx`) and sign them in-portal; invoice payment via Stripe checkout. Signing works in QuotationViewer but client-side routing to quotations page needs wiring.
 - **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets. Currently admin-only round creation.
 - **New commission brief flow not built** — 3-step overlay from idle dashboard state.
-- **Airtable inbound webhook not set up** — `pull-status` is currently manual only; no automatic sync when Kieran updates Airtable status or deadline. Would need a registered Airtable automation or polling cron.
-- **Pre-launch ghost mode test** — ghost as Simon Tomlinson (Winch, `7880c015`) and Marie Soliman (Bergman) and walk through the full client flow.
-- **Set `delivery_due_at`** on at least one Winch scene round to test the countdown state on the client dashboard.
-- **Stripe** — `STRIPE_SECRET_KEY` not set; invoice checkout won't work.
-- **Brief field in Airtable** — Kieran needs to add a single-line or long-text field named exactly `Brief` to the Tasks table in Airtable for instructions sync to work. Until then, `airtable-auto-sync` logs a warning and skips instructions push without failing.
-- **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm this address is verified as a sender in Resend, or update `FROM_ADDRESS` constant in the function.
-- **`send-transactional-email` / `process-email-queue`** — still uses `LOVABLE_API_KEY` which is no longer valid. Client-facing emails (invitations, delivery notices) will not send. These functions are separate from `airtable-auto-sync` and need Resend wired in independently if client emails are required.
+- **Airtable inbound webhook not set up** — `pull-status` is currently manual only.
+- **Pre-launch ghost mode test** — ghost as Simon Tomlinson (Winch) and Marie Soliman (Bergman) and walk through the full client flow.
+- **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work.
+- **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm verified in Resend.
