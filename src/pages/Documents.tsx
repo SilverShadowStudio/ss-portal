@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Download, Eye, FileText, Loader2, Receipt } from "lucide-react";
+import { ArrowRight, Download, Eye, FileText, Loader2 } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
+import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
 
 interface Agreement {
   id: string;
@@ -15,6 +16,40 @@ interface Agreement {
   file_name: string;
   file_size: number | null;
   signed_at: string;
+}
+
+interface Quotation {
+  id: string;
+  quotation_number: string | null;
+  reference_number: string | null;
+  issued_at: string | null;
+  created_at: string;
+  currency: string | null;
+  net_total: number | null;
+  gross_total: number | null;
+  vat_rate: number | null;
+  vat_amount: number | null;
+  notes: string | null;
+  line_items: Array<{ description?: string; quantity?: number; unit_price?: number }>;
+  status: string;
+  account_id: string | null;
+  project_id: string | null;
+  deposit_percentage: number;
+  deposit_amount: number | null;
+}
+
+interface Invoice {
+  id: string;
+  invoice_number: string | null;
+  reference_number: string | null;
+  amount: number;
+  currency: string | null;
+  status: string;
+  due_date: string | null;
+  issued_at: string | null;
+  created_at: string;
+  type: string;
+  stripe_checkout_url: string | null;
 }
 
 interface OrderSummary {
@@ -49,7 +84,7 @@ function formatCurrency(amount: number, currency = "GBP") {
   }
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_acceptance: "Awaiting confirmation",
   accepted: "Confirmed",
   in_production: "In production",
@@ -57,14 +92,57 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+const QUOTATION_STATUS_LABELS: Record<string, string> = {
+  sent: "Sent",
+  signed: "Signed",
+};
+
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  paid: "Paid",
+  overdue: "Overdue",
+  pending: "Pending",
+  cancelled: "Cancelled",
+};
+
+function quotationStatusClass(status: string) {
+  switch (status) {
+    case "signed": return "text-emerald-600 dark:text-emerald-400";
+    case "sent":   return "text-blue-600 dark:text-blue-400";
+    default:       return "text-foreground/40";
+  }
+}
+
+function invoiceStatusClass(status: string) {
+  switch (status) {
+    case "paid":    return "text-emerald-600 dark:text-emerald-400";
+    case "sent":    return "text-blue-600 dark:text-blue-400";
+    case "overdue": return "text-rose-600 dark:text-rose-400";
+    default:        return "text-foreground/40";
+  }
+}
+
+function toViewerData(q: Quotation): QuotationViewerData {
+  return {
+    ...q,
+    amount: q.gross_total,
+    subtotal: q.net_total,
+  } as QuotationViewerData;
+}
+
 export default function Documents() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [agreements, setAgreements] = useState<Agreement[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<AgreementViewerData | null>(null);
+  const [selectedQuotation, setSelectedQuotation] = useState<QuotationViewerData | null>(null);
+  const [quotationOpen, setQuotationOpen] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -72,19 +150,30 @@ export default function Documents() {
 
   async function fetchAll() {
     try {
-      const [{ data: agrs }, { data: ords }] = await Promise.all([
+      const [{ data: agrs }, { data: quots }, { data: invs }, { data: ords }] = await Promise.all([
         supabase
           .from("agreements")
           .select("id, company_name, signatory_name, signatory_position, storage_path, file_name, file_size, signed_at")
           .order("signed_at", { ascending: false }),
+        supabase
+          .from("quotation_documents")
+          .select("id, quotation_number, reference_number, issued_at, created_at, currency, net_total, gross_total, vat_rate, vat_amount, notes, line_items, status, account_id, project_id, deposit_percentage, deposit_amount")
+          .in("status", ["sent", "signed"])
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("invoices")
+          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url")
+          .order("created_at", { ascending: false }),
         supabase
           .from("orders")
           .select("id, order_number, title, status, total, currency, accepted_at, created_at")
           .order("created_at", { ascending: false }),
       ]);
       setAgreements(agrs || []);
+      setQuotations((quots || []) as Quotation[]);
+      setInvoices((invs || []) as Invoice[]);
       setOrders(ords || []);
-    } catch (err) {
+    } catch {
       toast({ title: "Could not load documents", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -140,10 +229,7 @@ export default function Documents() {
             ) : (
               <div className="space-y-1">
                 {agreements.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-5 py-4 border-t border-border/30"
-                  >
+                  <div key={a.id} className="flex items-center gap-5 py-4 border-t border-border/30">
                     <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
                     <div className="flex-1 min-w-0">
                       <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
@@ -227,7 +313,7 @@ export default function Documents() {
                           {order.title}
                         </p>
                         <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
-                          {STATUS_LABELS[order.status] || order.status}
+                          {ORDER_STATUS_LABELS[order.status] || order.status}
                           <span className="mx-2 opacity-40">·</span>
                           {formatDateShort(order.accepted_at || order.created_at)}
                         </p>
@@ -242,28 +328,111 @@ export default function Documents() {
             )}
           </section>
 
+          {/* ── Quotations ───────────────────────────────────────────────── */}
+          <section>
+            <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
+              Quotations
+            </p>
+            {quotations.length === 0 ? (
+              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
+                No quotations yet.
+              </p>
+            ) : (
+              <div>
+                {quotations.map((q) => {
+                  const num = q.quotation_number || q.reference_number || "—";
+                  const total = q.gross_total ?? q.net_total;
+                  return (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuotation(toViewerData(q));
+                        setQuotationOpen(true);
+                      }}
+                      className="group w-full flex items-center gap-5 py-4 border-t border-border/30 text-left hover:border-border/60 transition-all"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-serif text-foreground group-hover:text-gold transition-colors" style={{ fontSize: 13 }}>
+                          {num}
+                        </p>
+                        <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                          {formatDateShort(q.issued_at || q.created_at)}
+                        </p>
+                      </div>
+                      {total != null && (
+                        <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
+                          {formatCurrency(total, q.currency || "GBP")}
+                        </p>
+                      )}
+                      <p className={`shrink-0 font-sans uppercase ${quotationStatusClass(q.status)}`} style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                        {QUOTATION_STATUS_LABELS[q.status] || q.status}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {/* ── Invoices ─────────────────────────────────────────────────── */}
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <p className="font-sans uppercase" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-                Invoices
+            <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
+              Invoices
+            </p>
+            {invoices.length === 0 ? (
+              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
+                No invoices yet.
               </p>
-            </div>
-            <button
-              onClick={() => navigate("/invoices")}
-              className="group w-full flex items-center gap-5 py-5 border-t border-border/30 text-left hover:border-border/60 transition-all"
-            >
-              <Receipt className="shrink-0 text-foreground/30 group-hover:text-foreground/60 transition-colors" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
-              <div className="flex-1">
-                <p className="font-serif text-foreground group-hover:text-gold transition-colors" style={{ fontSize: 14 }}>
-                  Invoice history
-                </p>
-                <p className="font-sans uppercase text-foreground/35 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
-                  View, download, and settle invoices
-                </p>
+            ) : (
+              <div>
+                {invoices.map((inv) => {
+                  const num = inv.invoice_number || inv.reference_number || "—";
+                  const canPay = !!inv.stripe_checkout_url && inv.status !== "paid";
+                  return (
+                    <div key={inv.id} className="flex items-center gap-5 py-4 border-t border-border/30">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <p className="font-serif text-foreground" style={{ fontSize: 13 }}>
+                            {num}
+                          </p>
+                          {inv.type !== "standalone" && (
+                            <span className="font-sans uppercase text-foreground/35" style={{ fontSize: 8, letterSpacing: "0.16em" }}>
+                              {inv.type === "deposit" ? "Deposit" : "Balance"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                          {inv.due_date
+                            ? `Due ${formatDateShort(inv.due_date)}`
+                            : formatDateShort(inv.issued_at || inv.created_at)}
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
+                        {formatCurrency(inv.amount, inv.currency || "GBP")}
+                      </p>
+                      <p
+                        className={`shrink-0 font-sans uppercase ${invoiceStatusClass(inv.status)}`}
+                        style={{ fontSize: 9, letterSpacing: "0.16em", minWidth: 40 }}
+                      >
+                        {INVOICE_STATUS_LABELS[inv.status] || inv.status}
+                      </p>
+                      {canPay && (
+                        <a
+                          href={inv.stripe_checkout_url!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 inline-flex items-center px-3 py-1.5 bg-gold text-background hover:bg-gold/90 transition-colors font-sans uppercase"
+                          style={{ fontSize: 9, letterSpacing: "0.16em" }}
+                        >
+                          Pay now
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <ArrowRight className="shrink-0 text-foreground/20 group-hover:text-foreground/50 transition-colors" style={{ width: 13, height: 13 }} strokeWidth={1.5} />
-            </button>
+            )}
           </section>
 
         </div>
@@ -273,6 +442,15 @@ export default function Documents() {
         agreement={previewing}
         open={!!previewing}
         onOpenChange={(o) => { if (!o) setPreviewing(null); }}
+      />
+
+      <QuotationViewer
+        quotation={selectedQuotation}
+        open={quotationOpen}
+        onOpenChange={(o) => {
+          setQuotationOpen(o);
+          if (!o) setSelectedQuotation(null);
+        }}
       />
     </ClientLayout>
   );
