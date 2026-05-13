@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface FormState {
   companyName: string;
+  clientCode: string;
   country: string;
   registrationNumber: string;
   streetName: string;
@@ -25,6 +26,7 @@ interface FormState {
 
 const EMPTY: FormState = {
   companyName: "",
+  clientCode: "",
   country: "",
   registrationNumber: "",
   streetName: "",
@@ -59,7 +61,7 @@ export default function AdminClientProfile() {
         const { data: account, error: accErr } = await supabase
           .from("accounts")
           .select(
-            "id, owner_user_id, company_name, country, registration_number, street_name, building_number, city, postcode",
+            "id, owner_user_id, company_name, client_code, country, registration_number, street_name, building_number, city, postcode",
           )
           .eq("id", accountId)
           .maybeSingle();
@@ -97,6 +99,7 @@ export default function AdminClientProfile() {
 
         setForm({
           companyName: account.company_name || "",
+          clientCode: account.client_code || "",
           country: account.country || "",
           registrationNumber: account.registration_number || "",
           streetName: account.street_name || "",
@@ -194,6 +197,7 @@ export default function AdminClientProfile() {
             accountId,
             company: {
               companyName: form.companyName.trim(),
+              clientCode: form.clientCode.trim() || null,
               country: form.country.trim() || null,
               registrationNumber: form.registrationNumber.trim() || null,
               streetName: form.streetName.trim() || null,
@@ -260,6 +264,7 @@ export default function AdminClientProfile() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Company name" value={form.companyName} onChange={(v) => update("companyName", v)} />
+              <Field label="CLIENT CODE" value={form.clientCode} onChange={(v) => update("clientCode", v)} />
               <Field label="Country" value={form.country} onChange={(v) => update("country", v)} />
               <Field label="Registration number" value={form.registrationNumber} onChange={(v) => update("registrationNumber", v)} />
               <Field label="City" value={form.city} onChange={(v) => update("city", v)} />

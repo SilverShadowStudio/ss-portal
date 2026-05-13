@@ -19,6 +19,7 @@ interface RequestBody {
   accountId: string
   company?: {
     companyName?: string | null
+    clientCode?: string | null
     country?: string | null
     registrationNumber?: string | null
     streetName?: string | null
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
       if (!trimmed) return json({ error: 'Company name cannot be empty' }, 400)
       accountUpdate.company_name = trimmed
     }
+    if (c.clientCode !== undefined) accountUpdate.client_code = c.clientCode?.trim() || null
     if (c.country !== undefined) accountUpdate.country = c.country?.trim() || null
     if (c.registrationNumber !== undefined)
       accountUpdate.registration_number = c.registrationNumber?.trim() || null
