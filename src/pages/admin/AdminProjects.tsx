@@ -343,7 +343,20 @@ export default function AdminProjects() {
       setSceneRounds(roundsMap);
       // Auto-select a client when navigating in from /admin/clients
       if (clientParam) {
-        const target = clientList.find((c) => c.user_id === clientParam);
+        let target = clientList.find((c) => c.user_id === clientParam);
+        if (!target) {
+          // Client exists but has no projects yet — build a synthetic entry
+          // so the UI shows "No projects" rather than the full all-clients view.
+          const profileRow = (profiles || []).find((p) => p.user_id === clientParam);
+          if (profileRow) {
+            target = {
+              user_id: clientParam,
+              full_name: profileRow.full_name ?? null,
+              company: profileRow.company ?? null,
+              projects: [],
+            };
+          }
+        }
         if (target) setSelectedClient(target);
       }
     } catch (error) {

@@ -47,25 +47,29 @@ interface RequestBody {
 
 function buildInviteEmailHtml(_companyName: string, inviteUrl: string): string {
   const logoUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png'
-  const illustrationUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/portal-invite-illustration.png'
+  const illustrationUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png'
   return `
 <div style="background:#EDE8E0">
   <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:48px 40px">
+
     <div style="text-align:center;margin-bottom:40px">
       <img src="${logoUrl}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
     </div>
-    <div style="text-align:center;margin-top:32px;margin-bottom:32px">
-      <img src="${illustrationUrl}" alt="Silvershadow Studio" style="max-width:280px;width:100%;height:auto;border:none;display:inline-block" />
+
+    <div style="margin-bottom:36px">
+      <img src="${illustrationUrl}" alt="Silvershadow Studio" style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:none" />
     </div>
-    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;margin:0 auto;max-width:400px;text-align:center">
+
+    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:380px;margin:0 auto 32px">
       Your Silvershadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.
     </p>
-    <div style="text-align:center;margin-top:32px;margin-bottom:32px">
-      <a href="${inviteUrl}" style="display:inline-block;font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#1A1814;text-decoration:none;border-bottom:1px solid #B89A6A;padding-bottom:3px">ACCESS YOUR PORTAL</a>
-    </div>
-    <div style="text-align:center">
-      <a href="https://silvershadowstudio.com" style="font-size:11px;color:rgba(26,24,20,0.45);text-decoration:none">silvershadowstudio.com</a>
-    </div>
+
+    <p style="text-align:center;margin:0 0 40px">
+      <a href="${inviteUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block">ACCESS YOUR PORTAL</a>
+    </p>
+
+    <p style="font-family:Arial,sans-serif;font-size:11px;color:rgba(26,24,20,0.45);text-align:center;margin:0">silvershadowstudio.com</p>
+
   </div>
 </div>`
 }
