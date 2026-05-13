@@ -80,9 +80,10 @@ Deno.serve(async (req) => {
   const anthropicData = await anthropicRes.json()
   const text: string = anthropicData.content?.[0]?.text ?? ''
 
+  const raw = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '')
   let parsed: Record<string, unknown>
   try {
-    parsed = JSON.parse(text.trim())
+    parsed = JSON.parse(raw)
   } catch {
     console.error('Could not parse Anthropic response as JSON:', text)
     return json({ error: 'Could not parse response', raw: text }, 500)
