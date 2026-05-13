@@ -47,7 +47,7 @@ export function buildInviteEmailHtml(
             </div>
 
             <div style="margin-bottom:36px;text-align:center">
-              <img src="${illustrationUrl}" alt="" style="display:inline-block;max-width:220px;width:100%;height:auto;border:none" />
+              <img src="${illustrationUrl}" alt="" style="display:inline-block;max-width:160px;width:100%;height:auto;border:none" />
             </div>
 
             <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:360px;margin:0 auto 32px">
