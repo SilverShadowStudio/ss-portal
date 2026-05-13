@@ -224,6 +224,7 @@ export default function Auth() {
             type="submit"
             disabled={isLoading}
             className="auth-submit"
+            style={{ marginTop: 32 }}
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">

@@ -243,10 +243,20 @@
     box-shadow: 0 1px 0 0 hsl(var(--gold) / 0.6);
   }
 
-  /* Auth submit button — gold border, transparent bg */
+  /* Auth submit — plain text, recedes on hover */
   .auth-submit {
-    @apply w-full border border-gold bg-transparent text-gold text-xs uppercase tracking-wider transition-colors duration-200 hover:bg-gold/5 disabled:opacity-50;
+    @apply w-full bg-transparent uppercase disabled:opacity-50;
+    border: none;
     height: 48px;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-align: center;
+    color: hsl(var(--foreground));
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+  .auth-submit:hover:not(:disabled) {
+    opacity: 0.6;
   }
 
   /* SetPassword page inputs */
@@ -262,10 +272,20 @@
     border-color: #B89A6A;
   }
 
-  /* SetPassword page submit button */
+  /* SetPassword submit — same plain text treatment */
   .sp-submit {
-    @apply w-full border border-gold bg-transparent text-gold text-xs uppercase tracking-wider transition-colors duration-200 hover:bg-gold/5 disabled:opacity-50;
+    @apply w-full bg-transparent uppercase disabled:opacity-50;
+    border: none;
     height: 48px;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-align: center;
+    color: hsl(var(--foreground));
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+  .sp-submit:hover:not(:disabled) {
+    opacity: 0.6;
   }
 
   /* Custom scrollbar */
