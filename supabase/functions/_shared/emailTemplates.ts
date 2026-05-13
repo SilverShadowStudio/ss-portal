@@ -54,7 +54,7 @@ export function buildInviteEmailHtml(
       <a href="${ctaUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block">${ctaLabel}</a>
     </p>
 
-    <p style="font-family:Arial,sans-serif;font-size:11px;color:rgba(26,24,20,0.45);text-align:center;margin:0">${footerText}</p>
+    <p style="font-family:Arial,sans-serif;font-size:11px;color:rgba(26,24,20,0.45);text-align:center;margin:0"><span x-apple-data-detectors="false" style="color:#8A8070;text-decoration:none;">${footerText}</span></p>
 
   </div>
 </div>
