@@ -35,28 +35,38 @@ export function buildInviteEmailHtml(
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:${backgroundColor}">
-<div style="background:${backgroundColor}">
-  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:48px 40px">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${backgroundColor}">
+  <tr>
+    <td align="center" style="background:${backgroundColor}">
+      <table width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%">
+        <tr>
+          <td style="font-family:Arial,sans-serif;padding:48px 40px">
 
-    <div style="text-align:center;margin-bottom:40px">
-      <img src="${LOGO_URL}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
-    </div>
+            <div style="text-align:center;margin-bottom:40px">
+              <img src="${LOGO_URL}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none" />
+            </div>
 
-    <div style="margin-bottom:36px">
-      <img src="${illustrationUrl}" alt="Silvershadow Studio" style="display:block;margin:0 auto;max-width:220px;width:100%;height:auto;border:none" />
-    </div>
+            <div style="margin-bottom:36px;text-align:center">
+              <img src="${illustrationUrl}" alt="" style="display:inline-block;max-width:220px;width:100%;height:auto;border:none" />
+            </div>
 
-    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:360px;margin:0 auto 32px">
-      ${bodyCopy}
-    </p>
+            <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:360px;margin:0 auto 32px">
+              ${bodyCopy}
+            </p>
 
-    <p style="text-align:center;margin:0 0 40px">
-      <a href="${ctaUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block">${ctaLabel}</a>
-    </p>
+            <p style="text-align:center;margin:0 0 40px">
+              <a href="${ctaUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block">${ctaLabel}</a>
+            </p>
 
-    <p style="font-family:Arial,sans-serif;font-size:11px;color:rgba(26,24,20,0.45);text-align:center;margin:0"><span x-apple-data-detectors="false" style="color:#8A8070;text-decoration:none;">${footerText}</span></p>
+            <p style="font-family:Arial,sans-serif;font-size:11px;text-align:center;margin:0">
+              <a href="https://www.silvershadowstudio.com" style="color:#8A8070;text-decoration:none;font-size:11px;">${footerText}</a>
+            </p>
 
-  </div>
-</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 </body></html>`
 }
