@@ -14,6 +14,11 @@ const navItems = [
   { path: "/admin/timeline",              label: "Timeline",  abbr: "TL" },
   { path: "/admin/clients",               label: "Clients",   abbr: "CL" },
   { path: "/admin/production-tracker",    label: "Tracker",   abbr: "TR" },
+  { path: "/admin/orders",               label: "Orders",     abbr: "OR" },
+  { path: "/admin/invoices",             label: "Finance",    abbr: "FN" },
+  { path: "/admin/documents",            label: "Documents",  abbr: "DC" },
+  { path: "/admin/batch-upload",         label: "Batch Upload", abbr: "BU" },
+  { path: "/admin/settings",             label: "Settings",   abbr: "ST" },
 ];
 
 interface AdminSidebarProps {
@@ -70,11 +75,6 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     active?: boolean;
     separatorAfter?: boolean;
   }> = [
-    { label: "Orders",        onClick: () => navigate("/admin/orders"),        active: location.pathname.startsWith("/admin/orders") },
-    { label: "Finance",       onClick: () => navigate("/admin/invoices"),      active: location.pathname.startsWith("/admin/invoices") },
-    { label: "Documents",     onClick: () => navigate("/admin/documents"),     active: location.pathname.startsWith("/admin/documents") },
-    { label: "Batch Upload",  onClick: () => navigate("/admin/batch-upload"),  active: location.pathname.startsWith("/admin/batch-upload") },
-    { label: "Settings",      onClick: () => navigate("/admin/settings"),      active: location.pathname.startsWith("/admin/settings"),      separatorAfter: true },
     { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
     { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
     { label: "Log off", onClick: handleSignOut },
