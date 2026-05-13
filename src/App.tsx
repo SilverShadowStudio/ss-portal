@@ -45,6 +45,7 @@ import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
 import AdminProductionTracker from "./pages/admin/AdminProductionTracker";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
@@ -315,6 +316,15 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminSettings />
+                </AdminProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/email-preview"
+              element={
+                <AdminProtectedRoute>
+                  <AdminEmailPreview />
                 </AdminProtectedRoute>
               }
             />

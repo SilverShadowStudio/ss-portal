@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { buildInviteEmailHtml } from '../_shared/emailTemplates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,35 +44,6 @@ interface RequestBody {
   accountType?: 'partnership' | 'project'
   // Required when mode === 'provision'. If absent, a random one is generated.
   tempPassword?: string
-}
-
-function buildInviteEmailHtml(_companyName: string, inviteUrl: string): string {
-  const logoUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png'
-  const illustrationUrl = 'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png'
-  return `
-<div style="background:#EDE8E0">
-  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:48px 40px">
-
-    <div style="text-align:center;margin-bottom:40px">
-      <img src="${logoUrl}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0)" />
-    </div>
-
-    <div style="margin-bottom:36px">
-      <img src="${illustrationUrl}" alt="Silvershadow Studio" style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:none" />
-    </div>
-
-    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:380px;margin:0 auto 32px">
-      Your Silvershadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.
-    </p>
-
-    <p style="text-align:center;margin:0 0 40px">
-      <a href="${inviteUrl}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block">ACCESS YOUR PORTAL</a>
-    </p>
-
-    <p style="font-family:Arial,sans-serif;font-size:11px;color:rgba(26,24,20,0.45);text-align:center;margin:0">silvershadowstudio.com</p>
-
-  </div>
-</div>`
 }
 
 Deno.serve(async (req) => {

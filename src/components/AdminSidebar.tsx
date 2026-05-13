@@ -73,7 +73,8 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     { label: "Finance",      onClick: () => navigate("/admin/invoices"),     active: location.pathname.startsWith("/admin/invoices") },
     { label: "Documents",    onClick: () => navigate("/admin/documents"),    active: location.pathname.startsWith("/admin/documents") },
     { label: "Batch Upload", onClick: () => navigate("/admin/batch-upload"), active: location.pathname.startsWith("/admin/batch-upload") },
-    { label: "Settings",    onClick: () => navigate("/admin/settings"),     active: location.pathname.startsWith("/admin/settings"),     separatorAfter: true },
+    { label: "Settings",    onClick: () => navigate("/admin/settings"),     active: location.pathname.startsWith("/admin/settings") },
+    { label: "Email Preview", onClick: () => navigate("/admin/email-preview"), active: location.pathname.startsWith("/admin/email-preview"), separatorAfter: true },
     { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
     { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
     { label: "Log off",      onClick: handleSignOut },
@@ -88,7 +89,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       )}
     >
       {/* Logo */}
-      <div className={cn(expanded ? "mb-6 px-4" : "mb-6")}>
+      <div className={cn(expanded ? "mb-12 px-4" : "mb-6")}>
         <a href="https://www.silvershadowstudio.com" target="_blank" rel="noopener noreferrer" className="block transition-smooth hover:opacity-80">
           {expanded ? (
             <img
