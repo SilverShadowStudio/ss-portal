@@ -44,6 +44,7 @@ interface RequestBody {
   accountType?: 'partnership' | 'project'
   tempPassword?: string
   accountId?: string
+  clientCode?: string
 }
 
 Deno.serve(async (req) => {
@@ -161,7 +162,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
-            subject: 'Your Silvershadow Studio portal is ready.',
+            subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
             html: buildInviteEmailHtml(acct.company_name, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
             headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
             tags: [{ name: 'category', value: 'reinvite' }],
@@ -294,6 +295,8 @@ Deno.serve(async (req) => {
     const invitedUserId = linkData.user.id
     const inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
 
+    const clientCode = body.clientCode?.trim().toUpperCase() || null
+
     const { data: account, error: accountErr } = await admin
       .from('accounts')
       .insert({
@@ -306,6 +309,7 @@ Deno.serve(async (req) => {
         postcode: body.company.postcode ?? null,
         owner_user_id: invitedUserId,
         account_type: accountType,
+        client_code: clientCode,
       })
       .select('id, company_name')
       .single()
@@ -376,7 +380,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
-            subject: 'Your Silvershadow Studio portal is ready.',
+            subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
             html: buildInviteEmailHtml(companyName, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
             headers: {
               'X-Entity-Ref-ID': crypto.randomUUID(),
@@ -404,6 +408,8 @@ Deno.serve(async (req) => {
   }
 
   // ---- Step 2: Create the account (provision mode) ----
+  const provisionClientCode = body.clientCode?.trim().toUpperCase() || null
+
   const { data: account, error: accountErr } = await admin
     .from('accounts')
     .insert({
@@ -416,6 +422,7 @@ Deno.serve(async (req) => {
       postcode: body.company.postcode ?? null,
       owner_user_id: targetUserId!,
       account_type: accountType,
+      client_code: provisionClientCode,
     })
     .select('id, company_name')
     .single()

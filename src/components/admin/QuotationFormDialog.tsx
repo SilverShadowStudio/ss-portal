@@ -52,6 +52,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
   const [status, setStatus] = useState("draft");
   const [currency, setCurrency] = useState("GBP");
   const [vatRate, setVatRate] = useState<number>(20);
+  const [depositPercentage, setDepositPercentage] = useState<number>(50);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<InvoiceLineItem[]>([
     { description: "CGI Still Visuals", quantity: 1, unit_price: 2500 },
@@ -89,6 +90,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
     setStatus("draft");
     setCurrency("GBP");
     setVatRate(20);
+    setDepositPercentage(50);
     setNotes("");
     setItems([{ description: "CGI Still Visuals", quantity: 1, unit_price: 2500 }]);
   }
@@ -125,8 +127,12 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
       project_name: projName,
       amount: total,
       subtotal,
+      net_total: subtotal,
+      gross_total: total,
       vat_rate: Number(vatRate) || 0,
       vat_amount: vatAmount,
+      deposit_percentage: Number(depositPercentage) || 50,
+      deposit_amount: +(total * (Number(depositPercentage) || 50) / 100).toFixed(2),
       status,
       currency,
       notes: notes.trim() || null,
@@ -303,10 +309,16 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
                   {formatCurrency(lineItemsTotal(items) * (1 + (Number(vatRate) || 0) / 100), currency)}
                 </span>
               </div>
+              <div className="flex gap-3 text-muted-foreground">
+                <span>Deposit ({depositPercentage || 50}%)</span>
+                <span className="tabular-nums w-28 text-right">
+                  {formatCurrency(lineItemsTotal(items) * (1 + (Number(vatRate) || 0) / 100) * (Number(depositPercentage) || 50) / 100, currency)}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Currency</Label>
               <Select value={currency} onValueChange={setCurrency}>
@@ -326,6 +338,17 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
                 step="0.5"
                 value={vatRate}
                 onChange={(e) => setVatRate(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Deposit (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="5"
+                value={depositPercentage}
+                onChange={(e) => setDepositPercentage(Number(e.target.value))}
               />
             </div>
           </div>

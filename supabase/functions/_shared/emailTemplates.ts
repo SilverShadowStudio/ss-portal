@@ -12,6 +12,7 @@ export const EMAIL_INVITE_DEFAULTS = {
 }
 
 export interface InviteEmailConfig {
+  subject?: string
   illustrationUrl?: string
   bodyCopy?: string
   ctaLabel?: string

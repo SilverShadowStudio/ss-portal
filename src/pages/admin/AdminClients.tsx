@@ -80,6 +80,7 @@ export default function AdminClients() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [form, setForm] = useState({
     companyName: "",
+    clientCode: "",
     country: "",
     registrationNumber: "",
     streetName: "",
@@ -252,6 +253,7 @@ export default function AdminClients() {
   const resetForm = () => {
     setForm({
       companyName: "",
+      clientCode: "",
       country: "",
       registrationNumber: "",
       streetName: "",
@@ -267,6 +269,29 @@ export default function AdminClients() {
     setSignature("");
     setParsedConfirm(false);
   };
+
+  function suggestClientCodes(name: string): string[] {
+    const clean = name.toUpperCase().replace(/[^A-Z\s]/g, "");
+    const words = clean.split(/\s+/).filter(Boolean);
+    const noSpaces = clean.replace(/\s+/g, "");
+    const codes = new Set<string>();
+
+    if (words.length >= 3) codes.add(words.slice(0, 3).map((w) => w[0]).join(""));
+    if (words.length >= 2) {
+      codes.add(words.slice(0, 2).map((w) => w[0]).join("") + (words[0][1] ?? "X"));
+      if (words[0].length >= 2) codes.add(words[0].slice(0, 2) + words[1][0]);
+      codes.add(words[0][0] + words[1].slice(0, 2));
+    }
+    if (noSpaces.length >= 3) {
+      codes.add(noSpaces.slice(0, 3));
+      if (noSpaces.length >= 4) codes.add(noSpaces.slice(0, 2) + noSpaces[3]);
+    }
+    for (const word of words) {
+      if (word.length >= 3) codes.add(word.slice(0, 3));
+    }
+
+    return [...codes].filter((c) => c.length === 3).slice(0, 8);
+  }
 
   const handleParseSignature = async () => {
     if (!signature.trim()) return;
@@ -352,6 +377,7 @@ export default function AdminClients() {
               position: form.position.trim() || null,
             },
             accountType: form.accountType,
+            clientCode: form.clientCode.trim() || null,
           },
         },
       );
@@ -524,6 +550,34 @@ export default function AdminClients() {
                       <option value="partnership">Partnership</option>
                       <option value="project">Project</option>
                     </select>
+                  </div>
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="text-xs text-muted-foreground">Client code (3 letters, used for quotation numbers)</label>
+                    <Input
+                      value={form.clientCode}
+                      onChange={(e) => updateForm("clientCode", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                      placeholder="e.g. WIN"
+                      maxLength={3}
+                      className="w-24 font-mono uppercase"
+                    />
+                    {form.companyName.trim().length >= 2 && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {suggestClientCodes(form.companyName).map((code) => (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => updateForm("clientCode", code)}
+                            className={`px-2.5 py-1 rounded-sm text-[11px] font-mono uppercase tracking-widest border transition-colors ${
+                              form.clientCode === code
+                                ? "border-gold/60 text-gold bg-gold/5"
+                                : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
+                            }`}
+                          >
+                            {code}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Country</label>
