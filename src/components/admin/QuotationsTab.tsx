@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +60,8 @@ export function QuotationsTab() {
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [viewing, setViewing] = useState<QuotationViewerData | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const { toast } = useToast();
 
   async function fetchRows() {
@@ -98,6 +100,18 @@ export function QuotationsTab() {
     }
     return true;
   }), [rows, statusFilter, search]);
+
+  async function deleteQuotation(id: string) {
+    const { error } = await supabase.from("quotation_documents").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Quotation deleted" });
+      setConfirmingDeleteId(null);
+      setOpenMenuId(null);
+      fetchRows();
+    }
+  }
 
   async function updateStatus(id: string, status: string) {
     const patch: any = { status };
@@ -198,20 +212,59 @@ export function QuotationsTab() {
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{formatCurrency(Number(r.amount), r.currency || "GBP")}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
+                  <DropdownMenu
+                    open={openMenuId === r.id}
+                    onOpenChange={(o) => {
+                      if (o) { setOpenMenuId(r.id); }
+                      else { setOpenMenuId(null); setConfirmingDeleteId(null); }
+                    }}
+                  >
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => view(r)}>
-                        <Eye className="mr-2 h-4 w-4" /> View quotation
-                      </DropdownMenuItem>
-                      {r.status !== "sent" && <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>}
-                      {r.status !== "signed" && <DropdownMenuItem onClick={() => updateStatus(r.id, "signed")}>Mark as signed</DropdownMenuItem>}
-                      {r.status !== "declined" && <DropdownMenuItem onClick={() => updateStatus(r.id, "declined")}>Mark as declined</DropdownMenuItem>}
-                      {r.status !== "cancelled" && <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>}
+                      {confirmingDeleteId === r.id ? (
+                        <div className="px-3 py-2 w-[210px] space-y-3">
+                          <p className="text-sm leading-snug text-muted-foreground">Delete this quotation? This cannot be undone.</p>
+                          <div className="flex flex-col gap-1">
+                            <button
+                              className="text-sm font-medium text-rose-500 hover:text-rose-600 text-left"
+                              onClick={() => deleteQuotation(r.id)}
+                            >
+                              Confirm delete
+                            </button>
+                            <button
+                              className="text-sm text-muted-foreground hover:text-foreground text-left"
+                              onClick={() => { setConfirmingDeleteId(null); setOpenMenuId(null); }}
+                            >
+                              Keep it
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <DropdownMenuItem onClick={() => view(r)}>
+                            <Eye className="mr-2 h-4 w-4" /> View quotation
+                          </DropdownMenuItem>
+                          {r.status !== "sent" && <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>}
+                          {r.status !== "signed" && <DropdownMenuItem onClick={() => updateStatus(r.id, "signed")}>Mark as signed</DropdownMenuItem>}
+                          {r.status !== "declined" && <DropdownMenuItem onClick={() => updateStatus(r.id, "declined")}>Mark as declined</DropdownMenuItem>}
+                          {r.status !== "cancelled" && <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>}
+                          {r.status === "draft" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-rose-500 focus:text-rose-500 focus:bg-rose-500/10"
+                                onSelect={(e) => { e.preventDefault(); setConfirmingDeleteId(r.id); }}
+                              >
+                                Delete quotation
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

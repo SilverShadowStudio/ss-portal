@@ -83,6 +83,27 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
     // Prose body text: same as body but line-length constrained
     const prose: React.CSSProperties = { ...body, maxWidth: "65%" };
 
+    // Recessive category labels for metadata fields (Quotation, Date, Project, The Client)
+    const metaLabel: React.CSSProperties = {
+      fontFamily: sans,
+      fontSize: 7,
+      letterSpacing: "0.2em",
+      textTransform: "uppercase",
+      color: muted,
+      fontWeight: 400,
+      opacity: 0.5,
+    };
+    // Value style for Project / The Client fields
+    const metaValue: React.CSSProperties = {
+      fontFamily: serif,
+      fontSize: 10,
+      lineHeight: 1.65,
+      fontWeight: 300,
+      color: ink,
+      wordSpacing: "normal",
+      marginTop: 6,
+    };
+
     const currency = data.currency || "GBP";
     const items =
       data.line_items && data.line_items.length > 0
@@ -119,15 +140,16 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>{children}</div>
     );
 
-    const Field = ({ heading, children }: { heading: string; children: React.ReactNode }) => (
+    // MetaField: recessive 7pt label + 10pt serif value (Project, The Client)
+    const MetaField = ({ heading, children }: { heading: string; children: React.ReactNode }) => (
       <div>
-        <div style={label}>{heading}</div>
-        <div style={{ ...body, marginTop: 8 }}>{children}</div>
+        <div style={metaLabel}>{heading}</div>
+        <div style={metaValue}>{children}</div>
       </div>
     );
 
     const ClientBlock = () => (
-      <Field heading="The Client">
+      <MetaField heading="The Client">
         {data.client_company || "—"}
         <br />
         {billedAddress.map((l, i) => (
@@ -177,19 +199,21 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
 
           <div style={{ ...ruleLine(false), marginTop: 36 }} />
 
-          {/* Title block — quotation number and date at 18pt serif regular */}
+          {/* Title block — Quotation at 32pt, Date at 18pt; labels recessive at 7pt */}
           <div style={{ marginTop: 28 }}>
             <Section>
-              <Field heading="Quotation">
-                <span style={{ fontFamily: serif, fontSize: 18, fontWeight: 400, fontVariantNumeric: "tabular-nums", fontVariantLigatures: "none" }}>
+              <div>
+                <div style={metaLabel}>Quotation</div>
+                <div style={{ fontFamily: serif, fontSize: 32, fontWeight: 400, color: ink, marginTop: 6, lineHeight: 1.1, fontVariantNumeric: "tabular-nums", fontVariantLigatures: "none" }}>
                   {number}
-                </span>
-              </Field>
-              <Field heading="Date">
-                <span style={{ fontFamily: serif, fontSize: 18, fontWeight: 400 }}>
+                </div>
+              </div>
+              <div>
+                <div style={metaLabel}>Date</div>
+                <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 400, color: ink, marginTop: 6, lineHeight: 1.3 }}>
                   {fmtDate(data.issued_at || data.created_at)}
-                </span>
-              </Field>
+                </div>
+              </div>
             </Section>
           </div>
 
@@ -197,7 +221,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
           <div style={{ marginTop: 24 }}>
             {data.project_name ? (
               <Section>
-                <Field heading="Project">{data.project_name}</Field>
+                <MetaField heading="Project">{data.project_name}</MetaField>
                 <ClientBlock />
               </Section>
             ) : (
