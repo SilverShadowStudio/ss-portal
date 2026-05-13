@@ -5,12 +5,16 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface FormState {
   companyName: string;
   clientCode: string;
+  accountType: string;
   country: string;
   registrationNumber: string;
   streetName: string;
@@ -27,6 +31,7 @@ interface FormState {
 const EMPTY: FormState = {
   companyName: "",
   clientCode: "",
+  accountType: "project",
   country: "",
   registrationNumber: "",
   streetName: "",
@@ -61,7 +66,7 @@ export default function AdminClientProfile() {
         const { data: account, error: accErr } = await supabase
           .from("accounts")
           .select(
-            "id, owner_user_id, company_name, client_code, country, registration_number, street_name, building_number, city, postcode",
+            "id, owner_user_id, company_name, client_code, account_type, country, registration_number, street_name, building_number, city, postcode",
           )
           .eq("id", accountId)
           .maybeSingle();
@@ -100,6 +105,7 @@ export default function AdminClientProfile() {
         setForm({
           companyName: account.company_name || "",
           clientCode: account.client_code || "",
+          accountType: account.account_type || "project",
           country: account.country || "",
           registrationNumber: account.registration_number || "",
           streetName: account.street_name || "",
@@ -217,6 +223,11 @@ export default function AdminClientProfile() {
       );
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      const { error: typeErr } = await supabase
+        .from("accounts")
+        .update({ account_type: form.accountType })
+        .eq("id", accountId);
+      if (typeErr) throw typeErr;
       toast({ title: "Client updated" });
       setForm((p) => ({ ...p, password: "" }));
     } catch (err: any) {
@@ -265,6 +276,15 @@ export default function AdminClientProfile() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Company name" value={form.companyName} onChange={(v) => update("companyName", v)} />
               <Field label="CLIENT CODE" value={form.clientCode} onChange={(v) => update("clientCode", v)} />
+              <SelectField
+                label="Account type"
+                value={form.accountType}
+                onChange={(v) => update("accountType", v)}
+                options={[
+                  { value: "project", label: "Project" },
+                  { value: "partnership", label: "Partnership" },
+                ]}
+              />
               <Field label="Country" value={form.country} onChange={(v) => update("country", v)} />
               <Field label="Registration number" value={form.registrationNumber} onChange={(v) => update("registrationNumber", v)} />
               <Field label="City" value={form.city} onChange={(v) => update("city", v)} />
@@ -357,6 +377,36 @@ function Field({
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
