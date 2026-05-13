@@ -161,7 +161,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
         {data.client_registration ? (
           <span>Co. No. {data.client_registration}</span>
         ) : null}
-      </Field>
+      </MetaField>
     );
 
     return (
