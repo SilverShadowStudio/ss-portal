@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
 import LoginSplash from "@/components/LoginSplash";
-import AuthThemeToggle from "@/components/AuthThemeToggle";
 
 const loginSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }).max(255),
@@ -149,118 +148,121 @@ export default function Auth() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <AuthThemeToggle />
-      {/* Logo */}
-      <div className="mb-10 animate-fade-in">
-        <img 
-          src={silvershadowLogo} 
-          alt="Silvershadow Studio" 
-          className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
-        />
-      </div>
-
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        {!isLogin && (
-          <div className="space-y-2">
-            <label className="text-label text-muted-foreground">FULL NAME</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Dean"
-              className="auth-input placeholder:text-muted-foreground/50"
-            />
-            {errors.fullName && (
-              <p className="text-xs text-destructive">{errors.fullName}</p>
-            )}
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <label className="text-label text-muted-foreground">EMAIL</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="auth-input"
-            required
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="flex w-full max-w-[360px] flex-col items-center">
+        {/* Logo */}
+        <div className="animate-fade-in" style={{ marginBottom: "56px" }}>
+          <img
+            src={silvershadowLogo}
+            alt="Silvershadow Studio"
+            className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
           />
-          {errors.email && (
-            <p className="text-xs text-destructive">{errors.email}</p>
-          )}
         </div>
 
-        {!isForgotPassword && (
-          <div className="space-y-2">
-            <label className="text-label text-muted-foreground">PASSWORD</label>
-            <div className="relative">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="w-full space-y-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+          {!isLogin && (
+            <div className="space-y-4">
+              <label className="text-label text-muted-foreground">FULL NAME</label>
               <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="auth-input pr-10"
-                required
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="John Dean"
+                className="auth-input placeholder:text-muted-foreground/50"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-smooth"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
+              {errors.fullName && (
+                <p className="text-xs text-destructive">{errors.fullName}</p>
+              )}
             </div>
-            {errors.password && (
-              <p className="text-xs text-destructive">{errors.password}</p>
+          )}
+
+          <div className="space-y-4">
+            <label className="text-label text-muted-foreground">EMAIL</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="auth-input"
+              required
+            />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email}</p>
             )}
           </div>
-        )}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="auth-submit"
-        >
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
-              {isForgotPassword ? "SENDING..." : isLogin ? "SIGNING IN..." : "CREATING ACCOUNT..."}
-            </span>
-          ) : (
-            isForgotPassword ? "SEND RESET LINK" : isLogin ? "LOGIN" : "CREATE ACCOUNT"
+          {!isForgotPassword && (
+            <div className="space-y-4">
+              <label className="text-label text-muted-foreground">PASSWORD</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-smooth"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-xs text-destructive">{errors.password}</p>
+              )}
+            </div>
           )}
-        </button>
-      </form>
 
-      {/* Toggle */}
-      <div className="mt-8 flex flex-col items-center gap-3 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-        {isLogin && !isForgotPassword && (
           <button
-            onClick={() => {
-              setIsForgotPassword(true);
-              setErrors({});
-            }}
-            className="text-label text-muted-foreground transition-smooth hover:text-foreground"
+            type="submit"
+            disabled={isLoading}
+            className="auth-submit"
           >
-            FORGOT PASSWORD
+            {isLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                {isForgotPassword ? "SENDING..." : isLogin ? "SIGNING IN..." : "CREATING ACCOUNT..."}
+              </span>
+            ) : (
+              isForgotPassword ? "SEND RESET LINK" : isLogin ? "LOGIN" : "CREATE ACCOUNT"
+            )}
           </button>
-        )}
-        {isForgotPassword && (
-          <button
-            onClick={() => {
-              setIsForgotPassword(false);
-              setErrors({});
-            }}
-            className="text-label text-muted-foreground transition-smooth hover:text-foreground"
-          >
-            BACK TO LOGIN
-          </button>
-        )}
+        </form>
+
+        {/* Forgot password / back */}
+        <div className="mt-8 flex flex-col items-center gap-3 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+          {isLogin && !isForgotPassword && (
+            <button
+              onClick={() => {
+                setIsForgotPassword(true);
+                setErrors({});
+              }}
+              className="transition-smooth hover:opacity-70"
+              style={{ fontFamily: "Arial, sans-serif", fontSize: 11, opacity: 0.45, letterSpacing: 0 }}
+            >
+              Forgot password
+            </button>
+          )}
+          {isForgotPassword && (
+            <button
+              onClick={() => {
+                setIsForgotPassword(false);
+                setErrors({});
+              }}
+              className="transition-smooth hover:opacity-70"
+              style={{ fontFamily: "Arial, sans-serif", fontSize: 11, opacity: 0.45, letterSpacing: 0 }}
+            >
+              Back to login
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

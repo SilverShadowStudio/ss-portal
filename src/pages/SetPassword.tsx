@@ -10,7 +10,7 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.15em",
   opacity: 0.5,
-  marginBottom: "10px",
+  marginBottom: "16px",
 };
 
 export default function SetPassword() {
@@ -63,8 +63,9 @@ export default function SetPassword() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="flex w-full max-w-[360px] flex-col items-center">
+      <div className="animate-fade-in" style={{ marginBottom: "56px" }}>
         <img
           src={silvershadowLogo}
           alt="Silvershadow Studio"
@@ -75,7 +76,7 @@ export default function SetPassword() {
       <form
         onSubmit={handleSubmit}
         className="w-full animate-fade-in"
-        style={{ maxWidth: "360px", animationDelay: "0.05s" }}
+        style={{ animationDelay: "0.05s" }}
       >
         <div style={{ marginBottom: "32px" }}>
           <label style={labelStyle}>Set your password</label>
@@ -112,6 +113,7 @@ export default function SetPassword() {
           )}
         </button>
       </form>
+      </div>
     </div>
   );
 }

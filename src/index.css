@@ -229,10 +229,13 @@
     transition: var(--transition-smooth);
   }
 
-  /* Auth input focus underline glow — theme-aware */
+  /* Auth input — bottom-border only, recessive value text */
   .auth-input {
-    @apply w-full border-0 border-b border-border bg-transparent py-3 text-foreground transition-smooth;
+    @apply w-full border-0 border-b border-border bg-transparent py-3 transition-smooth;
     box-shadow: 0 1px 0 0 transparent;
+    color: hsl(var(--foreground) / 0.85);
+    font-size: 15px;
+    font-weight: 400;
   }
   .auth-input:focus {
     @apply outline-none;
@@ -240,13 +243,10 @@
     box-shadow: 0 1px 0 0 hsl(var(--gold) / 0.6);
   }
 
-  /* Auth submit button — consistent shadow in both themes */
+  /* Auth submit button — gold border, transparent bg */
   .auth-submit {
-    @apply w-full bg-secondary py-3 text-sm tracking-wider text-foreground transition-smooth hover:bg-secondary/80 disabled:opacity-50;
-    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 8px 24px -12px hsl(var(--foreground) / 0.18);
-  }
-  .dark .auth-submit {
-    box-shadow: 0 1px 2px hsl(0 0% 0% / 0.4), 0 8px 24px -12px hsl(0 0% 0% / 0.6);
+    @apply w-full border border-gold bg-transparent text-gold text-xs uppercase tracking-wider transition-colors duration-200 hover:bg-gold/5 disabled:opacity-50;
+    height: 48px;
   }
 
   /* SetPassword page inputs */
@@ -255,7 +255,8 @@
     height: 48px;
     border-color: #3A3530;
     color: hsl(var(--foreground) / 0.85);
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 400;
   }
   .sp-input:focus {
     border-color: #B89A6A;
