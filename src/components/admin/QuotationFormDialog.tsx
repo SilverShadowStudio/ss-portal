@@ -198,7 +198,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
               <Label>Client</Label>
               <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); }}>
                 <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.company_name}</SelectItem>
                   ))}
@@ -209,7 +209,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
               <Label>Project (optional)</Label>
               <Select value={projectId} onValueChange={setProjectId} disabled={!accountId}>
                 <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   <SelectItem value="none">No project</SelectItem>
                   {filteredProjects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -232,7 +232,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
               <Label>Status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="signed">Signed</SelectItem>
@@ -328,7 +328,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
               <Label>Currency</Label>
               <Select value={currency} onValueChange={setCurrency}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   <SelectItem value="GBP">GBP</SelectItem>
                   <SelectItem value="EUR">EUR</SelectItem>
                   <SelectItem value="USD">USD</SelectItem>
