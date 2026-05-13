@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Download, MoreHorizontal, Eye, Loader2 } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, Loader2, CreditCard, Copy } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,7 @@ interface InvoiceRow {
   subtotal?: number | null;
   vat_rate?: number | null;
   vat_amount?: number | null;
+  stripe_checkout_url?: string | null;
 }
 
 const STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
@@ -54,6 +55,7 @@ export default function AdminInvoices() {
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [creatingLinkId, setCreatingLinkId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const { toast } = useToast();
 
@@ -132,6 +134,33 @@ export default function AdminInvoices() {
       });
     } finally {
       setDownloadingId(null);
+    }
+  }
+
+  async function createPaymentLink(id: string) {
+    setCreatingLinkId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-invoice-checkout", {
+        body: { invoice_id: id },
+      });
+      if (error) throw error;
+      if (data?.pending) {
+        toast({ title: "Stripe not configured", description: data.message, variant: "destructive" });
+        return;
+      }
+      if (!data?.url) throw new Error("No URL returned from checkout function");
+      const { error: updateError } = await supabase
+        .from("invoices")
+        .update({ stripe_checkout_url: data.url })
+        .eq("id", id);
+      if (updateError) throw updateError;
+      await navigator.clipboard.writeText(data.url).catch(() => {});
+      toast({ title: "Payment link created", description: "Link copied to clipboard" });
+      fetchInvoices();
+    } catch (e: any) {
+      toast({ title: "Failed to create payment link", description: e?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setCreatingLinkId(null);
     }
   }
 
@@ -228,7 +257,7 @@ export default function AdminInvoices() {
               <TableHead>Due</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-12" />
+              <TableHead className="w-[180px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -263,38 +292,69 @@ export default function AdminInvoices() {
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatCurrency(Number(r.amount), r.currency || "EUR")}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
+                    <div className="flex items-center justify-end gap-1">
+                      {r.stripe_checkout_url ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Copy payment link"
+                          onClick={() => {
+                            navigator.clipboard.writeText(r.stripe_checkout_url!);
+                            toast({ title: "Payment link copied" });
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => viewInvoice(r)}>
-                          <Eye className="mr-2 h-4 w-4" /> View invoice
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => !downloading && downloadPdf(r)} disabled={downloading}>
-                          {downloading ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                          disabled={creatingLinkId === r.id}
+                          onClick={() => createPaymentLink(r.id)}
+                        >
+                          {creatingLinkId === r.id ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <Download className="mr-2 h-4 w-4" />
+                            <CreditCard className="mr-1.5 h-3.5 w-3.5" />
                           )}
-                          {downloading ? "Preparing PDF…" : "Download PDF"}
-                        </DropdownMenuItem>
-                        {r.status !== "sent" && (
-                          <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>
-                        )}
-                        {r.status !== "paid" && (
-                          <DropdownMenuItem onClick={() => updateStatus(r.id, "paid")}>Mark as paid</DropdownMenuItem>
-                        )}
-                        {r.status !== "overdue" && (
-                          <DropdownMenuItem onClick={() => updateStatus(r.id, "overdue")}>Mark as overdue</DropdownMenuItem>
-                        )}
-                        {r.status !== "cancelled" && (
-                          <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          {creatingLinkId === r.id ? "Creating…" : "Payment link"}
+                        </Button>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => viewInvoice(r)}>
+                            <Eye className="mr-2 h-4 w-4" /> View invoice
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => !downloading && downloadPdf(r)} disabled={downloading}>
+                            {downloading ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="mr-2 h-4 w-4" />
+                            )}
+                            {downloading ? "Preparing PDF…" : "Download PDF"}
+                          </DropdownMenuItem>
+                          {r.status !== "sent" && (
+                            <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>
+                          )}
+                          {r.status !== "paid" && (
+                            <DropdownMenuItem onClick={() => updateStatus(r.id, "paid")}>Mark as paid</DropdownMenuItem>
+                          )}
+                          {r.status !== "overdue" && (
+                            <DropdownMenuItem onClick={() => updateStatus(r.id, "overdue")}>Mark as overdue</DropdownMenuItem>
+                          )}
+                          {r.status !== "cancelled" && (
+                            <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               )})
