@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     if (!acct) return json({ error: 'Account not found' }, 404)
 
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-      type: 'invite',
+      type: 'magiclink',
       email,
       options: { redirectTo: `${APP_BASE_URL}/set-password` },
     })
