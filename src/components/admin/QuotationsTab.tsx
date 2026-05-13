@@ -252,7 +252,7 @@ export function QuotationsTab() {
                           {r.status !== "signed" && <DropdownMenuItem onClick={() => updateStatus(r.id, "signed")}>Mark as signed</DropdownMenuItem>}
                           {r.status !== "declined" && <DropdownMenuItem onClick={() => updateStatus(r.id, "declined")}>Mark as declined</DropdownMenuItem>}
                           {r.status !== "cancelled" && <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>}
-                          {r.status === "draft" && (
+                          {["draft", "declined", "cancelled"].includes(r.status) && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
