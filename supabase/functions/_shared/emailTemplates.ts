@@ -15,10 +15,10 @@ export function buildInviteEmailHtml(_companyName: string, inviteUrl: string): s
     </div>
 
     <div style="margin-bottom:36px">
-      <img src="${ILLUSTRATION_URL}" alt="Silvershadow Studio" style="display:block;margin:0 auto;max-width:260px;width:100%;height:auto;border:none" />
+      <img src="${ILLUSTRATION_URL}" alt="Silvershadow Studio" style="display:block;margin:0 auto;max-width:220px;width:100%;height:auto;border:none" />
     </div>
 
-    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:380px;margin:0 auto 32px">
+    <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:360px;margin:0 auto 32px">
       Your Silvershadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.
     </p>
 
