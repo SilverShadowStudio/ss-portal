@@ -61,12 +61,17 @@ Deno.serve(async (req) => {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 500,
       system:
         'You are a contact information extractor. Extract structured contact info from email signatures. ' +
         'Return ONLY a valid JSON object with exactly these fields: ' +
-        'first_name, last_name, position, company_name, email, country, city. ' +
+        'first_name, last_name, position, company_name, email, country, city, ' +
+        'registration_number, street, building_number, postcode. ' +
+        'registration_number is the company registration or VAT number if present. ' +
+        'street is the street name only (no building number). ' +
+        'building_number is the building or unit number. ' +
+        'postcode is the postal or zip code. ' +
         'Use null for any field that cannot be determined. No explanation, no markdown, no extra text.',
       messages: [{ role: 'user', content: signature.trim() }],
     }),

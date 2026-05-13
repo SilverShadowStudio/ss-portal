@@ -315,6 +315,10 @@ export default function AdminClients() {
         email:              fill(prev.email,              p.email),
         country:            fill(prev.country,            p.country),
         city:               fill(prev.city,               p.city),
+        registrationNumber: fill(prev.registrationNumber, p.registration_number),
+        streetName:         fill(prev.streetName,         p.street),
+        buildingNumber:     fill(prev.buildingNumber,     p.building_number),
+        postcode:           fill(prev.postcode,           p.postcode),
       }));
       setParsedConfirm(true);
     } catch (err: any) {
