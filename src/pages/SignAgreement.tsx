@@ -94,14 +94,6 @@ export default function SignAgreement() {
         className="mx-auto w-full px-6 animate-fade-in"
         style={{ maxWidth: "680px", paddingTop: "100px", paddingBottom: "180px" }}
       >
-        {/* Logo */}
-        <div className="flex justify-center mb-16">
-          <img
-            src={silvershadowLogo}
-            alt="Silvershadow Studio"
-            className="h-8 w-auto brightness-0 invert-0 dark:invert"
-          />
-        </div>
 
         {/* Title */}
         <header className="mb-12">
