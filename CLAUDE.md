@@ -59,7 +59,7 @@ Rules:
 - Dropbox API (render delivery)
 - Airtable API (Kieran's production tracker)
 - Resend (transactional email — `RESEND_API_KEY` set in Supabase secrets, `silvershadowstudio.com` domain verified, DNS records applied via Squarespace)
-- Stripe (payment processing — account created, keys pending; see Stripe section)
+- Stripe (payment processing — account live, secrets set in Supabase; see Stripe section)
 
 ## Supabase
 
@@ -353,13 +353,19 @@ Every client account can have a 3-letter `client_code` (e.g. `WIN` for Winch Des
 - **Bank**: Revolut Business — sort code 04-00-75, account 75913542
 - **Payout**: weekly automatic on Monday
 - **Statement descriptor**: SILVERSHADOW
-- **Secrets** (add to Supabase once live account verified):
-  - `STRIPE_SECRET_KEY`
-  - `STRIPE_PUBLISHABLE_KEY`
-  - `STRIPE_WEBHOOK_SECRET`
-- **Webhook URL** (register in Stripe Dashboard once keys are set):
+- **Secrets** (all set in Supabase secrets as of 2026-05-13):
+  - `STRIPE_SECRET_KEY` ✓
+  - `STRIPE_PUBLISHABLE_KEY` ✓
+  - `STRIPE_WEBHOOK_SECRET` ✓
+- **Webhook URL** (register in Stripe Dashboard — event: `checkout.session.completed`):
   `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/stripe-webhook`
-- **Edge functions**: `create-invoice-checkout` (existing, gracefully returns `{ pending: true }` if key not set), `stripe-webhook` (new stub, handles `checkout.session.completed`)
+- **Edge functions**: `create-invoice-checkout` (existing, gracefully returns `{ pending: true }` if key not set), `stripe-webhook` (handles `checkout.session.completed`)
+- **Deploy commands** (run once with your token):
+  ```
+  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy sign-quotation --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
+  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy stripe-webhook --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
+  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy admin-create-client --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
+  ```
 
 ## Document design system
 
@@ -529,7 +535,7 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 
 ## Pending
 
-- **Stripe keys**: Add `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` to Supabase secrets once Stripe live account is verified. Then deploy `stripe-webhook` and register the webhook URL in Stripe Dashboard.
+- **Stripe webhook registration**: Register `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/stripe-webhook` in Stripe Dashboard with event `checkout.session.completed`. Also deploy the three updated edge functions (sign-quotation, stripe-webhook, admin-create-client) — commands in Stripe integration section above.
 - **Quotation + invoice PDF generation**: edge functions for generating quotation and invoice PDFs using `_shared/pdfUtils.ts` design config — not yet built.
 - **Client-facing quotation and invoice views**: clients can view sent quotations (via `Documents.tsx`) and sign them in-portal; invoice payment via Stripe checkout. Signing works in QuotationViewer but client-side routing to quotations page needs wiring.
 - **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets. Currently admin-only round creation.
