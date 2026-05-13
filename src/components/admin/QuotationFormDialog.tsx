@@ -60,12 +60,14 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    console.log("[QuotationFormDialog] useEffect fired, open=", open);
     if (!open) return;
     (async () => {
-      const { data: accs } = await supabase
+      const { data: accs, error: accsError } = await supabase
         .from("accounts")
         .select("id, company_name, owner_user_id")
         .order("company_name");
+      console.log("[QuotationFormDialog] accounts fetch →", { accs, accsError });
       setAccounts(accs || []);
       const { data: projs } = await supabase
         .from("projects")

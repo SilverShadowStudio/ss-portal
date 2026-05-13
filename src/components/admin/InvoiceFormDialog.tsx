@@ -61,12 +61,14 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    console.log("[InvoiceFormDialog] useEffect fired, open=", open);
     if (!open) return;
     (async () => {
-      const { data: accs } = await supabase
+      const { data: accs, error: accsError } = await supabase
         .from("accounts")
         .select("id, company_name, owner_user_id")
         .order("company_name");
+      console.log("[InvoiceFormDialog] accounts fetch →", { accs, accsError });
       setAccounts(accs || []);
       const { data: projs } = await supabase
         .from("projects")
