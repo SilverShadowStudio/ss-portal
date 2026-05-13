@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { buildInviteEmailHtml } from '../_shared/emailTemplates.ts'
+import { buildInviteEmailHtml, InviteEmailConfig } from '../_shared/emailTemplates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,15 +40,29 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url)
-  const template = url.searchParams.get('template') || 'invite'
-  const inviteUrl = url.searchParams.get('inviteUrl') || 'https://portal.silvershadowstudio.com/set-password?token=PREVIEW'
 
-  let html: string
-  if (template === 'invite') {
-    html = buildInviteEmailHtml('Preview Company', inviteUrl)
-  } else {
-    html = buildInviteEmailHtml('Preview Company', inviteUrl)
+  // Fetch stored config as base, then override with any query params
+  const { data: settingsRow } = await admin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'email_invite_config')
+    .maybeSingle()
+
+  const stored: InviteEmailConfig = (settingsRow?.value as InviteEmailConfig) ?? {}
+
+  const p = (key: string) => url.searchParams.has(key) ? (url.searchParams.get(key) ?? undefined) : undefined
+
+  const config: InviteEmailConfig = {
+    illustrationUrl: p('illustrationUrl') ?? stored.illustrationUrl,
+    bodyCopy: p('bodyCopy') ?? stored.bodyCopy,
+    ctaLabel: p('ctaLabel') ?? stored.ctaLabel,
+    ctaUrl: p('ctaUrl') ?? stored.ctaUrl,
+    footerText: p('footerText') ?? stored.footerText,
+    backgroundColor: p('backgroundColor') ?? stored.backgroundColor,
   }
+
+  const inviteUrl = url.searchParams.get('ctaUrl') || 'https://portal.silvershadowstudio.com/set-password?token=PREVIEW'
+  const html = buildInviteEmailHtml('Preview Company', inviteUrl, config)
 
   return new Response(html, {
     headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },

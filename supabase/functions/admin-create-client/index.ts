@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { buildInviteEmailHtml } from '../_shared/emailTemplates.ts'
+import { buildInviteEmailHtml, InviteEmailConfig } from '../_shared/emailTemplates.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -275,6 +275,18 @@ Deno.serve(async (req) => {
     // Send branded invitation email via Resend
     const resendKey = Deno.env.get('RESEND_API_KEY')
     let emailSent = false
+
+    // Load stored email config (best-effort — falls back to defaults on error)
+    let emailConfig: InviteEmailConfig = {}
+    try {
+      const { data: cfgRow } = await admin
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'email_invite_config')
+        .maybeSingle()
+      if (cfgRow?.value) emailConfig = cfgRow.value as InviteEmailConfig
+    } catch { /* use defaults */ }
+
     if (resendKey && inviteUrl) {
       try {
         const res = await fetch('https://api.resend.com/emails', {
@@ -284,7 +296,8 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: 'Your Silvershadow Studio portal is ready.',
-            html: buildInviteEmailHtml(companyName, inviteUrl),
+            // ctaUrl always uses the real invite link, not any stored preview URL
+            html: buildInviteEmailHtml(companyName, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
           }),
         })
         emailSent = res.ok
