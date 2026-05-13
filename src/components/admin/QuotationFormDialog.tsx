@@ -196,7 +196,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); }}>
+              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); setProjectName(""); }}>
                 <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   {accounts.map((a) => (
@@ -207,26 +207,32 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved }: Props) {
             </div>
             <div className="space-y-2">
               <Label>Project (optional)</Label>
-              <Select value={projectId} onValueChange={setProjectId} disabled={!accountId}>
-                <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
-                <SelectContent className="z-[200]">
-                  <SelectItem value="none">No project</SelectItem>
+              <Input
+                value={projectName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProjectName(val);
+                  const match = filteredProjects.find((p) => p.name === val);
+                  setProjectId(match ? match.id : "none");
+                }}
+                placeholder={!accountId ? "Select client first" : filteredProjects.length > 0 ? "Type or select a project…" : "Type project name…"}
+                disabled={!accountId}
+                list="quotation-project-suggestions"
+              />
+              {filteredProjects.length > 0 && (
+                <datalist id="quotation-project-suggestions">
                   {filteredProjects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    <option key={p.id} value={p.name} />
                   ))}
-                </SelectContent>
-              </Select>
+                </datalist>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Quotation #</Label>
               <Input value={quotationNumber} onChange={(e) => setQuotationNumber(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Project name (override)</Label>
-              <Input value={projectName} placeholder="Optional" onChange={(e) => setProjectName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
