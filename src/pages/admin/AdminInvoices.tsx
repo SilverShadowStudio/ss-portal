@@ -4,7 +4,6 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { InvoiceGenerator } from "@/components/admin/invoice-generator/InvoiceGenerator";
 import { QuotationsTab } from "@/components/admin/QuotationsTab";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -372,7 +371,7 @@ export default function AdminInvoices() {
         </TabsContent>
 
         <TabsContent value="generator">
-          <InvoiceGenerator />
+          <iframe src="/generator/index.html" width="100%" style={{ height: "calc(100vh - 120px)", border: "none" }} />
         </TabsContent>
 
         <TabsContent value="quotations">

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Display</title>
+
+
+    <script src="script.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  
+<link rel="stylesheet" href="styles2.css">
+
+</head>
+<body>
+
+<!-- Entire page -->
+    <div id="invoice-container">
+<!-- Logo -->
+        <img src="images/SS - Logo 2019.svg" width="350px"> 
+
+    
+
+ <div class="box1">
+    <!-- Table for Labels -->
+    <table id="invoiceLabels">
+
+        <tbody>
+            <tr>
+                <td>Client </td>
+            </tr>
+            <tr>
+                <td>Address</td>
+            </tr>
+            <tr>
+                <td>Contact</td>
+            </tr>
+            <tr>
+                <td>Project </td>
+            </tr>
+            <tr>
+                <td>Invoice Date</td>
+            </tr>
+            <tr>
+                <td> Invoice Due Date</td>
+            </tr>
+            <tr>
+                <td>Invoice # </td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- Table for Values -->
+    <table id="invoiceValues">
+     
+        <tbody>
+            <tr>
+                <td> <strong> <span id="clientName"> </span> </strong> </strong>  </td>
+            </tr>
+            <tr>
+                <td><strong> <span id="clientAddress"></span></strong> </td>
+            </tr>
+            <tr>
+                <td><strong> <span id="clientContact"></span></strong> </td>
+            </tr>
+            <tr>
+                <td><strong> <span id="projectName"></span></strong> </td>
+            </tr>
+
+
+            <tr>
+                <td><strong>  <span id="invoiceInputDate"></span></strong> </td>
+            </tr>
+            <tr>
+                <td><strong>  <span id="dueDate2"></span></strong> </td>
+            </tr>
+         
+            <tr>
+                <td><strong> <span id="invoiceNumber"></span></strong> </td>
+            </tr>
+            
+        </tbody>
+    </table>
+
+ </div>
+  <!-- End of first box-->
+
+
+  <div class="invisible"> 
+ <span id="invoiceDate1"></span>
+<span id="invoiceDate3"></span>
+</div>
+  
+    <!-- Displaying the saved invoice data -->
+
+    <table id="invoiceItems">
+     
+        <tbody>
+            <!-- Data will be inserted here by JavaScript -->
+        </tbody>
+    </table>
+
+
+    
+   <!-- Vat and calculations -->
+<div id="calculations">
+    <table id="invoiceSummary">
+        <tr id="nettotalbox">
+            <td> <p> NET TOTAL </p> </td>
+            <td>   <p> <span id="totalPrice">£0.00</span> </p> </td>
+        </tr>
+        <tr id="vatbox">
+            <td>  <p> VAT (<span id="vatRateDisplay">20</span>%): </p> </td>
+            <td> <p> <span id="vatAmount">£0.00</span> </p> </td>
+    </tr>
+    <tr id="totalbox">
+       <td> <p> TOTAL </p> </td>
+       <td> <p> <span id="grandTotal">£0.00</span> </p> </td>
+    </tr>
+    <tr id="vatbox">
+        <td> <p>Downpayment: <span id="invoiceDate2"> </span> </p> </td>
+        <td> <p> <span id="downpayment">£0.00</span> </p> </td>
+     </tr>
+
+       <div class="invisible"> 
+<span id="downpaymentDisplay">£0.00</span>
+</div>
+
+    <tr>
+    <td> </td>
+    <td id="downpaymentbox"> <p> BALANCE <br> <br> <span id="remainingBalance">£0.00</span></p> </td>
+    </tr>
+    </table>
+</div>
+
+
+
+
+
+<!-- Absolute part -->
+
+<div class="footer"> 
+<div class="box3">
+
+
+    <table id="bankDetails">
+    
+        <tr>
+            <td>Bank Name</td>
+        </tr>
+        <tr>
+            <td>Sort Code</td>
+        </tr>
+        <tr>
+            <td>Account Number</td>
+        </tr>
+        <tr>
+            <td>SWIFT Code</td>
+        </tr>
+        <tr>
+            <td>IBAN</td>
+        </tr>
+    </table>
+
+    <table id="bankValues">
+        <tr>
+            <td><span id="bankName"></span></td>
+        </tr>
+        <tr>
+            <td><span id="sortCode"></span></td>
+        </tr>
+        <tr>
+            <td><span id="accountNumber"></span></td>
+        </tr>
+        <tr>
+            <td><span id="swiftCode"></span></td>
+        </tr>
+        <tr>
+            <td><span id="ibanNumber"></span></td>
+        </tr>
+    </table>
+
+</div>
+
+
+
+<div id="footerbox">
+<p> SILVERSHADOW STUDIO LTD I REGISTERED IN ENGLAND & WALES: 9178937 I VAT NUMBER: GB 232 8467 02 </p>
+ <p>  332 LADBROKE GROVE, LONDON W10 5AD I +44(0)203 876 5980 </p>
+   <p>  SILVERSHADOWSTUDIO.COM  </p>
+</div>
+
+  
+
+</div>  <!-- Footer end -->
+    </div>  <!-- Whole Page End -->
+
+
+
+
+</body>
+</html>

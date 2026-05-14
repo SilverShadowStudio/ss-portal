@@ -1,0 +1,172 @@
+
+
+
+
+body {
+    background-color: rgba(23, 0, 128, 0.5); 
+    background-size: cover;
+    padding: 100px;
+    font-family: 'Montserrat';
+    margin: 0;
+    padding: 0;
+}
+
+
+#background {
+    padding: 70px;
+}
+
+h2 {
+       color: white;
+}
+
+
+
+#invoiceForm {
+    width: 100%;
+    display: flex;
+}
+
+#box1 {
+    width: 50%;
+}
+
+
+#box2 {
+    width: 50%;
+}
+
+
+
+.invoiceA {
+    border: 1px solid white;
+    min-height: 15vh;
+    width: 80%;
+    padding: 20px;
+    justify-content: center;
+    align-items: center;
+}
+
+.invoiceA input {
+    width: 80%;
+    padding: 8px;
+    margin-bottom: 15px;
+    border: none;
+    border-bottom: 1px solid white;
+    background: transparent;
+    color: white;
+    font-size: 14px;
+}
+
+
+
+
+/* Labels */
+label {
+    display: block;
+    font-size: 14px;
+    color: white;
+   
+}
+
+/* Input Fields */
+input {
+    width: 80%;
+    padding: 8px;
+    margin-bottom: 15px;
+    border: none;
+    border-bottom: 1px solid white;
+    background: transparent;
+    color: white;
+    font-size: 14px;
+}
+
+/* Inputs Placeholder */
+input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Input focus */
+input:focus {
+    outline: none;
+    border-bottom: 1px solid #4CAF50;
+}
+
+
+
+#generate {
+    font-size: 100px;
+    margin-top: 100px;
+}
+
+
+
+
+
+
+
+/* Items Section */
+#itemsContainer {
+    margin-top: 20px;
+}
+
+/* Each Item Row */
+.item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+
+.item input {
+    flex: 1;
+    margin-right: 10px;
+}
+
+
+
+
+/* VAT Input */
+#vatRate {
+    width: 100px;
+    padding: 10px 15px;
+    text-align: center;
+    border: 1px solid #777;
+    background: transparent;
+    color: white;
+    margin: 0;
+}
+
+/* Buttons */
+button {
+    background-color: #fecf74;
+    color: black;
+    padding: 10px 15px;
+    border: none;
+    cursor: pointer;
+    transition: 0.3s ease-in-out;
+}
+
+button:hover {
+    background-color: #367B3C;
+}
+
+.removeItem {
+    background-color: red;
+    padding: 5px 10px;
+    font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #topSection {
+        flex-direction: column;
+    }
+
+    #box1, #box2 {
+        width: 100%;
+    }
+}

@@ -1,0 +1,319 @@
+
+/* Body styling */
+body {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background-color: #f1f2f2;
+    padding: 0;
+    font-family: 'Montserrat';
+    font-size: 10px;
+    font-weight:500;
+}
+
+
+
+
+/* A4 container styling */
+#invoice-container {
+    background-color: #f1f2f2;
+    box-sizing: border-box;
+    overflow: auto;
+    height: 100%;
+    align-items: center;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    margin-top: none;
+    height: 11in;
+    width: 8.5in;
+    position: relative;
+}
+
+
+img {
+    margin-top: 0px;
+    margin-bottom: 20px;;
+}
+
+
+/* TABLES */
+
+table {
+    border-collapse: collapse;
+}
+
+td {
+    padding: 7px;
+    text-align: left;
+}
+
+
+
+.invisible span {
+    display: none;
+    visibility: hidden;
+
+}
+
+
+
+/* Box 1 */
+.box1 {
+    display: flex;
+    width: 100%;
+}
+
+#invoiceLabels {
+    width: 25%;
+    background-color: #808285;
+    border: 15px solid #808285;
+    border-top: 5px solid #808285;
+    color: white;
+    margin-right: 2px;
+}
+
+#invoiceValues {
+    background-color: #fecf74;
+    border: 15px solid #fecf74;
+    border-top: 5px solid #fecf74;
+    color: #545554;
+    width: 75%;
+    text-transform: uppercase;
+    margin-left: 2px;
+}
+
+
+/* Box 2*/
+
+#invoiceItems {
+    background-color: #dcddde;
+    margin: 0;
+    width: 100%;
+}
+
+#invoiceItems tr {
+    border-top: 3px solid #f1f2f2;
+}
+
+#invoiceItems td {
+    color: #545554;
+    padding-bottom: 70px;
+    padding-left: 22px;
+    padding-top: 10px;
+
+}
+
+
+#invoiceItems td:first-child {
+    width: 25.1%;
+    text-transform: uppercase;
+    border-right: 3.1px solid #f1f2f2;
+}
+
+#invoiceItems td:last-child {
+    width: 24.9%;
+    text-transform: uppercase;
+    border-left: 3px solid #f1f2f2;
+}
+
+
+
+
+
+
+
+/* VAT And Totals section */
+
+
+#calculations{
+    display: flex;
+    width: 100%;
+    justify-content: flex-end;
+}
+
+#invoiceSummary {
+    color: #545554;
+    width: 50%;
+    font-weight: bold;
+    padding: 0;
+}
+
+#invoiceSummary td{
+    border-left: 3px solid #f1f2f2;
+    border-top: 3px solid #f1f2f2;
+}
+
+#nettotalbox {
+    background-color: #808285;
+    color: white;
+}
+
+#nettotalbox td{
+    padding-right: 15px;
+    padding-left: 22px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+#vatbox {
+    background-color: #dcddde;
+}
+
+#vatbox td{
+    padding-right: 15px;
+    padding-top: 0;
+    padding-bottom: 0;
+    text-transform: uppercase;
+}
+
+#vatbox td:last-child{
+    padding-left: 22px;
+}
+
+#totalbox {
+    background-color: #808285;
+    color: white;
+}
+
+#totalbox td{
+    padding-right: 15px;
+    padding-left: 22px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+
+#downpaymentbox {
+    background-color: #fecf74;
+    padding-left: 22px;
+}
+
+
+#remainingBalance {
+color: white; 
+font-size: 25px;
+transform: scale(1.3, 1.6); /* 1.2x width, 1.3x height */
+font-weight:550;
+display: inline-block; /* Prevents inline elements from breaking */
+padding-left: 5px;
+}
+
+#invoiceSummary td:first-child {
+    width: 50%;  /* Left column takes 50% */
+    text-align: right;
+}
+
+/* Make the right column smaller */
+#invoiceSummary td:last-child {
+    width: 50%;  /* Right column takes 50% */
+}
+
+
+
+
+
+
+
+
+/* Box 3 */
+
+.box3 { 
+    width: 100%;
+    display: flex;
+    margin-top: 3px;
+}
+
+.box3 td {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+
+
+#bankDetails {
+    background-color: #808285;
+    width: 25%;
+    border: 15px solid #808285;
+    border-top: 10px solid #808285;
+    color: white;
+    margin-right: 2px;
+}
+ 
+
+#bankValues {
+    background-color: #dcddde;
+    border: 15px solid #dcddde;
+    border-top: 10px solid #dcddde;
+    color: #545554;
+    width: 75%;
+    text-transform: uppercase;
+    margin-left: 2px;
+}
+
+
+
+.footer {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    margin-top: 3px;
+    position: absolute;
+    bottom: 0; /* Stick to the bottom of the container */
+    left: 0;   /* Align to the left */
+    right: 0;  /* Align to the right */
+    width: 100%; /* Ensure it stretches across the container width */
+    padding: 0px;
+    background-color: #f1f2f2; /* Customize as needed */
+    text-align: center; /* Optional */
+}
+
+.footer p {
+    margin: 0;
+    padding: 0;
+    color: #545554;
+}
+
+#footerbox {
+    margin-top: 40px;
+}
+
+
+
+
+
+
+
+/* Responsive adjustments */
+@media print {
+
+    /* A4 Page settings */
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+  
+    html, body {
+      width: 210mm;         /* A4 width */
+      height: 297mm;        /* A4 height */
+      margin: 0;
+      padding: 0;
+      background-color: #f1f2f2;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      box-sizing: border-box;
+    }
+  
+    * {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      box-sizing: border-box; /* Avoid width overflow from borders/padding */
+    }
+  
+    #invoice-container {
+      width: 100%;
+      max-width: 210mm;
+      margin: 25px 70px 0 70px;
+      box-sizing: border-box;
+    }
+  }

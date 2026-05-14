@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Form</title>
+
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+
+
+
+
+
+    <link rel="stylesheet" href="form.css">
+  
+
+
+
+</head>
+
+
+<body>
+    
+
+ <div id="background">  
+    
+<div id="dynamicform"> 
+    
+    
+
+
+
+    <form id="invoiceForm">
+        <!-- Invoice Details -->
+    <div id="box1"> 
+        
+        <label for="client">Client Name:</label>
+        <input type="text" id="client" required><br><br>
+    
+        <label for="address">Address:</label>
+        <input type="text" id="address" required><br><br>
+    
+        <label for="contact">Contact:</label>
+        <input type="text" id="contact" required><br><br>
+    
+        <label for="project">Project:</label>
+        <input type="text" id="project" required><br><br>
+
+        <label for="invoiceNumber">Invoice Number:</label>
+        <input type="text" id="invoiceNumber" required><br><br>
+
+        <!-- First Invoice  -->
+
+        <br> 
+        <br> 
+        <br> 
+
+      <strong> <label> Invoice A </label> </strong>  
+
+        <br> 
+        
+    <div class="invoiceA"> 
+
+
+        <label for="invoiceDate">Invoice Date: </label>
+
+        <input type="date" id="invoiceDate" required><br><br> 
+
+         
+        <div id="flex2">
+            <!-- VAT CALCULATE -->
+          
+        <label for="vatRate">VAT Rate (%):</label> 
+        <input type="number" id="vatRate" value="20" min="0" step="0.1">
+        <button type="button" id="updateVAT">Update</button>
+        </div>
+        
+        <!-- Downpayment calculate -->
+
+    <label for="down"> Downpayment </label> 
+        <input type="number" id="down" value="40" min="0" step="0.1">
+        <button type="button" id="updateDown">Update</button>
+        
+  
+</div>
+
+<br> 
+
+
+<button type="button" id="saveInvoiceDetails"> Update Information </button>
+
+<button type="button" id="printIframe1" > Download </button>
+
+
+
+        </div>
+
+    <div id="box2">
+        <!-- Bank Details -->
+      
+        <label for="bank">Bank Name:</label>
+        <input type="text" id="bank" required><br><br>
+    
+        <label for="sortCode">Sort Code:</label>
+        <input type="text" id="sortCode" required><br><br>
+    
+        <label for="accountNumber">Account Number:</label>
+        <input type="text" id="accountNumber" required><br><br>
+    
+        <label for="swift">SWIFT Code:</label>
+        <input type="text" id="swift" required><br><br>
+    
+        <label for="iban">IBAN:</label>
+        <input type="text" id="iban" required><br><br>
+    
+        <!-- Second Invoice -->
+
+       
+
+        <br>
+        <br> 
+        <br> 
+
+       <strong> <label> Invoice B </label> </strong>
+
+        <br> 
+         
+
+    <div class="invoiceA"> 
+
+        <label for="date2"> Invoice Date: </label>
+
+        <input type="date" id="invoiceInputDate" required>
+
+        <br>    <br>    
+  
+        <label for="netDays">Net Days:</label>
+
+<input type="number" id="netDays" value="30" min="0" required>
+
+    </div>  
+
+    <br> 
+
+    <button type="button" id="printIframe2"> Download </button>
+
+    </div>
+    </form>
+
+    </div>
+
+
+
+
+
+    <h2>Invoice Items</h2>
+
+    <form id="itemsForm">
+        <div id="itemsContainer">
+            <div class="item">
+                <label>Category:</label>
+                <input type="text" name="description[]" required>
+    
+                <label>Item:</label>
+                <input type="text" name="quotation[]" required>
+    
+                <label>Price:</label>
+                <input type="number" name="price[]" step="0.01" required>
+    
+                <button type="button" class="removeItem">❌</button>
+            </div>
+        </div>
+
+       
+                <button type="submit">Save Items</button>
+         
+                <button type="button" id="addItem">Add Line</button>
+ 
+        
+  
+    </form>
+
+</div>
+
+
+
+
+<script>
+
+// Function to print first iframe
+function printIframe1() {
+    // Create hidden iframe for the first page
+    let iframe1 = document.createElement("iframe");
+    iframe1.style.display = "none";
+    iframe1.src = "display.html"; // First page to print
+    document.body.appendChild(iframe1);
+
+    iframe1.onload = function () {
+        iframe1.contentWindow.print();
+        setTimeout(() => {
+            document.body.removeChild(iframe1); // Remove the iframe after printing
+        }, 500);
+    };
+}
+
+// Function to print second iframe
+function printIframe2() {
+    // Create hidden iframe for the second page
+    let iframe2 = document.createElement("iframe");
+    iframe2.style.display = "none";
+    iframe2.src = "display2.html"; // Second page to print
+    document.body.appendChild(iframe2);
+
+    iframe2.onload = function () {
+        iframe2.contentWindow.print();
+        setTimeout(() => {
+            document.body.removeChild(iframe2); // Remove the iframe after printing
+        }, 500);
+    };
+}
+
+// Attach event listeners to buttons
+document.getElementById("printIframe1").addEventListener("click", printIframe1);
+document.getElementById("printIframe2").addEventListener("click", printIframe2);
+
+
+
+
+
+
+
+
+// VAT
+
+document.addEventListener('DOMContentLoaded', function() {
+    let vatRateInput = document.getElementById("vatRate");
+    let updateVATButton = document.getElementById("updateVAT");
+
+    // Load saved VAT rate from localStorage
+    let savedVAT = localStorage.getItem("vatRate");
+    if (savedVAT) {
+        vatRateInput.value = savedVAT;
+    }
+
+    // Save VAT rate to localStorage when updated
+    updateVATButton.addEventListener("click", function() {
+        localStorage.setItem("vatRate", vatRateInput.value);
+        alert("VAT updated!"); // Optional confirmation message
+    });
+});
+
+
+// Downpayment
+
+document.addEventListener('DOMContentLoaded', function() {
+    let downRateInput = document.getElementById("down");
+    let updateDownButton = document.getElementById("updateDown");
+
+    // Load saved Downpayment rate from localStorage
+    let savedDown = localStorage.getItem("down");
+    if (savedDown) {
+        downRateInput.value = savedDown;
+    }
+
+    // Save Downpayment rate to localStorage when updated
+    updateDownButton.addEventListener("click", function() {
+        localStorage.setItem("down", downRateInput.value);
+        alert("Downpayment updated!"); // Optional confirmation message
+    });
+});
+
+
+
+
+</script>
+
+
+
+
+
+    <script src="script.js"></script>
+</body>
+</html>
