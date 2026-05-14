@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -354,14 +354,39 @@ export default function Index() {
       );
 
       if (clientRound) {
-        // Try to get latest asset URL
+        // Try to get latest asset URL, preferring Dropbox-delivered renders.
         const { data: asset } = await supabase
           .from("round_assets")
-          .select("dropbox_path, image_url")
+          .select("dropbox_path, storage_path, image_url, source")
           .eq("scene_round_id", clientRound.id)
           .eq("is_current", true)
+          .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        let assetUrl: string | null = (asset as any)?.image_url || null;
+        if (!assetUrl && (asset as any)?.dropbox_path) {
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const token = sessionData?.session?.access_token;
+            if (token) {
+              const res = await fetch(
+                `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ path: (asset as any).dropbox_path }),
+                }
+              );
+              if (res.ok) assetUrl = (await res.json()).link ?? null;
+            }
+          } catch { /* ignore */ }
+        }
+        if (!assetUrl && (asset as any)?.storage_path) {
+          const rawPath = ((asset as any).storage_path as string).replace(/^\/+/, "");
+          const { data: urlData } = supabase.storage.from("scene-assets").getPublicUrl(rawPath);
+          assetUrl = urlData.publicUrl || null;
+        }
 
         setFocus({
           kind: "review",
@@ -374,7 +399,7 @@ export default function Index() {
             scene_name: (clientRound as any).scenes?.name || null,
             project_name: (clientRound as any).scenes?.projects?.name || null,
             delivered_at: clientRound.delivered_at,
-            asset_url: (asset as any)?.image_url || null,
+            asset_url: assetUrl,
           },
         });
         return;

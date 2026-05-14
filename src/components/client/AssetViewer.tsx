@@ -135,7 +135,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       } else if (selectedAsset.source === "upload" && selectedAsset.storage_path) {
         const path = selectedAsset.storage_path.replace(/^\/+/, "");
         const { data } = supabase.storage
-          .from("round-uploads")
+          .from("scene-assets")
           .getPublicUrl(path);
         setThumbnailUrl(data.publicUrl);
       }
@@ -227,7 +227,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       if (selectedAsset.source === "upload" && selectedAsset.storage_path) {
         const path = selectedAsset.storage_path.replace(/^\/+/, "");
         const { data } = supabase.storage
-          .from("round-uploads")
+          .from("scene-assets")
           .getPublicUrl(path);
         downloadUrl = data.publicUrl;
       } else if (selectedAsset.source === "dropbox" && selectedAsset.dropbox_path) {

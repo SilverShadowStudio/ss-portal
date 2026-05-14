@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ClientLayout } from "@/components/ClientLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { ArborescenceTitle } from "@/components/client/ArborescenceTitle";
@@ -236,29 +236,62 @@ export default function Portfolio() {
             .order("round_number", { ascending: true })
         : { data: [] as any[] };
 
-      // Resolve a preview URL per round from the most recent uploaded asset.
+      // Resolve a preview URL per round — prefer Dropbox-delivered renders,
+      // fall back to Supabase-uploaded assets.
       const roundIds = (allRounds || []).map((r: any) => r.id);
       const previewByRoundId = new Map<string, string>();
       if (roundIds.length) {
         const { data: assetRows } = await supabase
           .from("round_assets")
-          .select("scene_round_id, storage_path, source, created_at, is_current")
+          .select("scene_round_id, storage_path, dropbox_path, source, created_at, is_current")
           .in("scene_round_id", roundIds)
           .eq("is_current", true)
-          .eq("source", "upload")
           .order("created_at", { ascending: false });
+
+        // Collect the most-recent asset per round, preferring Dropbox over upload.
+        const dropboxByRound = new Map<string, any>();
+        const uploadByRound = new Map<string, any>();
         for (const a of assetRows || []) {
           const key = (a as any).scene_round_id as string;
-          if (previewByRoundId.has(key)) continue;
-          const rawPath = (a as any).storage_path as string | null;
-          if (!rawPath) continue;
-          // storage_path is the filename only — strip any accidental leading slash
-          // so getPublicUrl doesn't produce a double slash in the resulting URL.
-          const path = rawPath.replace(/^\/+/, "");
-          const { data: urlData } = supabase.storage
-            .from("round-uploads")
-            .getPublicUrl(path);
+          if ((a as any).dropbox_path && !dropboxByRound.has(key)) {
+            dropboxByRound.set(key, a);
+          } else if ((a as any).source === "upload" && (a as any).storage_path && !uploadByRound.has(key)) {
+            uploadByRound.set(key, a);
+          }
+        }
+
+        // Resolve upload previews synchronously (Dropbox-covered rounds are skipped).
+        for (const [key, a] of uploadByRound) {
+          if (dropboxByRound.has(key)) continue;
+          const rawPath = ((a as any).storage_path as string).replace(/^\/+/, "");
+          const { data: urlData } = supabase.storage.from("scene-assets").getPublicUrl(rawPath);
           previewByRoundId.set(key, urlData.publicUrl);
+        }
+
+        // Resolve Dropbox previews via edge function (parallel).
+        if (dropboxByRound.size > 0) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData?.session?.access_token;
+          if (token) {
+            await Promise.all(
+              [...dropboxByRound.entries()].map(async ([key, a]) => {
+                try {
+                  const res = await fetch(
+                    `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ path: (a as any).dropbox_path }),
+                    }
+                  );
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.link) previewByRoundId.set(key, data.link);
+                  }
+                } catch { /* ignore — round simply won't have a preview */ }
+              })
+            );
+          }
         }
       }
 
