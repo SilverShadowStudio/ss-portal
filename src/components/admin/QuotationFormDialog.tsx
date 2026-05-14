@@ -27,6 +27,7 @@ interface AccountOption {
   id: string;
   company_name: string;
   owner_user_id: string;
+  client_code: string | null;
 }
 
 interface ProjectOption {
@@ -108,7 +109,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
     (async () => {
       const { data: accs } = await supabase
         .from("accounts")
-        .select("id, company_name, owner_user_id")
+        .select("id, company_name, owner_user_id, client_code")
         .order("company_name");
       const { data: projs } = await supabase
         .from("projects")
@@ -123,25 +124,23 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
   }, []);
 
   async function generateQuotationNumber(accId: string): Promise<string> {
-    const { data: account } = await supabase
-      .from("accounts")
-      .select("client_code")
-      .eq("id", accId)
-      .maybeSingle();
-
+    // Read from already-fetched accounts list — avoids a separate DB call and
+    // ensures we're using the exact same account record the user selected.
+    const account = accounts.find((a) => a.id === accId);
     const code = (account?.client_code ?? "").trim().toUpperCase();
     if (!code) {
       return `Q${Math.floor(100 + Math.random() * 900)}`;
     }
 
+    // Match both legacy KAT025 (no dash) and current KAT-025 (with dash).
     const { data: existing } = await supabase
       .from("quotation_documents")
       .select("quotation_number")
-      .ilike("quotation_number", `${code}-%`);
+      .ilike("quotation_number", `${code}%`);
 
     let max = 0;
     for (const row of existing ?? []) {
-      const m = (row.quotation_number ?? "").match(new RegExp(`^${code}-(\\d+)$`, "i"));
+      const m = (row.quotation_number ?? "").match(new RegExp(`^${code}-?(\\d+)$`, "i"));
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
 
