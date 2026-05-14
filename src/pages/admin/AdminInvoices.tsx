@@ -223,6 +223,7 @@ export default function AdminInvoices() {
   async function deleteInvoice(id: string) {
     if (!window.confirm("Delete this invoice? This cannot be undone.")) return;
     const { error } = await supabase.from("invoices").delete().eq("id", id);
+    console.log("delete error:", error);
     if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     else { toast({ title: "Invoice deleted" }); fetchInvoices(); }
   }
