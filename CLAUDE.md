@@ -112,7 +112,9 @@ src/
     Timeline.tsx           # Client timeline / Gantt
     Delivery.tsx           # Client delivery page
     Orders.tsx             # Client orders confirmation (Uber-style flow)
-    Documents.tsx          # Client documents hub (agreement + invoices)
+    Documents.tsx          # Client documents hub — three tabs: Agreement (sign/view SSS-CA-v2.0),
+                           # Quotations (view sent quotations, sign in-portal via QuotationViewer),
+                           # Invoices (view invoices, pay via Stripe checkout link)
     Contract.tsx           # Client agreement signing (SSS-CA-v2.0)
     SetPassword.tsx        # Password setup from invite link — reads URL hash for
                            # Supabase error params (otp_expired → expired message,
@@ -129,7 +131,10 @@ src/
       AdminOrders.tsx           # Create and manage orders
       AdminScenes.tsx           # Scene management
       AdminFinance.tsx          # Invoices and finance
-      AdminInvoices.tsx         # Invoices + Quotations tabs
+      AdminInvoices.tsx         # Invoices + Quotations + Generator tabs
+                                # Generator tab: client selector dropdown (fetches accounts + owner
+                                # profile via account_members join) builds iframe src with URL params
+                                # (client, address, contact, registration) → public/generator/index.html
       AdminTimeline.tsx         # Production timeline
       AdminBatchUpload.tsx      # Bulk render upload
       AdminActivity.tsx         # Full activity log — badge filters by event type + date range, 2000 row limit
@@ -141,8 +146,10 @@ src/
                                 #   Design tab: document_design_config editor + preview cards
                                 #   Email tab: invitation email configurator + subject line
                                 #   (replaces the standalone AdminEmailPreview page)
-      AdminClientProfile.tsx    # Client profile — account details, resend invitation button
-                                #   (appears only when agreement not yet signed, uses magiclink type)
+      AdminClientProfile.tsx    # Client profile — account details (company name, client code,
+                                #   account type, building number, street, postcode, city, country,
+                                #   registration number), resend invitation button (appears only when
+                                #   agreement not yet signed, uses magiclink type)
 
   components/
     AdminSidebar.tsx       # Admin sidebar — imports shared constants from src/lib/sidebarConstants.ts
@@ -161,8 +168,10 @@ src/
       ClientActivityPanel.tsx      # Client session history
       SceneCard.tsx                # Scene summary card
       InvoiceFormDialog.tsx        # Create invoice dialog
-      QuotationFormDialog.tsx      # Create quotation dialog — includes deposit % field
-                                   # stores deposit_percentage, net_total, gross_total, deposit_amount
+      QuotationFormDialog.tsx      # Create/edit quotation dialog — deposit % field, net/gross/deposit
+                                   # totals. Supports three modes: create (draft), edit (any status),
+                                   # send (sets status → sent, triggers send-quotation-email).
+                                   # Delete action available for draft/declined/cancelled quotations.
       QuotationsTab.tsx            # Quotations list in AdminInvoices
       AssetUploader.tsx            # Upload renders to Supabase storage
 
@@ -221,6 +230,12 @@ supabase/
                                 # contact fields from a pasted email signature. Returns JSON with
                                 # first_name, last_name, position, company_name, email, country, city.
                                 # Requires ANTHROPIC_API_KEY Supabase secret.
+                                # Fix applied: response now correctly parsed from streamed JSON.
+    send-quotation-email/       # Sends branded quotation email to client when quotation status → sent.
+                                # Uses Resend, reads document_design_config for styling, attaches
+                                # quotation PDF. Called by QuotationFormDialog on send action.
+    send-invoice-email/         # Sends branded invoice email to client with payment link.
+                                # Uses Resend. Called manually from invoice actions.
     sign-quotation/             # Signs a quotation (status: sent → signed), records signed_by_name
                                 # and signed_by_position, auto-creates a deposit invoice (type: deposit)
                                 # due 5 days after signing. Caller must be account member or admin.
@@ -245,6 +260,22 @@ supabase/
       brandLogo.ts        # SILVERSHADOW_LOGO_DATA_URL base64 constant
 
   migrations/              # Applied in filename order via Supabase Management API
+
+public/
+  generator/             # Standalone invoice generator (static HTML/JS, no React)
+    index.html           # Form — client info, bank details, Invoice A (date/VAT/downpayment),
+                         # Invoice B (date/net days). Download buttons auto-save all fields to
+                         # localStorage then open a hidden iframe to print display.html or display2.html.
+                         # Accepts URL params: client, address, contact, registration — pre-fills
+                         # form fields, overriding localStorage (set by AdminInvoices client selector).
+    display.html         # Invoice A print layout
+    display2.html        # Invoice B print layout
+    styles.css / styles2.css / form.css
+    script.js            # Shared logic: localStorage restore, URL param pre-fill, net days
+                         # calculation, item management (add/remove/save), display rendering,
+                         # VAT + downpayment totals
+    images/
+      SS - Logo 2019.svg # Brand logo (copy manually if missing — not in git)
 ```
 
 ## Client dashboard — state machine (Index.tsx)
@@ -357,15 +388,10 @@ Every client account can have a 3-letter `client_code` (e.g. `WIN` for Winch Des
   - `STRIPE_SECRET_KEY` ✓
   - `STRIPE_PUBLISHABLE_KEY` ✓
   - `STRIPE_WEBHOOK_SECRET` ✓
-- **Webhook URL** (register in Stripe Dashboard — event: `checkout.session.completed`):
+- **Webhook URL** (registered in Stripe Dashboard — event: `checkout.session.completed`):
   `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/stripe-webhook`
-- **Edge functions**: `create-invoice-checkout` (existing, gracefully returns `{ pending: true }` if key not set), `stripe-webhook` (handles `checkout.session.completed`)
-- **Deploy commands** (run once with your token):
-  ```
-  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy sign-quotation --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
-  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy stripe-webhook --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
-  SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy admin-create-client --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
-  ```
+- **Edge functions**: `create-invoice-checkout` (creates checkout session; returns `{ pending: true }` if key missing), `stripe-webhook` (handles `checkout.session.completed`, marks invoice paid, stores `stripe_payment_intent_id`)
+- **Status as of 2026-05-14**: Secrets set, webhook registered, functions deployed. Payment link button visible in invoice table. Actively debugging — added `console.log("Stripe key set:", !!stripeKey)` and catch-block stack logging to `create-invoice-checkout`. Check Supabase Dashboard → Functions → create-invoice-checkout → Logs after triggering from the portal.
 
 ## Document design system
 
@@ -535,12 +561,15 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 
 ## Pending
 
-- **Stripe webhook registration**: Register `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/stripe-webhook` in Stripe Dashboard with event `checkout.session.completed`. Also deploy the three updated edge functions (sign-quotation, stripe-webhook, admin-create-client) — commands in Stripe integration section above.
-- **Quotation + invoice PDF generation**: edge functions for generating quotation and invoice PDFs using `_shared/pdfUtils.ts` design config — not yet built.
-- **Client-facing quotation and invoice views**: clients can view sent quotations (via `Documents.tsx`) and sign them in-portal; invoice payment via Stripe checkout. Signing works in QuotationViewer but client-side routing to quotations page needs wiring.
+- **Stripe payment link debugging** — secrets set, webhook registered, functions deployed, but payment link creation from the invoice table is not working as expected. Debug logging added to `create-invoice-checkout` (2026-05-14). Check Supabase Function logs after triggering from portal to identify the failure point.
+- **Quotation number auto-generation** — quotation numbers should be auto-generated from the account's `client_code` + sequence (e.g. `WIN-001`, `WIN-002`). Currently entered manually. Logic should live in `QuotationFormDialog` or a DB trigger.
+- **Clean up test invoices** — several test/dummy invoices in the database from development. Delete or archive before going live with real clients.
+- **Sidebar nav customisation** — review and finalise which nav items appear for each user type; hide any admin-only or unbuilt routes that clients might see.
+- **Quotation + invoice PDF generation** — edge functions for generating PDFs using `_shared/pdfUtils.ts` design config not yet built. Currently PDFs are generated client-side only.
 - **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets. Currently admin-only round creation.
 - **New commission brief flow not built** — 3-step overlay from idle dashboard state.
 - **Airtable inbound webhook not set up** — `pull-status` is currently manual only.
 - **Pre-launch ghost mode test** — ghost as Simon Tomlinson (Winch) and Marie Soliman (Bergman) and walk through the full client flow.
 - **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work.
 - **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm verified in Resend.
+- **SVG logo in generator** — `public/generator/images/SS - Logo 2019.svg` is not committed to git (filename has spaces, was skipped). Copy manually to that path on any new machine.
