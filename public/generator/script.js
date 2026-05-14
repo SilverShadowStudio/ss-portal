@@ -48,31 +48,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
-// FORM , SAVE DATA
-
-document.addEventListener("DOMContentLoaded", function () {
-    // Save Invoice Details
-    document.getElementById("saveInvoiceDetails").addEventListener("click", function () {
-        // Save invoice details in localStorage
-        localStorage.setItem("client", document.getElementById("client").value);
-        localStorage.setItem("address", document.getElementById("address").value);
-        localStorage.setItem("contact", document.getElementById("contact").value);
-        localStorage.setItem("project", document.getElementById("project").value);
-        localStorage.setItem("invoiceDate", document.getElementById("invoiceDate").value);
-        localStorage.setItem("invoiceNumber", document.getElementById("invoiceNumber").value);
-        localStorage.setItem("invoiceInputDate", document.getElementById("invoiceInputDate").value);
-        localStorage.setItem("dueDate2", document.getElementById("dueDate2").value);
-        localStorage.setItem("bank", document.getElementById("bank").value);
-        localStorage.setItem("sortCode", document.getElementById("sortCode").value);
-        localStorage.setItem("accountNumber", document.getElementById("accountNumber").value);
-        localStorage.setItem("swift", document.getElementById("swift").value);
-        localStorage.setItem("iban", document.getElementById("iban").value);
-        alert("Invoice Details saved!");
-    });
 
 
-});
-    
 
 
 
@@ -270,45 +247,8 @@ function calculateTotals() {
 }
 
 
-    // Function to load VAT rate and update display
-    function loadVAT() {
-        let vatRateInput = document.getElementById("vatRate");
-        if (!vatRateInput) return; // Only run this on the invoice form page
-
-        let savedVAT = localStorage.getItem("vatRate");
-        if (savedVAT) {
-            vatRateInput.value = savedVAT;
-        }
-
-        document.getElementById("updateVAT").addEventListener("click", function() {
-            let newVAT = vatRateInput.value;
-            localStorage.setItem("vatRate", newVAT);
-            alert("VAT updated!");
-        });
-    }
-
-    
-    // Function to load VAT rate and update display
-    function loaddown() {
-        let downInput = document.getElementById("down");
-        if (!downInput) return; // Only run this on the invoice form page
-
-        let savedDown = localStorage.getItem("down");
-        if (savedDown) {
-            downInput.value = savedDown;
-        }
-
-        document.getElementById("updateDown").addEventListener("click", function() {
-            let newDown = downInput.value;
-            localStorage.setItem("down", newDown);
-            alert("Down updated!");
-        });
-    }
-
-
-    // Run functions
-    calculateTotals(); // Run on the invoice summary page
-    loadVAT(); // Run on the invoice form page
+    // Run on the invoice summary page
+    calculateTotals();
 });
 
 
