@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FolderMappingManager } from "@/components/admin/FolderMappingManager";
-import { AssetUploader } from "@/components/admin/AssetUploader";
 import { SceneCard } from "@/components/admin/SceneCard";
 
 interface SceneRound {
@@ -58,8 +57,6 @@ export default function AdminScenes() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [uploadScene, setUploadScene] = useState<Scene | null>(null);
-  const [selectedRoundId, setSelectedRoundId] = useState<string>("");
   const [folderMappingScene, setFolderMappingScene] = useState<Scene | null>(null);
   const [newSceneName, setNewSceneName] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -385,11 +382,6 @@ export default function AdminScenes() {
               key={scene.id}
               scene={scene}
               index={index}
-              onUploadClick={() => {
-                setUploadScene(scene);
-                // Pre-select current round
-                setSelectedRoundId(scene.currentRoundId || scene.rounds[0]?.id || "");
-              }}
               onFolderMappingClick={() => setFolderMappingScene(scene)}
               onDeleted={() => fetchData()}
             />
@@ -418,55 +410,6 @@ export default function AdminScenes() {
         </DialogContent>
       </Dialog>
 
-      {/* Upload Assets Dialog */}
-      <Dialog open={!!uploadScene} onOpenChange={(open) => {
-        if (!open) {
-          setUploadScene(null);
-          setSelectedRoundId("");
-        }
-      }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Upload Assets — {uploadScene?.name}</DialogTitle>
-          </DialogHeader>
-          {uploadScene && uploadScene.rounds.length > 0 && (
-            <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <label className="text-label text-muted-foreground">SELECT ROUND</label>
-                <Select value={selectedRoundId} onValueChange={setSelectedRoundId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a round" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {uploadScene.rounds.map((round) => (
-                      <SelectItem key={round.id} value={round.id}>
-                        Round {round.round_number} {round.round_number === uploadScene.current_round ? "(Current)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {selectedRoundId && (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Upload images to Round {uploadScene.rounds.find(r => r.id === selectedRoundId)?.round_number}. 
-                    These will be available for client review immediately.
-                  </p>
-                  <AssetUploader
-                    sceneRoundId={selectedRoundId}
-                    onUploadComplete={() => {
-                      fetchData();
-                      setUploadScene(null);
-                      setSelectedRoundId("");
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </AdminLayout>
   );
 }

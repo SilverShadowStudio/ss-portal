@@ -17,7 +17,6 @@ const navItems = [
   { path: "/admin/orders",               label: "Orders",     abbr: "OR" },
   { path: "/admin/invoices",             label: "Finance",    abbr: "FN" },
   { path: "/admin/documents",            label: "Documents",  abbr: "DC" },
-  { path: "/admin/batch-upload",         label: "Batch Upload", abbr: "BU" },
   { path: "/admin/settings",             label: "Settings",   abbr: "ST" },
 ];
 

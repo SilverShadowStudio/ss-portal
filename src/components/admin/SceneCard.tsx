@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ImageIcon, Upload, Clock, Trash2 } from "lucide-react";
+import { ImageIcon, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { SmartImage } from "@/components/ui/SmartImage";
@@ -24,12 +24,11 @@ interface SceneCardProps {
     reviewDeadline: string | null;
   };
   index: number;
-  onUploadClick: () => void;
   onFolderMappingClick: () => void;
   onDeleted?: () => void;
 }
 
-export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, onDeleted }: SceneCardProps) {
+export function SceneCard({ scene, index, onFolderMappingClick, onDeleted }: SceneCardProps) {
   const [rounds, setRounds] = useState<SceneRound[]>([]);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
@@ -327,17 +326,6 @@ export function SceneCard({ scene, index, onUploadClick, onFolderMappingClick, o
 
             {/* Actions */}
             <div className="mt-6 flex gap-3">
-              {scene.currentRoundId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-xs"
-                  onClick={onUploadClick}
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload Assets
-                </Button>
-              )}
               <Button
                 variant="ghost"
                 size="sm"

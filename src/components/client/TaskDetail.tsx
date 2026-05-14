@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, X, Paperclip, ExternalLink, Upload, Loader2, File } from "lucide-react";
+import { Clock, X, Paperclip, ExternalLink, File } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
 import { differenceInSeconds, format } from "date-fns";
@@ -30,7 +30,7 @@ interface TaskDetailProps {
   endDate: string | null;
   /** When true, shows admin-only controls like the upload-render button. */
   isAdmin?: boolean;
-  /** Called after a successful upload so the parent can refresh state. */
+  /** Called after a status change so the parent can refresh state. */
   onUploaded?: () => void;
   /**
    * Optional callback to request the next production round on this scene.
@@ -95,14 +95,6 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   const [currentStatus, setCurrentStatus] = useState(roundStatus);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
   useEffect(() => setCurrentStatus(roundStatus), [roundStatus, roundId]);
-
-  // Admin upload state — drag/drop or file picker, multiple render images.
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const allowedTypes = ["image/jpeg", "image/png", "image/tiff", "image/webp"];
-  const maxFileSize = 50 * 1024 * 1024; // 50MB
 
   // Brief / instructions modal state — fetched lazily on open.
   const [briefOpen, setBriefOpen] = useState(false);
@@ -193,74 +185,6 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
-  }
-
-  async function uploadRenders(files: File[]) {
-    const invalid = files.filter(f => !allowedTypes.includes(f.type));
-    if (invalid.length > 0) {
-      alert(`${invalid.map(f => f.name).join(", ")} — unsupported format. Use JPG, PNG, TIFF, or WebP.`);
-      return;
-    }
-    const oversize = files.filter(f => f.size > maxFileSize);
-    if (oversize.length > 0) {
-      alert(`${oversize.map(f => f.name).join(", ")} — exceeds the 50 MB limit.`);
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress({ current: 0, total: files.length });
-    const uploaded: string[] = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setUploadProgress({ current: i + 1, total: files.length });
-        const timestamp = Date.now();
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `${roundId}/${timestamp}_${safeName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("scene-assets")
-          .upload(storagePath, file, { cacheControl: "3600", upsert: false });
-        if (uploadError) throw uploadError;
-        uploaded.push(storagePath);
-
-        const { error: insertError } = await supabase.from("round_assets").insert({
-          scene_round_id: roundId,
-          filename: file.name,
-          file_size: file.size,
-          source: "upload",
-          storage_path: storagePath,
-          version: 1,
-          is_current: true,
-        });
-        if (insertError) {
-          await supabase.storage.from("scene-assets").remove([storagePath]);
-          throw insertError;
-        }
-      }
-
-      await deliverRoundAndStartReview(roundId);
-
-      await logActivity({
-        action: "asset_uploaded",
-        description: `Uploaded ${files.length} render${files.length !== 1 ? "s" : ""}`,
-        entityType: "scene_round",
-        entityId: roundId,
-        roundId,
-        roundNumber,
-        sceneName,
-        metadata: { count: files.length, filenames: files.map(f => f.name) },
-      });
-
-      setAssetCount((c) => c + files.length);
-      onUploaded?.();
-    } catch (err) {
-      console.error("Render upload failed:", err);
-      alert("Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-      setUploadProgress(null);
-    }
   }
 
   const briefTrigger = (
@@ -588,66 +512,6 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           {briefTrigger}
         </div>
 
-        {isAdmin && (
-          <div
-            className={`mt-8 w-full max-w-sm rounded-2xl border-2 border-dashed transition-colors ${
-              isDragging
-                ? "border-gold bg-[#1C1A17]"
-                : "border-gold/40 bg-[#181613] hover:border-gold/70 hover:bg-[#1C1A17]"
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDragging(false);
-              const files = Array.from(e.dataTransfer.files ?? []);
-              if (files.length) uploadRenders(files);
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={allowedTypes.join(",")}
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const files = Array.from(e.target.files ?? []);
-                if (files.length) uploadRenders(files);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex w-full flex-col items-center gap-2 px-6 py-5 text-gold disabled:opacity-60"
-            >
-              {uploading ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" />
-                  <span className="text-sm font-semibold tracking-wide font-sans">
-                    {uploadProgress && uploadProgress.total > 1
-                      ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}…`
-                      : "Uploading…"}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Upload size={20} />
-                  <span className="text-sm font-semibold tracking-[0.14em] uppercase font-sans">
-                    Upload round renders
-                  </span>
-                  <span className="text-[11px] text-gold/70 font-sans normal-case tracking-normal">
-                    Drag &amp; drop or click to browse · JPG, PNG, TIFF, WebP · multiple files supported
-                  </span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
       </motion.div>
       {dropboxPanel}
       {isAdmin && sceneId && (

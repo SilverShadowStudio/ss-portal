@@ -39,7 +39,6 @@ import AdminDocuments from "./pages/admin/AdminDocuments";
 import AdminTimeline from "./pages/admin/AdminTimeline";
 import AdminActivity from "./pages/admin/AdminActivity";
 import AdminInvoices from "./pages/admin/AdminInvoices";
-import AdminBatchUpload from "./pages/admin/AdminBatchUpload";
 import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
@@ -275,14 +274,6 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminInvoices />
-                </AdminProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/batch-upload"
-              element={
-                <AdminProtectedRoute>
-                  <AdminBatchUpload />
                 </AdminProtectedRoute>
               }
             />
