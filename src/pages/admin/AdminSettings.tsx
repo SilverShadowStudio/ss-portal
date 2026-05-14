@@ -35,6 +35,16 @@ export default function AdminSettings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
+  // ── Airtable Contact Sync ─────────────────────────────────────────────────
+  const [contactBaseId, setContactBaseId] = useState("");
+  const [contactTableId, setContactTableId] = useState("");
+  const [contactFieldFirstName, setContactFieldFirstName] = useState("");
+  const [contactFieldSurname, setContactFieldSurname] = useState("");
+  const [contactFieldRole, setContactFieldRole] = useState("");
+  const [contactFieldTypeOfClient, setContactFieldTypeOfClient] = useState("");
+  const [contactFieldEmail, setContactFieldEmail] = useState("");
+  const [savingContactConfig, setSavingContactConfig] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     setEmail(user.email ?? "");
@@ -56,6 +66,49 @@ export default function AdminSettings() {
         }
       });
   }, [user]);
+
+  useEffect(() => {
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "airtable_contact_field_config")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.value) return;
+        const v = data.value as Record<string, string>;
+        setContactBaseId(v.base_id ?? "");
+        setContactTableId(v.table_id ?? "");
+        setContactFieldFirstName(v.field_first_name ?? "");
+        setContactFieldSurname(v.field_surname ?? "");
+        setContactFieldRole(v.field_role ?? "");
+        setContactFieldTypeOfClient(v.field_type_of_client ?? "");
+        setContactFieldEmail(v.field_email ?? "");
+      });
+  }, []);
+
+  async function saveContactConfig() {
+    setSavingContactConfig(true);
+    try {
+      const { error } = await supabase.from("app_settings").upsert({
+        key: "airtable_contact_field_config",
+        value: {
+          base_id: contactBaseId.trim(),
+          table_id: contactTableId.trim(),
+          field_first_name: contactFieldFirstName.trim(),
+          field_surname: contactFieldSurname.trim(),
+          field_role: contactFieldRole.trim(),
+          field_type_of_client: contactFieldTypeOfClient.trim(),
+          field_email: contactFieldEmail.trim(),
+        },
+      }, { onConflict: "key" });
+      if (error) throw error;
+      toast({ title: "Contact sync config saved." });
+    } catch (e: any) {
+      toast({ title: "Failed to save", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingContactConfig(false);
+    }
+  }
 
   async function saveProfile() {
     if (!user) return;
@@ -193,6 +246,83 @@ export default function AdminSettings() {
         {/* ── Airtable ─────────────────────────────────────────────────── */}
         <Section title="Airtable">
           <AirtableSyncPanel />
+        </Section>
+
+        {/* ── Airtable Contact Sync ─────────────────────────────────── */}
+        <Section title="Airtable Contact Sync">
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className="col-span-2">
+              <label className={labelCls}>Base ID</label>
+              <input
+                type="text"
+                value={contactBaseId}
+                onChange={(e) => setContactBaseId(e.target.value)}
+                placeholder="appXXXXXXXXXXXXXX"
+                className={inputCls}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Table ID or name</label>
+              <input
+                type="text"
+                value={contactTableId}
+                onChange={(e) => setContactTableId(e.target.value)}
+                placeholder="tblXXXXXXXXXXXXXX"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>First name field</label>
+              <input
+                type="text"
+                value={contactFieldFirstName}
+                onChange={(e) => setContactFieldFirstName(e.target.value)}
+                placeholder="First name"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Surname field</label>
+              <input
+                type="text"
+                value={contactFieldSurname}
+                onChange={(e) => setContactFieldSurname(e.target.value)}
+                placeholder="Surname"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Role field</label>
+              <input
+                type="text"
+                value={contactFieldRole}
+                onChange={(e) => setContactFieldRole(e.target.value)}
+                placeholder="Role"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Type of client field</label>
+              <input
+                type="text"
+                value={contactFieldTypeOfClient}
+                onChange={(e) => setContactFieldTypeOfClient(e.target.value)}
+                placeholder="Type of client"
+                className={inputCls}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Email field</label>
+              <input
+                type="text"
+                value={contactFieldEmail}
+                onChange={(e) => setContactFieldEmail(e.target.value)}
+                placeholder="Email"
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <SaveButton loading={savingContactConfig} onClick={saveContactConfig} label="Save config" />
         </Section>
       </div>
     </AdminLayout>

@@ -397,6 +397,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    admin.functions.invoke('airtable-sync-contact', {
+      body: {
+        first_name: body.contact.firstName ?? '',
+        surname: body.contact.lastName ?? '',
+        role: 'Client',
+        type_of_client: accountType,
+        email,
+        account_id: account.id,
+      },
+    }).catch((e: unknown) => console.error('[admin-create-client] airtable-sync-contact:', e))
+
     return json({
       success: true,
       mode,
@@ -504,6 +515,17 @@ Deno.serve(async (req) => {
         created_auth_user: createdAuthUser,
       },
     })
+
+    admin.functions.invoke('airtable-sync-contact', {
+      body: {
+        first_name: body.contact.firstName ?? '',
+        surname: body.contact.lastName ?? '',
+        role: 'Client',
+        type_of_client: accountType,
+        email,
+        account_id: account.id,
+      },
+    }).catch((e: unknown) => console.error('[admin-create-client] airtable-sync-contact:', e))
 
     return json({
       success: true,
