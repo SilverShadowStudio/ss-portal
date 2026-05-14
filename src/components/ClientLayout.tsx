@@ -23,15 +23,7 @@ export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps)
       <ClientSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
       <NotificationBell />
 
-      <main
-        className={cn(
-          "min-h-screen transition-all",
-          // Desktop: offset by sidebar width
-          expanded ? "md:ml-[220px]" : "md:ml-20",
-          // Mobile: no left margin, bottom padding for tab bar
-          "ml-0",
-        )}
-      >
+      <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         <div
           className={cn(
             // Desktop: standard padding
