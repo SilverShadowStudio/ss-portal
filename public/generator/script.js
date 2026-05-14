@@ -1,4 +1,24 @@
 
+// Restore form fields from localStorage; URL params take precedence for client/address/contact
+document.addEventListener('DOMContentLoaded', function () {
+    var textFields = ['client', 'address', 'contact', 'project', 'invoiceNumber', 'invoiceDate',
+                      'invoiceInputDate', 'bank', 'sortCode', 'accountNumber', 'swift', 'iban'];
+    textFields.forEach(function (id) {
+        var el = document.getElementById(id);
+        var saved = localStorage.getItem(id);
+        if (el && saved) el.value = saved;
+    });
+
+    var params = new URLSearchParams(window.location.search);
+    ['client', 'address', 'contact'].forEach(function (key) {
+        var val = params.get(key);
+        if (val) {
+            var el = document.getElementById(key);
+            if (el) el.value = val;
+        }
+    });
+});
+
 
 // Net Days
 

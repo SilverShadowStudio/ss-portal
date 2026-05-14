@@ -1,4 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+
+interface AccountForGenerator {
+  id: string;
+  company_name: string | null;
+  building_number: string | null;
+  street: string | null;
+  postcode: string | null;
+  city: string | null;
+  country: string | null;
+  registration_number: string | null;
+  contact_name: string | null;
+}
 import { Plus, Search, Download, MoreHorizontal, Eye, Loader2, CreditCard, Copy } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -56,6 +68,8 @@ export default function AdminInvoices() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [creatingLinkId, setCreatingLinkId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
+  const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
+  const [genAccountId, setGenAccountId] = useState<string>("");
   const { toast } = useToast();
 
   async function fetchInvoices() {
@@ -83,6 +97,49 @@ export default function AdminInvoices() {
   }
 
   useEffect(() => { fetchInvoices(); }, []);
+
+  useEffect(() => {
+    async function fetchGenAccounts() {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("id, company_name, building_number, street, postcode, city, country, registration_number, account_members(profiles(first_name, last_name))")
+        .order("company_name");
+      if (error || !data) return;
+      setGenAccounts(
+        (data as any[]).map((a) => {
+          const profile = a.account_members?.[0]?.profiles;
+          const contact_name = profile
+            ? [profile.first_name, profile.last_name].filter(Boolean).join(" ")
+            : null;
+          return {
+            id: a.id,
+            company_name: a.company_name,
+            building_number: a.building_number,
+            street: a.street,
+            postcode: a.postcode,
+            city: a.city,
+            country: a.country,
+            registration_number: a.registration_number,
+            contact_name,
+          };
+        })
+      );
+    }
+    fetchGenAccounts();
+  }, []);
+
+  const generatorSrc = useMemo(() => {
+    if (!genAccountId) return "/generator/index.html";
+    const acc = genAccounts.find((a) => a.id === genAccountId);
+    if (!acc) return "/generator/index.html";
+    const params = new URLSearchParams();
+    if (acc.company_name) params.set("client", acc.company_name);
+    const addressParts = [acc.building_number, acc.street, acc.postcode, acc.city, acc.country].filter(Boolean);
+    if (addressParts.length) params.set("address", addressParts.join(", "));
+    if (acc.contact_name) params.set("contact", acc.contact_name);
+    if (acc.registration_number) params.set("registration", acc.registration_number);
+    return `/generator/index.html?${params.toString()}`;
+  }, [genAccountId, genAccounts]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -371,7 +428,19 @@ export default function AdminInvoices() {
         </TabsContent>
 
         <TabsContent value="generator">
-          <iframe src="/generator/index.html" width="100%" style={{ height: "calc(100vh - 120px)", border: "none" }} />
+          <div className="mb-4">
+            <Select value={genAccountId} onValueChange={setGenAccountId}>
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder="Select a client…" />
+              </SelectTrigger>
+              <SelectContent>
+                {genAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.company_name || a.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <iframe key={generatorSrc} src={generatorSrc} width="100%" style={{ height: "calc(100vh - 180px)", border: "none" }} />
         </TabsContent>
 
         <TabsContent value="quotations">
