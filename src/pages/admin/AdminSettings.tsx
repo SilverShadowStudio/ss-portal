@@ -43,6 +43,9 @@ export default function AdminSettings() {
   const [contactFieldRole, setContactFieldRole] = useState("");
   const [contactFieldTypeOfClient, setContactFieldTypeOfClient] = useState("");
   const [contactFieldEmail, setContactFieldEmail] = useState("");
+  const [contactClientsTableId, setContactClientsTableId] = useState("");
+  const [contactFieldCompanyName, setContactFieldCompanyName] = useState("");
+  const [contactFieldClientLink, setContactFieldClientLink] = useState("");
   const [savingContactConfig, setSavingContactConfig] = useState(false);
 
   useEffect(() => {
@@ -83,6 +86,9 @@ export default function AdminSettings() {
         setContactFieldRole(v.field_role ?? "");
         setContactFieldTypeOfClient(v.field_type_of_client ?? "");
         setContactFieldEmail(v.field_email ?? "");
+        setContactClientsTableId(v.clients_table_id ?? "");
+        setContactFieldCompanyName(v.field_company_name ?? "");
+        setContactFieldClientLink(v.field_client_link ?? "");
       });
   }, []);
 
@@ -99,6 +105,9 @@ export default function AdminSettings() {
           field_role: contactFieldRole.trim(),
           field_type_of_client: contactFieldTypeOfClient.trim(),
           field_email: contactFieldEmail.trim(),
+          clients_table_id: contactClientsTableId.trim(),
+          field_company_name: contactFieldCompanyName.trim(),
+          field_client_link: contactFieldClientLink.trim(),
         },
       }, { onConflict: "key" });
       if (error) throw error;
@@ -318,6 +327,36 @@ export default function AdminSettings() {
                 value={contactFieldEmail}
                 onChange={(e) => setContactFieldEmail(e.target.value)}
                 placeholder="Email"
+                className={inputCls}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Clients table ID (optional — enables company linking)</label>
+              <input
+                type="text"
+                value={contactClientsTableId}
+                onChange={(e) => setContactClientsTableId(e.target.value)}
+                placeholder="tblXXXXXXXXXXXXXX"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Company name field (in Clients table)</label>
+              <input
+                type="text"
+                value={contactFieldCompanyName}
+                onChange={(e) => setContactFieldCompanyName(e.target.value)}
+                placeholder="Company name"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Client link field (in Contacts table)</label>
+              <input
+                type="text"
+                value={contactFieldClientLink}
+                onChange={(e) => setContactFieldClientLink(e.target.value)}
+                placeholder="Client"
                 className={inputCls}
               />
             </div>
