@@ -11,7 +11,7 @@ interface AccountForGenerator {
   registration_number: string | null;
   contact_name: string | null;
 }
-import { Plus, Search, Download, MoreHorizontal, Eye, Loader2, CreditCard, Copy } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, Loader2, CreditCard, Copy, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -220,6 +220,13 @@ export default function AdminInvoices() {
     }
   }
 
+  async function deleteInvoice(id: string) {
+    if (!window.confirm("Delete this invoice? This cannot be undone.")) return;
+    const { error } = await supabase.from("invoices").delete().eq("id", id);
+    if (error) toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    else { toast({ title: "Invoice deleted" }); fetchInvoices(); }
+  }
+
   function viewInvoice(r: InvoiceRow) {
     const items: InvoiceLineItem[] = Array.isArray(r.line_items) ? r.line_items as any : [];
     setViewing({
@@ -408,6 +415,13 @@ export default function AdminInvoices() {
                           {r.status !== "cancelled" && (
                             <DropdownMenuItem onClick={() => updateStatus(r.id, "cancelled")}>Cancel</DropdownMenuItem>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => deleteInvoice(r.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> Delete
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
