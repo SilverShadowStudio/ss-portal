@@ -13,10 +13,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, X } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
+import { AssetViewer } from "@/components/client/AssetViewer";
+import { NewRoundModal } from "@/components/client/NewRoundModal";
+import { logActivity } from "@/lib/activityLog";
+import { toast as sonnerToast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +199,7 @@ function CountdownView({ task }: { task: LaneTask }) {
   );
 }
 
-function ReviewView({ round, onNavigate }: { round: SceneRound; onNavigate: () => void }) {
+function ReviewView({ round, onOpenReview }: { round: SceneRound; onOpenReview: () => void }) {
   const imageUrl = round.asset_url || round.image_url;
   return (
     <motion.div
@@ -221,7 +225,7 @@ function ReviewView({ round, onNavigate }: { round: SceneRound; onNavigate: () =
         <p className="font-sans text-foreground/40 text-sm mb-10">{round.project_name} · Round {round.round_number}</p>
       )}
       <button
-        onClick={onNavigate}
+        onClick={onOpenReview}
         className="flex items-center gap-2 bg-foreground text-background font-sans uppercase hover:opacity-80 transition-opacity"
         style={{ height: 46, paddingLeft: 32, paddingRight: 32, fontSize: 11, letterSpacing: "0.28em" }}
       >
@@ -287,6 +291,8 @@ export default function Index() {
   const { user, accountType } = useAuth();
   const navigate = useNavigate();
   const [focus, setFocus] = useState<FocusState>({ kind: "loading" });
+  const [reviewOverlayOpen, setReviewOverlayOpen] = useState(false);
+  const [newRoundModalOpen, setNewRoundModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -429,6 +435,46 @@ export default function Index() {
     }
   }
 
+  async function handleCreateCorrections(instructions: string, deliveryDate?: Date, startDate?: Date) {
+    if (focus.kind !== "review") return;
+    const round = focus.round;
+    try {
+      const { error } = await supabase
+        .from("scene_rounds")
+        .insert({
+          scene_id: round.scene_id,
+          round_number: round.round_number + 1,
+          status: "pending",
+          start_date: (startDate ?? new Date()).toISOString(),
+          instructions,
+          ...(deliveryDate ? { end_date: deliveryDate.toISOString() } : {}),
+        });
+      if (error) throw error;
+
+      // Move old round out of the dashboard's review filter
+      await supabase
+        .from("scene_rounds")
+        .update({ status: "in_production" })
+        .eq("id", round.id);
+
+      await logActivity({
+        action: "revision_requested",
+        description: `Submitted corrections for ${round.scene_name || "scene"} — Round ${round.round_number + 1} requested`,
+        entityType: "scene_round",
+        entityId: round.id,
+        metadata: { round_number: round.round_number + 1 },
+      });
+
+      setNewRoundModalOpen(false);
+      setReviewOverlayOpen(false);
+      sonnerToast.success("Corrections submitted — Round " + (round.round_number + 1).toString().padStart(2, "0") + " is in the queue");
+      fetchFocus();
+    } catch (err: any) {
+      console.error("Error submitting corrections:", err);
+      sonnerToast.error(err.message || "Failed to submit corrections");
+    }
+  }
+
   const glowVariant =
     focus.kind === "delivered" ? "gold" :
     focus.kind === "countdown" ? "green" :
@@ -465,7 +511,7 @@ export default function Index() {
           {focus.kind === "review" && (
             <ReviewView
               round={focus.round}
-              onNavigate={() => navigate(`/portfolio`)}
+              onOpenReview={() => setReviewOverlayOpen(true)}
             />
           )}
 
@@ -479,6 +525,52 @@ export default function Index() {
           {focus.kind === "idle" && <IdleView />}
         </AnimatePresence>
       </div>
+
+      {/* ── Review overlay ────────────────────────────────────────────────── */}
+      {reviewOverlayOpen && focus.kind === "review" && (
+        <>
+          <div className="fixed inset-0 z-50 bg-background overflow-y-auto">
+            <div className="relative max-w-5xl mx-auto px-6 py-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="font-sans uppercase text-[9px] tracking-[0.28em] text-gold">
+                    {focus.round.project_name}
+                  </p>
+                  <h2 className="font-serif text-xl font-normal text-foreground mt-0.5">
+                    {focus.round.scene_name || "Scene"} · Round {String(focus.round.round_number).padStart(2, "0")}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setReviewOverlayOpen(false)}
+                  className="text-foreground/40 hover:text-foreground transition-colors"
+                  aria-label="Close review"
+                >
+                  <X className="h-5 w-5" strokeWidth={1} />
+                </button>
+              </div>
+              <AssetViewer
+                sceneRoundId={focus.round.id}
+                sceneName={focus.round.scene_name || ""}
+                projectName={focus.round.project_name ?? undefined}
+                roundNumber={focus.round.round_number}
+                onClose={() => setReviewOverlayOpen(false)}
+                onRequestNextRound={() => setNewRoundModalOpen(true)}
+                nextRoundNumber={focus.round.round_number + 1}
+                siblingRounds={[{ id: focus.round.id, round_number: focus.round.round_number, status: focus.round.status }]}
+              />
+            </div>
+          </div>
+          <NewRoundModal
+            isOpen={newRoundModalOpen}
+            onClose={() => setNewRoundModalOpen(false)}
+            onCreate={(instr) => handleCreateCorrections(instr)}
+            onCreateWithDate={(instr, dd, sd) => handleCreateCorrections(instr, dd, sd)}
+            sceneName={focus.round.scene_name || ""}
+            sceneId={focus.round.scene_id}
+            roundNumber={focus.round.round_number + 1}
+          />
+        </>
+      )}
     </ClientLayout>
   );
 }
