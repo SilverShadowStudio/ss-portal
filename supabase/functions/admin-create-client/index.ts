@@ -278,22 +278,50 @@ Deno.serve(async (req) => {
 
   // ---- invite branch: generateLink then create account ----
   if (mode === 'invite') {
-    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: {
-        redirectTo: `${APP_BASE_URL}/set-password`,
-        data: { full_name: fullName ?? undefined },
-      },
-    })
+    // If the email already exists in auth, fall back to magiclink (invite type rejects existing users).
+    const existingUserId = await findUserByEmail(email)
 
-    if (linkErr || !linkData?.user) {
-      console.error('generateLink failed', linkErr)
-      return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
+    let invitedUserId: string
+    let inviteUrl: string
+
+    if (existingUserId) {
+      // Check if already a member of any account — don't create a duplicate.
+      const { data: existingMembership } = await admin
+        .from('account_members')
+        .select('account_id')
+        .eq('user_id', existingUserId)
+        .maybeSingle()
+      if (existingMembership) {
+        return json({ error: 'This user is already a member of an account.' }, 409)
+      }
+
+      const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+        options: { redirectTo: `${APP_BASE_URL}/set-password` },
+      })
+      if (linkErr || !linkData?.user) {
+        console.error('generateLink (magiclink) failed', linkErr)
+        return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
+      }
+      invitedUserId = existingUserId
+      inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+    } else {
+      const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: {
+          redirectTo: `${APP_BASE_URL}/set-password`,
+          data: { full_name: fullName ?? undefined },
+        },
+      })
+      if (linkErr || !linkData?.user) {
+        console.error('generateLink (invite) failed', linkErr)
+        return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
+      }
+      invitedUserId = linkData.user.id
+      inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
     }
-
-    const invitedUserId = linkData.user.id
-    const inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
 
     const clientCode = body.clientCode?.trim().toUpperCase() || null
 

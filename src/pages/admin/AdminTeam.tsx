@@ -172,7 +172,10 @@ export default function AdminTeam() {
           accountType: "team",
         },
       });
-      if (error) throw error;
+      if (error) {
+        const detail = (data as any)?.error || error.message;
+        throw new Error(detail);
+      }
       setResultBanner({ email: form.email, inviteUrl: data?.inviteUrl });
       setForm({ firstName: "", lastName: "", email: "" });
       setDialogOpen(false);
