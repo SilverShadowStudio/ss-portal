@@ -132,20 +132,19 @@ function toViewerData(q: Quotation): QuotationViewerData {
   } as QuotationViewerData;
 }
 
-interface FreelancerAgreement {
+interface FreelancerDocument {
   id: string;
-  signatory_name: string | null;
-  storage_path: string;
-  file_name: string;
-  file_size: number | null;
-  signed_at: string;
+  document_type: "nda" | "service_agreement";
+  signed_at: string | null;
+  signed_by_name: string | null;
+  pdf_url: string | null;
 }
 
 export default function Documents() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { accountType } = useAuth();
-  const [freelancerAgreements, setFreelancerAgreements] = useState<FreelancerAgreement[]>([]);
+  const [freelancerDocuments, setFreelancerDocuments] = useState<FreelancerDocument[]>([]);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -167,10 +166,10 @@ export default function Documents() {
   async function fetchFreelancerDocs() {
     try {
       const { data } = await supabase
-        .from("freelancer_agreements")
-        .select("id, signatory_name, storage_path, file_name, file_size, signed_at")
-        .order("signed_at", { ascending: false });
-      setFreelancerAgreements(data || []);
+        .from("freelancer_documents")
+        .select("id, document_type, signed_at, signed_by_name, pdf_url")
+        .order("document_type", { ascending: true });
+      setFreelancerDocuments((data || []) as FreelancerDocument[]);
     } catch {
       toast({ title: "Could not load documents", variant: "destructive" });
     } finally {
@@ -178,16 +177,18 @@ export default function Documents() {
     }
   }
 
-  async function handleFreelancerDownload(a: FreelancerAgreement) {
-    setDownloadingId(a.id);
+  async function handleFreelancerDownload(doc: FreelancerDocument) {
+    if (!doc.pdf_url) return;
+    setDownloadingId(doc.id);
     try {
+      const fileName = doc.document_type === "nda" ? "mutual-nda.pdf" : "freelancer-service-agreement.pdf";
       const { data, error } = await supabase.storage
-        .from("freelancer-agreements")
-        .createSignedUrl(a.storage_path, 60, { download: a.file_name });
+        .from("freelancer-documents")
+        .createSignedUrl(doc.pdf_url, 60, { download: fileName });
       if (error || !data?.signedUrl) throw error || new Error("No signed URL");
       window.open(data.signedUrl, "_blank", "noopener,noreferrer");
     } catch {
-      toast({ title: "Could not download agreement", variant: "destructive" });
+      toast({ title: "Could not download document", variant: "destructive" });
     } finally {
       setDownloadingId(null);
     }
@@ -240,7 +241,12 @@ export default function Documents() {
     }
   };
 
-  if (accountType === 'team') {
+  if (accountType === "team") {
+    const DOC_LABELS: Record<string, string> = {
+      nda:               "Mutual Non-Disclosure Agreement",
+      service_agreement: "Freelance Service Agreement",
+    };
+
     return (
       <ClientLayout>
         <div className="mb-16 animate-fade-in">
@@ -256,49 +262,41 @@ export default function Documents() {
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
           </div>
+        ) : freelancerDocuments.length === 0 ? (
+          <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30 animate-fade-in">
+            Your signed agreements will appear here once onboarding is complete.
+          </p>
         ) : (
           <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-            <section>
-              <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-                Freelancer Agreement
-              </p>
-              {freelancerAgreements.length === 0 ? (
-                <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
-                  Your signed agreement will appear here once onboarding is complete.
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {freelancerAgreements.map((a) => (
-                    <div key={a.id} className="flex items-center gap-5 py-4 border-t border-border/30">
-                      <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
-                          Silvershadow Studio Freelancer Agreement
-                          {a.signatory_name ? ` — ${a.signatory_name}` : ""}
-                        </p>
-                        <p className="font-sans uppercase text-foreground/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
-                          Signed {formatDate(a.signed_at)}
-                          {a.file_size ? ` · ${formatSize(a.file_size)}` : ""}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleFreelancerDownload(a)}
-                        disabled={downloadingId === a.id}
-                        className="flex items-center gap-1.5 text-foreground/40 hover:text-gold transition-colors disabled:opacity-40"
-                        style={{ fontSize: 10, letterSpacing: "0.16em" }}
-                      >
-                        {downloadingId === a.id ? (
-                          <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
-                        ) : (
-                          <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                        )}
-                        Download
-                      </button>
-                    </div>
-                  ))}
+            {freelancerDocuments.map((doc) => (
+              <div key={doc.id} className="flex items-center gap-5 py-4 border-t border-border/30">
+                <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
+                    {DOC_LABELS[doc.document_type] ?? doc.document_type}
+                  </p>
+                  <p className="font-sans uppercase text-foreground/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+                    {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}
+                    {doc.signed_by_name ? ` · ${doc.signed_by_name}` : ""}
+                  </p>
                 </div>
-              )}
-            </section>
+                {doc.pdf_url && (
+                  <button
+                    onClick={() => handleFreelancerDownload(doc)}
+                    disabled={downloadingId === doc.id}
+                    className="flex items-center gap-1.5 text-foreground/40 hover:text-gold transition-colors disabled:opacity-40"
+                    style={{ fontSize: 10, letterSpacing: "0.16em" }}
+                  >
+                    {downloadingId === doc.id ? (
+                      <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                    ) : (
+                      <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
+                    )}
+                    <span className="font-sans uppercase">Download</span>
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </ClientLayout>
