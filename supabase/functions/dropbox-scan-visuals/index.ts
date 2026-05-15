@@ -277,6 +277,93 @@ Deno.serve(async (req) => {
 
     const rounds = Array.from(byRound.values()).sort((a, b) => a.round - b.round);
 
+    // Sync round_assets + deliver rounds — runs with service role, so no RLS issues.
+    const DELIVERED_STATES = ["delivered", "client_review", "approved"];
+    const { data: sceneRoundsData } = await supabase
+      .from("scene_rounds")
+      .select("id, round_number, status")
+      .eq("scene_id", sceneId)
+      .eq("kind", "production");
+
+    if (sceneRoundsData && sceneRoundsData.length > 0) {
+      const roundByNumber = new Map(sceneRoundsData.map((r: any) => [r.round_number, r]));
+
+      for (const visual of rounds) {
+        const dbRound = roundByNumber.get(visual.round);
+        if (!dbRound) continue; // no DB round for this Dropbox file — skip
+
+        // Upsert round_assets row if not already present
+        const { data: existing } = await supabase
+          .from("round_assets")
+          .select("id")
+          .eq("scene_round_id", dbRound.id)
+          .eq("dropbox_path", visual.path)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error: insErr } = await supabase.from("round_assets").insert({
+            scene_round_id: dbRound.id,
+            dropbox_path: visual.path,
+            dropbox_file_id: visual.path,
+            filename: visual.filename,
+            file_size: visual.size,
+            version: visual.version,
+            is_current: true,
+            source: "dropbox",
+          });
+          if (insErr) console.error("[scan-visuals] round_assets insert error:", insErr.message, { path: visual.path, round: visual.round });
+        }
+
+        // Deliver the round if it hasn't been delivered yet
+        if (!DELIVERED_STATES.includes(dbRound.status)) {
+          const now = new Date();
+          // Next Friday at 14:00 after a 2-day buffer
+          const earliest = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+          const dayOfWeek = earliest.getDay(); // 0=Sun … 6=Sat
+          const daysToFriday = dayOfWeek <= 5 ? (5 - dayOfWeek || 7) : 6;
+          const reviewEnd = new Date(earliest);
+          reviewEnd.setDate(earliest.getDate() + daysToFriday);
+          reviewEnd.setHours(14, 0, 0, 0);
+
+          await supabase.from("scene_rounds").update({
+            status: "delivered",
+            delivered_at: now.toISOString(),
+            end_date: now.toISOString(),
+          }).eq("id", dbRound.id);
+
+          // Upsert sibling review round
+          const { data: existingReview } = await supabase.from("scene_rounds")
+            .select("id")
+            .eq("scene_id", sceneId)
+            .eq("round_number", dbRound.round_number)
+            .eq("kind", "review")
+            .maybeSingle();
+
+          if (!existingReview) {
+            await supabase.from("scene_rounds").insert({
+              scene_id: sceneId,
+              round_number: dbRound.round_number,
+              kind: "review",
+              status: "client_review",
+              start_date: now.toISOString(),
+              end_date: reviewEnd.toISOString(),
+            });
+          }
+
+          supabase.from("activity_log").insert({
+            actor_name: "Dropbox",
+            actor_role: "system",
+            action: "round_delivered",
+            description: `Round ${String(dbRound.round_number).padStart(2, "0")} delivered via Dropbox scan — ${scene.name}`,
+            scene_id: sceneId,
+            scene_name: scene.name,
+            project_id: scene.project_id,
+            round_number: dbRound.round_number,
+          }).catch((err: unknown) => console.warn("activity log (round_delivered) failed", err));
+        }
+      }
+    }
+
     // Generate temporary links for each
     const roundsWithLinks = await Promise.all(rounds.map(async (r) => {
       try {
