@@ -94,6 +94,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   const [now, setNow] = useState(new Date());
   const [currentStatus, setCurrentStatus] = useState(roundStatus);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
+  const [adminPreviewLink, setAdminPreviewLink] = useState<string | null>(null);
   useEffect(() => setCurrentStatus(roundStatus), [roundStatus, roundId]);
 
   // Brief / instructions modal state — fetched lazily on open.
@@ -408,10 +409,35 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         sceneId={sceneId}
         projectId={projectId}
         sceneName={sceneName}
-        onRoundSelected={(round, link, filename) => {}}
+        onRoundSelected={(_round, link, _filename) => setAdminPreviewLink(link)}
       />
     </div>
   ) : null;
+
+  const adminLightbox = adminPreviewLink
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/92 cursor-zoom-out"
+          onClick={() => setAdminPreviewLink(null)}
+        >
+          <img
+            src={adminPreviewLink}
+            alt="Dropbox render preview"
+            className="max-w-[92vw] max-h-[92vh] object-contain cursor-default shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            aria-label="Close preview"
+            className="absolute right-5 top-5 flex h-8 w-8 items-center justify-center text-white/60 hover:text-white transition-colors text-xl leading-none"
+            onClick={() => setAdminPreviewLink(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>,
+        document.body,
+      )
+    : null;
 
   // If not delivered yet, show pending state
   if (!isDelivered) {
@@ -527,6 +553,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         </div>
       )}
       {briefModal}
+      {adminLightbox}
       </>
     );
   }
@@ -546,6 +573,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         </motion.div>
         {dropboxPanel}
         {briefModal}
+        {adminLightbox}
       </>
     );
   }
@@ -574,6 +602,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
       </div>
       {dropboxPanel}
       {briefModal}
+      {adminLightbox}
     </>
   );
 }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, FolderOpen, ImageIcon, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { FolderOpen, ImageIcon, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { deliverRoundAndStartReview } from "@/lib/reviewWindow";
 
 interface RoundVisual {
   round: number;
@@ -31,6 +32,8 @@ function formatSize(bytes: number) {
   const mb = bytes / (1024 * 1024);
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
 }
+
+const DELIVERED_STATES = ["delivered", "client_review", "approved"];
 
 export function DropboxVisualsPanel({
   sceneId,
@@ -91,9 +94,17 @@ export function DropboxVisualsPanel({
         setRounds([]);
         return;
       }
-      setRounds(data?.rounds || []);
+      const visuals: RoundVisual[] = data?.rounds || [];
+      setRounds(visuals);
       setFolderPath(data?.folderPath || null);
       setFolderExists(data?.folderExists ?? null);
+
+      // Auto-deliver and sync assets — fire-and-forget so scan display is unaffected by errors.
+      if (visuals.length > 0) {
+        autoDeliverAndSyncAssets(visuals).catch((err) =>
+          console.error("[DropboxVisualsPanel] auto-deliver failed:", err)
+        );
+      }
     } catch (e: any) {
       toast({ title: "Scan failed", description: e?.message, variant: "destructive" });
     } finally {
@@ -101,25 +112,62 @@ export function DropboxVisualsPanel({
     }
   }
 
+  async function autoDeliverAndSyncAssets(visuals: RoundVisual[]) {
+    // Fetch all production rounds for this scene so we can match by round_number.
+    const { data: sceneRounds } = await supabase
+      .from("scene_rounds")
+      .select("id, round_number, status")
+      .eq("scene_id", sceneId)
+      .eq("kind", "production");
+
+    if (!sceneRounds) return;
+
+    const roundByNumber = new Map(sceneRounds.map((r) => [r.round_number, r]));
+
+    for (const visual of visuals) {
+      const sceneRound = roundByNumber.get(visual.round);
+      if (!sceneRound) continue;
+
+      // Ensure a round_assets row exists for this Dropbox path.
+      const { data: existingAsset } = await supabase
+        .from("round_assets")
+        .select("id")
+        .eq("scene_round_id", sceneRound.id)
+        .eq("dropbox_path", visual.path)
+        .maybeSingle();
+
+      if (!existingAsset) {
+        const { error: insertError } = await supabase.from("round_assets").insert({
+          scene_round_id: sceneRound.id,
+          dropbox_path: visual.path,
+          dropbox_file_id: visual.path, // use path as surrogate ID (scan doesn't return real Dropbox file IDs)
+          filename: visual.filename,
+          file_size: visual.size,
+          version: visual.version,
+          is_current: true,
+          source: "dropbox",
+        });
+        if (insertError) {
+          console.error("[DropboxVisualsPanel] round_assets insert failed:", insertError.message, insertError.details, { path: visual.path, round: visual.round });
+        }
+      }
+
+      // Deliver the round if it hasn't been delivered yet.
+      if (!DELIVERED_STATES.includes(sceneRound.status)) {
+        await deliverRoundAndStartReview(sceneRound.id);
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40">Dropbox Visuals</p>
-        <div className="flex items-center gap-3">
-          {projectCode && sceneCode && (
-            <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/35">
-              {projectCode}-{sceneCode}
-            </span>
-          )}
-          <button
-            onClick={() => scan()}
-            disabled={loading || missingCodes}
-            className="flex items-center gap-1.5 text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40 hover:text-foreground transition-colors disabled:opacity-30"
-          >
-            <RefreshCw style={{ width: 10, height: 10 }} className={loading ? "animate-spin" : ""} strokeWidth={1.5} />
-            Scan
-          </button>
-        </div>
+        {projectCode && sceneCode && (
+          <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/35">
+            {projectCode}-{sceneCode}
+          </span>
+        )}
       </div>
 
       {missingCodes && (
