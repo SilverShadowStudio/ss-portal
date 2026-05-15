@@ -162,12 +162,14 @@ export default function AdminTeam() {
     try {
       const { data, error } = await supabase.functions.invoke("admin-create-client", {
         body: {
-          companyName:  `${form.firstName} ${form.lastName}`,
-          firstName:    form.firstName,
-          lastName:     form.lastName,
-          email:        form.email,
-          accountType:  "team",
-          sendInvite:   true,
+          mode: "invite",
+          company: { companyName: `${form.firstName} ${form.lastName}` },
+          contact: {
+            email:     form.email,
+            firstName: form.firstName,
+            lastName:  form.lastName,
+          },
+          accountType: "team",
         },
       });
       if (error) throw error;

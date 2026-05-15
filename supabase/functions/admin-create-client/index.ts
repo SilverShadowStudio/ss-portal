@@ -41,7 +41,7 @@ interface RequestBody {
   mode: 'invite' | 'provision' | 'resend'
   company?: CompanyDetails
   contact: ContactDetails
-  accountType?: 'partnership' | 'project'
+  accountType?: 'partnership' | 'project' | 'team'
   tempPassword?: string
   accountId?: string
   clientCode?: string
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  const accountType = body.accountType === 'project' ? 'project' : 'partnership'
+  const accountType = body.accountType === 'project' ? 'project' : body.accountType === 'team' ? 'team' : 'partnership'
 
   // ---- invite branch: generateLink then create account ----
   if (mode === 'invite') {
