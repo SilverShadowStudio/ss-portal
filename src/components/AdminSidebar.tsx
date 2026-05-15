@@ -15,16 +15,15 @@ const navItems = [
   { path: "/admin/clients",            label: "Clients",   abbr: "CL" },
   { path: "/admin/team",               label: "Team",      abbr: "TM" },
   { path: "/admin/production-tracker", label: "Tracker",   abbr: "TR" },
-  { path: "/admin/orders",             label: "Orders",    abbr: "OR" },
-  { path: "/admin/invoices",           label: "Finance",   abbr: "FN" },
-  { path: "/admin/documents",          label: "Documents", abbr: "DC" },
-  { path: "/admin/settings",           label: "Settings",  abbr: "ST" },
 ];
 
 // Sub-items revealed on hover, floating up from the parent — same pattern as account menu.
 const NAV_SUB_ITEMS: Record<string, Array<{ path: string; label: string; abbr: string }>> = {
   "/admin/team": [
     { path: "/admin/team/contracts", label: "Contracts", abbr: "CO" },
+    { path: "/admin/orders",         label: "Orders",    abbr: "OR" },
+    { path: "/admin/invoices",       label: "Finance",   abbr: "FN" },
+    { path: "/admin/documents",      label: "Documents", abbr: "DC" },
   ],
 };
 
@@ -99,6 +98,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   }> = [
     { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
     { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
+    { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true },
     { label: "Log off", onClick: handleSignOut },
   ];
 
@@ -130,13 +130,15 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       <TooltipProvider delayDuration={0}>
         <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1 w-full")}>
           {navItems.map((item) => {
+            const subItems = NAV_SUB_ITEMS[item.path] ?? [];
+            const subOpen = openSubMenu === item.path;
+            const subIsActive = subItems.some(s => location.pathname === s.path || location.pathname.startsWith(s.path + "/"));
             const isActive =
+              subIsActive ||
               location.pathname === item.path ||
               (item.path !== "/admin" && location.pathname.startsWith(item.path));
             const showBadge = item.path === "/admin/clients" && newClientsCount > 0;
             const badgeLabel = newClientsCount > 99 ? "99+" : String(newClientsCount);
-            const subItems = NAV_SUB_ITEMS[item.path] ?? [];
-            const subOpen = openSubMenu === item.path;
 
             const linkEl = (
               <Link
