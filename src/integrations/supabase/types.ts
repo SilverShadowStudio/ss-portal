@@ -163,10 +163,12 @@ export type Database = {
       }
       accounts: {
         Row: {
+          account_type: string
           agreement_acknowledged_at: string | null
           agreement_acknowledged_version: string | null
           building_number: string | null
           city: string | null
+          client_code: string | null
           company_name: string
           country: string | null
           created_at: string
@@ -178,10 +180,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_type?: string
           agreement_acknowledged_at?: string | null
           agreement_acknowledged_version?: string | null
           building_number?: string | null
           city?: string | null
+          client_code?: string | null
           company_name: string
           country?: string | null
           created_at?: string
@@ -193,10 +197,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_type?: string
           agreement_acknowledged_at?: string | null
           agreement_acknowledged_version?: string | null
           building_number?: string | null
           city?: string | null
+          client_code?: string | null
           company_name?: string
           country?: string | null
           created_at?: string
@@ -500,6 +506,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
       }
       asset_approvals: {
         Row: {
@@ -928,6 +952,162 @@ export type Database = {
           },
         ]
       }
+      freelancer_agreements: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number | null
+          id: string
+          signatory_name: string | null
+          signed_at: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number | null
+          id?: string
+          signatory_name?: string | null
+          signed_at?: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          signatory_name?: string | null
+          signed_at?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      freelancer_documents: {
+        Row: {
+          account_id: string | null
+          created_at: string | null
+          document_type: string
+          id: string
+          pdf_url: string | null
+          profile_id: string | null
+          signed_at: string | null
+          signed_by_name: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string | null
+          document_type: string
+          id?: string
+          pdf_url?: string | null
+          profile_id?: string | null
+          signed_at?: string | null
+          signed_by_name?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string | null
+          document_type?: string
+          id?: string
+          pdf_url?: string | null
+          profile_id?: string | null
+          signed_at?: string | null
+          signed_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "freelancer_documents_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "freelancer_documents_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "freelancer_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      freelancer_profiles: {
+        Row: {
+          account_holder: string | null
+          account_number: string | null
+          address: string | null
+          bank_name: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          day_rate: number | null
+          email: string
+          first_name: string
+          flat_number: string | null
+          house_number: string | null
+          id: string
+          last_name: string
+          postcode: string | null
+          rate_currency: string | null
+          rate_period: string | null
+          role: string | null
+          sort_code: string | null
+          street_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_holder?: string | null
+          account_number?: string | null
+          address?: string | null
+          bank_name?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          day_rate?: number | null
+          email: string
+          first_name: string
+          flat_number?: string | null
+          house_number?: string | null
+          id?: string
+          last_name: string
+          postcode?: string | null
+          rate_currency?: string | null
+          rate_period?: string | null
+          role?: string | null
+          sort_code?: string | null
+          street_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_holder?: string | null
+          account_number?: string | null
+          address?: string | null
+          bank_name?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          day_rate?: number | null
+          email?: string
+          first_name?: string
+          flat_number?: string | null
+          house_number?: string | null
+          id?: string
+          last_name?: string
+          postcode?: string | null
+          rate_currency?: string | null
+          rate_period?: string | null
+          role?: string | null
+          sort_code?: string | null
+          street_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           account_id: string | null
@@ -943,10 +1123,14 @@ export type Database = {
           notes: string | null
           paid_at: string | null
           project_id: string | null
+          quotation_id: string | null
           reference_number: string
           sent_at: string | null
           status: string
+          stripe_checkout_url: string | null
+          stripe_payment_intent_id: string | null
           subtotal: number | null
+          type: string
           updated_at: string
           user_id: string
           vat_amount: number | null
@@ -966,10 +1150,14 @@ export type Database = {
           notes?: string | null
           paid_at?: string | null
           project_id?: string | null
+          quotation_id?: string | null
           reference_number: string
           sent_at?: string | null
           status?: string
+          stripe_checkout_url?: string | null
+          stripe_payment_intent_id?: string | null
           subtotal?: number | null
+          type?: string
           updated_at?: string
           user_id: string
           vat_amount?: number | null
@@ -989,10 +1177,14 @@ export type Database = {
           notes?: string | null
           paid_at?: string | null
           project_id?: string | null
+          quotation_id?: string | null
           reference_number?: string
           sent_at?: string | null
           status?: string
+          stripe_checkout_url?: string | null
+          stripe_payment_intent_id?: string | null
           subtotal?: number | null
+          type?: string
           updated_at?: string
           user_id?: string
           vat_amount?: number | null
@@ -1004,6 +1196,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_documents"
             referencedColumns: ["id"]
           },
         ]
@@ -1125,6 +1324,84 @@ export type Database = {
         }
         Relationships: []
       }
+      orders: {
+        Row: {
+          accepted_at: string | null
+          account_id: string
+          created_at: string
+          created_by: string
+          currency: string
+          id: string
+          invoice_id: string | null
+          lines: Json
+          notes: string | null
+          order_number: string | null
+          order_type: string
+          status: string
+          subtotal: number
+          title: string
+          total: number
+          updated_at: string
+          vat_amount: number
+          vat_rate: number
+        }
+        Insert: {
+          accepted_at?: string | null
+          account_id: string
+          created_at?: string
+          created_by: string
+          currency?: string
+          id?: string
+          invoice_id?: string | null
+          lines?: Json
+          notes?: string | null
+          order_number?: string | null
+          order_type?: string
+          status?: string
+          subtotal?: number
+          title: string
+          total?: number
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Update: {
+          accepted_at?: string | null
+          account_id?: string
+          created_at?: string
+          created_by?: string
+          currency?: string
+          id?: string
+          invoice_id?: string | null
+          lines?: Json
+          notes?: string | null
+          order_number?: string | null
+          order_type?: string
+          status?: string
+          subtotal?: number
+          title?: string
+          total?: number
+          updated_at?: string
+          vat_amount?: number
+          vat_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           account_id: string | null
@@ -1178,10 +1455,13 @@ export type Database = {
       projects: {
         Row: {
           account_id: string | null
+          airtable_project_id: string | null
           archive_reason: string | null
           archived_at: string | null
           archived_by: string | null
           created_at: string
+          dropbox_folder: string | null
+          dropbox_folder_url: string | null
           id: string
           name: string
           project_code: string | null
@@ -1192,10 +1472,13 @@ export type Database = {
         }
         Insert: {
           account_id?: string | null
+          airtable_project_id?: string | null
           archive_reason?: string | null
           archived_at?: string | null
           archived_by?: string | null
           created_at?: string
+          dropbox_folder?: string | null
+          dropbox_folder_url?: string | null
           id?: string
           name: string
           project_code?: string | null
@@ -1206,10 +1489,13 @@ export type Database = {
         }
         Update: {
           account_id?: string | null
+          airtable_project_id?: string | null
           archive_reason?: string | null
           archived_at?: string | null
           archived_by?: string | null
           created_at?: string
+          dropbox_folder?: string | null
+          dropbox_folder_url?: string | null
           id?: string
           name?: string
           project_code?: string | null
@@ -1241,9 +1527,13 @@ export type Database = {
           client_registration: string | null
           created_at: string
           currency: string
+          deposit_amount: number | null
+          deposit_percentage: number
+          gross_total: number | null
           id: string
           issued_at: string | null
           line_items: Json
+          net_total: number | null
           notes: string | null
           project_id: string | null
           project_name: string | null
@@ -1251,6 +1541,8 @@ export type Database = {
           reference_number: string | null
           sent_at: string | null
           signed_at: string | null
+          signed_by_name: string | null
+          signed_by_position: string | null
           status: string
           subtotal: number | null
           updated_at: string
@@ -1270,9 +1562,13 @@ export type Database = {
           client_registration?: string | null
           created_at?: string
           currency?: string
+          deposit_amount?: number | null
+          deposit_percentage?: number
+          gross_total?: number | null
           id?: string
           issued_at?: string | null
           line_items?: Json
+          net_total?: number | null
           notes?: string | null
           project_id?: string | null
           project_name?: string | null
@@ -1280,6 +1576,8 @@ export type Database = {
           reference_number?: string | null
           sent_at?: string | null
           signed_at?: string | null
+          signed_by_name?: string | null
+          signed_by_position?: string | null
           status?: string
           subtotal?: number | null
           updated_at?: string
@@ -1299,9 +1597,13 @@ export type Database = {
           client_registration?: string | null
           created_at?: string
           currency?: string
+          deposit_amount?: number | null
+          deposit_percentage?: number
+          gross_total?: number | null
           id?: string
           issued_at?: string | null
           line_items?: Json
+          net_total?: number | null
           notes?: string | null
           project_id?: string | null
           project_name?: string | null
@@ -1309,6 +1611,8 @@ export type Database = {
           reference_number?: string | null
           sent_at?: string | null
           signed_at?: string | null
+          signed_by_name?: string | null
+          signed_by_position?: string | null
           status?: string
           subtotal?: number | null
           updated_at?: string
@@ -1425,6 +1729,7 @@ export type Database = {
         Row: {
           category: string
           created_at: string
+          dropbox_shared_url: string | null
           file_name: string
           file_size: number | null
           id: string
@@ -1435,6 +1740,7 @@ export type Database = {
         Insert: {
           category: string
           created_at?: string
+          dropbox_shared_url?: string | null
           file_name: string
           file_size?: number | null
           id?: string
@@ -1445,6 +1751,7 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string
+          dropbox_shared_url?: string | null
           file_name?: string
           file_size?: number | null
           id?: string
@@ -1507,6 +1814,7 @@ export type Database = {
           approved_at: string | null
           created_at: string
           delivered_at: string | null
+          delivery_due_at: string | null
           end_date: string | null
           id: string
           image_url: string | null
@@ -1522,6 +1830,7 @@ export type Database = {
           approved_at?: string | null
           created_at?: string
           delivered_at?: string | null
+          delivery_due_at?: string | null
           end_date?: string | null
           id?: string
           image_url?: string | null
@@ -1537,6 +1846,7 @@ export type Database = {
           approved_at?: string | null
           created_at?: string
           delivered_at?: string | null
+          delivery_due_at?: string | null
           end_date?: string | null
           id?: string
           image_url?: string | null
@@ -1563,6 +1873,7 @@ export type Database = {
           airtable_record_id: string | null
           created_at: string
           current_round: number
+          dropbox_folder: string | null
           id: string
           name: string
           next_delivery_at: string | null
@@ -1579,6 +1890,7 @@ export type Database = {
           airtable_record_id?: string | null
           created_at?: string
           current_round?: number
+          dropbox_folder?: string | null
           id?: string
           name: string
           next_delivery_at?: string | null
@@ -1595,6 +1907,7 @@ export type Database = {
           airtable_record_id?: string | null
           created_at?: string
           current_round?: number
+          dropbox_folder?: string | null
           id?: string
           name?: string
           next_delivery_at?: string | null
@@ -1747,6 +2060,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      internal_airtable_sync_headers: {
+        Args: { trigger_name: string }
+        Returns: Json
+      }
+      internal_dropbox_trigger_headers: {
+        Args: { trigger_name: string }
+        Returns: Json
+      }
       is_account_member: { Args: { _account_id: string }; Returns: boolean }
       is_account_owner: { Args: { _account_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
@@ -1766,6 +2087,10 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      scene_dropbox_visuals_path: {
+        Args: { p_scene_id: string }
+        Returns: string
       }
     }
     Enums: {
@@ -1901,3 +2226,4 @@ export const Constants = {
     },
   },
 } as const
+<claude-code-hint v="1" type="plugin" value="supabase@claude-plugins-official" />
