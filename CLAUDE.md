@@ -11,6 +11,10 @@ Two commercial models:
 - **Partnership/Subscription** — Lane-based (dedicated production capacity, monthly subscription)
 - **Project** — Per-quotation, per-scene delivery
 
+## Hard rules
+
+- **Never run Supabase migrations or schema changes without Fred's explicit confirmation in this session, even with skip-permissions enabled.**
+
 ## Architecture decisions
 
 - **Softr** stays for Kieran's internal production portal — do not touch it, ever
