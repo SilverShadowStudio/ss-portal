@@ -1,5 +1,78 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 
+// Inline review window logic (mirrors src/lib/reviewWindow.ts — no browser imports allowed in Deno)
+function computeReviewWindow(fromDate: Date): { start: Date; end: Date } {
+  const BUFFER_DAYS = 2;
+  const DEADLINE_HOUR = 14;
+  const earliest = new Date(fromDate.getTime() + BUFFER_DAYS * 24 * 60 * 60 * 1000);
+  // Advance to next Friday at 14:00
+  const day = earliest.getDay(); // 0=Sun … 6=Sat
+  const daysUntilFriday = day <= 5 ? 5 - day : 6; // if already Friday, go to next Friday
+  const end = new Date(earliest);
+  end.setDate(earliest.getDate() + (daysUntilFriday === 0 ? 7 : daysUntilFriday));
+  end.setHours(DEADLINE_HOUR, 0, 0, 0);
+  const start = new Date(fromDate);
+  return { start, end };
+}
+
+async function deliverRound(supabase: ReturnType<typeof createClient>, sceneRoundId: string): Promise<void> {
+  // Fetch current status
+  const { data: round } = await supabase
+    .from("scene_rounds")
+    .select("id, status, round_number, scene_id")
+    .eq("id", sceneRoundId)
+    .single();
+
+  if (!round) return;
+
+  const DELIVERED_STATES = ["delivered", "client_review", "approved"];
+  if (DELIVERED_STATES.includes(round.status)) return;
+
+  const now = new Date();
+  const { end } = computeReviewWindow(now);
+
+  // Mark round as delivered
+  await supabase
+    .from("scene_rounds")
+    .update({ status: "delivered", delivered_at: now.toISOString(), end_date: end.toISOString() })
+    .eq("id", sceneRoundId);
+
+  // Upsert sibling review round
+  const { data: existingReview } = await supabase
+    .from("scene_rounds")
+    .select("id")
+    .eq("scene_id", round.scene_id)
+    .eq("round_number", round.round_number)
+    .eq("kind", "review")
+    .maybeSingle();
+
+  if (!existingReview) {
+    await supabase.from("scene_rounds").insert({
+      scene_id: round.scene_id,
+      round_number: round.round_number,
+      kind: "review",
+      status: "client_review",
+      start_date: now.toISOString(),
+      end_date: end.toISOString(),
+    });
+  } else {
+    await supabase
+      .from("scene_rounds")
+      .update({ status: "client_review", start_date: now.toISOString(), end_date: end.toISOString() })
+      .eq("id", existingReview.id);
+  }
+
+  // Log activity
+  supabase.from("activity_log").insert({
+    actor_name: "Dropbox",
+    actor_role: "system",
+    action: "round_delivered",
+    description: `Round ${String(round.round_number).padStart(2, "0")} delivered via Dropbox sync`,
+    scene_id: round.scene_id,
+    round_number: round.round_number,
+  }).catch((err: unknown) => console.warn("activity log (round_delivered) failed", err));
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -310,40 +383,52 @@ async function processChanges(
         continue;
       }
 
-      // Check if asset already exists (by file ID)
-      const { data: existingAsset } = await supabase
+      // Check if asset already exists — first by file ID, then by path (handles
+      // rows pre-inserted by DropboxVisualsPanel which uses path as surrogate ID).
+      const { data: existingByFileId } = await supabase
         .from("round_assets")
         .select("id, content_hash, version")
         .eq("dropbox_file_id", entry.id)
         .eq("is_current", true)
-        .single();
+        .maybeSingle();
+
+      const { data: existingByPath } = !existingByFileId
+        ? await supabase
+            .from("round_assets")
+            .select("id, content_hash, version")
+            .eq("dropbox_path", entry.path_lower)
+            .eq("scene_round_id", sceneRoundId)
+            .eq("is_current", true)
+            .maybeSingle()
+        : { data: null };
+
+      const existingAsset = existingByFileId ?? existingByPath;
 
       if (existingAsset) {
         // Check if content changed
         if (existingAsset.content_hash === entry.content_hash) {
           console.log("File unchanged:", entry.name);
-          continue;
+        } else {
+          // Mark old version as not current
+          await supabase
+            .from("round_assets")
+            .update({ is_current: false })
+            .eq("id", existingAsset.id);
+
+          // Create new version
+          await supabase.from("round_assets").insert({
+            scene_round_id: sceneRoundId,
+            dropbox_file_id: entry.id,
+            dropbox_path: entry.path_lower,
+            filename: entry.name,
+            file_size: entry.size,
+            content_hash: entry.content_hash,
+            version: existingAsset.version + 1,
+            is_current: true,
+          });
+
+          console.log("Created new version:", existingAsset.version + 1, "for", entry.name);
         }
-
-        // Mark old version as not current
-        await supabase
-          .from("round_assets")
-          .update({ is_current: false })
-          .eq("id", existingAsset.id);
-
-        // Create new version
-        await supabase.from("round_assets").insert({
-          scene_round_id: sceneRoundId,
-          dropbox_file_id: entry.id,
-          dropbox_path: entry.path_lower,
-          filename: entry.name,
-          file_size: entry.size,
-          content_hash: entry.content_hash,
-          version: existingAsset.version + 1,
-          is_current: true,
-        });
-
-        console.log("Created new version:", existingAsset.version + 1, "for", entry.name);
       } else {
         // Create new asset
         await supabase.from("round_assets").insert({
@@ -355,6 +440,7 @@ async function processChanges(
           content_hash: entry.content_hash,
           version: 1,
           is_current: true,
+          source: "dropbox",
         });
 
         console.log("Created new asset:", entry.name);
@@ -375,13 +461,10 @@ async function processChanges(
           round_number: roundNumber,
           metadata: { filename: entry.name, dropbox_path: entry.path_lower },
         }).catch((err: unknown) => console.warn("activity log (dropbox_file_received) failed", err));
-
-        // Update scene round status to delivered
-        await supabase
-          .from("scene_rounds")
-          .update({ status: "delivered", delivered_at: new Date().toISOString() })
-          .eq("id", sceneRoundId);
       }
+
+      // Deliver round whenever a file arrives (new or updated) — idempotent.
+      await deliverRound(supabase, sceneRoundId);
       
       processedCount++;
     }

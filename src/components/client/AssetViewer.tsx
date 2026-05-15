@@ -200,22 +200,22 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     try {
       const session = await supabase.auth.getSession();
       const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`,
+        `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.data.session?.access_token}`,
           },
-          body: JSON.stringify({ path, size: "w640h480" }),
+          body: JSON.stringify({ path }),
         }
       );
       if (response.ok) {
         const data = await response.json();
-        setThumbnailUrl(data.thumbnail);
+        setThumbnailUrl(data.link);
       }
     } catch (err) {
-      console.error("Error fetching thumbnail:", err);
+      console.error("Error fetching temporary link:", err);
     }
   }
 
