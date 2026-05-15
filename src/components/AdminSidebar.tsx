@@ -9,18 +9,24 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SB } from "@/lib/sidebarConstants";
 
-const navItems: Array<{ path: string; label: string; abbr: string; indent?: boolean }> = [
-  { path: "/admin",                        label: "Dashboard", abbr: "DA" },
-  { path: "/admin/timeline",               label: "Timeline",  abbr: "TL" },
-  { path: "/admin/clients",                label: "Clients",   abbr: "CL" },
-  { path: "/admin/team",                   label: "Team",      abbr: "TM" },
-  { path: "/admin/team/contracts",         label: "Contracts", abbr: "CO", indent: true },
-  { path: "/admin/production-tracker",     label: "Tracker",   abbr: "TR" },
-  { path: "/admin/orders",                 label: "Orders",    abbr: "OR" },
-  { path: "/admin/invoices",               label: "Finance",   abbr: "FN" },
-  { path: "/admin/documents",              label: "Documents", abbr: "DC" },
-  { path: "/admin/settings",               label: "Settings",  abbr: "ST" },
+const navItems = [
+  { path: "/admin",                    label: "Dashboard", abbr: "DA" },
+  { path: "/admin/timeline",           label: "Timeline",  abbr: "TL" },
+  { path: "/admin/clients",            label: "Clients",   abbr: "CL" },
+  { path: "/admin/team",               label: "Team",      abbr: "TM" },
+  { path: "/admin/production-tracker", label: "Tracker",   abbr: "TR" },
+  { path: "/admin/orders",             label: "Orders",    abbr: "OR" },
+  { path: "/admin/invoices",           label: "Finance",   abbr: "FN" },
+  { path: "/admin/documents",          label: "Documents", abbr: "DC" },
+  { path: "/admin/settings",           label: "Settings",  abbr: "ST" },
 ];
+
+// Sub-items revealed on hover, floating up from the parent — same pattern as account menu.
+const NAV_SUB_ITEMS: Record<string, Array<{ path: string; label: string; abbr: string }>> = {
+  "/admin/team": [
+    { path: "/admin/team/contracts", label: "Contracts", abbr: "CO" },
+  ],
+};
 
 interface AdminSidebarProps {
   expanded?: boolean;
@@ -34,6 +40,8 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [openSubMenu, setOpenSubMenu] = useState<string | null>(null);
+  const subTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
@@ -50,7 +58,20 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setMenuOpen(false), 5000);
   };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  const openSub = (path: string) => {
+    if (subTimer.current) { clearTimeout(subTimer.current); subTimer.current = null; }
+    setOpenSubMenu(path);
+  };
+  const scheduleCloseSub = () => {
+    if (subTimer.current) clearTimeout(subTimer.current);
+    subTimer.current = setTimeout(() => setOpenSubMenu(null), 5000);
+  };
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    if (subTimer.current) clearTimeout(subTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -111,74 +132,140 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
           {navItems.map((item) => {
             const isActive =
               location.pathname === item.path ||
-              (item.path !== "/admin" && !item.indent && location.pathname.startsWith(item.path)) ||
-              (item.indent && location.pathname === item.path);
-            // Hide indented sub-items in collapsed mode unless they are active.
-            if (item.indent && !expanded && !isActive) return null;
+              (item.path !== "/admin" && location.pathname.startsWith(item.path));
             const showBadge = item.path === "/admin/clients" && newClientsCount > 0;
             const badgeLabel = newClientsCount > 99 ? "99+" : String(newClientsCount);
-            const link = (
-              <div key={item.path} className="relative w-full">
+            const subItems = NAV_SUB_ITEMS[item.path] ?? [];
+            const subOpen = openSubMenu === item.path;
+
+            const linkEl = (
+              <Link
+                to={item.path}
+                className={cn(
+                  "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                  expanded
+                    ? "w-full pl-5 pr-3 py-3.5"
+                    : "h-11 w-12 justify-center mx-auto rounded-lg",
+                  isActive
+                    ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+                    : cn(
+                        "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                        !expanded && "hover:bg-muted/40",
+                      ),
+                )}
+                style={expanded ? SB.navStyle : undefined}
+              >
+                {expanded && isActive && (
+                  <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                )}
+                {expanded ? (
+                  <span className="flex flex-1 items-center justify-between gap-2">
+                    <span>{item.label}</span>
+                    {showBadge && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
+                        {badgeLabel}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="relative shrink-0 flex items-center justify-center">
+                    <span className={SB.abbrClass}>{item.abbr}</span>
+                    {showBadge && (
+                      <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
+                        {badgeLabel}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </Link>
+            );
+
+            // Nav items without sub-menus — same as before.
+            if (subItems.length === 0) {
+              const wrapper = (
+                <div key={item.path} className="relative w-full">
+                  {isActive && !expanded && (
+                    <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
+                  )}
+                  {linkEl}
+                </div>
+              );
+              if (!expanded) {
+                return (
+                  <Tooltip key={item.path}>
+                    <TooltipTrigger asChild>{wrapper}</TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
+                      {item.label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return wrapper;
+            }
+
+            // Nav items WITH sub-menus — hover-reveal, same animation as account menu.
+            const withSub = (
+              <div
+                key={item.path}
+                className="relative w-full"
+                onMouseEnter={() => openSub(item.path)}
+                onMouseLeave={scheduleCloseSub}
+                onFocus={() => openSub(item.path)}
+                onBlur={scheduleCloseSub}
+              >
                 {isActive && !expanded && (
                   <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                 )}
-                <Link
-                  to={item.path}
-                  className={cn(
-                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                    expanded
-                      ? cn("w-full pr-3 py-3.5", item.indent ? "pl-9" : "pl-5")
-                      : "h-11 w-12 justify-center mx-auto rounded-lg",
-                    isActive
-                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
-                      : cn(
-                          "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                          !expanded && "hover:bg-muted/40",
-                        ),
-                  )}
-                  style={expanded ? SB.navStyle : undefined}
-                >
-                  {expanded && isActive && (
-                    <span
-                      aria-hidden
-                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]"
-                    />
-                  )}
-                  {expanded ? (
-                    <span className="flex flex-1 items-center justify-between gap-2">
-                      <span>{item.label}</span>
-                      {showBadge && (
-                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
-                          {badgeLabel}
-                        </span>
-                      )}
-                    </span>
-                  ) : (
-                    <span className="relative shrink-0 flex items-center justify-center">
-                      <span className={SB.abbrClass}>
-                        {item.abbr}
-                      </span>
-                      {showBadge && (
-                        <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
-                          {badgeLabel}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </Link>
+
+                {/* Sub-items floating up above this row */}
+                <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
+                  <div className="flex flex-col">
+                    {subItems.map((sub, idx) => {
+                      const subActive = location.pathname === sub.path;
+                      return (
+                        <Link
+                          key={sub.path}
+                          to={sub.path}
+                          className={cn(
+                            "relative pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap",
+                            subActive
+                              ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
+                              : cn(
+                                  "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                                  subOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+                                ),
+                            expanded ? "flex items-center w-full pl-5 pr-3 py-3.5" : "flex items-center justify-center h-11 w-12 mx-auto",
+                          )}
+                          style={{
+                            ...SB.menuItemStyle,
+                            transitionDelay: `${(subItems.length - 1 - idx) * 40}ms`,
+                          }}
+                        >
+                          {subActive && expanded && (
+                            <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                          )}
+                          {expanded ? <span>{sub.label}</span> : <span className={SB.abbrClass}>{sub.abbr}</span>}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {linkEl}
               </div>
             );
+
             if (!expanded) {
               return (
                 <Tooltip key={item.path}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipTrigger asChild>{withSub}</TooltipTrigger>
                   <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
               );
             }
-            return link;
+            return withSub;
           })}
         </nav>
       </TooltipProvider>
