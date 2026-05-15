@@ -45,12 +45,16 @@ interface AuthContextType {
   realUser: User | null;
   enterGhostMode: (target: { userId: string; name: string }) => Promise<{ error: Error | null }>;
   exitGhostMode: () => Promise<void>;
-  /** 'partnership' | 'project' | null — null for admins or while loading. */
-  accountType: 'partnership' | 'project' | null;
+  /** 'partnership' | 'project' | 'team' | null — null for admins or while loading. */
+  accountType: 'partnership' | 'project' | 'team' | null;
   /** False = must sign agreement. Null = still loading. True = signed (or admin). */
   hasSignedAgreement: boolean | null;
   /** Re-checks the agreements table and updates hasSignedAgreement. Call after signing. */
   refreshAgreementStatus: () => Promise<void>;
+  /** True when team user has completed onboarding. Null = loading. */
+  hasFreelancerProfile: boolean | null;
+  /** Re-checks freelancer_profiles and updates hasFreelancerProfile. Call after onboarding. */
+  refreshProfileStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,8 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdminUser, setIsAdminUser] = useState(false);
-  const [accountType, setAccountType] = useState<'partnership' | 'project' | null>(null);
+  const [accountType, setAccountType] = useState<'partnership' | 'project' | 'team' | null>(null);
   const [hasSignedAgreement, setHasSignedAgreement] = useState<boolean | null>(null);
+  const [hasFreelancerProfile, setHasFreelancerProfile] = useState<boolean | null>(null);
   const [ghostTarget, setGhostTarget] = useState<GhostState | null>(() => {
     try {
       const raw = localStorage.getItem(GHOST_KEY);
@@ -177,12 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!authUser) {
       setAccountType(null);
       setHasSignedAgreement(null);
+      setHasFreelancerProfile(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        // Check admin role first — admins skip the agreement gate entirely.
+        // Check admin role first — admins skip all client gates.
         const { data: roleRow } = await supabase
           .from("user_roles")
           .select("role")
@@ -193,10 +199,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (roleRow) {
           setAccountType(null);
           setHasSignedAgreement(true);
+          setHasFreelancerProfile(null);
           return;
         }
-        // Client: fetch account type and whether they've signed.
-        const [{ data: member }, { data: agreements }] = await Promise.all([
+        // Fetch account type, signed agreement, and freelancer profile in parallel.
+        const [{ data: member }, { data: agreements }, { data: fpRow }] = await Promise.all([
           supabase
             .from("account_members")
             .select("accounts(account_type)")
@@ -207,15 +214,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .select("id")
             .eq("user_id", authUser.id)
             .limit(1),
+          supabase
+            .from("freelancer_profiles")
+            .select("id")
+            .eq("user_id", authUser.id)
+            .maybeSingle(),
         ]);
         if (cancelled) return;
         const at = (member as any)?.accounts?.account_type;
-        setAccountType(at === 'project' ? 'project' : at === 'partnership' ? 'partnership' : null);
-        setHasSignedAgreement(Array.isArray(agreements) && agreements.length > 0);
+        const resolvedType = at === 'project' ? 'project' : at === 'partnership' ? 'partnership' : at === 'team' ? 'team' : null;
+        setAccountType(resolvedType);
+        // Team users sign the freelancer agreement, not the SSS-CA — skip that gate.
+        setHasSignedAgreement(resolvedType === 'team' ? true : Array.isArray(agreements) && agreements.length > 0);
+        setHasFreelancerProfile(resolvedType === 'team' ? !!fpRow : null);
       } catch {
         if (!cancelled) {
           setAccountType(null);
           setHasSignedAgreement(null);
+          setHasFreelancerProfile(null);
         }
       }
     })();
@@ -337,6 +353,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshProfileStatus = async () => {
+    if (!authUser) return;
+    try {
+      const { data: fpRow } = await supabase
+        .from("freelancer_profiles")
+        .select("id")
+        .eq("user_id", authUser.id)
+        .maybeSingle();
+      setHasFreelancerProfile(!!fpRow);
+    } catch {
+      // best-effort
+    }
+  };
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -396,6 +426,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accountType,
         hasSignedAgreement,
         refreshAgreementStatus,
+        hasFreelancerProfile,
+        refreshProfileStatus,
       }}
     >
       {children}

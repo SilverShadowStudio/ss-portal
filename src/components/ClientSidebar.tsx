@@ -19,6 +19,10 @@ const PROJECT_NAV: NavItem[] = [
   { path: "/portfolio", label: "Portfolio",  abbr: "PO" },
 ];
 
+const TEAM_NAV: NavItem[] = [
+  { path: "/documents", label: "Documents",  abbr: "DC" },
+];
+
 interface ClientSidebarProps {
   expanded?: boolean;
   onToggleExpand?: () => void;
@@ -29,7 +33,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut, accountType } = useAuth();
-  const navItems = accountType === 'project' ? PROJECT_NAV : PARTNERSHIP_NAV;
+  const navItems = accountType === 'team' ? TEAM_NAV : accountType === 'project' ? PROJECT_NAV : PARTNERSHIP_NAV;
   const [menuOpen, setMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [profile, setProfile] = useState<{
@@ -82,15 +86,21 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     onClick: () => void;
     active?: boolean;
     separatorAfter?: boolean;
-  }> = [
-    { label: "Overview",   onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
-    { label: "Orders",     onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
-    { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
-    { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
-    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
-    { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
-    { label: "Log off",    onClick: handleSignOut },
-  ];
+  }> = accountType === 'team'
+    ? [
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
+        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
+        { label: "Log off", onClick: handleSignOut },
+      ]
+    : [
+        { label: "Overview",   onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
+        { label: "Orders",     onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
+        { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
+        { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
+        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
+        { label: "Log off",    onClick: handleSignOut },
+      ];
 
   return (
     <>

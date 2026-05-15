@@ -9,15 +9,17 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SB } from "@/lib/sidebarConstants";
 
-const navItems = [
-  { path: "/admin",                       label: "Dashboard", abbr: "DA" },
-  { path: "/admin/timeline",              label: "Timeline",  abbr: "TL" },
-  { path: "/admin/clients",               label: "Clients",   abbr: "CL" },
-  { path: "/admin/production-tracker",    label: "Tracker",   abbr: "TR" },
-  { path: "/admin/orders",               label: "Orders",     abbr: "OR" },
-  { path: "/admin/invoices",             label: "Finance",    abbr: "FN" },
-  { path: "/admin/documents",            label: "Documents",  abbr: "DC" },
-  { path: "/admin/settings",             label: "Settings",   abbr: "ST" },
+const navItems: Array<{ path: string; label: string; abbr: string; indent?: boolean }> = [
+  { path: "/admin",                        label: "Dashboard", abbr: "DA" },
+  { path: "/admin/timeline",               label: "Timeline",  abbr: "TL" },
+  { path: "/admin/clients",                label: "Clients",   abbr: "CL" },
+  { path: "/admin/team",                   label: "Team",      abbr: "TM" },
+  { path: "/admin/team/contracts",         label: "Contracts", abbr: "CO", indent: true },
+  { path: "/admin/production-tracker",     label: "Tracker",   abbr: "TR" },
+  { path: "/admin/orders",                 label: "Orders",    abbr: "OR" },
+  { path: "/admin/invoices",               label: "Finance",   abbr: "FN" },
+  { path: "/admin/documents",              label: "Documents", abbr: "DC" },
+  { path: "/admin/settings",               label: "Settings",  abbr: "ST" },
 ];
 
 interface AdminSidebarProps {
@@ -109,7 +111,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
           {navItems.map((item) => {
             const isActive =
               location.pathname === item.path ||
-              (item.path !== "/admin" && location.pathname.startsWith(item.path));
+              (item.path !== "/admin" && !item.indent && location.pathname.startsWith(item.path)) ||
+              (item.indent && location.pathname === item.path);
+            // Hide indented sub-items in collapsed mode unless they are active.
+            if (item.indent && !expanded && !isActive) return null;
             const showBadge = item.path === "/admin/clients" && newClientsCount > 0;
             const badgeLabel = newClientsCount > 99 ? "99+" : String(newClientsCount);
             const link = (
@@ -122,7 +127,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                   className={cn(
                     "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
                     expanded
-                      ? "w-full pl-5 pr-3 py-3.5"
+                      ? cn("w-full pr-3 py-3.5", item.indent ? "pl-9" : "pl-5")
                       : "h-11 w-12 justify-center mx-auto rounded-lg",
                     isActive
                       ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"

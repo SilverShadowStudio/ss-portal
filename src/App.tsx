@@ -46,6 +46,8 @@ import AdminProductionTracker from "./pages/admin/AdminProductionTracker";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
+import AdminTeam from "./pages/admin/AdminTeam";
+import AdminTeamContracts from "./pages/admin/AdminTeamContracts";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -82,7 +84,14 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/set-password" element={<SetPassword />} />
             <Route path="/sign-agreement" element={<SignAgreement />} />
-            <Route path="/onboarding" element={<Onboarding />} />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/contract" element={<Contract />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
@@ -316,6 +325,23 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminEmailPreview />
+                </AdminProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/team"
+              element={
+                <AdminProtectedRoute>
+                  <AdminTeam />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/team/contracts"
+              element={
+                <AdminProtectedRoute>
+                  <AdminTeamContracts />
                 </AdminProtectedRoute>
               }
             />

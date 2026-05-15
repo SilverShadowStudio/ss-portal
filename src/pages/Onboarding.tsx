@@ -1,462 +1,313 @@
-import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
-const countries = [
-  { value: "United Kingdom", label: "United Kingdom", priority: true },
-  { value: "Australia", label: "Australia" },
-  { value: "Brazil", label: "Brazil" },
-  { value: "Canada", label: "Canada" },
-  { value: "China", label: "China" },
-  { value: "Denmark", label: "Denmark" },
-  { value: "France", label: "France" },
-  { value: "Germany", label: "Germany" },
-  { value: "India", label: "India" },
-  { value: "Italy", label: "Italy" },
-  { value: "Japan", label: "Japan" },
-  { value: "Mexico", label: "Mexico" },
-  { value: "Netherlands", label: "Netherlands" },
-  { value: "Norway", label: "Norway" },
-  { value: "Saudi Arabia", label: "Saudi Arabia" },
-  { value: "Singapore", label: "Singapore" },
-  { value: "Spain", label: "Spain" },
-  { value: "Sweden", label: "Sweden" },
-  { value: "Switzerland", label: "Switzerland" },
-  { value: "United Arab Emirates", label: "United Arab Emirates" },
-  { value: "United States", label: "United States" },
-];
+const AGREEMENT_TERMS = `FREELANCER SERVICES AGREEMENT
+
+This Freelancer Services Agreement ("Agreement") is between Silvershadow Studio Limited, a company incorporated in England and Wales ("the Studio"), and the Freelancer whose details are set out below.
+
+1. SERVICES
+The Freelancer agrees to provide CGI production, architectural visualisation, or related creative services on a project-by-project basis as assigned by the Studio. The Studio makes no guarantee of minimum work volume.
+
+2. DAY RATE AND PAYMENT
+The agreed day rate is as specified below. The Studio will pay agreed invoices within 30 days of receipt, provided the Services have been delivered to the agreed standard.
+
+3. INTELLECTUAL PROPERTY
+All work product, deliverables, and creative output produced under this Agreement shall be the exclusive intellectual property of Silvershadow Studio Limited upon full payment. The Freelancer retains no licence to use, reproduce, or distribute work produced for the Studio without prior written consent.
+
+4. CONFIDENTIALITY
+The Freelancer agrees to keep strictly confidential all client identities, project details, business information, and technical processes belonging to the Studio and its clients. This obligation survives termination of this Agreement for a period of five years.
+
+5. INDEPENDENT CONTRACTOR
+The Freelancer is an independent contractor and not an employee of the Studio. The Freelancer is solely responsible for their own tax obligations, National Insurance contributions, and professional indemnity insurance.
+
+6. TERMINATION
+Either party may terminate this Agreement with 14 days' written notice. The Studio may terminate immediately for material breach, including non-delivery, breach of confidentiality, or misconduct.
+
+7. GOVERNING LAW
+This Agreement is governed by the laws of England and Wales. Both parties submit to the exclusive jurisdiction of the English courts.`;
 
 interface FormData {
-  companyName: string;
-  country: string;
-  registrationNumber: string;
-  streetName: string;
-  buildingNumber: string;
-  city: string;
-  postcode: string;
   firstName: string;
-  familyName: string;
-  position: string;
-  emailAddress: string;
-  password: string;
+  lastName: string;
+  email: string;
+  role: string;
+  dayRate: string;
+  address: string;
+  bankName: string;
+  accountHolder: string;
+  sortCode: string;
+  accountNumber: string;
 }
 
-type TouchedFields = Partial<Record<keyof FormData, boolean>>;
+type Touched = Partial<Record<keyof FormData, boolean>>;
+
+const REQUIRED_FIELDS: (keyof FormData)[] = [
+  "firstName", "lastName", "email", "dayRate",
+  "bankName", "accountHolder", "sortCode", "accountNumber",
+];
+
+const FIELD_LABELS: Record<keyof FormData, string> = {
+  firstName:     "First name",
+  lastName:      "Last name",
+  email:         "Email address",
+  role:          "Role / title",
+  dayRate:       "Day rate (GBP)",
+  address:       "Address",
+  bankName:      "Bank name",
+  accountHolder: "Account holder name",
+  sortCode:      "Sort code",
+  accountNumber: "Account number",
+};
 
 export default function Onboarding() {
-  const location = useLocation();
-  const restoredFormData = (location.state as { formData?: FormData } | null)?.formData;
-  const [formData, setFormData] = useState<FormData>(
-    restoredFormData ?? {
-      companyName: "",
-      country: "",
-      registrationNumber: "",
-      streetName: "",
-      buildingNumber: "",
-      city: "",
-      postcode: "",
-      firstName: "",
-      familyName: "",
-      position: "",
-      emailAddress: "",
-      password: "",
-    }
-  );
-  const [touchedFields, setTouchedFields] = useState<TouchedFields>({});
-  const [showPassword, setShowPassword] = useState(false);
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const { toast } = useToast();
+  const { user, refreshProfileStatus } = useAuth();
 
-  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const isFieldEmpty = (field: keyof FormData) => !formData[field].trim();
-  const isPasswordTooShort = (field: keyof FormData) => field === "password" && formData.password.trim().length > 0 && formData.password.trim().length < 6;
-  const isEmailInvalid = (field: keyof FormData) =>
-    field === "emailAddress" && formData.emailAddress.trim().length > 0 && !EMAIL_REGEX.test(formData.emailAddress.trim());
+  const [form, setForm]       = useState<FormData>({
+    firstName: "", lastName: "", email: user?.email ?? "",
+    role: "", dayRate: "", address: "",
+    bankName: "", accountHolder: "", sortCode: "", accountNumber: "",
+  });
+  const [touched, setTouched] = useState<Touched>({});
+  const [agreed, setAgreed]   = useState(false);
+  const [signing, setSigning] = useState(false);
+
+  // Pre-fill email from auth user.
+  useEffect(() => {
+    if (user?.email) setForm((p) => ({ ...p, email: user.email! }));
+  }, [user?.email]);
+
   const showError = (field: keyof FormData) =>
-    touchedFields[field] && (isFieldEmpty(field) || isPasswordTooShort(field) || isEmailInvalid(field));
+    !!touched[field] && REQUIRED_FIELDS.includes(field) && !form[field].trim();
 
-  const handleBlur = (field: keyof FormData) => {
-    setTouchedFields((prev) => ({ ...prev, [field]: true }));
-  };
+  const handleBlur = (field: keyof FormData) =>
+    setTouched((p) => ({ ...p, [field]: true }));
 
-  const handleChange = (field: keyof FormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleChange = (field: keyof FormData, value: string) =>
+    setForm((p) => ({ ...p, [field]: value }));
 
-  const handleGenerateContract = () => {
-    // Validate all fields
-    const requiredFields: (keyof FormData)[] = [
-      "companyName",
-      "country",
-      "registrationNumber",
-      "streetName",
-      "buildingNumber",
-      "city",
-      "postcode",
-      "firstName",
-      "familyName",
-      "position",
-      "emailAddress",
-      "password",
-    ];
+  async function handleSign() {
+    // Mark all required fields as touched for validation display.
+    const allTouched = REQUIRED_FIELDS.reduce((a, f) => ({ ...a, [f]: true }), {} as Touched);
+    setTouched(allTouched);
 
-    // Mark all fields as touched
-    const allTouched = requiredFields.reduce((acc, field) => ({ ...acc, [field]: true }), {});
-    setTouchedFields(allTouched);
-
-    const emptyFields = requiredFields.filter((field) => !formData[field].trim());
-
-    if (emptyFields.length > 0) {
-      toast({
-        title: "Required Fields",
-        description: "Please complete the highlighted fields to continue.",
-      });
-      // Scroll to the first empty field — uses the per-field name marker so we
-      // always land on the first one in document order, regardless of section.
-      setTimeout(() => {
-        const firstField = emptyFields[0];
-        const target = document.querySelector(
-          `[data-field="${firstField}"]`
-        ) as HTMLElement | null;
-        if (target) {
-          target.scrollIntoView({ behavior: "smooth", block: "center" });
-          // Inputs have their data-field on the wrapper div; focus the inner
-          // focusable child if present.
-          const focusable = target.querySelector(
-            "input, button, [tabindex]"
-          ) as HTMLElement | null;
-          (focusable ?? target).focus?.();
-        }
-      }, 100);
+    const missing = REQUIRED_FIELDS.filter((f) => !form[f].trim());
+    if (missing.length > 0) {
+      toast({ title: "Please complete all required fields", variant: "destructive" });
+      const el = document.querySelector(`[data-field="${missing[0]}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      (el?.querySelector("input, textarea") as HTMLElement | null)?.focus?.();
       return;
     }
 
-    if (formData.password.trim().length < 6) {
-      toast({
-        title: "Password Too Short",
-        description: "Your password must be at least 6 characters.",
-      });
+    const dayRateNum = parseFloat(form.dayRate.replace(/[^0-9.]/g, ""));
+    if (isNaN(dayRateNum) || dayRateNum <= 0) {
+      toast({ title: "Please enter a valid day rate", variant: "destructive" });
       return;
     }
 
-    if (!EMAIL_REGEX.test(formData.emailAddress.trim())) {
-      setTouchedFields((prev) => ({ ...prev, emailAddress: true }));
-      toast({
-        title: "Invalid Email Address",
-        description: "Please enter a valid email address to continue.",
-      });
-      setTimeout(() => {
-        const emailField = document.querySelector('input[type="email"]') as HTMLElement;
-        if (emailField) {
-          emailField.scrollIntoView({ behavior: "smooth", block: "center" });
-          emailField.focus();
-        }
-      }, 100);
+    if (!agreed) {
+      toast({ title: "Please confirm you have read and agree to the terms", variant: "destructive" });
+      document.getElementById("agree-checkbox")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
-    // Navigate to contract page with form data
-    navigate("/contract", { state: { formData } });
-  };
+    setSigning(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Not authenticated");
+
+      const { error } = await supabase.functions.invoke("sign-freelancer-agreement", {
+        body: {
+          firstName:     form.firstName.trim(),
+          lastName:      form.lastName.trim(),
+          email:         form.email.trim(),
+          role:          form.role.trim(),
+          dayRate:       dayRateNum,
+          address:       form.address.trim(),
+          bankName:      form.bankName.trim(),
+          accountHolder: form.accountHolder.trim(),
+          sortCode:      form.sortCode.trim(),
+          accountNumber: form.accountNumber.trim(),
+        },
+      });
+      if (error) throw error;
+
+      await refreshProfileStatus();
+      toast({ title: "Agreement signed" });
+      navigate("/documents");
+    } catch (err: any) {
+      toast({ title: "Signing failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  const inputClass = (field: keyof FormData) =>
+    `w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-colors ${
+      showError(field)
+        ? "border-destructive focus:border-destructive"
+        : "border-border focus:border-gold"
+    }`;
 
   return (
     <div className="min-h-screen bg-background px-4 py-16">
       <div className="mx-auto max-w-2xl">
         {/* Header */}
-        <div className="mb-12 animate-fade-in">
+        <div className="mb-14 animate-fade-in">
           <div className="flex items-start gap-4">
-            <div className="w-1 self-stretch bg-gold-muted" />
+            <div className="w-0.5 self-stretch bg-gold" style={{ opacity: 0.4 }} />
             <div>
-              <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl">
-                Client Registration
+              <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground">
+                Freelancer Onboarding
               </h1>
-              <p className="mt-3 text-muted-foreground">
-                Please complete the details below to generate the service agreement.
+              <p className="mt-3 font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>
+                Complete your details to sign your services agreement
               </p>
             </div>
           </div>
         </div>
 
-        {/* Form */}
-        <div className="space-y-12 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-          {/* Section 01 - Company Information */}
-          <div className="space-y-6">
-            {/* Spacer above section header */}
-            <div className="h-[60px]" />
-            <div className="border-b border-border pb-2">
-              <span className="text-label-gold">01 — COMPANY INFORMATION</span>
+        <div className="space-y-14 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+
+          {/* ── Section 01: Personal Details ─────────────────────────────── */}
+          <section>
+            <div className="border-b border-border pb-2 mb-8">
+              <span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>
+                01 — Personal Details
+              </span>
             </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2" data-field="companyName">
-                <label className="text-label text-muted-foreground">COMPANY NAME</label>
-                <input
-                  type="text"
-                  value={formData.companyName}
-                  onChange={(e) => handleChange("companyName", e.target.value)}
-                  onBlur={() => handleBlur("companyName")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("companyName")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="country">
-                <label className="text-label text-muted-foreground">COUNTRY</label>
-                <Select
-                  value={formData.country}
-                  onValueChange={(value) => handleChange("country", value)}
-                >
-                  <SelectTrigger
-                    className={`w-full border-0 border-b bg-transparent rounded-none py-3 text-foreground focus:ring-0 transition-smooth h-auto px-0 ${
-                      showError("country")
-                        ? "border-destructive focus:border-destructive"
-                        : "border-border focus:border-gold"
-                    }`}
-                  >
-                    <SelectValue placeholder="Select your country" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    {countries
-                      .filter((c) => c.priority)
-                      .map((c) => (
-                        <SelectItem
-                          key={c.value}
-                          value={c.value}
-                          className="text-foreground focus:bg-secondary focus:text-foreground cursor-pointer"
-                        >
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    <SelectSeparator className="bg-border my-1" />
-                    {countries
-                      .filter((c) => !c.priority)
-                      .map((c) => (
-                        <SelectItem
-                          key={c.value}
-                          value={c.value}
-                          className="text-foreground focus:bg-secondary focus:text-foreground cursor-pointer"
-                        >
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2" data-field="registrationNumber">
-                <label className="text-label text-muted-foreground">REGISTRATION NUMBER</label>
-                <input
-                  type="text"
-                  value={formData.registrationNumber}
-                  onChange={(e) => handleChange("registrationNumber", e.target.value)}
-                  onBlur={() => handleBlur("registrationNumber")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("registrationNumber")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="streetName">
-                <label className="text-label text-muted-foreground">STREET NAME</label>
-                <input
-                  type="text"
-                  value={formData.streetName}
-                  onChange={(e) => handleChange("streetName", e.target.value)}
-                  onBlur={() => handleBlur("streetName")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("streetName")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="buildingNumber">
-                <label className="text-label text-muted-foreground">BUILDING NUMBER</label>
-                <input
-                  type="text"
-                  value={formData.buildingNumber}
-                  onChange={(e) => handleChange("buildingNumber", e.target.value)}
-                  onBlur={() => handleBlur("buildingNumber")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("buildingNumber")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="city">
-                <label className="text-label text-muted-foreground">CITY</label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => handleChange("city", e.target.value)}
-                  onBlur={() => handleBlur("city")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("city")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="postcode">
-                <label className="text-label text-muted-foreground">POSTCODE</label>
-                <input
-                  type="text"
-                  value={formData.postcode}
-                  onChange={(e) => handleChange("postcode", e.target.value)}
-                  onBlur={() => handleBlur("postcode")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("postcode")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              {/* Spacer equivalent to one field height */}
-              <div className="h-[60px]" />
-            </div>
-          </div>
-
-          {/* Section 02 - Contact Person */}
-          <div className="space-y-6">
-            {/* Spacer above section header */}
-            <div className="h-[60px]" />
-            <div className="border-b border-border pb-2">
-              <span className="text-label-gold">02 — CONTACT PERSON</span>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2" data-field="firstName">
-                <label className="text-label text-muted-foreground">FIRST NAME</label>
-                <input
-                  type="text"
-                  value={formData.firstName}
-                  onChange={(e) => handleChange("firstName", e.target.value)}
-                  onBlur={() => handleBlur("firstName")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("firstName")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="familyName">
-                <label className="text-label text-muted-foreground">FAMILY NAME</label>
-                <input
-                  type="text"
-                  value={formData.familyName}
-                  onChange={(e) => handleChange("familyName", e.target.value)}
-                  onBlur={() => handleBlur("familyName")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("familyName")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="position">
-                <label className="text-label text-muted-foreground">POSITION</label>
-                <input
-                  type="text"
-                  value={formData.position}
-                  onChange={(e) => handleChange("position", e.target.value)}
-                  onBlur={() => handleBlur("position")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("position")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="emailAddress">
-                <label className="text-label text-muted-foreground">EMAIL ADDRESS (COMMUNICATION AND LOGIN)</label>
-                <input
-                  type="email"
-                  value={formData.emailAddress}
-                  onChange={(e) => handleChange("emailAddress", e.target.value)}
-                  onBlur={() => handleBlur("emailAddress")}
-                  className={`w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-smooth ${
-                    showError("emailAddress")
-                      ? "border-destructive focus:border-destructive"
-                      : "border-border focus:border-gold"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-2" data-field="password">
-                <label className="text-label text-muted-foreground">PASSWORD (LOGIN)</label>
-                <div className="relative">
+            <div className="space-y-7">
+              {(["firstName", "lastName", "email", "role"] as const).map((field) => (
+                <div key={field} className="space-y-1.5" data-field={field}>
+                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                    {FIELD_LABELS[field]}
+                    {REQUIRED_FIELDS.includes(field) && <span className="ml-1 text-gold">*</span>}
+                  </label>
                   <input
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChange={(e) => handleChange("password", e.target.value)}
-                    onBlur={() => handleBlur("password")}
-                    className={`w-full border-0 border-b bg-transparent py-3 pr-10 text-foreground focus:outline-none transition-smooth ${
-                      showError("password")
-                        ? "border-destructive focus:border-destructive"
-                        : "border-border focus:border-gold"
-                    }`}
+                    type={field === "email" ? "email" : "text"}
+                    value={form[field]}
+                    onChange={(e) => handleChange(field, e.target.value)}
+                    onBlur={() => handleBlur(field)}
+                    readOnly={field === "email"}
+                    className={inputClass(field) + (field === "email" ? " opacity-50 cursor-default" : "")}
                   />
-                  {touchedFields["password"] && isPasswordTooShort("password") && (
-                    <p className="text-[11px] text-destructive mt-1 tracking-wide">
-                      Minimum 6 characters required
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-smooth"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
                 </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Section 02: Rate ─────────────────────────────────────────── */}
+          <section>
+            <div className="border-b border-border pb-2 mb-8">
+              <span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>
+                02 — Rate
+              </span>
+            </div>
+            <div className="space-y-7">
+              <div className="space-y-1.5" data-field="dayRate">
+                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  Day Rate (GBP) <span className="text-gold">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.dayRate}
+                  onChange={(e) => handleChange("dayRate", e.target.value)}
+                  onBlur={() => handleBlur("dayRate")}
+                  placeholder="e.g. 350"
+                  className={inputClass("dayRate")}
+                />
+              </div>
+              <div className="space-y-1.5" data-field="address">
+                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  Address
+                </label>
+                <textarea
+                  value={form.address}
+                  onChange={(e) => handleChange("address", e.target.value)}
+                  onBlur={() => handleBlur("address")}
+                  rows={3}
+                  className="w-full border-0 border-b border-border bg-transparent py-3 text-foreground focus:outline-none focus:border-gold transition-colors resize-none"
+                />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Generate Contract Button */}
-          <button
-            onClick={handleGenerateContract}
-            className="w-full bg-secondary py-4 text-sm tracking-wider text-foreground transition-smooth hover:bg-secondary/80"
-          >
-            GENERATE SERVICES AGREEMENT
-          </button>
-        </div>
+          {/* ── Section 03: Bank Details ─────────────────────────────────── */}
+          <section>
+            <div className="border-b border-border pb-2 mb-8">
+              <span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>
+                03 — Bank Details
+              </span>
+            </div>
+            <div className="space-y-7">
+              {(["bankName", "accountHolder", "sortCode", "accountNumber"] as const).map((field) => (
+                <div key={field} className="space-y-1.5" data-field={field}>
+                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                    {FIELD_LABELS[field]} <span className="text-gold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form[field]}
+                    onChange={(e) => handleChange(field, e.target.value)}
+                    onBlur={() => handleBlur(field)}
+                    className={inputClass(field)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
 
-        {/* Back to login */}
-        <div className="mt-12 flex justify-center">
+          {/* ── Section 04: Agreement ────────────────────────────────────── */}
+          <section>
+            <div className="border-b border-border pb-2 mb-8">
+              <span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>
+                04 — Services Agreement
+              </span>
+            </div>
+
+            <div
+              className="h-72 overflow-y-auto border border-border/30 p-6 mb-8 font-sans text-foreground/50"
+              style={{ fontSize: 11, lineHeight: 1.7, letterSpacing: "0.01em" }}
+            >
+              {AGREEMENT_TERMS.split("\n").map((line, i) => (
+                <p key={i} className={line.trim() === "" ? "mt-3" : line.match(/^\d+\./) || line === line.toUpperCase() ? "mt-5 font-medium text-foreground/70" : ""}>
+                  {line || <>&nbsp;</>}
+                </p>
+              ))}
+            </div>
+
+            <label id="agree-checkbox" className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-0.5 shrink-0 accent-gold"
+              />
+              <span className="font-sans text-foreground/60" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                I have read and agree to the Freelancer Services Agreement above. I understand that by clicking Sign Agreement, a PDF will be generated and stored as a record of my acceptance.
+              </span>
+            </label>
+          </section>
+
+          {/* ── Sign button ───────────────────────────────────────────────── */}
           <button
-            onClick={() => navigate("/auth")}
-            className="text-label-gold transition-smooth hover:opacity-80 animate-fade-in"
-            style={{ animationDelay: "0.3s" }}
+            onClick={handleSign}
+            disabled={signing}
+            className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors disabled:opacity-50"
+            style={{ fontSize: 10, letterSpacing: "0.22em" }}
           >
-            BACK TO LOGIN
+            {signing && <Loader2 className="h-4 w-4 animate-spin" />}
+            {signing ? "Signing..." : "Sign Agreement"}
           </button>
+
         </div>
       </div>
     </div>

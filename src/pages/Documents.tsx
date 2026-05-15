@@ -4,6 +4,7 @@ import { ArrowRight, Download, Eye, FileText, Loader2 } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
 import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
 
@@ -131,9 +132,20 @@ function toViewerData(q: Quotation): QuotationViewerData {
   } as QuotationViewerData;
 }
 
+interface FreelancerAgreement {
+  id: string;
+  signatory_name: string | null;
+  storage_path: string;
+  file_name: string;
+  file_size: number | null;
+  signed_at: string;
+}
+
 export default function Documents() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { accountType } = useAuth();
+  const [freelancerAgreements, setFreelancerAgreements] = useState<FreelancerAgreement[]>([]);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -145,8 +157,41 @@ export default function Documents() {
   const [quotationOpen, setQuotationOpen] = useState(false);
 
   useEffect(() => {
-    fetchAll();
-  }, []);
+    if (accountType === 'team') {
+      fetchFreelancerDocs();
+    } else {
+      fetchAll();
+    }
+  }, [accountType]);
+
+  async function fetchFreelancerDocs() {
+    try {
+      const { data } = await supabase
+        .from("freelancer_agreements")
+        .select("id, signatory_name, storage_path, file_name, file_size, signed_at")
+        .order("signed_at", { ascending: false });
+      setFreelancerAgreements(data || []);
+    } catch {
+      toast({ title: "Could not load documents", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleFreelancerDownload(a: FreelancerAgreement) {
+    setDownloadingId(a.id);
+    try {
+      const { data, error } = await supabase.storage
+        .from("freelancer-agreements")
+        .createSignedUrl(a.storage_path, 60, { download: a.file_name });
+      if (error || !data?.signedUrl) throw error || new Error("No signed URL");
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      toast({ title: "Could not download agreement", variant: "destructive" });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   async function fetchAll() {
     try {
@@ -194,6 +239,71 @@ export default function Documents() {
       setDownloadingId(null);
     }
   };
+
+  if (accountType === 'team') {
+    return (
+      <ClientLayout>
+        <div className="mb-16 animate-fade-in">
+          <h1 className="font-serif font-normal text-foreground" style={{ fontSize: "2.6rem", letterSpacing: "-0.005em" }}>
+            Documents
+          </h1>
+          <p className="mt-3 font-sans uppercase text-foreground/45" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
+            Your signed agreements
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+          </div>
+        ) : (
+          <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <section>
+              <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
+                Freelancer Agreement
+              </p>
+              {freelancerAgreements.length === 0 ? (
+                <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
+                  Your signed agreement will appear here once onboarding is complete.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {freelancerAgreements.map((a) => (
+                    <div key={a.id} className="flex items-center gap-5 py-4 border-t border-border/30">
+                      <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
+                          Silvershadow Studio Freelancer Agreement
+                          {a.signatory_name ? ` — ${a.signatory_name}` : ""}
+                        </p>
+                        <p className="font-sans uppercase text-foreground/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+                          Signed {formatDate(a.signed_at)}
+                          {a.file_size ? ` · ${formatSize(a.file_size)}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleFreelancerDownload(a)}
+                        disabled={downloadingId === a.id}
+                        className="flex items-center gap-1.5 text-foreground/40 hover:text-gold transition-colors disabled:opacity-40"
+                        style={{ fontSize: 10, letterSpacing: "0.16em" }}
+                      >
+                        {downloadingId === a.id ? (
+                          <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                        ) : (
+                          <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
+                        )}
+                        Download
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+      </ClientLayout>
+    );
+  }
 
   return (
     <ClientLayout>

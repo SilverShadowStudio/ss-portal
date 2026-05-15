@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, loading, hasSignedAgreement, isGhostMode } = useAuth();
+  const { user, loading, hasSignedAgreement, hasFreelancerProfile, accountType, isGhostMode } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -22,10 +22,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Ghost mode: admin viewing as client — skip agreement gate
+  // Ghost mode: admin viewing as client — skip all client gates
   if (!isGhostMode) {
     if (hasSignedAgreement === null) {
-      // Still loading agreement status
       return (
         <div className="flex min-h-screen items-center justify-center bg-background">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
@@ -34,6 +33,20 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
     if (hasSignedAgreement === false && location.pathname !== "/sign-agreement") {
       return <Navigate to="/sign-agreement" replace />;
+    }
+
+    // Team users must complete onboarding before accessing any protected page.
+    if (accountType === 'team') {
+      if (hasFreelancerProfile === null) {
+        return (
+          <div className="flex min-h-screen items-center justify-center bg-background">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+          </div>
+        );
+      }
+      if (hasFreelancerProfile === false && location.pathname !== "/onboarding") {
+        return <Navigate to="/onboarding" replace />;
+      }
     }
   }
 
