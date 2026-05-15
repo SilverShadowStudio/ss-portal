@@ -493,14 +493,21 @@ export default function AdminProjects() {
         return;
       }
 
-      const { error } = await supabase.from("projects").insert({
+      const { data: newProject, error } = await supabase.from("projects").insert({
         name: newProjectName,
         user_id: selectedClientId,
         account_id: membership.account_id,
         status: "active",
         ...(newProjectDropboxUrl.trim() ? { dropbox_folder_url: newProjectDropboxUrl.trim() } : {}),
-      });
+      }).select("id").single();
       if (error) throw error;
+
+      // Fire-and-forget: sync to Airtable Projects table + auto-generate project code
+      if (newProject?.id) {
+        supabase.functions
+          .invoke("airtable-sync-project", { body: { project_id: newProject.id } })
+          .catch((e: unknown) => console.warn("[AdminProjects] airtable-sync-project:", e));
+      }
 
       toast.success(`${newProjectName} has been created.`);
       // Activity log: project creation.

@@ -35,7 +35,7 @@ export default function AdminSettings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // ── Airtable Contact Sync ─────────────────────────────────────────────────
+  // ── Airtable Contact Sync (Users + Clients tables) ────────────────────────
   const [contactBaseId, setContactBaseId] = useState("");
   const [contactTableId, setContactTableId] = useState("");
   const [contactFieldFirstName, setContactFieldFirstName] = useState("");
@@ -43,10 +43,23 @@ export default function AdminSettings() {
   const [contactFieldRole, setContactFieldRole] = useState("");
   const [contactFieldTypeOfClient, setContactFieldTypeOfClient] = useState("");
   const [contactFieldEmail, setContactFieldEmail] = useState("");
+  const [contactFieldClientLink, setContactFieldClientLink] = useState("");
+  const [contactFieldCompanyLink, setContactFieldCompanyLink] = useState("");
   const [contactClientsTableId, setContactClientsTableId] = useState("");
   const [contactFieldCompanyName, setContactFieldCompanyName] = useState("");
-  const [contactFieldClientLink, setContactFieldClientLink] = useState("");
+  const [contactFieldClientRepresentative, setContactFieldClientRepresentative] = useState("");
   const [savingContactConfig, setSavingContactConfig] = useState(false);
+
+  // ── Airtable Project Sync ─────────────────────────────────────────────────
+  const [projectBaseId, setProjectBaseId] = useState("");
+  const [projectTableId, setProjectTableId] = useState("");
+  const [projectFieldName, setProjectFieldName] = useState("");
+  const [projectFieldClientFacingName, setProjectFieldClientFacingName] = useState("");
+  const [projectFieldClientLink, setProjectFieldClientLink] = useState("");
+  const [projectFieldProjectType, setProjectFieldProjectType] = useState("");
+  const [projectFieldContractOrSubscription, setProjectFieldContractOrSubscription] = useState("");
+  const [projectFieldStatus, setProjectFieldStatus] = useState("");
+  const [savingProjectConfig, setSavingProjectConfig] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -86,9 +99,31 @@ export default function AdminSettings() {
         setContactFieldRole(v.field_role ?? "");
         setContactFieldTypeOfClient(v.field_type_of_client ?? "");
         setContactFieldEmail(v.field_email ?? "");
+        setContactFieldClientLink(v.field_client_link ?? "");
+        setContactFieldCompanyLink(v.field_company_link ?? "");
         setContactClientsTableId(v.clients_table_id ?? "");
         setContactFieldCompanyName(v.field_company_name ?? "");
-        setContactFieldClientLink(v.field_client_link ?? "");
+        setContactFieldClientRepresentative(v.field_client_representative ?? "");
+      });
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "airtable_project_field_config")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.value) return;
+        const v = data.value as Record<string, string>;
+        setProjectBaseId(v.base_id ?? "");
+        setProjectTableId(v.table_id ?? "");
+        setProjectFieldName(v.field_project_name ?? "");
+        setProjectFieldClientFacingName(v.field_client_facing_name ?? "");
+        setProjectFieldClientLink(v.field_client_link ?? "");
+        setProjectFieldProjectType(v.field_project_type ?? "");
+        setProjectFieldContractOrSubscription(v.field_contract_or_subscription ?? "");
+        setProjectFieldStatus(v.field_status ?? "");
       });
   }, []);
 
@@ -105,9 +140,11 @@ export default function AdminSettings() {
           field_role: contactFieldRole.trim(),
           field_type_of_client: contactFieldTypeOfClient.trim(),
           field_email: contactFieldEmail.trim(),
+          field_client_link: contactFieldClientLink.trim(),
+          field_company_link: contactFieldCompanyLink.trim(),
           clients_table_id: contactClientsTableId.trim(),
           field_company_name: contactFieldCompanyName.trim(),
-          field_client_link: contactFieldClientLink.trim(),
+          field_client_representative: contactFieldClientRepresentative.trim(),
         },
       }, { onConflict: "key" });
       if (error) throw error;
@@ -116,6 +153,31 @@ export default function AdminSettings() {
       toast({ title: "Failed to save", description: e?.message, variant: "destructive" });
     } finally {
       setSavingContactConfig(false);
+    }
+  }
+
+  async function saveProjectConfig() {
+    setSavingProjectConfig(true);
+    try {
+      const { error } = await supabase.from("app_settings").upsert({
+        key: "airtable_project_field_config",
+        value: {
+          base_id: projectBaseId.trim(),
+          table_id: projectTableId.trim(),
+          field_project_name: projectFieldName.trim(),
+          field_client_facing_name: projectFieldClientFacingName.trim(),
+          field_client_link: projectFieldClientLink.trim(),
+          field_project_type: projectFieldProjectType.trim(),
+          field_contract_or_subscription: projectFieldContractOrSubscription.trim(),
+          field_status: projectFieldStatus.trim(),
+        },
+      }, { onConflict: "key" });
+      if (error) throw error;
+      toast({ title: "Project sync config saved." });
+    } catch (e: any) {
+      toast({ title: "Failed to save", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingProjectConfig(false);
     }
   }
 
@@ -259,6 +321,9 @@ export default function AdminSettings() {
 
         {/* ── Airtable Contact Sync ─────────────────────────────────── */}
         <Section title="Airtable Contact Sync">
+          <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
+            Users table (one row per person) + Clients table (one row per company). Called when a new client is created.
+          </p>
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div className="col-span-2">
               <label className={labelCls}>Base ID</label>
@@ -270,13 +335,18 @@ export default function AdminSettings() {
                 className={inputCls}
               />
             </div>
+
+            {/* Users table */}
+            <div className="col-span-2 mt-2">
+              <p className="text-[9px] uppercase tracking-[0.24em] text-gold/70 mb-4">Users table (contacts)</p>
+            </div>
             <div className="col-span-2">
-              <label className={labelCls}>Table ID or name</label>
+              <label className={labelCls}>Users table ID</label>
               <input
                 type="text"
                 value={contactTableId}
                 onChange={(e) => setContactTableId(e.target.value)}
-                placeholder="tblXXXXXXXXXXXXXX"
+                placeholder="tbl8V5Hd20UN9Jax6"
                 className={inputCls}
               />
             </div>
@@ -286,7 +356,7 @@ export default function AdminSettings() {
                 type="text"
                 value={contactFieldFirstName}
                 onChange={(e) => setContactFieldFirstName(e.target.value)}
-                placeholder="First name"
+                placeholder="First Name"
                 className={inputCls}
               />
             </div>
@@ -301,7 +371,7 @@ export default function AdminSettings() {
               />
             </div>
             <div>
-              <label className={labelCls}>Role field</label>
+              <label className={labelCls}>Role field (single select)</label>
               <input
                 type="text"
                 value={contactFieldRole}
@@ -311,12 +381,12 @@ export default function AdminSettings() {
               />
             </div>
             <div>
-              <label className={labelCls}>Type of client field</label>
+              <label className={labelCls}>Type of client field (multi select)</label>
               <input
                 type="text"
                 value={contactFieldTypeOfClient}
                 onChange={(e) => setContactFieldTypeOfClient(e.target.value)}
-                placeholder="Type of client"
+                placeholder="Type of Client"
                 className={inputCls}
               />
             </div>
@@ -330,18 +400,43 @@ export default function AdminSettings() {
                 className={inputCls}
               />
             </div>
-            <div className="col-span-2">
-              <label className={labelCls}>Clients table ID (optional — enables company linking)</label>
+            <div>
+              <label className={labelCls}>Clients link field (primary)</label>
               <input
                 type="text"
-                value={contactClientsTableId}
-                onChange={(e) => setContactClientsTableId(e.target.value)}
-                placeholder="tblXXXXXXXXXXXXXX"
+                value={contactFieldClientLink}
+                onChange={(e) => setContactFieldClientLink(e.target.value)}
+                placeholder="Clients"
                 className={inputCls}
               />
             </div>
             <div>
-              <label className={labelCls}>Company name field (in Clients table)</label>
+              <label className={labelCls}>Company link field (secondary)</label>
+              <input
+                type="text"
+                value={contactFieldCompanyLink}
+                onChange={(e) => setContactFieldCompanyLink(e.target.value)}
+                placeholder="Company"
+                className={inputCls}
+              />
+            </div>
+
+            {/* Clients table */}
+            <div className="col-span-2 mt-2">
+              <p className="text-[9px] uppercase tracking-[0.24em] text-gold/70 mb-4">Clients table (companies)</p>
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Clients table ID</label>
+              <input
+                type="text"
+                value={contactClientsTableId}
+                onChange={(e) => setContactClientsTableId(e.target.value)}
+                placeholder="tblWDmSeRB4P88ALw"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Company name field</label>
               <input
                 type="text"
                 value={contactFieldCompanyName}
@@ -351,17 +446,107 @@ export default function AdminSettings() {
               />
             </div>
             <div>
-              <label className={labelCls}>Client link field (in Contacts table)</label>
+              <label className={labelCls}>Client representative field</label>
               <input
                 type="text"
-                value={contactFieldClientLink}
-                onChange={(e) => setContactFieldClientLink(e.target.value)}
-                placeholder="Client"
+                value={contactFieldClientRepresentative}
+                onChange={(e) => setContactFieldClientRepresentative(e.target.value)}
+                placeholder="Client Representative"
                 className={inputCls}
               />
             </div>
           </div>
           <SaveButton loading={savingContactConfig} onClick={saveContactConfig} label="Save config" />
+        </Section>
+
+        {/* ── Airtable Project Sync ─────────────────────────────────── */}
+        <Section title="Airtable Project Sync">
+          <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
+            Projects table. Called when a new project is created. Auto-generates project code (CP or RUP prefix).
+          </p>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div className="col-span-2">
+              <label className={labelCls}>Base ID</label>
+              <input
+                type="text"
+                value={projectBaseId}
+                onChange={(e) => setProjectBaseId(e.target.value)}
+                placeholder="appXXXXXXXXXXXXXX"
+                className={inputCls}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Projects table ID</label>
+              <input
+                type="text"
+                value={projectTableId}
+                onChange={(e) => setProjectTableId(e.target.value)}
+                placeholder="tblB4sEUfuFQOv2lA"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Project name field (auto-generated code)</label>
+              <input
+                type="text"
+                value={projectFieldName}
+                onChange={(e) => setProjectFieldName(e.target.value)}
+                placeholder="Project name"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Client facing project name field</label>
+              <input
+                type="text"
+                value={projectFieldClientFacingName}
+                onChange={(e) => setProjectFieldClientFacingName(e.target.value)}
+                placeholder="Client Facing Project Name"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Client link field (linked to Clients table)</label>
+              <input
+                type="text"
+                value={projectFieldClientLink}
+                onChange={(e) => setProjectFieldClientLink(e.target.value)}
+                placeholder="Client"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Project type field (single select)</label>
+              <input
+                type="text"
+                value={projectFieldProjectType}
+                onChange={(e) => setProjectFieldProjectType(e.target.value)}
+                placeholder="Project Type"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Contract or subscription field</label>
+              <input
+                type="text"
+                value={projectFieldContractOrSubscription}
+                onChange={(e) => setProjectFieldContractOrSubscription(e.target.value)}
+                placeholder="Contract or Subscription"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Status field (single select)</label>
+              <input
+                type="text"
+                value={projectFieldStatus}
+                onChange={(e) => setProjectFieldStatus(e.target.value)}
+                placeholder="Status"
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <SaveButton loading={savingProjectConfig} onClick={saveProjectConfig} label="Save config" />
         </Section>
       </div>
     </AdminLayout>

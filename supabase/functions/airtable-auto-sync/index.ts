@@ -34,9 +34,10 @@ const DEFAULT_CONFIG = {
   scenes_table: "Tasks",
   field_scene_name: "Task name",
   field_project_name: "",
+  field_project_link: "",   // linked record field name for Project in Tasks table
   field_status: "Status",
   field_delivery_date: "Deadline",
-  field_round: "",
+  field_round: "",          // single select field name for Round in Tasks table
   field_portal_scene_id: "",
   status_pending: "🔴 TO DO",
   status_in_production: "🟡 IN PROGRESS",
@@ -230,10 +231,10 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Load scene + project name for all events
+    // Load scene + project for all events
     const { data: scene } = await supabase
       .from("scenes")
-      .select("id, name, airtable_record_id, projects(name, project_code)")
+      .select("id, name, airtable_record_id, projects(name, project_code, airtable_project_id)")
       .eq("id", sceneId)
       .single();
 
@@ -245,9 +246,10 @@ Deno.serve(async (req) => {
     }
 
     const sceneName = scene.name as string;
-    const proj = scene.projects as { name?: string; project_code?: string } | null;
+    const proj = scene.projects as { name?: string; project_code?: string; airtable_project_id?: string } | null;
     const projectName = proj?.name ?? "";
     const projectCode = proj?.project_code ?? null;
+    const airtableProjectId = proj?.airtable_project_id ?? null;
     const roundLabel = `Round ${String(roundNumber).padStart(2, "0")}`;
 
     // Try to fetch the project's Dropbox folder URL — falls back to null if field not set
@@ -285,6 +287,12 @@ Deno.serve(async (req) => {
         if (atStatus && config.field_status) fields[config.field_status] = atStatus;
         if (deliveryDueAt && config.field_delivery_date) {
           fields[config.field_delivery_date] = deliveryDueAt.split("T")[0];
+        }
+        if (config.field_round) {
+          fields[config.field_round] = `Round ${String(roundNumber).padStart(2, "0")}`;
+        }
+        if (config.field_project_link && airtableProjectId) {
+          fields[config.field_project_link] = [airtableProjectId];
         }
 
         const result = await upsertAirtableRecord(
