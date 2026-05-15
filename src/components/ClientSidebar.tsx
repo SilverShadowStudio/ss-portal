@@ -7,20 +7,22 @@ import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SB } from "@/lib/sidebarConstants";
+import { CalendarDays, Inbox, Images, FileText } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-type NavItem = { path: string; label: string; abbr: string };
+type NavItem = { path: string; label: string; Icon: LucideIcon };
 
 const PARTNERSHIP_NAV: NavItem[] = [
-  { path: "/timeline",  label: "Timeline",   abbr: "TL" },
-  { path: "/delivery",  label: "Deliveries", abbr: "DL" },
+  { path: "/timeline",  label: "Timeline",   Icon: CalendarDays },
+  { path: "/delivery",  label: "Deliveries", Icon: Inbox        },
 ];
 
 const PROJECT_NAV: NavItem[] = [
-  { path: "/portfolio", label: "Portfolio",  abbr: "PO" },
+  { path: "/portfolio", label: "Portfolio",  Icon: Images    },
 ];
 
 const TEAM_NAV: NavItem[] = [
-  { path: "/documents", label: "Documents",  abbr: "DC" },
+  { path: "/documents", label: "Documents",  Icon: FileText  },
 ];
 
 interface ClientSidebarProps {
@@ -165,47 +167,41 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
           <nav className={cn("flex flex-1 flex-col", expanded ? "w-full space-y-2" : "items-center gap-1 w-full")}>
             {navItems.map((item) => {
               const active = isActive(item.path);
-              const link = (
+              const linkEl = (
+                <Link
+                  to={item.path}
+                  className={cn(
+                    "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
+                    expanded ? "w-full pl-5 pr-3 py-3.5" : "h-11 w-12 justify-center mx-auto rounded-lg",
+                    active
+                      ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+                      : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
+                  )}
+                  style={expanded ? SB.navStyle : undefined}
+                >
+                  {expanded && active && (
+                    <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                  )}
+                  {expanded ? (
+                    <span>{item.label}</span>
+                  ) : (
+                    <item.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />
+                  )}
+                </Link>
+              );
+              return (
                 <div key={item.path} className="relative w-full">
                   {active && !expanded && (
                     <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                   )}
-                  <Link
-                    to={item.path}
-                    className={cn(
-                      "relative group flex items-center transition-all duration-300 ease-out whitespace-nowrap font-sans uppercase",
-                      expanded ? "w-full pl-5 pr-3 py-3.5" : "h-11 w-12 justify-center mx-auto rounded-lg",
-                      active
-                        ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
-                        : cn("text-sidebar-foreground/50 hover:text-sidebar-foreground/80", !expanded && "hover:bg-muted/40"),
-                    )}
-                    style={expanded ? SB.navStyle : undefined}
-                    title={expanded ? undefined : item.label}
-                  >
-                    {expanded && active && (
-                      <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                    )}
-                    {expanded ? (
-                      <span>{item.label}</span>
-                    ) : (
-                      <span className={SB.abbrClass}>
-                        {item.abbr}
-                      </span>
-                    )}
-                  </Link>
+                  {!expanded ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : linkEl}
                 </div>
               );
-              if (!expanded) {
-                return (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
-                      {item.label}
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }
-              return link;
             })}
           </nav>
         </TooltipProvider>

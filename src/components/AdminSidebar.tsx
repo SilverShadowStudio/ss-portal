@@ -8,22 +8,26 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SB } from "@/lib/sidebarConstants";
+import {
+  LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
+  FileText, Package, Landmark, FolderOpen,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const navItems = [
-  { path: "/admin",                    label: "Dashboard", abbr: "DA" },
-  { path: "/admin/timeline",           label: "Timeline",  abbr: "TL" },
-  { path: "/admin/clients",            label: "Clients",   abbr: "CL" },
-  { path: "/admin/team",               label: "Team",      abbr: "TM" },
-  { path: "/admin/production-tracker", label: "Tracker",   abbr: "TR" },
+const navItems: Array<{ path: string; label: string; Icon: LucideIcon }> = [
+  { path: "/admin",                    label: "Dashboard", Icon: LayoutDashboard },
+  { path: "/admin/timeline",           label: "Timeline",  Icon: CalendarDays    },
+  { path: "/admin/clients",            label: "Clients",   Icon: Users2          },
+  { path: "/admin/team",               label: "Team",      Icon: UserPlus        },
+  { path: "/admin/production-tracker", label: "Tracker",   Icon: Activity        },
 ];
 
-// Sub-items revealed on hover, floating up from the parent — same pattern as account menu.
-const NAV_SUB_ITEMS: Record<string, Array<{ path: string; label: string; abbr: string }>> = {
+const NAV_SUB_ITEMS: Record<string, Array<{ path: string; label: string; Icon: LucideIcon }>> = {
   "/admin/team": [
-    { path: "/admin/team/contracts", label: "Contracts", abbr: "CO" },
-    { path: "/admin/orders",         label: "Orders",    abbr: "OR" },
-    { path: "/admin/invoices",       label: "Finance",   abbr: "FN" },
-    { path: "/admin/documents",      label: "Documents", abbr: "DC" },
+    { path: "/admin/team/contracts", label: "Contracts", Icon: FileText   },
+    { path: "/admin/orders",         label: "Orders",    Icon: Package    },
+    { path: "/admin/invoices",       label: "Finance",   Icon: Landmark   },
+    { path: "/admin/documents",      label: "Documents", Icon: FolderOpen },
   ],
 };
 
@@ -172,7 +176,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                   </span>
                 ) : (
                   <span className="relative shrink-0 flex items-center justify-center">
-                    <span className={SB.abbrClass}>{item.abbr}</span>
+                    <item.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />
                     {showBadge && (
                       <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
                         {badgeLabel}
@@ -183,27 +187,21 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               </Link>
             );
 
-            // Nav items without sub-menus — same as before.
+            // Nav items without sub-menus.
             if (subItems.length === 0) {
-              const wrapper = (
+              return (
                 <div key={item.path} className="relative w-full">
                   {isActive && !expanded && (
                     <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                   )}
-                  {linkEl}
+                  {!expanded ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : linkEl}
                 </div>
               );
-              if (!expanded) {
-                return (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>{wrapper}</TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
-                      {item.label}
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }
-              return wrapper;
             }
 
             // Nav items WITH sub-menus — expand in-flow below the parent, pushing subsequent items down.
@@ -221,7 +219,12 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                   {isActive && !expanded && (
                     <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                   )}
-                  {linkEl}
+                  {!expanded ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : linkEl}
                 </div>
 
                 {/* Sub-items: grid-row expansion pushes subsequent nav items down */}
@@ -232,33 +235,41 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
                   <div className="overflow-hidden">
                     {subItems.map((sub, idx) => {
                       const subActive = location.pathname === sub.path || location.pathname.startsWith(sub.path + "/");
+                      const subLink = (
+                        <Link
+                          to={sub.path}
+                          className={cn(
+                            "relative flex items-center transition-all duration-200 ease-out font-sans uppercase whitespace-nowrap",
+                            subActive
+                              ? "text-[hsl(var(--gold))]"
+                              : "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                            expanded
+                              ? "w-full pl-5 pr-3 py-3.5"
+                              : "h-11 w-12 justify-center mx-auto rounded-lg",
+                            subOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0",
+                          )}
+                          style={{
+                            ...(expanded ? SB.navStyle : {}),
+                            transitionDelay: subOpen ? `${idx * 40}ms` : "0ms",
+                          }}
+                        >
+                          {subActive && expanded && (
+                            <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                          )}
+                          {expanded ? <span>{sub.label}</span> : <sub.Icon style={{ width: 14, height: 14 }} strokeWidth={1.5} />}
+                        </Link>
+                      );
                       return (
                         <div key={sub.path} className="relative w-full">
                           {subActive && !expanded && (
                             <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                           )}
-                          <Link
-                            to={sub.path}
-                            className={cn(
-                              "relative flex items-center transition-all duration-200 ease-out font-sans uppercase whitespace-nowrap",
-                              subActive
-                                ? "text-[hsl(var(--gold))]"
-                                : "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                              expanded
-                                ? "w-full pl-5 pr-3 py-3.5"
-                                : "h-11 w-12 justify-center mx-auto rounded-lg",
-                              subOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0",
-                            )}
-                            style={{
-                              ...(expanded ? SB.navStyle : {}),
-                              transitionDelay: subOpen ? `${idx * 40}ms` : "0ms",
-                            }}
-                          >
-                            {subActive && expanded && (
-                              <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                            )}
-                            {expanded ? <span>{sub.label}</span> : <span className={SB.abbrClass}>{sub.abbr}</span>}
-                          </Link>
+                          {!expanded ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>{subLink}</TooltipTrigger>
+                              <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>{sub.label}</TooltipContent>
+                            </Tooltip>
+                          ) : subLink}
                         </div>
                       );
                     })}
@@ -267,16 +278,6 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               </div>
             );
 
-            if (!expanded) {
-              return (
-                <Tooltip key={item.path}>
-                  <TooltipTrigger asChild>{withSub}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
-                    {item.label}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
             return withSub;
           })}
         </nav>
