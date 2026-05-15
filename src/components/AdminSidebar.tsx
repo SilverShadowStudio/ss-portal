@@ -64,7 +64,8 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   };
   const scheduleCloseSub = () => {
     if (subTimer.current) clearTimeout(subTimer.current);
-    subTimer.current = setTimeout(() => setOpenSubMenu(null), 5000);
+    // Short grace period — sub-items are contiguous with the parent, no travel gap needed.
+    subTimer.current = setTimeout(() => setOpenSubMenu(null), 80);
   };
 
   useEffect(() => () => {
@@ -205,55 +206,64 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
               return wrapper;
             }
 
-            // Nav items WITH sub-menus — hover-reveal, same animation as account menu.
+            // Nav items WITH sub-menus — expand in-flow below the parent, pushing subsequent items down.
             const withSub = (
               <div
                 key={item.path}
-                className="relative w-full"
+                className="w-full"
                 onMouseEnter={() => openSub(item.path)}
                 onMouseLeave={scheduleCloseSub}
                 onFocus={() => openSub(item.path)}
                 onBlur={scheduleCloseSub}
               >
-                {isActive && !expanded && (
-                  <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
-                )}
+                {/* Parent item */}
+                <div className="relative w-full">
+                  {isActive && !expanded && (
+                    <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
+                  )}
+                  {linkEl}
+                </div>
 
-                {/* Sub-items floating up above this row */}
-                <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
-                  <div className="flex flex-col">
+                {/* Sub-items: grid-row expansion pushes subsequent nav items down */}
+                <div
+                  className="grid transition-all duration-300 ease-out"
+                  style={{ gridTemplateRows: subOpen ? "1fr" : "0fr" }}
+                >
+                  <div className="overflow-hidden">
                     {subItems.map((sub, idx) => {
-                      const subActive = location.pathname === sub.path;
+                      const subActive = location.pathname === sub.path || location.pathname.startsWith(sub.path + "/");
                       return (
-                        <Link
-                          key={sub.path}
-                          to={sub.path}
-                          className={cn(
-                            "relative pointer-events-auto transition-all duration-300 ease-out font-sans uppercase whitespace-nowrap",
-                            subActive
-                              ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
-                              : cn(
-                                  "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                                  subOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-                                ),
-                            expanded ? "flex items-center w-full pl-5 pr-3 py-3.5" : "flex items-center justify-center h-11 w-12 mx-auto",
+                        <div key={sub.path} className="relative w-full">
+                          {subActive && !expanded && (
+                            <div className="absolute -left-[26px] top-1/2 h-6 w-0.5 -translate-y-1/2 bg-gold" />
                           )}
-                          style={{
-                            ...SB.menuItemStyle,
-                            transitionDelay: `${(subItems.length - 1 - idx) * 40}ms`,
-                          }}
-                        >
-                          {subActive && expanded && (
-                            <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                          )}
-                          {expanded ? <span>{sub.label}</span> : <span className={SB.abbrClass}>{sub.abbr}</span>}
-                        </Link>
+                          <Link
+                            to={sub.path}
+                            className={cn(
+                              "relative flex items-center transition-all duration-200 ease-out font-sans uppercase whitespace-nowrap",
+                              subActive
+                                ? "text-[hsl(var(--gold))]"
+                                : "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                              expanded
+                                ? "w-full pl-5 pr-3 py-3.5"
+                                : "h-11 w-12 justify-center mx-auto rounded-lg",
+                              subOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0",
+                            )}
+                            style={{
+                              ...(expanded ? SB.navStyle : {}),
+                              transitionDelay: subOpen ? `${idx * 40}ms` : "0ms",
+                            }}
+                          >
+                            {subActive && expanded && (
+                              <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                            )}
+                            {expanded ? <span>{sub.label}</span> : <span className={SB.abbrClass}>{sub.abbr}</span>}
+                          </Link>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
-
-                {linkEl}
               </div>
             );
 
