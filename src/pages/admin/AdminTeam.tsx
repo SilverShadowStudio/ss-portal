@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, Ghost, ChevronDown, ChevronUp, Clock } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Plus, Search, Ghost, Mail, Users2 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,20 +15,27 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
-interface TeamMember {
-  id: string;
-  owner_user_id: string;
+interface AccountUserRow {
+  account_id: string;
   company_name: string;
-  owner_full_name: string | null;
-  created_at: string;
-  profile: { role: string | null; day_rate: number | null } | null;
+  account_type: string | null;
+  account_created_at: string | null;
+  client_code: string | null;
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  position: string | null;
+  member_role: string | null;
+  joined_at: string | null;
+  last_login_at: string | null;
 }
 
-interface Session {
-  id: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_ms: number | null;
+interface AccountGroup {
+  account_id: string;
+  company_name: string;
+  users: AccountUserRow[];
 }
 
 function timeAgo(iso: string) {
@@ -42,29 +48,20 @@ function timeAgo(iso: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric", month: "short",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function formatDuration(ms: number | null) {
-  if (!ms || ms < 1000) return null;
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+function fullNameOf(u: AccountUserRow): string {
+  return (
+    u.full_name ||
+    [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+    u.email ||
+    "Unnamed user"
+  );
 }
 
 export default function AdminTeam() {
   const navigate = useNavigate();
   const { enterGhostMode } = useAuth();
   const { toast } = useToast();
-  const [members, setMembers]           = useState<TeamMember[]>([]);
-  const [sessions, setSessions]         = useState<Record<string, Session[]>>({});
-  const [expanded, setExpanded]         = useState<string | null>(null);
+  const [accountUsers, setAccountUsers] = useState<AccountUserRow[]>([]);
   const [loading, setLoading]           = useState(true);
   const [searchQuery, setSearchQuery]   = useState("");
   const [dialogOpen, setDialogOpen]     = useState(false);
@@ -77,72 +74,32 @@ export default function AdminTeam() {
   async function fetchMembers() {
     setLoading(true);
     try {
-      const { data: accounts } = await supabase
-        .from("accounts")
-        .select("id, company_name, created_at")
-        .eq("account_type", "team")
-        .order("created_at", { ascending: false });
-
-      if (!accounts || accounts.length === 0) { setMembers([]); return; }
-
-      const enriched: TeamMember[] = await Promise.all(
-        accounts.map(async (acc) => {
-          const [{ data: memberRows }, { data: profileRow }] = await Promise.all([
-            supabase
-              .from("account_members")
-              .select("user_id, profiles(full_name)")
-              .eq("account_id", acc.id)
-              .limit(1)
-              .maybeSingle(),
-            supabase
-              .from("freelancer_profiles")
-              .select("role, day_rate")
-              .eq("user_id", (
-                await supabase
-                  .from("account_members")
-                  .select("user_id")
-                  .eq("account_id", acc.id)
-                  .limit(1)
-                  .maybeSingle()
-              ).data?.user_id ?? "")
-              .maybeSingle(),
-          ]);
-          const ownerUserId = (memberRows as any)?.user_id ?? "";
-          const fullName    = (memberRows as any)?.profiles?.full_name ?? null;
-          return {
-            id:            acc.id,
-            owner_user_id: ownerUserId,
-            company_name:  acc.company_name,
-            owner_full_name: fullName,
-            created_at:    acc.created_at,
-            profile:       profileRow ?? null,
-          };
-        })
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/admin-list-account-users?accountTypes=team`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: SUPABASE_PUBLISHABLE_KEY,
+          },
+        },
       );
-      setMembers(enriched);
-    } catch {
+      if (!res.ok) throw new Error(`admin-list-account-users returned ${res.status}`);
+      const body = await res.json();
+      setAccountUsers((body.rows ?? []) as AccountUserRow[]);
+    } catch (err) {
+      console.error("Failed to load team members:", err);
       toast({ title: "Could not load team members", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadSessions(memberId: string, userId: string) {
-    if (sessions[memberId]) return;
-    const { data } = await supabase
-      .from("client_activity")
-      .select("id, started_at, ended_at, duration_ms")
-      .eq("user_id", userId)
-      .eq("kind", "session_start")
-      .order("started_at", { ascending: false })
-      .limit(10);
-    setSessions((prev) => ({ ...prev, [memberId]: (data as Session[]) || [] }));
-  }
-
-  async function handleGhost(member: TeamMember) {
+  async function handleGhost(u: AccountUserRow) {
     const { error } = await enterGhostMode({
-      userId: member.owner_user_id,
-      name:   member.owner_full_name || member.company_name,
+      userId: u.user_id,
+      name:   fullNameOf(u),
     });
     if (error) {
       toast({ title: "Could not enter ghost mode", description: error.message, variant: "destructive" });
@@ -150,6 +107,46 @@ export default function AdminTeam() {
       navigate("/documents");
     }
   }
+
+  const accountGroups = useMemo<AccountGroup[]>(() => {
+    const byId = new Map<string, AccountGroup>();
+    for (const u of accountUsers) {
+      let g = byId.get(u.account_id);
+      if (!g) {
+        g = { account_id: u.account_id, company_name: u.company_name, users: [] };
+        byId.set(u.account_id, g);
+      }
+      g.users.push(u);
+    }
+    for (const g of byId.values()) {
+      g.users.sort((a, b) => {
+        if (a.member_role === "owner" && b.member_role !== "owner") return -1;
+        if (b.member_role === "owner" && a.member_role !== "owner") return 1;
+        return (a.joined_at ?? "").localeCompare(b.joined_at ?? "");
+      });
+    }
+    return Array.from(byId.values()).sort((a, b) => a.company_name.localeCompare(b.company_name));
+  }, [accountUsers]);
+
+  const filteredGroups = useMemo<AccountGroup[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return accountGroups;
+    return accountGroups
+      .map((g) => {
+        const matchesCompany = g.company_name.toLowerCase().includes(q);
+        const matchingUsers = g.users.filter(
+          (u) =>
+            (u.full_name ?? "").toLowerCase().includes(q) ||
+            (u.email ?? "").toLowerCase().includes(q) ||
+            (u.first_name ?? "").toLowerCase().includes(q) ||
+            (u.last_name ?? "").toLowerCase().includes(q),
+        );
+        if (matchesCompany) return g;
+        if (matchingUsers.length === 0) return null;
+        return { ...g, users: matchingUsers };
+      })
+      .filter((g): g is AccountGroup => g !== null);
+  }, [accountGroups, searchQuery]);
 
   async function handleInvite() {
     const email = inviteEmail.trim().toLowerCase();
@@ -181,15 +178,6 @@ export default function AdminTeam() {
       setInviting(false);
     }
   }
-
-  const filtered = members.filter((m) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      m.company_name.toLowerCase().includes(q) ||
-      (m.owner_full_name ?? "").toLowerCase().includes(q)
-    );
-  });
 
   return (
     <AdminLayout>
@@ -276,92 +264,94 @@ export default function AdminTeam() {
         <div className="flex items-center justify-center py-24">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <p className="font-serif text-foreground/35 text-sm py-8 border-t border-border/30">
           {searchQuery ? "No members match your search." : "No team members yet."}
         </p>
       ) : (
-        <div className="space-y-px">
-          {filtered.map((member) => {
-            const isExpanded = expanded === member.id;
-            const memberSessions = sessions[member.id] || [];
-            const hasProfile = !!member.profile;
-
-            return (
-              <Collapsible
-                key={member.id}
-                open={isExpanded}
-                onOpenChange={(open) => {
-                  setExpanded(open ? member.id : null);
-                  if (open) loadSessions(member.id, member.owner_user_id);
-                }}
-              >
-                <div className="flex items-center gap-4 border-t border-border/30 py-4">
-                  {/* Ghost icon */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleGhost(member); }}
-                    className="shrink-0 text-foreground/20 hover:text-gold transition-colors"
-                    title="View as this member"
+        <div className="space-y-6">
+          {filteredGroups.map((group) => (
+            <div key={group.account_id} className="rounded-xl border border-border bg-card overflow-hidden">
+              {/* Account header */}
+              <div className="flex items-center justify-between px-5 py-4 bg-muted/10 border-b border-border/40">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Users2 className="h-3.5 w-3.5 text-gold shrink-0" />
+                  <h3 className="font-serif text-sm uppercase tracking-wide text-foreground truncate">
+                    {group.company_name}
+                  </h3>
+                  <span
+                    className="font-sans uppercase text-foreground/35"
+                    style={{ fontSize: 9, letterSpacing: "0.22em" }}
                   >
-                    <Ghost style={{ width: 14, height: 14 }} strokeWidth={1.5} />
-                  </button>
-
-                  {/* Name + meta */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-serif text-foreground text-sm">
-                      {member.owner_full_name || member.company_name}
-                    </p>
-                    <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
-                      {member.profile?.role || "Freelancer"}
-                      {member.profile?.day_rate ? ` · £${member.profile.day_rate}/day` : ""}
-                      {!hasProfile && " · Onboarding pending"}
-                    </p>
-                  </div>
-
-                  {/* Sessions toggle */}
-                  <CollapsibleTrigger asChild>
-                    <button className="shrink-0 flex items-center gap-1.5 text-foreground/30 hover:text-foreground/60 transition-colors">
-                      <Clock style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                      {isExpanded ? (
-                        <ChevronUp style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                      ) : (
-                        <ChevronDown style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                      )}
-                    </button>
-                  </CollapsibleTrigger>
+                    Team
+                  </span>
                 </div>
+                <span className="text-xs text-muted-foreground">
+                  {group.users.length} member{group.users.length === 1 ? "" : "s"}
+                </span>
+              </div>
 
-                <CollapsibleContent>
-                  <div className="pb-4 pl-8">
-                    {memberSessions.length === 0 ? (
-                      <p className="font-sans text-foreground/30 text-xs py-2">No sessions recorded</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {memberSessions.map((s) => {
-                          const dur = formatDuration(s.duration_ms);
-                          return (
-                            <div key={s.id} className="flex items-baseline gap-3">
-                              <p className="font-sans text-foreground/50" style={{ fontSize: 10, letterSpacing: "0.12em" }}>
-                                {formatTime(s.started_at)}
-                              </p>
-                              {dur && (
-                                <p className="font-sans text-foreground/30" style={{ fontSize: 10, letterSpacing: "0.1em" }}>
-                                  {dur}
-                                </p>
-                              )}
-                              <p className="font-sans text-foreground/25 ml-auto" style={{ fontSize: 9 }}>
-                                {timeAgo(s.started_at)}
-                              </p>
-                            </div>
-                          );
-                        })}
+              {/* User rows */}
+              <div className="divide-y divide-border/30">
+                {group.users.map((u) => {
+                  const displayName = fullNameOf(u);
+                  return (
+                    <div
+                      key={u.user_id}
+                      className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
+                    >
+                      <button
+                        onClick={() => handleGhost(u)}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0 opacity-25 hover:opacity-70"
+                        aria-label={`Ghost as ${displayName}`}
+                        title={`View as ${displayName}`}
+                      >
+                        <Ghost className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
+                      </button>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
+                        {(u.position || u.member_role) && (
+                          <p
+                            className="font-sans uppercase text-foreground/40 mt-0.5"
+                            style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                          >
+                            {u.position ?? u.member_role}
+                          </p>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
+
+                      <div className="hidden md:flex items-center gap-2 min-w-0 max-w-[240px]">
+                        <Mail className="h-3 w-3 text-foreground/30 shrink-0" />
+                        <span className="text-xs text-muted-foreground truncate">{u.email ?? "—"}</span>
+                      </div>
+
+                      <div className="text-right shrink-0 min-w-[120px]">
+                        {u.last_login_at ? (
+                          <>
+                            <p className="text-xs text-foreground/65">{timeAgo(u.last_login_at)}</p>
+                            <p
+                              className="font-sans uppercase text-foreground/30 mt-0.5"
+                              style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                            >
+                              Last seen
+                            </p>
+                          </>
+                        ) : (
+                          <p
+                            className="font-sans uppercase text-foreground/30"
+                            style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                          >
+                            Never signed in
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </AdminLayout>

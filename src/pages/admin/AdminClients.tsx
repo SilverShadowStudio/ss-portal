@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, MoreHorizontal, Mail, Building2, Copy, Check, Trash2, Ghost, Pencil, ChevronDown, ChevronUp, Clock } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ClientActivityPanel } from "@/components/admin/ClientActivityPanel";
+import { Plus, Search, MoreHorizontal, Mail, Building2, Copy, Check, Trash2, Ghost, Pencil } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,23 +22,32 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 
-interface Client {
-  id: string; // account id
-  owner_user_id: string;
+// One row per individual user, returned from the admin-list-account-users
+// edge function. Rows are grouped by account_id in the render below.
+interface AccountUserRow {
+  account_id: string;
   company_name: string;
-  owner_full_name: string | null;
-  owner_position: string | null;
-  memberCount: number;
-  projectCount: number;
-  created_at: string;
+  account_type: string | null;
+  account_created_at: string | null;
+  client_code: string | null;
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  position: string | null;
+  member_role: string | null;
+  joined_at: string | null;
+  last_login_at: string | null;
 }
 
-interface Connection {
-  id: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_ms: number | null;
-  path: string | null;
+interface AccountGroup {
+  account_id: string;
+  company_name: string;
+  account_type: string | null;
+  client_code: string | null;
+  account_created_at: string | null;
+  users: AccountUserRow[];
 }
 
 function timeAgo(iso: string) {
@@ -53,28 +60,19 @@ function timeAgo(iso: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric", month: "short",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function formatDuration(ms: number | null) {
-  if (!ms || ms < 1000) return null;
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+function fullNameOf(u: AccountUserRow): string {
+  return (
+    u.full_name ||
+    [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+    u.email ||
+    "Unnamed user"
+  );
 }
 
 export default function AdminClients() {
   const navigate = useNavigate();
   const { enterGhostMode } = useAuth();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [connections, setConnections] = useState<Record<string, Connection[]>>({});
-  const [expandedClient, setExpandedClient] = useState<string | null>(null);
+  const [accountUsers, setAccountUsers] = useState<AccountUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -110,123 +108,20 @@ export default function AdminClients() {
 
   async function fetchClients() {
     try {
-      // 1) All client accounts (companies)
-      const { data: accounts, error: accountsError } = await supabase
-        .from("accounts")
-        .select("id, company_name, owner_user_id, created_at")
-        .order("created_at", { ascending: false });
-      if (accountsError) throw accountsError;
-
-      const ownerIds = (accounts || []).map((a) => a.owner_user_id);
-      const accountIds = (accounts || []).map((a) => a.id);
-
-      // 2) Owner profiles for contact name / position
-      const { data: ownerProfiles } = ownerIds.length
-        ? await supabase
-            .from("profiles")
-            .select("user_id, full_name, first_name, last_name, position")
-            .in("user_id", ownerIds)
-        : { data: [] as any[] };
-
-      // 3) Admin user_ids — to filter the studio's own internal accounts out
-      const { data: adminRoles } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "admin");
-      const adminIds = new Set((adminRoles || []).map((r) => r.user_id));
-
-      // 4) Member counts per account
-      const { data: members } = accountIds.length
-        ? await supabase
-            .from("account_members")
-            .select("account_id")
-            .in("account_id", accountIds)
-        : { data: [] as any[] };
-      const memberCounts = new Map<string, number>();
-      (members || []).forEach((m: any) => {
-        memberCounts.set(m.account_id, (memberCounts.get(m.account_id) || 0) + 1);
-      });
-
-      // 5) Project counts per account
-      const { data: projects } = accountIds.length
-        ? await supabase
-            .from("projects")
-            .select("account_id")
-            .in("account_id", accountIds)
-        : { data: [] as any[] };
-      const projectCounts = new Map<string, number>();
-      (projects || []).forEach((p: any) => {
-        if (!p.account_id) return;
-        projectCounts.set(p.account_id, (projectCounts.get(p.account_id) || 0) + 1);
-      });
-
-      const profileMap = new Map<string, any>();
-      (ownerProfiles || []).forEach((p: any) => profileMap.set(p.user_id, p));
-
-      const clientList: Client[] = (accounts || [])
-        .filter((a) => !adminIds.has(a.owner_user_id))
-        .map((a) => {
-          const op = profileMap.get(a.owner_user_id);
-          const fullName =
-            op?.full_name ||
-            [op?.first_name, op?.last_name].filter(Boolean).join(" ") ||
-            null;
-          return {
-            id: a.id,
-            owner_user_id: a.owner_user_id,
-            company_name: a.company_name,
-            owner_full_name: fullName,
-            owner_position: op?.position ?? null,
-            memberCount: memberCounts.get(a.id) || 0,
-            projectCount: projectCounts.get(a.id) || 0,
-            created_at: a.created_at,
-          };
-        });
-
-      setClients(clientList);
-
-      // Fetch last 10 connections per client with end time and duration
-      const clientUserIds = clientList.map(c => c.owner_user_id).filter(Boolean);
-      if (clientUserIds.length) {
-        // Fetch session_start events
-        const { data: starts } = await supabase
-          .from("client_activity")
-          .select("id, user_id, started_at, ended_at, duration_ms, path, session_id")
-          .in("user_id", clientUserIds)
-          .eq("kind", "session_start")
-          .order("started_at", { ascending: false })
-          .limit(clientUserIds.length * 10);
-
-        // Fetch corresponding session_end events
-        const sessionIds = (starts || []).map((s: any) => s.session_id).filter(Boolean);
-        let endMap: Record<string, { ended_at: string; duration_ms: number | null }> = {};
-        if (sessionIds.length) {
-          const { data: ends } = await supabase
-            .from("client_activity")
-            .select("session_id, started_at, duration_ms")
-            .in("session_id", sessionIds)
-            .eq("kind", "session_end");
-          (ends || []).forEach((e: any) => {
-            if (e.session_id) endMap[e.session_id] = { ended_at: e.started_at, duration_ms: e.duration_ms };
-          });
-        }
-
-        const byUser: Record<string, Connection[]> = {};
-        (starts || []).forEach((row: any) => {
-          if (!byUser[row.user_id]) byUser[row.user_id] = [];
-          if (byUser[row.user_id].length < 10) {
-            const end = row.session_id ? endMap[row.session_id] : null;
-            byUser[row.user_id].push({
-              id: row.id,
-              started_at: row.started_at,
-              ended_at: end?.ended_at || row.ended_at || null,
-              duration_ms: end?.duration_ms || row.duration_ms || null,
-              path: row.path,
-            });
-          }
-        });
-        setConnections(byUser);
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/admin-list-account-users?accountTypes=partnership,project`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: SUPABASE_PUBLISHABLE_KEY,
+          },
+        },
+      );
+      if (!res.ok) throw new Error(`admin-list-account-users returned ${res.status}`);
+      const body = await res.json();
+      setAccountUsers((body.rows ?? []) as AccountUserRow[]);
     } catch (error) {
       console.error("Error fetching clients:", error);
       toast({
@@ -239,13 +134,57 @@ export default function AdminClients() {
     }
   }
 
-  const filteredClients = clients.filter((client) => {
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      client.company_name?.toLowerCase().includes(searchLower) ||
-      client.owner_full_name?.toLowerCase().includes(searchLower)
+  // Group AccountUserRow[] by account, then filter by search term across
+  // company name OR any individual user's name/email.
+  const accountGroups = useMemo<AccountGroup[]>(() => {
+    const byId = new Map<string, AccountGroup>();
+    for (const u of accountUsers) {
+      let g = byId.get(u.account_id);
+      if (!g) {
+        g = {
+          account_id: u.account_id,
+          company_name: u.company_name,
+          account_type: u.account_type,
+          client_code: u.client_code,
+          account_created_at: u.account_created_at,
+          users: [],
+        };
+        byId.set(u.account_id, g);
+      }
+      g.users.push(u);
+    }
+    // Sort each group: owners first, then by joined_at ascending.
+    for (const g of byId.values()) {
+      g.users.sort((a, b) => {
+        if (a.member_role === "owner" && b.member_role !== "owner") return -1;
+        if (b.member_role === "owner" && a.member_role !== "owner") return 1;
+        return (a.joined_at ?? "").localeCompare(b.joined_at ?? "");
+      });
+    }
+    return Array.from(byId.values()).sort((a, b) =>
+      a.company_name.localeCompare(b.company_name),
     );
-  });
+  }, [accountUsers]);
+
+  const filteredGroups = useMemo<AccountGroup[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return accountGroups;
+    return accountGroups
+      .map((g) => {
+        const matchesCompany = g.company_name.toLowerCase().includes(q);
+        const matchingUsers = g.users.filter(
+          (u) =>
+            (u.full_name ?? "").toLowerCase().includes(q) ||
+            (u.email ?? "").toLowerCase().includes(q) ||
+            (u.first_name ?? "").toLowerCase().includes(q) ||
+            (u.last_name ?? "").toLowerCase().includes(q),
+        );
+        if (matchesCompany) return g; // whole group
+        if (matchingUsers.length === 0) return null;
+        return { ...g, users: matchingUsers };
+      })
+      .filter((g): g is AccountGroup => g !== null);
+  }, [accountGroups, searchQuery]);
 
   const updateForm = (key: keyof typeof form, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -697,151 +636,157 @@ export default function AdminClients() {
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" />
           </div>
-        ) : filteredClients.length === 0 ? (
+        ) : filteredGroups.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-12 text-center">
             <p className="text-muted-foreground">
               {searchQuery ? "No clients match your search" : "No clients yet"}
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card shadow-sm p-2 md:p-3">
-            <div className="divide-y divide-border/40">
-            {filteredClients.map((client) => (
-              <div key={client.id}>
-              <div
-                onClick={() =>
-                  navigate(`/admin/projects?client=${client.owner_user_id}`)
-                }
-                className="flex items-center justify-between p-4 transition-colors hover:bg-muted/30 rounded-lg cursor-pointer"
-              >
-                <div className="flex items-center gap-4">
-                  {/* Ghost circle — click to enter ghost mode */}
-                  <TooltipProvider delayDuration={150}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!client.owner_user_id) return;
-                            const { error } = await enterGhostMode({
-                              userId: client.owner_user_id,
-                              name: client.owner_full_name || client.company_name,
-                            });
-                            if (error) {
-                              toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
-                              return;
-                            }
-                            navigate("/");
-                          }}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0 opacity-20 hover:opacity-60"
-                          aria-label="Enter Ghost Mode"
-                        >
-                          <Ghost className="h-4 w-4 text-gold/60" strokeWidth={1.5} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        View as {client.owner_full_name || client.company_name}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <div>
-                    <h3 className="font-serif text-sm uppercase tracking-wide text-foreground flex items-center gap-2">
-                      <Building2 className="h-3 w-3 text-gold" />
-                      {client.company_name}
+          <div className="space-y-6">
+            {filteredGroups.map((group) => (
+              <div key={group.account_id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                {/* Account header — clickable, opens the profile */}
+                <div
+                  onClick={() => navigate(`/admin/clients/${group.account_id}`)}
+                  className="flex items-center justify-between px-5 py-4 bg-muted/10 border-b border-border/40 cursor-pointer hover:bg-muted/20 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Building2 className="h-3.5 w-3.5 text-gold shrink-0" />
+                    <h3 className="font-serif text-sm uppercase tracking-wide text-foreground truncate">
+                      {group.company_name}
                     </h3>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{client.owner_full_name || "Owner pending"}</span>
-                      <span>{client.memberCount} member{client.memberCount === 1 ? "" : "s"}</span>
-                      <span>{client.projectCount} project{client.projectCount === 1 ? "" : "s"}</span>
-                    </div>
+                    {group.client_code && (
+                      <span
+                        className="font-sans uppercase text-foreground/45"
+                        style={{ fontSize: 9, letterSpacing: "0.24em" }}
+                      >
+                        {group.client_code}
+                      </span>
+                    )}
+                    <span
+                      className="font-sans uppercase text-foreground/35"
+                      style={{ fontSize: 9, letterSpacing: "0.22em" }}
+                    >
+                      {group.account_type ?? ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-xs text-muted-foreground">
+                      {group.users.length} user{group.users.length === 1 ? "" : "s"}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex h-8 w-8 items-center justify-center rounded hover:bg-secondary"
+                        >
+                          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
+                          <Pencil className="mr-2 h-4 w-4" /> Edit profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() =>
+                            handleDeleteClient(
+                              group.account_id,
+                              group.company_name,
+                              0, // project count no longer tracked here; deletion guard still queries DB
+                              group.users.length,
+                            )
+                          }
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete client
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  {/* Connections toggle */}
-                  <TooltipProvider delayDuration={150}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setExpandedClient(expandedClient === client.id ? null : client.id); }}
-                          className="flex items-center gap-1.5 h-8 px-2 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors text-xs"
-                          title="Last connections"
-                        >
-                          <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                          <span>{(connections[client.owner_user_id] || []).length || "—"}</span>
-                          {expandedClient === client.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">Last connections</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex h-8 w-8 items-center justify-center rounded hover:bg-secondary"
+
+                {/* User rows */}
+                <div className="divide-y divide-border/30">
+                  {group.users.map((u) => {
+                    const displayName = fullNameOf(u);
+                    return (
+                      <div
+                        key={u.user_id}
+                        className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
                       >
-                        <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenuItem
-                        onClick={() => navigate(`/admin/clients/${client.id}`)}
-                      >
-                        <Pencil className="mr-2 h-4 w-4" /> Edit profile
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleMakeAdmin(client.owner_user_id, client.owner_full_name || client.company_name)}>
-                        Make Admin
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() =>
-                          handleDeleteClient(
-                            client.id,
-                            client.company_name,
-                            client.projectCount,
-                            client.memberCount,
-                          )
-                        }
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete client
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              {/* Connections panel — expanded inline */}
-              {expandedClient === client.id && (
-                <div className="px-4 pb-4 bg-muted/10 border-t border-border/20" onClick={(e) => e.stopPropagation()}>
-                  <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 pt-3 pb-2">
-                    Last connections
-                  </p>
-                  {(connections[client.owner_user_id] || []).length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-1">No connections recorded yet.</p>
-                  ) : (
-                    <div className="space-y-0.5">
-                      {(connections[client.owner_user_id] || []).map((conn) => (
-                        <div key={conn.id} className="flex items-start gap-3 py-2 border-t border-border/20 first:border-0">
-                          <div className="h-1.5 w-1.5 rounded-full bg-gold/40 shrink-0 mt-1.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-foreground/60 truncate">{conn.path || "/"}</p>
-                            <p className="text-[10px] text-foreground/35 mt-0.5">
-                              {formatTime(conn.started_at)}
-                              {conn.ended_at && ` → ${formatTime(conn.ended_at)}`}
-                              {formatDuration(conn.duration_ms) && (
-                                <span className="ml-2 text-foreground/25">{formatDuration(conn.duration_ms)}</span>
-                              )}
+                        {/* Ghost — per user */}
+                        <TooltipProvider delayDuration={150}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={async () => {
+                                  const { error } = await enterGhostMode({
+                                    userId: u.user_id,
+                                    name: displayName,
+                                  });
+                                  if (error) {
+                                    toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
+                                    return;
+                                  }
+                                  navigate("/");
+                                }}
+                                className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0 opacity-25 hover:opacity-70"
+                                aria-label={`Ghost as ${displayName}`}
+                              >
+                                <Ghost className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">View as {displayName}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        {/* Name + position */}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
+                          {(u.position || u.member_role) && (
+                            <p
+                              className="font-sans uppercase text-foreground/40 mt-0.5"
+                              style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                            >
+                              {u.position ?? u.member_role}
                             </p>
-                          </div>
-                          <p className="text-[10px] text-foreground/30 shrink-0 mt-0.5">{timeAgo(conn.started_at)}</p>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+
+                        {/* Email */}
+                        <div className="hidden md:flex items-center gap-2 min-w-0 max-w-[240px]">
+                          <Mail className="h-3 w-3 text-foreground/30 shrink-0" />
+                          <span className="text-xs text-muted-foreground truncate">{u.email ?? "—"}</span>
+                        </div>
+
+                        {/* Last seen */}
+                        <div className="text-right shrink-0 min-w-[120px]">
+                          {u.last_login_at ? (
+                            <>
+                              <p className="text-xs text-foreground/65">{timeAgo(u.last_login_at)}</p>
+                              <p
+                                className="font-sans uppercase text-foreground/30 mt-0.5"
+                                style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                              >
+                                Last seen
+                              </p>
+                            </>
+                          ) : (
+                            <p
+                              className="font-sans uppercase text-foreground/30"
+                              style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                            >
+                              Never signed in
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
               </div>
             ))}
-            </div>
           </div>
         )}
       </div>
