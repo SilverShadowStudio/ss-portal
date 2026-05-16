@@ -195,6 +195,7 @@ export default function AdminSettings() {
   async function uploadSignature(file: File) {
     setSavingSignature(true);
     try {
+      // createBucket is a no-op if the bucket already exists
       await supabase.storage.createBucket("studio-assets", { public: false }).catch(() => {});
       const { error } = await supabase.storage
         .from("studio-assets")
