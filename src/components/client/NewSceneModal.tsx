@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import { Plus } from "lucide-react";
 
 interface NewSceneModalProps {
@@ -28,6 +29,7 @@ export function NewSceneModal({ isOpen, onClose, onCreate, projectName }: NewSce
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
             onClick={onClose}
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
           />
@@ -35,7 +37,7 @@ export function NewSceneModal({ isOpen, onClose, onCreate, projectName }: NewSce
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.2 }}
+            transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}
             className="relative bg-card border border-border rounded-3xl p-8 w-full max-w-lg shadow-2xl"
           >
             <form onSubmit={handleSubmit}>

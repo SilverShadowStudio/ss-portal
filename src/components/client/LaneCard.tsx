@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import { ChevronRight, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -54,6 +55,7 @@ export function LaneCard({ id, phase, dot, title, previewUrl, estimate, lastUpda
           "inset 0 1px 0 hsl(0 0% 100% / 0.06), 0 24px 60px -24px rgba(0,0,0,0.5), 0 6px 18px -10px rgba(0,0,0,0.35)",
       }}
       whileHover={{ y: -2 }}
+      transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
     >
       {isAwaiting && (
         <span

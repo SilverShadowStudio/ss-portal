@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import { X, FileIcon } from "lucide-react";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -88,7 +89,7 @@ function UploadItem({
         marginLeft: "-3rem", marginRight: "-3rem",
         paddingLeft: active ? "calc(3rem - 3px)" : "3rem", paddingRight: "3rem",
         position: "relative",
-        transition: "background 300ms ease",
+        transition: "background var(--duration-standard) var(--ease-default)",
         borderBottomColor: "#2A2820",
         background: active ? "#252018" : "transparent",
         borderLeft: active ? "3px solid var(--brand-gold, #B89A6A)" : "3px solid transparent",
@@ -130,7 +131,7 @@ function UploadItem({
             : isHovered && !active
             ? "hsl(var(--foreground) / 0.025)"
             : "transparent",
-          transition: "all 500ms ease",
+          transition: "all var(--duration-deliberate) var(--ease-default)",
           pointerEvents: "none",
           borderRadius: 0,
         }}
@@ -151,7 +152,7 @@ function UploadItem({
           </span>
           {!active && (
             <span
-              style={{ transition: "opacity 300ms ease" }}
+              style={{ transition: "opacity var(--duration-standard) var(--ease-default)" }}
               className={`text-[9px] font-sans uppercase tracking-[0.2em] shrink-0 ${
                 isDragging ? "text-gold/70" : "text-foreground/40"
               }`}
@@ -420,6 +421,7 @@ export function NewRoundModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
             onClick={onClose}
             className="absolute inset-0 bg-background/75 backdrop-blur-md"
           />
@@ -427,7 +429,7 @@ export function NewRoundModal({
             initial={{ opacity: 0, scale: 0.97, y: 14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 14 }}
-            transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}
             className="relative w-full max-w-[760px] shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)] max-h-[92vh] overflow-y-auto"
             style={{ borderRadius: 4, background: "var(--brand-dark-surface, #181614)", border: "1px solid #2A2820" }}
           >
@@ -496,7 +498,7 @@ export function NewRoundModal({
                     maxLength={2000}
                     required
                     className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
-                    style={{ overflow: "hidden", minHeight: "120px", transition: "border-color 160ms ease" }}
+                    style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
                   />
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
                     Upload what you have. The more detail you share, the better Round 01 we can deliver.

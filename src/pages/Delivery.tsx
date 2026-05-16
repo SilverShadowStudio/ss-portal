@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import {
   Mic, MicOff, Loader2, Pencil, X, RotateCcw, Eraser,
   ChevronLeft, ChevronRight, ZoomIn, ArrowRight,
@@ -80,7 +81,7 @@ function AmbientBackground({ status }: { status: string }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 2, ease: "easeInOut" }}
+            transition={{ type: "tween", duration: DURATION.signature / 1000, ease: FM_EASE.signature }}
             className="absolute"
             style={{
               top: "-30%",
@@ -99,7 +100,7 @@ function AmbientBackground({ status }: { status: string }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 2, ease: "easeInOut" }}
+            transition={{ type: "tween", duration: DURATION.signature / 1000, ease: FM_EASE.signature }}
             className="absolute"
             style={{
               top: "-20%",
@@ -208,7 +209,7 @@ function SketchOverlay({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
       className="fixed inset-0 z-[200] flex flex-col bg-background/97 backdrop-blur-xl"
     >
       <div className="flex items-center justify-between px-8 py-5 border-b border-border/20 shrink-0">
@@ -217,7 +218,7 @@ function SketchOverlay({
           <div className="flex items-center gap-2">
             {colors.map((c) => (
               <button key={c} type="button" onClick={() => { setColor(c); setEraseMode(false); }}
-                className="transition-all duration-150"
+                className="transition-all duration-quick"
                 style={{ width: 13, height: 13, borderRadius: "50%", background: c, border: color === c && !eraseMode ? "2px solid rgba(255,255,255,0.9)" : "1px solid rgba(255,255,255,0.15)", transform: color === c && !eraseMode ? "scale(1.3)" : "scale(1)" }}
               />
             ))}
@@ -273,7 +274,7 @@ function CountdownDigit({ value, gold }: { value: number; gold?: boolean }) {
         color: gold ? "hsl(var(--gold))" : "hsl(var(--foreground))",
         opacity: animating ? 0.35 : 1,
         transform: animating ? "translateY(-6px)" : "translateY(0)",
-        transition: "opacity 0.25s ease, transform 0.25s ease",
+        transition: "opacity var(--duration-quick) var(--ease-default), transform var(--duration-quick) var(--ease-default)",
         letterSpacing: "-0.02em",
         lineHeight: 1,
       }}
@@ -297,7 +298,7 @@ function Countdown({ targetDate }: { targetDate: string }) {
 
   if (ms <= 0) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}>
         <span className="font-serif font-light" style={{ fontSize: "clamp(2rem, 4vw, 3rem)", color: "hsl(var(--gold))", letterSpacing: "-0.01em" }}>
           Delivering now
         </span>
@@ -427,11 +428,11 @@ function FeedbackModal({ task, onClose, onSubmitted }: { task: Task; onClose: ()
   return (
     <AnimatePresence>
       {!sketchOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }} className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
           <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(20px)" }} onClick={onClose} />
           <motion.div
             initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}
             className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto bg-card border border-border/40 shadow-[0_48px_120px_-24px_rgba(0,0,0,0.9)]"
             style={{ borderRadius: 4 }}
           >
@@ -450,7 +451,7 @@ function FeedbackModal({ task, onClose, onSubmitted }: { task: Task; onClose: ()
                 <div>
                   <button type="button" onClick={() => setSketchOpen(true)} className="group w-full block relative overflow-hidden" style={{ borderRadius: 3 }}>
                     <img src={sketchDataUrl || task.delivery_image_url} alt="Current delivery" className="w-full object-cover" style={{ maxHeight: 220, objectPosition: "center", display: "block" }} />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200" style={{ background: "rgba(0,0,0,0.5)" }}>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-quick" style={{ background: "rgba(0,0,0,0.5)" }}>
                       <div className="flex items-center gap-2 text-white">
                         <Pencil size={13} strokeWidth={1.5} />
                         <span style={{ fontSize: 9, letterSpacing: "0.3em", textTransform: "uppercase" }}>{sketchDataUrl ? "Edit annotation" : "Annotate image"}</span>

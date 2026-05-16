@@ -472,7 +472,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
               <img
                 src={thumbnailUrl}
                 alt={selectedAsset?.filename}
-                className="block w-full h-auto transition-transform duration-300 group-hover:scale-[1.01]"
+                className="block w-full h-auto"
                 draggable={false}
                 onLoad={(e) => {
                   const img = e.currentTarget;
@@ -2287,7 +2287,7 @@ export function Lightbox({
           style={{
             transform: `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`,
             transformOrigin: "center center",
-            transition: isPanning ? "none" : "transform 80ms ease-out",
+            transition: isPanning ? "none" : "transform var(--duration-quick) var(--ease-default)",
           }}
         >
           <img
@@ -2841,7 +2841,7 @@ function PinMarker({
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         fill="none"
         className={cn(
-          "transition-transform duration-200 ease-out",
+          "transition-transform duration-quick ease-default",
           active ? "scale-110" : "group-hover:scale-[1.18]"
         )}
       >
@@ -2888,7 +2888,7 @@ function PinMarker({
             "-translate-x-1/2 -translate-y-1/2",
             "h-7 w-7 md:h-5 md:w-5",
             "rounded-full border border-gold bg-[#1C1A17] text-gold shadow-md ring-2 ring-background",
-            "transition-all duration-150 ease-out",
+            "transition-all duration-quick ease-default",
             // On touch (no hover) keep the badge visible so it's always
             // tappable; on hover-capable devices reveal it on hover/focus.
             "opacity-100 scale-100",

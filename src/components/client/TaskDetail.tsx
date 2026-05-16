@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import { Clock, X, Paperclip, ExternalLink, File } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
@@ -277,7 +278,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
             className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
             onClick={() => setBriefOpen(false)}
           />
@@ -285,7 +286,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
             className="fixed left-1/2 top-1/2 z-[70] w-[min(620px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 bg-[#111113] border border-[#222020] rounded-sm shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
@@ -501,9 +502,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           </nav>
         </div>
       )}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
+      <div
         className="py-8"
       >
         {/* Status block */}
@@ -538,7 +537,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           {briefTrigger}
         </div>
 
-      </motion.div>
+      </div>
       {dropboxPanel}
       {isAdmin && sceneId && (
         <div className="mt-4 w-full max-w-sm mx-auto">
@@ -563,14 +562,12 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     return (
       <>
         {adminStatusBar}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
+        <div
           className="flex flex-col items-center justify-center py-20 text-center"
         >
           <p className="text-muted-foreground text-sm font-sans">No assets delivered yet for this round.</p>
           {briefTrigger}
-        </motion.div>
+        </div>
         {dropboxPanel}
         {briefModal}
         {adminLightbox}

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import {
   format,
   addMonths,
@@ -1120,6 +1121,7 @@ export default function Timeline() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}
         className="rounded-sm border border-border/60 bg-card overflow-hidden flex flex-col"
       >
         {/* Toolbar */}
@@ -1161,6 +1163,7 @@ export default function Timeline() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
+              transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.default }}
               className="overflow-hidden border-b border-border bg-muted/20"
             >
               <div className="px-6 py-5">
@@ -1515,7 +1518,7 @@ export default function Timeline() {
             initial={{ opacity: 0, y: 6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.12 }}
+            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
             style={{
               position: "fixed",
               left: Math.min(
@@ -1684,7 +1687,7 @@ export default function Timeline() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.signature }}
                   style={{ overflow: "hidden" }}
                 >
                 <div style={{ marginTop: "32px" }}>
@@ -1749,7 +1752,7 @@ export default function Timeline() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.signature }}
                     style={{ overflow: "hidden" }}
                   >
                     <div style={{ marginTop: "32px", position: "relative" }}>
@@ -1819,7 +1822,7 @@ export default function Timeline() {
                                 : "0 0 0 1px hsl(var(--gold) / 0.7), inset 0 0 12px hsl(var(--gold) / 0.12)",
                             }}
                             whileTap={{ scale: 0.99 }}
-                            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                            transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.signature }}
                             className="uppercase font-serif"
                             style={{
                               fontSize: "10px",
@@ -1849,7 +1852,7 @@ export default function Timeline() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.signature }}
                     style={{ overflow: "hidden" }}
                   >
                     <div
@@ -1905,7 +1908,7 @@ export default function Timeline() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ type: "tween", duration: DURATION.standard / 1000, ease: FM_EASE.signature }}
                     style={{ overflow: "hidden" }}
                   >
                     <div style={{ marginTop: "24px" }}>
@@ -2132,7 +2135,7 @@ export default function Timeline() {
                     disabled={uploadingFiles || !isValid}
                     whileHover={!isValid ? { scale: 1.01, boxShadow: "inset 0 0 12px hsl(var(--gold) / 0.15)" } : { scale: 1.02 }}
                     whileTap={{ scale: 0.99 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.signature }}
                     className="uppercase disabled:opacity-40"
                     style={{
                       fontSize: "10px",
@@ -2185,7 +2188,7 @@ export default function Timeline() {
               initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.signature }}
               className="relative w-full max-w-6xl bg-card/80 backdrop-blur-2xl border border-[hsl(var(--gold))]/20 rounded-sm shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               {/* Header */}
@@ -2372,7 +2375,7 @@ export default function Timeline() {
                 initial={{ opacity: 0, scale: 0.96, y: 16 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.signature }}
                 className="relative w-full max-w-xl bg-card/85 backdrop-blur-2xl border border-[hsl(var(--gold))]/25 rounded-sm shadow-2xl overflow-hidden"
               >
                 <div className="px-8 py-7 border-b border-border/60 bg-gradient-to-b from-[hsl(var(--gold))]/[0.05] to-transparent">

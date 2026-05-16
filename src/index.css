@@ -60,8 +60,17 @@
     --shadow-card: 0 4px 24px -4px hsl(30 15% 40% / 0.12);
     --shadow-glow: 0 0 40px hsl(34 35% 45% / 0.08);
     
+    /* Motion tokens — mirrored from src/lib/motion.ts so plain-CSS rules and
+       keyframes can reference the same durations as TypeScript / Tailwind. */
+    --duration-quick: 180ms;
+    --duration-standard: 320ms;
+    --duration-deliberate: 560ms;
+    --duration-signature: 1200ms;
+    --ease-default: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-signature: cubic-bezier(0.16, 1, 0.3, 1);
+
     /* Transitions */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: all var(--duration-standard) var(--ease-default);
 
     --sidebar-background: 38 25% 94%;
     --sidebar-foreground: 30 10% 35%;
@@ -261,7 +270,7 @@
     text-align: center;
     color: hsl(var(--foreground));
     opacity: 1;
-    transition: opacity 0.2s ease;
+    transition: opacity var(--duration-quick) var(--ease-default);
   }
   .auth-submit:hover:not(:disabled) {
     opacity: 0.6;
@@ -269,7 +278,7 @@
 
   /* SetPassword page inputs */
   .sp-input {
-    @apply w-full bg-transparent border-0 border-b outline-none transition-colors duration-200;
+    @apply w-full bg-transparent border-0 border-b outline-none transition-colors duration-quick;
     height: 48px;
     border-color: #2A2820;
     color: hsl(var(--foreground) / 0.85);
@@ -290,7 +299,7 @@
     text-align: center;
     color: hsl(var(--foreground));
     opacity: 1;
-    transition: opacity 0.2s ease;
+    transition: opacity var(--duration-quick) var(--ease-default);
   }
   .sp-submit:hover:not(:disabled) {
     opacity: 0.6;
@@ -400,7 +409,7 @@ input:-webkit-autofill:active {
 }
 
 .animate-splash-fade-in {
-  animation: splash-fade-in 1s ease-out forwards;
+  animation: splash-fade-in var(--duration-signature) var(--ease-default) forwards;
 }
 
 @keyframes splash-rise {
@@ -418,7 +427,7 @@ input:-webkit-autofill:active {
 }
 
 .animate-splash-rise {
-  animation: splash-rise 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: splash-rise var(--duration-signature) var(--ease-signature) forwards;
 }
 
 @keyframes slide-in-left {
@@ -442,13 +451,13 @@ input:-webkit-autofill:active {
 }
 
 .animate-fade-in {
-  animation: fade-in 0.5s ease-out forwards;
+  animation: fade-in var(--duration-deliberate) var(--ease-default) forwards;
 }
 
 .animate-slide-in-left {
-  animation: slide-in-left 0.4s ease-out forwards;
+  animation: slide-in-left var(--duration-standard) var(--ease-default) forwards;
 }
 
 .animate-pulse-gold {
-  animation: pulse-gold 2s ease-in-out infinite;
+  animation: pulse-gold var(--duration-signature) var(--ease-default) infinite;
 }

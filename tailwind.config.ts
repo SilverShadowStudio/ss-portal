@@ -85,6 +85,20 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Motion tokens — mirrored from src/lib/motion.ts. New work should prefer
+      // duration-quick / duration-standard / duration-deliberate / duration-signature
+      // and ease-default / ease-signature over raw millisecond values.
+      transitionDuration: {
+        instant: "0ms",
+        quick: "180ms",
+        standard: "320ms",
+        deliberate: "560ms",
+        signature: "1200ms",
+      },
+      transitionTimingFunction: {
+        default: "cubic-bezier(0.32, 0.72, 0, 1)",
+        signature: "cubic-bezier(0.16, 1, 0.3, 1)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

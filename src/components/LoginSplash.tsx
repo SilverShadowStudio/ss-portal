@@ -45,12 +45,10 @@ export default function LoginSplash({ onComplete }: LoginSplashProps) {
 
       {/* Gold line - growing from center outward, doubled thickness */}
       <div className="mt-8 h-px w-32 flex items-center justify-center overflow-hidden">
-        <div 
-          className="h-full bg-gold transition-all ease-out"
-          style={{ 
+        <div
+          className="h-full bg-gold transition-all duration-signature ease-signature"
+          style={{
             width: showLine ? `${lineProgress}%` : '0%',
-            transitionDuration: '800ms',
-            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         />
       </div>

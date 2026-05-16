@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Plus, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import {
   DndContext,
   PointerSensor,
@@ -702,9 +703,7 @@ export default function Portfolio() {
       // can land here is when the scene has zero rounds yet.
       return (
         <div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+          <div
             className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-border rounded-[32px] bg-card"
           >
             <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6">
@@ -721,7 +720,7 @@ export default function Portfolio() {
               <Plus size={18} />
               New Round
             </button>
-          </motion.div>
+          </div>
         </div>
       );
     }
@@ -731,9 +730,7 @@ export default function Portfolio() {
       return (
         <div>
           {selectedProject.scenes.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+            <div
               className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-border rounded-[32px] bg-card"
             >
               <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6">
@@ -750,7 +747,7 @@ export default function Portfolio() {
                 <Plus size={18} />
                 New Scene
               </button>
-            </motion.div>
+            </div>
           ) : (
             (() => {
               // Apple-style organisation:
@@ -919,7 +916,7 @@ export default function Portfolio() {
                       <>
                         <SmartImage
                           src={latestRound?.preview_url ?? null}
-                          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
+                          className="absolute inset-0 h-full w-full object-cover transition-transform duration-deliberate group-hover:scale-[1.02]"
                           alt={scene.name}
                           fallback={
                             <div className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground">
@@ -1009,10 +1006,8 @@ export default function Portfolio() {
     return (
       <div>
         {projects.length === 0 ? (
-          <motion.div
+          <div
             key="projects-empty"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center p-20 border border-dashed border-border rounded-sm bg-card"
           >
             <div className="w-16 h-16 rounded-sm bg-primary/10 text-primary flex items-center justify-center mb-6">
@@ -1029,17 +1024,15 @@ export default function Portfolio() {
               <Plus size={16} />
               New Project
             </button>
-          </motion.div>
+          </div>
         ) : projects.length === 1 ? (
           (() => {
             const project = projects[0];
             const rollup = projectRollup(project);
             const preview = getProjectPreview(project);
             return (
-              <motion.button
+              <button
                 key="projects-featured"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
                 onClick={() => setSelectedProject(project)}
                 className="group relative w-full overflow-hidden rounded-sm bg-card text-left transition-smooth"
                 style={{ aspectRatio: "16 / 7" }}
@@ -1068,14 +1061,12 @@ export default function Portfolio() {
                     {getProjectSummary(project)}
                   </p>
                 </div>
-              </motion.button>
+              </button>
             );
           })()
         ) : (
-          <motion.div
+          <div
             key="projects-list"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
           >
             {projects.map((project) => {
@@ -1093,7 +1084,7 @@ export default function Portfolio() {
                 />
               );
             })}
-          </motion.div>
+          </div>
         )}
       </div>
     );
@@ -1109,15 +1100,7 @@ export default function Portfolio() {
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-gold font-sans">Portfolio</span>
         </div>
 
-        <motion.div
-          // Hopping between sibling rounds on the same scene must NOT
-          // re-trigger the title fade — only deeper navigation changes
-          // (project / scene level) should re-animate the H1.
-          key={`${selectedProject?.id || "home"}-${selectedScene?.id || ""}-${selectedRound ? "round" : ""}`}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+        <div>
           <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
             {selectedRound
               ? `ROUND ${selectedRound.round_number.toString().padStart(2, "0")}`
@@ -1132,7 +1115,7 @@ export default function Portfolio() {
               Active
             </p>
           )}
-        </motion.div>
+        </div>
 
         <div className="flex items-center justify-between">
           <ArborescenceTitle items={breadcrumbs} />
@@ -1164,10 +1147,10 @@ export default function Portfolio() {
           // scene keeps the same React subtree alive — the visuals flick
           // into each other without an exit/enter fade.
           key={`${selectedProject?.id || "home"}-${selectedScene?.id || ""}-${selectedRound ? "round" : ""}`}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.25 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
         >
           {renderContent()}
         </motion.div>

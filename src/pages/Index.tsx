@@ -13,6 +13,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { DURATION, FM_EASE } from "@/lib/motion";
 import { ArrowRight, CheckCircle2, X } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -113,7 +114,7 @@ function DeliveredView({ task, onNext }: { task: LaneTask; onNext: () => void })
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.5 }}
+      transition={{ type: "tween", duration: DURATION.deliberate / 1000, ease: FM_EASE.default }}
       className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
     >
       {task.delivery_image_url && (
@@ -162,7 +163,7 @@ function CountdownView({ task }: { task: LaneTask }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.5 }}
+      transition={{ type: "tween", duration: DURATION.deliberate / 1000, ease: FM_EASE.default }}
       className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
     >
       <p className="font-sans uppercase text-[9px] tracking-[0.36em] text-foreground/35 mb-8">
@@ -207,7 +208,7 @@ function ReviewView({ round, onOpenReview }: { round: SceneRound; onOpenReview: 
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.5 }}
+      transition={{ type: "tween", duration: DURATION.deliberate / 1000, ease: FM_EASE.default }}
       className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
     >
       {imageUrl && (
@@ -243,7 +244,7 @@ function OrderView({ order, onNavigate }: { order: PendingOrder; onNavigate: () 
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.5 }}
+      transition={{ type: "tween", duration: DURATION.deliberate / 1000, ease: FM_EASE.default }}
       className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
     >
       <p className="font-sans uppercase text-[9px] tracking-[0.36em] text-gold mb-4">
