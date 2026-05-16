@@ -1,4 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+// @ts-ignore
+import { jsPDF } from 'npm:jspdf@2.5.1'
+import { SILVERSHADOW_LOGO_DATA_URL } from '../_shared/brandLogo.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +14,128 @@ function json(data: Record<string, unknown>, status = 200) {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 }
+
+function getClientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0].trim()
+  return req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'unknown'
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  const view = new Uint8Array(digest)
+  let out = ''
+  for (let i = 0; i < view.length; i++) out += view[i].toString(16).padStart(2, '0')
+  return out
+}
+
+function base64ToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '')
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+function generateSigningCertificate(args: {
+  quotationNumber: string
+  signatoryName: string
+  signatoryPosition: string
+  signatoryEmail: string
+  signedAt: string
+  ipAddress: string
+  userAgent: string
+  accountId: string
+  quotationId: string
+  sigImageDataUrl?: string
+}): Uint8Array {
+  const {
+    quotationNumber, signatoryName, signatoryPosition, signatoryEmail,
+    signedAt, ipAddress, userAgent, accountId, quotationId, sigImageDataUrl,
+  } = args
+
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pageWidth = pdf.internal.pageSize.getWidth() as number
+  const marginX = 34
+  const contentWidth = pageWidth - marginX * 2
+  let y = 42
+
+  const writeLabel = (text: string, gap = 6) => {
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(140, 140, 140)
+    pdf.text(text.toUpperCase().split('').join(' '), marginX, y)
+    y += gap
+  }
+
+  const writeRow = (label: string, value: string) => {
+    pdf.setFontSize(8.5)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(120, 120, 120)
+    pdf.text(label.toUpperCase().split('').join(' '), marginX, y)
+    pdf.setTextColor(30, 30, 30)
+    const lines = pdf.splitTextToSize(value, contentWidth - 55) as string[]
+    pdf.text(lines, marginX + 55, y)
+    y += 6 * Math.max(1, lines.length)
+  }
+
+  // Logo
+  writeLabel('QUOTATION ACCEPTANCE CERTIFICATE', 14)
+  try {
+    const lw = 45, lh = lw * (91 / 600)
+    pdf.addImage(SILVERSHADOW_LOGO_DATA_URL, 'PNG', marginX, y - lh, lw, lh)
+  } catch { /* logo optional */ }
+  y += 10
+
+  pdf.setFontSize(11)
+  pdf.setFont('times', 'italic')
+  pdf.setTextColor(125, 125, 125)
+  pdf.text('Signing Certificate', marginX, y)
+  y += 14
+
+  // Signature image
+  if (sigImageDataUrl) {
+    try {
+      const imgH = 20, imgW = 60
+      pdf.addImage(sigImageDataUrl, 'PNG', marginX, y, imgW, imgH)
+      y += imgH + 3
+    } catch { /* skip if image fails */ }
+  }
+
+  // Divider
+  pdf.setDrawColor(200, 200, 200)
+  pdf.setLineWidth(0.3)
+  pdf.line(marginX, y, marginX + contentWidth, y)
+  y += 8
+
+  writeLabel('Acceptance metadata', 10)
+
+  const rows: [string, string][] = [
+    ['Quotation', quotationNumber],
+    ['Signed at', signedAt],
+    ['Signatory', signatoryName],
+    ['Position', signatoryPosition || '—'],
+    ['Email', signatoryEmail],
+    ['IP address', ipAddress],
+    ['Account ID', accountId],
+    ['Document ID', quotationId],
+    ['User agent', userAgent],
+  ]
+  for (const [label, value] of rows) writeRow(label, value)
+
+  y += 6
+  pdf.setFontSize(7.5)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setTextColor(160, 160, 160)
+  const notice = 'By drawing their signature above and confirming, the signatory accepted the terms of the quotation referenced above. This certificate constitutes a binding record of that acceptance.'
+  const noticeLines = pdf.splitTextToSize(notice, contentWidth) as string[]
+  pdf.text(noticeLines, marginX, y)
+
+  return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
+}
+
+const ACCEPTANCE_TEXT =
+  'By drawing my signature and clicking Confirm & sign, I confirm acceptance of the terms in this quotation. I understand a deposit invoice will be raised automatically.'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
@@ -28,20 +153,25 @@ Deno.serve(async (req) => {
   })
   const { data: userData, error: userError } = await userClient.auth.getUser()
   if (userError || !userData?.user) return json({ error: 'Unauthorized' }, 401)
+  const user = userData.user
 
-  let body: { quotation_id: string; signed_by_name: string; signed_by_position?: string }
+  let body: {
+    quotation_id: string
+    signed_by_name: string
+    signed_by_position?: string
+    signature_image_base64?: string
+  }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON' }, 400)
   }
 
-  const { quotation_id, signed_by_name, signed_by_position } = body
+  const { quotation_id, signed_by_name, signed_by_position, signature_image_base64 } = body
   if (!quotation_id || !signed_by_name?.trim()) {
     return json({ error: 'quotation_id and signed_by_name are required' }, 400)
   }
 
-  // Load quotation — RLS ensures caller has read access (account member or admin)
   const { data: quotation } = await userClient
     .from('quotation_documents')
     .select('id, status, account_id, user_id, amount, subtotal, vat_rate, vat_amount, deposit_percentage, gross_total, net_total, currency, quotation_number, reference_number')
@@ -52,8 +182,53 @@ Deno.serve(async (req) => {
   if (!quotation) return json({ error: 'Quotation not found or not in sent status' }, 404)
 
   const admin = createClient(supabaseUrl, supabaseServiceKey)
-
   const signedAt = new Date().toISOString()
+  const ipAddress = getClientIp(req)
+  const userAgent = req.headers.get('user-agent') || 'unknown'
+
+  // Upload signature image
+  let signatureImagePath: string | null = null
+  if (signature_image_base64) {
+    try {
+      await admin.storage.createBucket('signatures', { public: false }).catch(() => {})
+      const sigBytes = base64ToBytes(signature_image_base64)
+      const sigPath = `${quotation.account_id}/${quotation_id}_sig.png`
+      const { error: sigUploadErr } = await admin.storage
+        .from('signatures')
+        .upload(sigPath, sigBytes, { contentType: 'image/png', upsert: true })
+      if (!sigUploadErr) signatureImagePath = sigPath
+    } catch (e) {
+      console.warn('[sign-quotation] Signature image upload failed:', e)
+    }
+  }
+
+  // Generate signing certificate PDF
+  let pdfSha256: string | null = null
+  let signedPdfPath: string | null = null
+  try {
+    const pdfBytes = generateSigningCertificate({
+      quotationNumber: quotation.quotation_number || quotation.reference_number || '—',
+      signatoryName: signed_by_name.trim(),
+      signatoryPosition: signed_by_position?.trim() || '',
+      signatoryEmail: user.email || '',
+      signedAt,
+      ipAddress,
+      userAgent,
+      accountId: quotation.account_id,
+      quotationId: quotation_id,
+      sigImageDataUrl: signature_image_base64 || undefined,
+    })
+
+    pdfSha256 = await sha256Hex(pdfBytes)
+    const pdfPath = `${quotation.account_id}/quotation_${quotation_id}_${Date.now()}.pdf`
+    const { error: pdfUploadErr } = await admin.storage
+      .from('signatures')
+      .upload(pdfPath, pdfBytes, { contentType: 'application/pdf', upsert: false })
+    if (!pdfUploadErr) signedPdfPath = pdfPath
+  } catch (e) {
+    console.warn('[sign-quotation] Certificate PDF generation failed:', e)
+  }
+
   const grossTotal = Number(quotation.gross_total ?? quotation.amount ?? 0)
   const depositPct = Number(quotation.deposit_percentage ?? 50)
   const depositAmount = +(grossTotal * depositPct / 100).toFixed(2)
@@ -68,6 +243,11 @@ Deno.serve(async (req) => {
       signed_by_position: signed_by_position?.trim() ?? null,
       gross_total: grossTotal,
       deposit_amount: depositAmount,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      pdf_sha256: pdfSha256,
+      signature_image_path: signatureImagePath,
+      signed_pdf_path: signedPdfPath,
     })
     .eq('id', quotation_id)
 
@@ -75,6 +255,23 @@ Deno.serve(async (req) => {
     console.error('Failed to update quotation', updateErr)
     return json({ error: updateErr.message }, 500)
   }
+
+  // Insert into signatures_audit_log
+  await admin.from('signatures_audit_log').insert({
+    document_type: 'quotation',
+    document_id: quotation_id,
+    account_id: quotation.account_id,
+    user_id: user.id,
+    signatory_name: signed_by_name.trim(),
+    signatory_position: signed_by_position?.trim() || null,
+    signed_at: signedAt,
+    ip_address: ipAddress,
+    user_agent: userAgent,
+    acceptance_text: ACCEPTANCE_TEXT,
+    version_code: quotation.quotation_number || quotation.reference_number || null,
+    pdf_sha256: pdfSha256,
+    signature_image_path: signatureImagePath,
+  }).catch((e: unknown) => console.warn('[sign-quotation] audit log failed:', e))
 
   // Auto-create deposit invoice (due in 5 days)
   const quotationNumber = quotation.quotation_number || quotation.reference_number || ''

@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { generateInvoicePdf } from "@/lib/invoiceUtils";
 import { useToast } from "@/hooks/use-toast";
 import { QuotationDocument, type QuotationDocumentData } from "./QuotationDocument";
+import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
 
 export interface QuotationViewerData extends QuotationDocumentData {
   id: string;
@@ -24,11 +25,13 @@ interface Props {
 
 export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
   const docRef = useRef<HTMLDivElement | null>(null);
+  const sigPadRef = useRef<SignaturePadRef>(null);
   const [enriched, setEnriched] = useState<QuotationDocumentData | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [signOpen, setSignOpen] = useState(false);
   const [signName, setSignName] = useState("");
   const [signPosition, setSignPosition] = useState("");
+  const [sigEmpty, setSigEmpty] = useState(true);
   const [signing, setSigning] = useState(false);
   const { toast } = useToast();
 
@@ -38,6 +41,7 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
       setStatus(null);
       setSignName("");
       setSignPosition("");
+      setSigEmpty(true);
       return;
     }
     setStatus(quotation.status ?? null);
@@ -50,9 +54,7 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
       if (accountId) {
         const { data: acc } = await supabase
           .from("accounts")
-          .select(
-            "company_name, country, registration_number, street_name, building_number, city, postcode, owner_user_id",
-          )
+          .select("company_name, country, registration_number, street_name, building_number, city, postcode, owner_user_id")
           .eq("id", accountId)
           .maybeSingle();
         if (acc) {
@@ -74,8 +76,7 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
             if (prof) {
               const fullName =
                 [prof.first_name, prof.last_name].filter(Boolean).join(" ").trim() ||
-                prof.full_name ||
-                "";
+                prof.full_name || "";
               base.client_name = base.client_name || fullName || null;
               base.client_position = base.client_position || prof.position || null;
             }
@@ -83,19 +84,20 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
         }
       }
       if (quotation.project_id && !base.project_name) {
-        const { data: p } = await supabase
-          .from("projects")
-          .select("name")
-          .eq("id", quotation.project_id)
-          .maybeSingle();
+        const { data: p } = await supabase.from("projects").select("name").eq("id", quotation.project_id).maybeSingle();
         if (p) base.project_name = p.name;
       }
       if (!cancelled) setEnriched({ ...base });
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, quotation]);
+
+  useEffect(() => {
+    if (!signOpen) {
+      sigPadRef.current?.clear();
+      setSigEmpty(true);
+    }
+  }, [signOpen]);
 
   if (!quotation) return null;
 
@@ -105,10 +107,20 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
 
   const handleSign = async () => {
     if (!signName.trim()) return;
+    if (sigEmpty) {
+      toast({ title: "Signature required", description: "Please draw your signature before confirming.", variant: "destructive" });
+      return;
+    }
     setSigning(true);
     try {
+      const signatureDataUrl = sigPadRef.current?.toDataURL() ?? undefined;
       const { data, error } = await supabase.functions.invoke("sign-quotation", {
-        body: { quotation_id: quotation.id, signed_by_name: signName.trim(), signed_by_position: signPosition.trim() || undefined },
+        body: {
+          quotation_id: quotation.id,
+          signed_by_name: signName.trim(),
+          signed_by_position: signPosition.trim() || undefined,
+          signature_image_base64: signatureDataUrl,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -124,90 +136,107 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[96vw] w-[96vw] h-[96vh] p-0 gap-0 flex flex-col bg-black/95 border-0 [&>button.absolute]:hidden">
-        <DialogTitle className="sr-only">Quotation {number}</DialogTitle>
-        <DialogDescription className="sr-only">Preview and download the quotation.</DialogDescription>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-[96vw] w-[96vw] h-[96vh] p-0 gap-0 flex flex-col bg-black/95 border-0 [&>button.absolute]:hidden">
+          <DialogTitle className="sr-only">Quotation {number}</DialogTitle>
+          <DialogDescription className="sr-only">Preview and download the quotation.</DialogDescription>
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between p-4">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="pointer-events-auto h-9 w-9 text-white hover:bg-white/10"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-
-          <div className="pointer-events-auto flex items-center gap-3">
-            {status === "sent" && (
-              <button
-                onClick={() => setSignOpen(true)}
-                className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg bg-gold text-background hover:bg-gold/90"
-              >
-                <PenLine className="mr-1.5 h-4 w-4" />
-                Sign
-              </button>
-            )}
-            {status === "signed" && (
-              <span className="inline-flex h-9 items-center px-3 text-xs uppercase tracking-[0.18em] text-emerald-400">
-                Signed
-              </span>
-            )}
-            <a
-              href="#"
-              download={fileName}
-              onClick={(e) => {
-                e.preventDefault();
-                if (!docRef.current) return;
-                void generateInvoicePdf(docRef.current, fileName);
-              }}
-              className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between p-4">
+            <Button
+              size="icon" variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="pointer-events-auto h-9 w-9 text-white hover:bg-white/10"
+              aria-label="Close"
             >
-              <Download className="mr-1.5 h-4 w-4" />
-              Download
-            </a>
-          </div>
-        </div>
+              <X className="h-5 w-5" />
+            </Button>
 
-        <div className="flex-1 min-h-0 overflow-auto py-10">
-          {enriched ? (
-            <QuotationDocument ref={docRef} data={enriched} />
-          ) : (
-            <div className="flex items-center justify-center text-white/70 h-full">
-              <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="pointer-events-auto flex items-center gap-3">
+              {status === "sent" && (
+                <button
+                  onClick={() => setSignOpen(true)}
+                  className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg bg-gold text-background hover:bg-gold/90"
+                >
+                  <PenLine className="mr-1.5 h-4 w-4" />
+                  Sign
+                </button>
+              )}
+              {status === "signed" && (
+                <span className="inline-flex h-9 items-center px-3 text-xs uppercase tracking-[0.18em] text-emerald-400">
+                  Signed
+                </span>
+              )}
+              <a
+                href="#"
+                download={fileName}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!docRef.current) return;
+                  void generateInvoicePdf(docRef.current, fileName);
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                Download
+              </a>
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
 
-    {/* Sign quotation modal */}
-    <Dialog open={signOpen} onOpenChange={setSignOpen}>
-      <DialogContent className="max-w-sm">
-        <DialogTitle>Sign quotation</DialogTitle>
-        <DialogDescription className="text-sm text-muted-foreground">
-          By signing, you confirm acceptance of the terms in this quotation. A deposit invoice will be created automatically.
-        </DialogDescription>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label>Full name *</Label>
-            <Input value={signName} onChange={(e) => setSignName(e.target.value)} placeholder={enriched?.client_name || ""} />
+          <div className="flex-1 min-h-0 overflow-auto py-10">
+            {enriched ? (
+              <QuotationDocument ref={docRef} data={enriched} />
+            ) : (
+              <div className="flex items-center justify-center text-white/70 h-full">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </div>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <Label>Position</Label>
-            <Input value={signPosition} onChange={(e) => setSignPosition(e.target.value)} placeholder={enriched?.client_position || ""} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign quotation modal */}
+      <Dialog open={signOpen} onOpenChange={setSignOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Sign quotation</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            By drawing your signature and confirming, you accept the terms of this quotation. A deposit invoice will be created automatically.
+          </DialogDescription>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase tracking-[0.2em] text-foreground/50">Signature *</Label>
+              <SignaturePad
+                ref={sigPadRef}
+                onEnd={() => setSigEmpty(sigPadRef.current?.isEmpty() ?? true)}
+              />
+              <button
+                type="button"
+                onClick={() => { sigPadRef.current?.clear(); setSigEmpty(true); }}
+                className="text-[10px] uppercase tracking-[0.18em] text-foreground/40 hover:text-foreground/70 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Full name *</Label>
+              <Input value={signName} onChange={(e) => setSignName(e.target.value)} placeholder={enriched?.client_name || ""} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Position</Label>
+              <Input value={signPosition} onChange={(e) => setSignPosition(e.target.value)} placeholder={enriched?.client_position || ""} />
+            </div>
           </div>
-        </div>
-        <div className="flex gap-3 pt-2">
-          <Button variant="outline" onClick={() => setSignOpen(false)} className="flex-1">Cancel</Button>
-          <Button onClick={handleSign} disabled={signing || !signName.trim()} className="flex-1">
-            {signing ? "Signing…" : "Confirm & sign"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" onClick={() => setSignOpen(false)} className="flex-1">Cancel</Button>
+            <Button
+              onClick={handleSign}
+              disabled={signing || !signName.trim() || sigEmpty}
+              className="flex-1"
+            >
+              {signing ? "Signing…" : "Confirm & sign"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Loader2, CheckCircle2, Upload } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
@@ -35,6 +35,11 @@ export default function AdminSettings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
+  // ── Studio Signature ──────────────────────────────────────────────────────
+  const sigFileRef = useRef<HTMLInputElement>(null);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
+
   // ── Airtable Contact Sync (Users + Clients tables) ────────────────────────
   const [contactBaseId, setContactBaseId] = useState("");
   const [contactTableId, setContactTableId] = useState("");
@@ -60,6 +65,12 @@ export default function AdminSettings() {
   const [projectFieldContractOrSubscription, setProjectFieldContractOrSubscription] = useState("");
   const [projectFieldStatus, setProjectFieldStatus] = useState("");
   const [savingProjectConfig, setSavingProjectConfig] = useState(false);
+
+  useEffect(() => {
+    supabase.storage.from("studio-assets").createSignedUrl("silvershadow-signature.png", 60)
+      .then(({ data }) => { if (data?.signedUrl) setSignaturePreviewUrl(data.signedUrl); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -178,6 +189,24 @@ export default function AdminSettings() {
       toast({ title: "Failed to save", description: e?.message, variant: "destructive" });
     } finally {
       setSavingProjectConfig(false);
+    }
+  }
+
+  async function uploadSignature(file: File) {
+    setSavingSignature(true);
+    try {
+      await supabase.storage.createBucket("studio-assets", { public: false }).catch(() => {});
+      const { error } = await supabase.storage
+        .from("studio-assets")
+        .upload("silvershadow-signature.png", file, { contentType: file.type, upsert: true });
+      if (error) throw error;
+      const { data } = await supabase.storage.from("studio-assets").createSignedUrl("silvershadow-signature.png", 60);
+      if (data?.signedUrl) setSignaturePreviewUrl(data.signedUrl);
+      toast({ title: "Signature saved." });
+    } catch (e: any) {
+      toast({ title: "Failed to save signature", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingSignature(false);
     }
   }
 
@@ -307,6 +336,41 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingPassword} onClick={changePassword} label="Update password" disabled={!newPassword} />
+        </Section>
+
+        {/* ── Studio Signature ──────────────────────────────────────── */}
+        <Section title="Studio Signature">
+          <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
+            Fred's drawn signature PNG. Embedded in the Silvershadow signature block of every freelancer document PDF.
+            Upload a PNG with a transparent or white background, ideally 600 × 150 px or similar landscape ratio.
+          </p>
+          {signaturePreviewUrl && (
+            <div className="mb-6 border border-border/30 p-4 inline-block">
+              <img src={signaturePreviewUrl} alt="Current studio signature" className="h-12 object-contain" />
+            </div>
+          )}
+          <input
+            ref={sigFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadSignature(file);
+              e.target.value = "";
+            }}
+          />
+          <div>
+            <button
+              onClick={() => sigFileRef.current?.click()}
+              disabled={savingSignature}
+              className="flex items-center gap-2 bg-foreground text-background font-sans uppercase hover:opacity-80 disabled:opacity-40 transition-opacity"
+              style={{ height: 36, paddingLeft: 20, paddingRight: 20, fontSize: 10, letterSpacing: "0.26em" }}
+            >
+              {savingSignature ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" strokeWidth={1.5} />}
+              {signaturePreviewUrl ? "Replace signature" : "Upload signature"}
+            </button>
+          </div>
         </Section>
 
         {/* ── Dropbox ──────────────────────────────────────────────────── */}
