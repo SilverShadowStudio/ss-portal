@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type AppRole = "admin" | "client";
+export type AppRole = "admin" | "client" | "team";
 
 export function useUserRole() {
   const { user, loading: authLoading } = useAuth();
@@ -27,9 +27,15 @@ export function useUserRole() {
           console.error("Error fetching user role:", error);
           setRole(null);
         } else if (data && data.length > 0) {
-          // Prefer admin if user has multiple roles
+          // Precedence for users with multiple role rows: admin > client > team.
+          // 'client' wins over 'team' because dual-account users (a real client
+          // who is also part of a team account) should land on the client
+          // portal as their primary experience.
           const roles = data.map((r) => r.role as AppRole);
-          setRole(roles.includes("admin") ? "admin" : roles[0]);
+          if (roles.includes("admin"))       setRole("admin");
+          else if (roles.includes("client")) setRole("client");
+          else if (roles.includes("team"))   setRole("team");
+          else                                setRole(roles[0]);
         } else {
           setRole("client");
         }
@@ -46,8 +52,11 @@ export function useUserRole() {
     }
   }, [user, authLoading]);
 
-  const isAdmin = role === "admin";
+  const isAdmin  = role === "admin";
+  const isTeam   = role === "team";
+  // isClient stays true for nulls so existing gates that fall back to the
+  // client portal when the role lookup fails don't regress.
   const isClient = role === "client" || role === null;
 
-  return { role, isAdmin, isClient, loading: authLoading || loading };
+  return { role, isAdmin, isClient, isTeam, loading: authLoading || loading };
 }

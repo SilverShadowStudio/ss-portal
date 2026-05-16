@@ -398,8 +398,9 @@ Deno.serve(async (req) => {
     })
     if (memberInsert.error) console.error('account_members insert error', memberInsert.error)
 
+    const roleToAssign = accountType === 'team' ? 'team' : 'client'
     const roleUpsert = await admin.from('user_roles').upsert(
-      { user_id: invitedUserId, role: 'client' },
+      { user_id: invitedUserId, role: roleToAssign },
       { onConflict: 'user_id,role' },
     )
     if (roleUpsert.error) console.error('user_roles upsert error', roleUpsert.error)
