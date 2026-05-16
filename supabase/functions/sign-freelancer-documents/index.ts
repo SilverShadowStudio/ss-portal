@@ -3,7 +3,7 @@
 // upserts the freelancer profile, inserts freelancer_documents rows,
 // and writes to signatures_audit_log.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 // @ts-ignore
 import { jsPDF } from 'npm:jspdf@2.5.1'
 import { SILVERSHADOW_LOGO_DATA_URL } from '../_shared/brandLogo.ts'
