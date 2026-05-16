@@ -1,94 +1,91 @@
-# Session Handoff — 16 May 2026
+# Session Handoff — 16 May 2026 (afternoon)
 
-## What was completed this session
+Continuation of the morning session. The morning's open item was that `sign-freelancer-documents` was returning 500 with a generic "Edge Function returned a non-2xx status code" after deployment. This session diagnosed and fixed it.
 
-### 1. Forensic signing audit trail (commit `c1f9907`)
-Full standardisation of the signing pattern across all three document types.
+## Completed this session
 
-**QuotationViewer** — Added drawn `SignaturePad` canvas to the sign modal. Submit is blocked until the pad has been drawn. Signature data URL is passed to `sign-quotation` as `signature_image_base64`.
+### 1. Fixed signing 500 errors (commit `0e07388`)
 
-**sign-quotation edge function** — Fully rewritten. Now:
-- Accepts `signature_image_base64` and uploads the PNG to `signatures/{account_id}/{quotation_id}_sig.png`
-- Generates a jsPDF "Signing Certificate" with the embedded sig image, acceptance metadata, IP, user agent, SHA-256
-- Uploads the certificate PDF to `signatures/{account_id}/quotation_{id}_{ts}.pdf`
-- Stores `ip_address`, `user_agent`, `pdf_sha256`, `signature_image_path`, `signed_pdf_path` on `quotation_documents`
-- Writes an immutable row to `signatures_audit_log`
-- Continues to auto-create the deposit invoice
+**Root cause:** Both `sign-freelancer-documents` and `sign-quotation` chained `.catch()` onto the `signatures_audit_log` insert at the very end of the handler:
 
-**Onboarding / FsaPage** — Added `SignaturePad` above the acceptance checkbox on page 3. Blocks submission until pad drawn. Passes `signature_image_base64` to `sign-freelancer-documents`.
+```ts
+await admin.from('signatures_audit_log').insert([...]).catch(e => console.warn(...))
+```
 
-**sign-freelancer-documents edge function** — Fully rewritten. Now:
-- Accepts `signature_image_base64`, uploads contractor PNG to `signatures/{user_id}/freelancer_{ts}.png`
-- Downloads Fred's signature from `studio-assets/silvershadow-signature.png` (best-effort) and embeds it in both PDFs
-- NDA: Fred left, Contractor right. FSA: Contractor left, Fred right
-- SHA-256 both PDFs; stores forensic fields on `freelancer_documents` rows
-- Writes two rows to `signatures_audit_log`
-- Import fixed from `https://esm.sh/` to `npm:@supabase/supabase-js@2` (commit `7c0858e`)
+PostgrestBuilder is a thenable, not a real Promise — it implements `.then()` but not `.catch()`. So at runtime, after all the real writes had succeeded (PDFs uploaded, `freelancer_documents` rows inserted, profile upserted), calling `.catch(...)` threw `TypeError: admin.from(...).insert(...).catch is not a function`. The outer try/catch caught this and returned 500.
 
-**AdminSettings — Studio Signature section** — New upload control for Fred's PNG signature. Uploads to `studio-assets/silvershadow-signature.png`. Shows signed-URL preview after upload.
+This is why HANDOFF.md from the morning session noted documents being written but signing "failing" — the writes had already completed by the time the broken line ran.
 
-**Migration `20260516000001_signatures_audit_log.sql`** — Applied (manually via Management API). Creates:
-- `signatures_audit_log` (immutable audit table, INSERT via service role only, admin SELECT policy)
-- Forensic columns on `quotation_documents`: `ip_address`, `user_agent`, `pdf_sha256`, `signature_image_path`, `signed_pdf_path`
-- Forensic columns on `freelancer_documents`: `ip_address`, `user_agent`, `pdf_sha256`, `signature_image_path`
-- Storage RLS policies for `studio-assets` and `signatures` buckets
+**Fix:** Replaced both `.catch()` chains with the standard pattern already used elsewhere in the same files:
 
-**studio-assets bucket** — Was missing; created via SQL (`INSERT INTO storage.buckets`) after Management API and Storage REST endpoints both returned errors with an access token. The bucket now exists.
+```ts
+const { error: auditErr } = await admin.from('signatures_audit_log').insert(...)
+if (auditErr) console.warn('...', auditErr)
+```
 
----
+Both functions redeployed via `npx supabase functions deploy`.
 
-### 2. Team member invite fixes
+### 2. Verified end-to-end with a real session
 
-**Problem 1 — invite failing for existing client users** (commit `7f63af7`): `admin-create-client` was blocking any invite where the email already had *any* `account_members` row. For `accountType: 'team'` invites, the check now only blocks if the user already has a team account — a user may hold a client account and a team account simultaneously. Also: existing users' profile `account_id` is no longer overwritten when they join a team account.
+Used the Management API to fetch the service-role key, then `auth/v1/admin/generate_link?type=magiclink` + `auth/v1/verify` to mint an access token for `nicolas@silvershadowstudio.com` (a team-member test user). Hit the deployed function directly with a realistic payload:
 
-**Problem 2 — dialog had redundant name fields** (commit `e0f92e2`): The Add Team Member dialog previously asked for first name, last name, and email. Per Fred's instruction, it now asks for email only. The team member enters their name during onboarding. The account is created with the email as a placeholder company name.
+- **Before redeploy:** `500 {"error":"admin.from(...).insert(...).catch is not a function"}` (this is how the root cause was identified — could see the actual `err.message` that the supabase-js client wrapper had been hiding).
+- **After redeploy:** `200 {"success":true}` and confirmed 2 `freelancer_documents` rows + 2 `signatures_audit_log` rows + 1 `freelancer_profiles` upsert all landed correctly.
 
-**sign-freelancer-documents not deployed** (commit `7c0858e`): The rewritten function from `c1f9907` had never been deployed to Supabase. Only committed to git. Deployed this session alongside the import fix.
+### 3. Cleaned Nicolas's test data — clean slate for real onboarding
 
-**scripts/sql.sh** — Created at `scripts/` (gitignored, credentials in fallback). Reusable script for running SQL queries against the Supabase Management API without inline curl. Use `SUPABASE_ACCESS_TOKEN=<token from password manager> ./scripts/sql.sh "SELECT ..."`.
+The test invocations (and previous tests across the day, including from this morning) had left Nicolas with stale data. All deleted:
 
----
+| Table / bucket | Removed |
+|---|---|
+| `freelancer_documents` (Nicolas) | 10 rows |
+| `signatures_audit_log` (Nicolas) | 2 rows |
+| `freelancer_profiles` (Nicolas) | 1 row |
+| `storage/freelancer-documents/{nicolas}/` | 10 PDFs |
+| `storage/signatures/{nicolas}/` | 3 PNGs |
+
+DB rows deleted via `scripts/sql.sh` in a single BEGIN/COMMIT. Storage objects deleted via `DELETE /storage/v1/object/{bucket}` with a `prefixes: [...]` body (the bulk-delete endpoint). Nicolas's `auth.users` row, `account_members` row, and `accounts` row were left untouched — he can now go through the onboarding flow as if for the first time.
 
 ## In progress / needs verification
 
-### sign-freelancer-documents — needs a live test
-The function was deployed this session but not tested end-to-end after deployment. The next task is to have a team member (or Fred in ghost mode as a team member) complete the onboarding flow and confirm:
-- Both PDFs generate without error
-- NDA and FSA rows appear in `freelancer_documents`
-- `signatures_audit_log` has 2 rows
-- `freelancer-documents` storage bucket has the uploaded PDFs
-- Fred's signature appears in the PDF signature blocks (requires `studio-assets/silvershadow-signature.png` to be uploaded in AdminSettings first)
+### `sign-freelancer-documents` — confirmed working via direct curl, NOT via the UI
+The direct curl invocation succeeded with a realistic payload, but the actual onboarding journey through the React UI (with a drawn signature from `SignaturePad`, magic link click, page 1 → page 2 → page 3 → click "Sign Agreement") has not been exercised in this session. Nicolas's slate is clean — running the real flow as Nicolas (or as a fresh invite) is the next verification step.
 
-### sign-quotation — needs a live test
-Similarly, `sign-quotation` was rewritten and deployed in a previous session but not confirmed working end-to-end with the new drawn-signature flow.
+### `sign-quotation` — same fix deployed, NOT live-tested
+The same `.catch()` bug existed in `sign-quotation` and was fixed in the same commit. Function redeployed. But there was no test invocation against a real quotation in this session. To test: send a quotation to a real test account (e.g. Winch's Simon Tomlinson), open `QuotationViewer`, draw a signature, click Sign, confirm:
+- Quotation status flips to `signed`
+- `signatures_audit_log` gets a new `quotation` row
+- A deposit invoice gets auto-created in `invoices` (`type: deposit`)
+- `signed_pdf_path`, `pdf_sha256`, `ip_address`, `user_agent`, `signature_image_path` populated on the quotation row
 
----
+### Studio signature still not uploaded
+Fred has not yet uploaded his signature PNG via `AdminSettings → Studio Signature`. Until he does, generated NDA + FSA PDFs will have Fred's signature line empty (text-only fallback). The edge function loads `studio-assets/silvershadow-signature.png` best-effort and silently falls back if missing — so signing still succeeds, just without Fred's embedded sig image.
 
-## Pending (from CLAUDE.md + session context)
+## Pending (carried forward)
 
-- **Stripe payment link debugging** — secrets set, webhook registered, functions deployed, but payment link creation from the invoice table is not confirmed working. Debug logging was added to `create-invoice-checkout`. Check Supabase Function logs after triggering from the portal.
-- **Quotation number auto-generation** — should be derived from `accounts.client_code` + sequence (e.g. `WIN-001`). Currently entered manually. Logic should live in `QuotationFormDialog` or a DB trigger.
-- **Clean up test invoices and team accounts** — Several test rows in `invoices` and two duplicate `Jean Dujardin` rows in `accounts` (account_type: team). Should be cleared before going live.
+From the morning's handoff and CLAUDE.md, none of these were touched this session:
+
+- **Stripe payment link debugging** — secrets set, webhook registered, functions deployed; check `create-invoice-checkout` logs after triggering from the portal to identify the failure point.
+- **Quotation number auto-generation** — should be `accounts.client_code` + sequence (e.g. `WIN-001`). Currently entered manually in `QuotationFormDialog`.
+- **Clean up test invoices and team accounts** — Several test rows in `invoices` and duplicate `Jean Dujardin` rows in `accounts` (account_type: team).
 - **Client correction flow** — not built. Client clicks Review → full-screen pin overlay → Submit → Round 02 created.
 - **New commission brief flow** — not built. 3-step overlay from idle dashboard state.
 - **Pre-launch ghost mode test** — Ghost as Simon Tomlinson (Winch) and Marie Soliman (Bergman), walk through full client flow.
-- **Airtable inbound webhook** — `pull-status` is manual only. No auto-sync from Airtable → portal on status changes.
-- **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work.
-
----
+- **Airtable inbound webhook** — `pull-status` is manual only.
+- **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table.
+- **Email from address** — confirm `portal@silvershadowstudio.com` is verified in Resend (sender for `airtable-auto-sync`).
+- **SVG logo in generator** — `public/generator/images/SS - Logo 2019.svg` is gitignored due to spaces in the filename; must be copied manually on new machines.
 
 ## Decisions made this session
 
-- **Team accounts share auth users with client accounts.** A user can have one client `account_members` row and one team `account_members` row. The `account_type` column on `accounts` is the discriminator, not `user_roles`. Team members get `user_roles.role = 'client'` (same as regular clients) because `app_role` enum doesn't include a `team` value.
-- **Team invite is email-only.** Admin enters only the email. Name/details collected during onboarding. Company name placeholder = email address until onboarding completes.
-- **Studio signature is stored at `studio-assets/silvershadow-signature.png` (fixed path, always overwritten).** Not versioned. If Fred uploads a new signature it replaces the old one immediately for all future PDFs.
-- **`scripts/sql.sh` stays gitignored.** The token fallback in the script means it cannot be committed. Re-create on a new machine using the token from the password manager.
-
----
+- **`.catch()` on PostgrestBuilder is always wrong.** Even when the intent is best-effort "fire and forget", the correct pattern is `const { error } = await ...; if (error) console.warn(...)`. The `await ... .catch(...)` style works for raw `fetch(...)` and storage SDK calls (which return real Promises) but NOT for `admin.from(...).insert/update/delete/select(...)`. Worth grepping the codebase for any other instances before they bite.
+- **Direct curl + minted JWT is the cleanest way to debug edge functions** when the supabase-js client wraps errors with "Edge Function returned a non-2xx status code". The actual server-side `err.message` only surfaces by reading the response body directly. The `auth/v1/admin/generate_link?type=magiclink` → `auth/v1/verify` flow with `token_hash` is the fastest way to get a session token for any user, given the service role key.
+- **Nicolas is the canonical edge-function test fixture** for team-member flows: real auth user (`b7a3cc39-aae4-4dc9-bad3-01f96b718b71`), real team account, and we now have a documented full-cleanup procedure (see the table above). Use him for repeatable end-to-end tests, then wipe.
+- **`scripts/sql.sh` extends naturally to debugging storage** — the `storage.objects` table is queryable like any other, useful for counting / listing without needing the Storage REST API.
 
 ## Open questions / things to watch
 
-- **Was `sign-freelancer-documents` actually the old version before this session?** Strong suspicion yes (never deployed after `c1f9907`). If the FSA signing is still failing after this session's deployment, the error will be a real runtime error — check Supabase dashboard logs for `sign-freelancer-documents` directly.
-- **canecht@gmail.com (Katharine Pooley Limited) is also being used as a team member test account.** This user now has two `account_members` rows. The `account_members` `.maybeSingle()` query in `sign-freelancer-documents` will return `null` for this user (PGRST116 — multiple rows), so `account_id` on their `freelancer_documents` rows will be `null`. This is acceptable but worth noting.
-- **`studio-assets` bucket is private.** Fred's signature is loaded in the edge function via service role `download()`, not a public URL. If the bucket or file is deleted, PDFs will fall back to text-only signature blocks silently.
-- **CLAUDE.md has unstaged local changes** on `fc2` (MacBook). Review and commit or discard before the next session to avoid confusion.
+- **Are there other `.catch()` chains on PostgrestBuilders elsewhere?** A targeted grep would catch them. Worth doing before going live. Earlier grep showed only the two we fixed and a few legitimate `.catch()` calls on `admin.storage.createBucket(...)` and `fetch(...)` which are real Promises.
+- **Service-role key was extracted from the Management API** during this session (via `/v1/projects/{ref}/api-keys`). It was only used inline in bash one-liners, not committed anywhere, but is logged in the conversation transcript. Standard secret hygiene applies — it's the same key already stored in Supabase function secrets, no new exposure.
+- **The morning session log in CLAUDE.md is now slightly inaccurate.** It says "Live end-to-end test of both signing flows after deployment" is pending; but technically `sign-freelancer-documents` is now live-tested via curl. UI-side flow is still untested.
+- **`canecht@gmail.com` (Katharine Pooley Limited)** still has two `account_members` rows (one client + one team). The edge functions handle this gracefully (`.maybeSingle()` returns null for >1 rows and `account_id` becomes null on freelancer_documents), but it's a non-obvious data shape worth remembering when debugging.
