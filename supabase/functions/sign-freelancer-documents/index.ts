@@ -507,7 +507,7 @@ Deno.serve(async (req) => {
     if (docsErr) throw docsErr
 
     // Audit log entries for both documents
-    await admin.from('signatures_audit_log').insert([
+    const { error: auditErr } = await admin.from('signatures_audit_log').insert([
       {
         document_type: 'nda', document_id: null, account_id: accountId,
         user_id: user.id, signatory_name: fullName,
@@ -522,7 +522,8 @@ Deno.serve(async (req) => {
         acceptance_text: FSA_ACCEPTANCE_TEXT, version_code: 'FSA-1.0',
         pdf_sha256: fsaSha256, signature_image_path: signatureImagePath,
       },
-    ]).catch((e: unknown) => console.warn('[sign-freelancer-documents] audit log failed:', e))
+    ])
+    if (auditErr) console.warn('[sign-freelancer-documents] audit log failed:', auditErr)
 
     return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 

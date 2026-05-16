@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
   }
 
   // Insert into signatures_audit_log
-  await admin.from('signatures_audit_log').insert({
+  const { error: auditErr } = await admin.from('signatures_audit_log').insert({
     document_type: 'quotation',
     document_id: quotation_id,
     account_id: quotation.account_id,
@@ -271,7 +271,8 @@ Deno.serve(async (req) => {
     version_code: quotation.quotation_number || quotation.reference_number || null,
     pdf_sha256: pdfSha256,
     signature_image_path: signatureImagePath,
-  }).catch((e: unknown) => console.warn('[sign-quotation] audit log failed:', e))
+  })
+  if (auditErr) console.warn('[sign-quotation] audit log failed:', auditErr)
 
   // Auto-create deposit invoice (due in 5 days)
   const quotationNumber = quotation.quotation_number || quotation.reference_number || ''
