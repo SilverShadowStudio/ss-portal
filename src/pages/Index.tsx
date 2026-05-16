@@ -14,7 +14,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
-import { ArrowRight, CheckCircle2, X } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { ClientLayout } from "@/components/ClientLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
@@ -268,21 +268,150 @@ function OrderView({ order, onNavigate }: { order: PendingOrder; onNavigate: () 
   );
 }
 
+// Hardcoded fallback list used until studio_showcase_images is populated
+// (migration authored in 20260516000002_studio_showcase_images.sql, not yet
+// applied). Replace any image_url here when curating the final brand showcase.
+const FALLBACK_SHOWCASE_IMAGES: ShowcaseImage[] = [
+  { image_url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+  { image_url: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+  { image_url: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+  { image_url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+  { image_url: "https://images.unsplash.com/photo-1600573472556-e636c2acda88?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+  { image_url: "https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=2400&q=80", project_name: "TBD project name", location: "London", year_completed: 2026 },
+];
+
+interface ShowcaseImage {
+  image_url: string;
+  project_name: string | null;
+  location: string | null;
+  year_completed: number | null;
+}
+
 function IdleView() {
+  const { user, accountType } = useAuth();
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [showcase, setShowcase] = useState<ShowcaseImage | null>(null);
+  const [partnershipLine, setPartnershipLine] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from("account_members")
+      .select("account_id")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setAccountId((data?.account_id as string) ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("studio_showcase_images" as any)
+          .select("image_url, project_name, location, year_completed")
+          .eq("is_active", true)
+          .order("display_order", { ascending: true });
+        if (cancelled) return;
+        const pool: ShowcaseImage[] = (data && data.length > 0)
+          ? (data as ShowcaseImage[])
+          : FALLBACK_SHOWCASE_IMAGES;
+        setShowcase(pool[Math.floor(Math.random() * pool.length)]);
+      } catch {
+        if (!cancelled) {
+          setShowcase(FALLBACK_SHOWCASE_IMAGES[Math.floor(Math.random() * FALLBACK_SHOWCASE_IMAGES.length)]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (accountType !== "partnership" || !accountId) { setPartnershipLine(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("active_lanes")
+        .eq("account_id", accountId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (cancelled || !sub) return;
+      const lanes = sub.active_lanes ?? 0;
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const { count } = await supabase
+        .from("lane_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("account_id", accountId)
+        .gte("created_at", monthStart.toISOString());
+      if (cancelled) return;
+      const used = count ?? 0;
+      setPartnershipLine(`Lane reserved. ${used} of ${lanes} scene${lanes === 1 ? "" : "s"} used this month.`);
+    })();
+    return () => { cancelled = true; };
+  }, [accountId, accountType]);
+
+  if (!showcase) {
+    // Reserve the height so the layout doesn't jump when the image arrives.
+    return <div style={{ height: "70vh" }} aria-hidden />;
+  }
+
   return (
-    <motion.div
-      key="idle"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.6 }}
-      className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4"
-    >
-      <CheckCircle2 className="h-8 w-8 text-foreground/15 mb-6" strokeWidth={1} />
-      <p className="font-serif text-xl text-foreground/30 font-normal">
-        Nothing requires your attention.
+    <div className="w-full">
+      {partnershipLine && (
+        <p
+          className="font-sans uppercase text-foreground/55"
+          style={{ fontSize: "11px", letterSpacing: "0.24em", marginBottom: "32px" }}
+        >
+          {partnershipLine}
+        </p>
+      )}
+
+      <img
+        src={showcase.image_url}
+        alt=""
+        className="w-full object-cover"
+        style={{ height: "70vh" }}
+      />
+
+      <div className="mt-6 space-y-1">
+        <p className="font-sans uppercase text-foreground" style={{ fontSize: "9px", letterSpacing: "0.28em" }}>
+          {showcase.project_name ?? "TBD project name"}
+        </p>
+        <p className="font-sans uppercase text-foreground/70" style={{ fontSize: "9px", letterSpacing: "0.28em" }}>
+          {showcase.location ?? "London"}
+        </p>
+        <p className="font-sans uppercase text-foreground/70" style={{ fontSize: "9px", letterSpacing: "0.28em" }}>
+          {showcase.year_completed ?? 2026}
+        </p>
+      </div>
+
+      <p
+        className="font-serif text-foreground/80"
+        style={{ marginTop: "96px", fontSize: "14px", lineHeight: 1.75, textAlign: "left", maxWidth: "60ch" }}
+      >
+        Nothing in production at the moment. When you're ready to begin the next commission,{" "}
+        <button
+          type="button"
+          onClick={() => {
+            // Placeholder until the commission-brief flow is built.
+            // eslint-disable-next-line no-console
+            console.log("[IdleView] send-us-a-brief clicked");
+          }}
+          className="inline align-baseline border-0 bg-transparent p-0 font-serif no-underline hover:underline"
+          style={{ color: "var(--brand-gold, #B89A6A)", fontSize: "14px", lineHeight: 1.75, cursor: "pointer" }}
+        >
+          send us a brief
+        </button>
+        .
       </p>
-    </motion.div>
+    </div>
   );
 }
 
