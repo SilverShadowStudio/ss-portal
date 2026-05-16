@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 interface AccountForGenerator {
   id: string;
@@ -60,6 +61,9 @@ interface InvoiceRow {
 const STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
 
 export default function AdminInvoices() {
+  const location = useLocation();
+  // Route-determined default tab: /admin/quotes lands on Quotations, otherwise Invoices.
+  const defaultTab = location.pathname.startsWith("/admin/quotes") ? "quotations" : "invoices";
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -258,7 +262,7 @@ export default function AdminInvoices() {
         </div>
       </div>
 
-      <Tabs defaultValue="invoices" className="w-full">
+      <Tabs key={defaultTab} defaultValue={defaultTab} className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="quotations">Quotations</TabsTrigger>

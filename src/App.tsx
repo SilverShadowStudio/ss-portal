@@ -49,6 +49,8 @@ import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import AdminTeam from "./pages/admin/AdminTeam";
 import AdminTeamContracts from "./pages/admin/AdminTeamContracts";
+import AdminExpenses from "./pages/admin/AdminExpenses";
+import AdminPnL from "./pages/admin/AdminPnL";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -285,6 +287,30 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminInvoices />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/quotes"
+              element={
+                <AdminProtectedRoute>
+                  <AdminInvoices />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/finance/expenses"
+              element={
+                <AdminProtectedRoute>
+                  <AdminExpenses />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/finance/pnl"
+              element={
+                <AdminProtectedRoute>
+                  <AdminPnL />
                 </AdminProtectedRoute>
               }
             />
