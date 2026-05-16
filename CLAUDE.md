@@ -14,6 +14,10 @@ Two commercial models:
 ## Hard rules
 
 - **Never run Supabase migrations or schema changes without Fred's explicit confirmation in this session, even with skip-permissions enabled.**
+- **Never ask Fred clarifying questions. Resolve all ambiguity yourself using the most conservative, least-destructive interpretation. Do less rather than more when scope is unclear.**
+- **Never delete, rename, or restructure existing code unless the task explicitly requires it. Additions are always preferred over modifications. Modifications are always preferred over deletions.**
+- **When multiple approaches exist, always pick the one with the smallest blast radius — the one that is easiest to revert and least likely to break something else.**
+- **Never touch files unrelated to the task at hand, even if they look wrong.**
 
 ## Architecture decisions
 
@@ -577,3 +581,21 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 - **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work.
 - **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm verified in Resend.
 - **SVG logo in generator** — `public/generator/images/SS - Logo 2019.svg` is not committed to git (filename has spaces, was skipped). Copy manually to that path on any new machine.
+
+## Session log — 2026-05-16
+
+### Signing / Audit trail
+- **Done:** Standardised the signing pattern across all three document types (quotations, client agreements, freelancer NDA+FSA). All flows now require a drawn `SignaturePad` canvas — submission is blocked until the pad is used. Forensic data (IP address, user agent, signature PNG, PDF SHA-256, jsPDF acceptance certificate) captured on every sign event. `signatures_audit_log` immutable table created and written to on every signing. Forensic columns added to `quotation_documents` and `freelancer_documents`.
+- **Done:** `sign-quotation` edge function rewritten — generates a jsPDF signing certificate with embedded signature image, uploads it to the `signatures` bucket, stores SHA-256 and certificate path on the quotation row.
+- **Done:** `sign-freelancer-documents` edge function rewritten — embeds contractor drawn signature and Fred's studio signature in both NDA and FSA PDFs. Fixed `https://esm.sh/` import to `npm:` and deployed (function had never been deployed after the rewrite — this was the cause of the FSA signing failure).
+- **Pending:** Live end-to-end test of both signing flows after deployment. Confirm PDFs generate, `signatures_audit_log` rows appear, and Fred's signature embeds correctly (requires studio signature to be uploaded first in AdminSettings).
+
+### AdminSettings — Studio Signature
+- **Done:** Added "Studio Signature" section to AdminSettings. Fred can upload a PNG of his signature; it is stored at `studio-assets/silvershadow-signature.png` and previewed via signed URL. The edge functions load this file at signing time and embed it in freelancer PDFs.
+- **Done:** `studio-assets` storage bucket was missing — created via SQL (`INSERT INTO storage.buckets`) after the Management API and Storage REST endpoint both rejected the access token.
+- **Pending:** Fred needs to upload his actual signature PNG via AdminSettings before it will appear in generated PDFs.
+
+### Team — invite flow
+- **Done:** Fixed invite failing for users who already have a client account (e.g. `canecht@gmail.com` owns "Katharine Pooley Limited"). `admin-create-client` now only blocks a team invite if the user already has a *team* account — client + team accounts can coexist. Existing profile `account_id` is no longer overwritten when a second account is created.
+- **Done:** Simplified the Add Team Member dialog to email only (removed first name and last name fields). Name and details are collected by the team member during onboarding.
+- **Pending:** Live test of full team member journey: invite → accept link → onboarding → FSA signing.
