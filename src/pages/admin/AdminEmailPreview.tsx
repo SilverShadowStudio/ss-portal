@@ -126,7 +126,7 @@ export default function AdminEmailPreview() {
           style={{
             width: 320,
             flexShrink: 0,
-            background: "#181614",
+            background: "var(--brand-dark-surface, #181614)",
             borderRight: "1px solid rgba(255,255,255,0.06)",
             overflowY: "auto",
             display: "flex",
@@ -144,7 +144,7 @@ export default function AdminEmailPreview() {
                 style={INPUT}
                 value={config.illustrationUrl}
                 onChange={(e) => update("illustrationUrl", e.target.value)}
-                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "#B89A6A")}
+                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)")}
                 onBlur={(e) => (e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)")}
               />
             </div>
@@ -155,7 +155,7 @@ export default function AdminEmailPreview() {
                 style={{ ...INPUT, resize: "vertical", minHeight: 80 }}
                 value={config.bodyCopy}
                 onChange={(e) => update("bodyCopy", e.target.value)}
-                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "#B89A6A")}
+                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)")}
                 onBlur={(e) => (e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)")}
               />
             </div>
@@ -166,7 +166,7 @@ export default function AdminEmailPreview() {
                 style={INPUT}
                 value={config.ctaLabel}
                 onChange={(e) => update("ctaLabel", e.target.value)}
-                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "#B89A6A")}
+                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)")}
                 onBlur={(e) => (e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)")}
               />
             </div>
@@ -177,7 +177,7 @@ export default function AdminEmailPreview() {
                 style={INPUT}
                 value={config.ctaUrl}
                 onChange={(e) => update("ctaUrl", e.target.value)}
-                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "#B89A6A")}
+                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)")}
                 onBlur={(e) => (e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)")}
               />
             </div>
@@ -188,7 +188,7 @@ export default function AdminEmailPreview() {
                 style={INPUT}
                 value={config.footerText}
                 onChange={(e) => update("footerText", e.target.value)}
-                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "#B89A6A")}
+                onFocus={(e) => (e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)")}
                 onBlur={(e) => (e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)")}
               />
             </div>

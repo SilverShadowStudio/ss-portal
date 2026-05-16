@@ -11,6 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 // @ts-ignore - npm specifier resolved by Deno
 import { jsPDF } from "npm:jspdf@2.5.1";
 import { SILVERSHADOW_LOGO_DATA_URL } from "../_shared/brandLogo.ts";
+import { loadBrand, paintPageBackground } from "../_shared/brand.ts";
 import {
   AGREEMENT_SECTIONS,
   type AgreementSection,
@@ -72,8 +73,9 @@ function generateAgreementPdf(args: {
   agreementUid: string;
   accountId: string;
   ipAddress: string;
+  backgroundHex: string;
 }): Uint8Array {
-  const { formData, versionCode, acceptedAt, agreementUid, accountId, ipAddress } = args;
+  const { formData, versionCode, acceptedAt, agreementUid, accountId, ipAddress, backgroundHex } = args;
   // Editorial layout — mirrors the on-screen Services Agreement.
   // A4 page, generous side margins (~32mm) to mimic the constrained
   // 720px web column. Neutral typography, no accent colors.
@@ -89,9 +91,12 @@ function generateAgreementPdf(args: {
   const fullAddress = `${formData.buildingNumber} ${formData.streetName}, ${formData.city}, ${formData.postcode}`;
   const acceptorName = `${formData.firstName} ${formData.familyName}`;
 
+  paintPageBackground(pdf, backgroundHex);
+
   const ensureSpace = (needed: number) => {
     if (y + needed > pageHeight - marginBottom) {
       pdf.addPage();
+      paintPageBackground(pdf, backgroundHex);
       y = marginTop;
     }
   };
@@ -198,6 +203,7 @@ function generateAgreementPdf(args: {
 
   // ===== Acceptance metadata page =====
   pdf.addPage();
+  paintPageBackground(pdf, backgroundHex);
   y = marginTop;
   writeLabel("Acceptance record", { afterGap: 9 });
   pdf.setFontSize(18);
@@ -335,6 +341,7 @@ Deno.serve(async (req) => {
     const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
     const userAgent = req.headers.get("user-agent") ?? "unknown";
 
+    const brand = await loadBrand(admin);
     let pdfBytes: Uint8Array;
     try {
       pdfBytes = generateAgreementPdf({
@@ -344,6 +351,7 @@ Deno.serve(async (req) => {
         agreementUid,
         accountId,
         ipAddress,
+        backgroundHex: brand.background_color,
       });
     } catch (err) {
       console.error("invite mode PDF generation failed", err);
@@ -569,6 +577,7 @@ Deno.serve(async (req) => {
   const ipAddress = getClientIp(req);
   const userAgent = req.headers.get("user-agent") || "unknown";
 
+  const brand = await loadBrand(admin);
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = generateAgreementPdf({
@@ -578,6 +587,7 @@ Deno.serve(async (req) => {
       agreementUid,
       accountId,
       ipAddress,
+      backgroundHex: brand.background_color,
     });
   } catch (err) {
     console.error("PDF generation failed", err);

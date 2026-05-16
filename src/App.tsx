@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
@@ -73,6 +74,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
+        <BrandProvider>
         <AuthProvider>
           <Toaster />
         <Sonner />
@@ -351,6 +353,7 @@ const App = () => (
           </GhostModeShell>
           </BrowserRouter>
         </AuthProvider>
+        </BrandProvider>
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>

@@ -7,6 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // @ts-ignore
 import { jsPDF } from 'npm:jspdf@2.5.1'
 import { SILVERSHADOW_LOGO_DATA_URL } from '../_shared/brandLogo.ts'
+import { loadBrand, paintPageBackground } from '../_shared/brand.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -79,7 +80,7 @@ function getClientIp(req: Request): string {
 
 // ── PDF factory ────────────────────────────────────────────────────────────────
 
-function makePdfDoc() {
+function makePdfDoc(backgroundHex: string) {
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pageWidth = pdf.internal.pageSize.getWidth() as number
   const pageHeight = pdf.internal.pageSize.getHeight() as number
@@ -89,8 +90,14 @@ function makePdfDoc() {
   const contentWidth = pageWidth - marginX * 2
   let y = marginTop
 
+  paintPageBackground(pdf, backgroundHex)
+
   const ensureSpace = (needed: number) => {
-    if (y + needed > pageHeight - marginBottom) { pdf.addPage(); y = marginTop }
+    if (y + needed > pageHeight - marginBottom) {
+      pdf.addPage()
+      paintPageBackground(pdf, backgroundHex)
+      y = marginTop
+    }
   }
 
   const writeBody = (text: string, opts?: { indent?: number; size?: number; lineGap?: number; afterGap?: number; color?: number }) => {
@@ -181,11 +188,11 @@ function makePdfDoc() {
 
 // ── NDA generator ──────────────────────────────────────────────────────────────
 
-function generateNdaPdf(p: SignPayload, now: Date, contractorSigDataUrl?: string, studioSigDataUrl?: string): Uint8Array {
+function generateNdaPdf(p: SignPayload, now: Date, backgroundHex: string, contractorSigDataUrl?: string, studioSigDataUrl?: string): Uint8Array {
   const ordDate = formatOrdinalDate(now)
   const address = formatAddress(p)
   const fullName = `${p.firstName} ${p.lastName}`
-  const doc = makePdfDoc()
+  const doc = makePdfDoc(backgroundHex)
   const { pdf, pageWidth, marginX, contentWidth, getY, setY, ensureSpace, writeBody, writeLabel, writeSectionHeading, writeSubHeading, writeItem, addFooters, writeSigBlock } = doc
 
   writeLabel('MNDA-1.0', 14)
@@ -322,14 +329,14 @@ function buildFsaClauses(rateStr: string): Array<{ title: string; body: string }
   ]
 }
 
-function generateFsaPdf(p: SignPayload, now: Date, contractorSigDataUrl?: string, studioSigDataUrl?: string): Uint8Array {
+function generateFsaPdf(p: SignPayload, now: Date, backgroundHex: string, contractorSigDataUrl?: string, studioSigDataUrl?: string): Uint8Array {
   const ordDate = formatOrdinalDate(now)
   const address = formatAddress(p)
   const fullName = `${p.firstName} ${p.lastName}`
   const rateStr = `${Number(p.rateAmount).toFixed(2)} ${p.rateCurrency} per ${p.ratePeriod.toLowerCase()}`
   const clauses = buildFsaClauses(rateStr)
 
-  const doc = makePdfDoc()
+  const doc = makePdfDoc(backgroundHex)
   const { pdf, pageWidth, marginX, contentWidth, getY, setY, ensureSpace, writeBody, writeLabel, writeSectionHeading, addFooters, writeSigBlock } = doc
 
   writeLabel('FSA-1.0', 14)
@@ -446,8 +453,9 @@ Deno.serve(async (req) => {
       }
     } catch { /* no studio signature uploaded yet — fall back to text */ }
 
-    const ndaBytes = generateNdaPdf(p, now, p.signature_image_base64 || undefined, studioSigDataUrl)
-    const fsaBytes = generateFsaPdf(p, now, p.signature_image_base64 || undefined, studioSigDataUrl)
+    const brand = await loadBrand(admin)
+    const ndaBytes = generateNdaPdf(p, now, brand.background_color, p.signature_image_base64 || undefined, studioSigDataUrl)
+    const fsaBytes = generateFsaPdf(p, now, brand.background_color, p.signature_image_base64 || undefined, studioSigDataUrl)
 
     const ndaSha256 = await sha256Hex(ndaBytes)
     const fsaSha256 = await sha256Hex(fsaBytes)

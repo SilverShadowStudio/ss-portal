@@ -2,6 +2,7 @@ import * as React from 'npm:react@18.3.1'
 import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from '../_shared/transactional-email-templates/registry.ts'
+import { loadBrand } from '../_shared/brand.ts'
 
 // Configuration baked in at scaffold time — do NOT change these manually.
 // To update, re-run the email domain setup flow.
@@ -283,11 +284,17 @@ Deno.serve(async (req) => {
   }
 
   // 4. Render React Email template to HTML and plain text
+  const brand = await loadBrand(supabase)
+  const dataWithBrand = {
+    ...templateData,
+    brandBg: templateData.brandBg ?? brand.background_color,
+    brandGold: templateData.brandGold ?? brand.gold_color,
+  }
   const html = await renderAsync(
-    React.createElement(template.component, templateData)
+    React.createElement(template.component, dataWithBrand)
   )
   const plainText = await renderAsync(
-    React.createElement(template.component, templateData),
+    React.createElement(template.component, dataWithBrand),
     { plainText: true }
   )
 

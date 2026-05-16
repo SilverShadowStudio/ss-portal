@@ -11,8 +11,12 @@
 
 @layer base {
   :root {
-    /* Light mode - Elegant Beige */
-    --background: 38 30% 96%;
+    /* Light mode — Elegant Beige.
+       Brand-driven tokens (--background, --gold, etc.) read from
+       --brand-*-hsl variables that BrandProvider sets at runtime from
+       app_settings.document_design_config. The trailing literal in each
+       var() call is the static fallback used before JS hydrates. */
+    --background: var(--brand-bg-hsl, 38 30% 96%);
     --foreground: 30 10% 15%;
 
     --card: 40 25% 94%;
@@ -43,7 +47,7 @@
     --radius: 0.25rem;
 
     /* Custom tokens */
-    --gold: 34 35% 45%;
+    --gold: var(--brand-gold-hsl, 34 35% 45%);
     --gold-muted: 34 25% 55%;
     --surface-elevated: 40 22% 92%;
     --surface-overlay: 38 25% 98%;
@@ -70,17 +74,20 @@
   }
 
   .dark {
-    /* Dark mode — #151517 */
-    --background: 240 5% 9%;
+    /* Dark mode — brand-driven.
+       Surfaces (--background, --card, --popover, --gold) read from
+       --brand-dark-*-hsl variables set at runtime by BrandProvider. The
+       trailing literals are the static fallbacks. */
+    --background: var(--brand-dark-bg-hsl, 240 5% 9%);
     --foreground: 36 18% 88%;
 
-    --card: 240 4% 11%;
+    --card: var(--brand-dark-surface-hsl, 240 4% 11%);
     --card-foreground: 36 18% 88%;
 
-    --popover: 240 4% 11%;
+    --popover: var(--brand-dark-elevated-hsl, 240 4% 11%);
     --popover-foreground: 36 18% 88%;
 
-    --primary: 36 35% 57%;
+    --primary: var(--brand-gold-hsl, 36 35% 57%);
     --primary-foreground: 40 12% 5%;
 
     --secondary: 36 10% 12%;
@@ -89,7 +96,7 @@
     --muted: 36 10% 12%;
     --muted-foreground: 32 8% 52%;
 
-    --accent: 36 35% 57%;
+    --accent: var(--brand-gold-hsl, 36 35% 57%);
     --accent-foreground: 40 12% 5%;
 
     --destructive: 0 62.8% 30.6%;
@@ -97,26 +104,26 @@
 
     --border: 36 10% 11%;
     --input: 36 10% 12%;
-    --ring: 36 35% 57%;
+    --ring: var(--brand-gold-hsl, 36 35% 57%);
 
-    /* Custom tokens — antique gold #B89A6A */
-    --gold: 36 35% 57%;
+    /* Custom tokens — antique gold from brand */
+    --gold: var(--brand-gold-hsl, 36 35% 57%);
     --gold-muted: 36 22% 48%;
-    --surface-elevated: 36 12% 8%;
-    --surface-overlay: 40 9% 7%;
+    --surface-elevated: var(--brand-dark-elevated-hsl, 36 12% 8%);
+    --surface-overlay: var(--brand-dark-elevated-hsl, 40 9% 7%);
     
     /* Shadows */
     --shadow-card: 0 4px 24px -4px hsl(24 15% 3% / 0.5);
     --shadow-glow: 0 0 40px hsl(34 26% 65% / 0.1);
 
-    --sidebar-background: 240 5% 7%;
+    --sidebar-background: var(--brand-dark-bg-hsl, 240 5% 7%);
     --sidebar-foreground: 35 12% 75%;
-    --sidebar-primary: 34 26% 65%;
+    --sidebar-primary: var(--brand-gold-hsl, 34 26% 65%);
     --sidebar-primary-foreground: 40 12% 5%;
     --sidebar-accent: 36 10% 12%;
     --sidebar-accent-foreground: 35 15% 90%;
     --sidebar-border: 36 8% 14%;
-    --sidebar-ring: 34 26% 65%;
+    --sidebar-ring: var(--brand-gold-hsl, 34 26% 65%);
   }
 }
 
@@ -270,7 +277,7 @@
     font-weight: 400;
   }
   .sp-input:focus {
-    border-color: #B89A6A;
+    border-color: var(--brand-gold, #B89A6A);
   }
 
   /* SetPassword submit — same plain text treatment */

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { buildInviteEmailHtml, InviteEmailConfig } from '../_shared/emailTemplates.ts'
+import { loadBrand } from '../_shared/brand.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -153,6 +154,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
       if (cfgRow?.value) emailConfig = cfgRow.value as InviteEmailConfig
     } catch { /* use defaults */ }
+    const brand = await loadBrand(admin)
 
     if (resendKey && inviteUrl) {
       try {
@@ -163,7 +165,7 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
-            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
+            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined }),
             headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
             tags: [{ name: 'category', value: 'reinvite' }],
           }),
@@ -427,6 +429,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
       if (cfgRow?.value) emailConfig = cfgRow.value as InviteEmailConfig
     } catch { /* use defaults */ }
+    const brand = await loadBrand(admin)
 
     if (resendKey && inviteUrl) {
       try {
@@ -437,7 +440,7 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
-            html: buildInviteEmailHtml(companyName, inviteUrl, { ...emailConfig, ctaUrl: undefined }),
+            html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined }),
             headers: {
               'X-Entity-Ref-ID': crypto.randomUUID(),
             },

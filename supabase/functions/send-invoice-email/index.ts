@@ -7,6 +7,7 @@
 // Required Supabase secret: RESEND_API_KEY
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadBrand } from "../_shared/brand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +42,7 @@ function buildInvoiceEmailHtml(
   dueDate: string | null | undefined,
   invoiceType: string | null | undefined,
   companyName: string | null | undefined,
+  backgroundColor: string,
 ): string {
   const typeLabel =
     invoiceType === "deposit"
@@ -68,8 +70,8 @@ function buildInvoiceEmailHtml(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
 </head>
-<body style="margin:0;padding:0;background:#EDE8E0;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EDE8E0;">
+<body style="margin:0;padding:0;background:${backgroundColor};">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${backgroundColor};">
     <tr>
       <td align="center" valign="top">
         <table width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;">
@@ -158,6 +160,7 @@ Deno.serve(async (req) => {
 
     const invoiceNumber = invoice.invoice_number || invoice.reference_number || "—";
     const subject = `Invoice ${invoiceNumber} from Silvershadow Studio`;
+    const brand = await loadBrand(supabase);
     const html = buildInvoiceEmailHtml(
       invoiceNumber,
       Number(invoice.amount),
@@ -165,6 +168,7 @@ Deno.serve(async (req) => {
       invoice.due_date,
       invoice.type,
       account.company_name,
+      brand.background_color,
     );
 
     const resendKey = Deno.env.get("RESEND_API_KEY");

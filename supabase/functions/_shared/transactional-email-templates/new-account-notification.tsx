@@ -23,6 +23,8 @@ interface NewAccountNotificationProps {
   country?: string
   signedAt?: string
   adminUrl?: string
+  brandBg?: string
+  brandGold?: string
 }
 
 const NewAccountNotificationEmail = ({
@@ -33,13 +35,18 @@ const NewAccountNotificationEmail = ({
   country,
   signedAt,
   adminUrl,
-}: NewAccountNotificationProps) => (
+  brandBg,
+  brandGold,
+}: NewAccountNotificationProps) => {
+  const mainStyle = { ...main, backgroundColor: brandBg || main.backgroundColor }
+  const buttonStyle = { ...button, backgroundColor: brandGold || button.backgroundColor }
+  return (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
       New client signed up: {companyName || 'a new account'}
     </Preview>
-    <Body style={main}>
+    <Body style={mainStyle}>
       <Container style={container}>
         <Heading style={h1}>New client registered</Heading>
         <Text style={text}>
@@ -82,7 +89,7 @@ const NewAccountNotificationEmail = ({
         </Section>
 
         <Section style={buttonContainer}>
-          <Button style={button} href={adminUrl || '#'}>
+          <Button style={buttonStyle} href={adminUrl || '#'}>
             Open admin dashboard
           </Button>
         </Section>
@@ -91,7 +98,8 @@ const NewAccountNotificationEmail = ({
       </Container>
     </Body>
   </Html>
-)
+  )
+}
 
 export const template = {
   component: NewAccountNotificationEmail,
@@ -110,7 +118,7 @@ export const template = {
 } satisfies TemplateEntry
 
 const main = {
-  backgroundColor: '#ffffff',
+  backgroundColor: '#EDE8E0',
   fontFamily: 'Montserrat, Arial, sans-serif',
   color: '#1a1a1a',
 }
@@ -161,7 +169,7 @@ const buttonContainer = {
   margin: '28px 0 8px',
 }
 const button = {
-  backgroundColor: '#BCA88E',
+  backgroundColor: '#B89A6A',
   color: '#ffffff',
   fontSize: '13px',
   fontWeight: 600,

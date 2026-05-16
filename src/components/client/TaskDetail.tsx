@@ -511,7 +511,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           <p className="text-[10px] tracking-[0.15em] uppercase text-foreground/55 font-sans mb-1">
             Status
           </p>
-          <p className="text-[12px] tracking-[0.12em] uppercase text-[#B89A6A] font-sans mb-4">
+          <p className="text-[12px] tracking-[0.12em] uppercase text-[var(--brand-gold)] font-sans mb-4">
             In Production
           </p>
           <div className="h-px bg-[#2A2820] mb-4" />

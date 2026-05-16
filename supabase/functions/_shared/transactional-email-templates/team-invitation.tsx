@@ -18,19 +18,26 @@ interface TeamInvitationProps {
   inviterName?: string
   companyName?: string
   inviteUrl?: string
+  brandBg?: string
+  brandGold?: string
 }
 
 const TeamInvitationEmail = ({
   inviterName,
   companyName,
   inviteUrl,
-}: TeamInvitationProps) => (
+  brandBg,
+  brandGold,
+}: TeamInvitationProps) => {
+  const mainStyle = { ...main, backgroundColor: brandBg || main.backgroundColor }
+  const buttonStyle = { ...button, backgroundColor: brandGold || button.backgroundColor }
+  return (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>
       You've been invited to join {companyName || 'a team'} on {SITE_NAME}
     </Preview>
-    <Body style={main}>
+    <Body style={mainStyle}>
       <Container style={container}>
         <Heading style={h1}>You're invited</Heading>
         <Text style={text}>
@@ -44,7 +51,7 @@ const TeamInvitationEmail = ({
           to the team's projects.
         </Text>
         <Section style={buttonContainer}>
-          <Button style={button} href={inviteUrl || '#'}>
+          <Button style={buttonStyle} href={inviteUrl || '#'}>
             Accept invitation
           </Button>
         </Section>
@@ -56,7 +63,8 @@ const TeamInvitationEmail = ({
       </Container>
     </Body>
   </Html>
-)
+  )
+}
 
 export const template = {
   component: TeamInvitationEmail,
@@ -71,7 +79,7 @@ export const template = {
 } satisfies TemplateEntry
 
 const main = {
-  backgroundColor: '#ffffff',
+  backgroundColor: '#EDE8E0',
   fontFamily: 'Montserrat, Arial, sans-serif',
   color: '#1a1a1a',
 }
@@ -109,7 +117,7 @@ const buttonContainer = {
   margin: '28px 0',
 }
 const button = {
-  backgroundColor: '#BCA88E',
+  backgroundColor: '#B89A6A',
   color: '#ffffff',
   fontSize: '13px',
   fontWeight: 600,

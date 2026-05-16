@@ -91,7 +91,7 @@ function UploadItem({
         transition: "background 300ms ease",
         borderBottomColor: "#2A2820",
         background: active ? "#252018" : "transparent",
-        borderLeft: active ? "3px solid #B89A6A" : "3px solid transparent",
+        borderLeft: active ? "3px solid var(--brand-gold, #B89A6A)" : "3px solid transparent",
         boxShadow: active ? "inset 0 0 0 1px rgba(184,154,106,0.15)" : "none",
       }}
     >
@@ -429,7 +429,7 @@ export function NewRoundModal({
             exit={{ opacity: 0, scale: 0.97, y: 14 }}
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
             className="relative w-full max-w-[760px] shadow-[0_40px_100px_-16px_rgba(0,0,0,0.6)] max-h-[92vh] overflow-y-auto"
-            style={{ borderRadius: 4, background: "#181614", border: "1px solid #2A2820" }}
+            style={{ borderRadius: 4, background: "var(--brand-dark-surface, #181614)", border: "1px solid #2A2820" }}
           >
             <form onSubmit={handleSubmit}>
 
@@ -495,7 +495,7 @@ export function NewRoundModal({
                     rows={3}
                     maxLength={2000}
                     required
-                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[#B89A6A]"
+                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
                     style={{ overflow: "hidden", minHeight: "120px", transition: "border-color 160ms ease" }}
                   />
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
@@ -565,7 +565,7 @@ export function NewRoundModal({
                 <button
                   type="submit"
                   disabled={!instructions.trim() || isSubmitting}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#B89A6A] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
                   {isSubmitting ? "Uploading…" : "Submit for Production"}

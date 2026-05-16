@@ -23,6 +23,16 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Brand surfaces, read directly from the hex-form CSS variables
+        // set at runtime by BrandProvider. Usable as bg-brand, bg-brand-dark, etc.
+        brand: {
+          DEFAULT: "var(--brand-bg, #EDE8E0)",
+          dark: "var(--brand-dark-bg, #131210)",
+          surface: "var(--brand-dark-surface, #181614)",
+          elevated: "var(--brand-dark-elevated, #1E1C18)",
+          gold: "var(--brand-gold, #B89A6A)",
+          text: "var(--brand-text, #1A1814)",
+        },
         gold: {
           DEFAULT: "hsl(var(--gold))",
           muted: "hsl(var(--gold-muted))",

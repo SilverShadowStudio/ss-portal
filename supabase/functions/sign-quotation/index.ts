@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // @ts-ignore
 import { jsPDF } from 'npm:jspdf@2.5.1'
 import { SILVERSHADOW_LOGO_DATA_URL } from '../_shared/brandLogo.ts'
+import { loadBrand, paintPageBackground } from '../_shared/brand.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,10 +49,11 @@ function generateSigningCertificate(args: {
   accountId: string
   quotationId: string
   sigImageDataUrl?: string
+  backgroundHex: string
 }): Uint8Array {
   const {
     quotationNumber, signatoryName, signatoryPosition, signatoryEmail,
-    signedAt, ipAddress, userAgent, accountId, quotationId, sigImageDataUrl,
+    signedAt, ipAddress, userAgent, accountId, quotationId, sigImageDataUrl, backgroundHex,
   } = args
 
   const pdf = new jsPDF('p', 'mm', 'a4')
@@ -59,6 +61,8 @@ function generateSigningCertificate(args: {
   const marginX = 34
   const contentWidth = pageWidth - marginX * 2
   let y = 42
+
+  paintPageBackground(pdf, backgroundHex)
 
   const writeLabel = (text: string, gap = 6) => {
     pdf.setFontSize(7)
@@ -203,6 +207,7 @@ Deno.serve(async (req) => {
   }
 
   // Generate signing certificate PDF
+  const brand = await loadBrand(admin)
   let pdfSha256: string | null = null
   let signedPdfPath: string | null = null
   try {
@@ -217,6 +222,7 @@ Deno.serve(async (req) => {
       accountId: quotation.account_id,
       quotationId: quotation_id,
       sigImageDataUrl: signature_image_base64 || undefined,
+      backgroundHex: brand.background_color,
     })
 
     pdfSha256 = await sha256Hex(pdfBytes)

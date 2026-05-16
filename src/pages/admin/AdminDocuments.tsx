@@ -118,7 +118,7 @@ const PANEL_INPUT: React.CSSProperties = {
 const FIELD_WRAP: React.CSSProperties = { marginBottom: 28 };
 
 function focusGold(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.borderBottomColor = "#B89A6A";
+  e.currentTarget.style.borderBottomColor = "var(--brand-gold, #B89A6A)";
 }
 function blurDefault(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
   e.currentTarget.style.borderBottomColor = "rgba(255,255,255,0.12)";
@@ -361,7 +361,7 @@ function DesignTab() {
   return (
     <div style={{ display: "flex", gap: 0, minHeight: 560, borderRadius: 12, overflow: "hidden", border: "1px solid hsl(var(--border))" }}>
       {/* Config panel */}
-      <div style={{ width: 280, flexShrink: 0, background: "#181614", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ width: 280, flexShrink: 0, background: "var(--brand-dark-surface, #181614)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
         <div style={{ padding: "28px 24px 0", flex: 1 }}>
           <p style={{ ...PANEL_LABEL, marginBottom: 24, fontSize: 9, letterSpacing: "0.3em", opacity: 0.3 }}>DOCUMENT DESIGN</p>
 
@@ -464,7 +464,7 @@ function EmailTab() {
   return (
     <div style={{ display: "flex", gap: 0, minHeight: 560, borderRadius: 12, overflow: "hidden", border: "1px solid hsl(var(--border))" }}>
       {/* Config panel */}
-      <div style={{ width: 320, flexShrink: 0, background: "#181614", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ width: 320, flexShrink: 0, background: "var(--brand-dark-surface, #181614)", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
         <div style={{ padding: "28px 24px 0", flex: 1 }}>
           <p style={{ ...PANEL_LABEL, marginBottom: 24, fontSize: 9, letterSpacing: "0.3em", opacity: 0.3 }}>CLIENT INVITATION EMAIL</p>
 

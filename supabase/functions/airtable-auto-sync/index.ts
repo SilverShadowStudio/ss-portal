@@ -19,6 +19,7 @@
 //   Until the domain is verified, emails are skipped with a logged warning.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadBrand } from "../_shared/brand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -163,10 +164,12 @@ interface EmailOpts {
   noteLines?: string[];
   airtableId?: string | null;
   dropboxUrl?: string | null;
+  backgroundColor?: string;
 }
 
 function buildEmailHtml(rows: string[], opts: EmailOpts = {}): string {
-  const { noteLines, airtableId, dropboxUrl } = opts;
+  const { noteLines, airtableId, dropboxUrl, backgroundColor } = opts;
+  const bg = backgroundColor || "#FAFAF8";
 
   const metaBlock = `<table style="border-collapse:collapse;margin-bottom:20px;width:100%">${rows.join("")}</table>`;
 
@@ -189,7 +192,7 @@ function buildEmailHtml(rows: string[], opts: EmailOpts = {}): string {
       <div style="margin-top:8px"><a href="${dropboxHref}" style="${linkStyle}">View in Dropbox</a></div>
     </div>`;
 
-  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#1A1814;background:#FAFAF8;padding:32px 32px 32px">
+  return `<div style="font-family:Arial,sans-serif;max-width:560px;color:#1A1814;background:${bg};padding:32px 32px 32px">
     ${metaBlock}${instrBlock}${footer}
   </div>`;
 }
@@ -230,6 +233,7 @@ Deno.serve(async (req) => {
     console.log(`[airtable-auto-sync] trigger=${triggerName} round=${roundId} scene=${sceneId}`);
 
     const supabase = createClient(supabaseUrl, serviceKey);
+    const brand = await loadBrand(supabase);
 
     // Load scene + project for all events
     const { data: scene } = await supabase
@@ -318,6 +322,7 @@ Deno.serve(async (req) => {
           noteLines: instructions ? [instructions] : undefined,
           airtableId,
           dropboxUrl: dropboxFolderUrl,
+          backgroundColor: brand.background_color,
         }),
       );
       notifySlack(supabase, {
@@ -377,6 +382,7 @@ Deno.serve(async (req) => {
         ], {
           airtableId: scene.airtable_record_id ?? null,
           dropboxUrl: dropboxFolderUrl,
+          backgroundColor: brand.background_color,
         }),
       );
       notifySlack(supabase, {
@@ -432,6 +438,7 @@ Deno.serve(async (req) => {
           noteLines: instructions.split("\n"),
           airtableId: scene.airtable_record_id ?? null,
           dropboxUrl: dropboxFolderUrl,
+          backgroundColor: brand.background_color,
         }),
       );
       notifySlack(supabase, {

@@ -40,6 +40,17 @@ export default function AdminSettings() {
   const [savingSignature, setSavingSignature] = useState(false);
   const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
 
+  // ── Brand colours ──────────────────────────────────────────────────────────
+  const [brandBg, setBrandBg] = useState("#EDE8E0");
+  const [brandDarkBg, setBrandDarkBg] = useState("#131210");
+  const [brandDarkSurface, setBrandDarkSurface] = useState("#181614");
+  const [brandDarkElevated, setBrandDarkElevated] = useState("#1E1C18");
+  const [brandGold, setBrandGold] = useState("#B89A6A");
+  const [brandText, setBrandText] = useState("#1A1814");
+  const [brandFontFamily, setBrandFontFamily] = useState("Montserrat");
+  const [brandLogoUrl, setBrandLogoUrl] = useState("");
+  const [savingBrand, setSavingBrand] = useState(false);
+
   // ── Airtable Contact Sync (Users + Clients tables) ────────────────────────
   const [contactBaseId, setContactBaseId] = useState("");
   const [contactTableId, setContactTableId] = useState("");
@@ -71,6 +82,58 @@ export default function AdminSettings() {
       .then(({ data }) => { if (data?.signedUrl) setSignaturePreviewUrl(data.signedUrl); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "document_design_config")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.value) return;
+        const v = data.value as Record<string, string>;
+        if (v.background_color) setBrandBg(v.background_color);
+        if (v.dark_background_color) setBrandDarkBg(v.dark_background_color);
+        if (v.dark_surface_primary) setBrandDarkSurface(v.dark_surface_primary);
+        if (v.dark_surface_elevated) setBrandDarkElevated(v.dark_surface_elevated);
+        if (v.gold_color) setBrandGold(v.gold_color);
+        if (v.text_color) setBrandText(v.text_color);
+        if (v.font_family) setBrandFontFamily(v.font_family);
+        if (v.logo_url !== undefined) setBrandLogoUrl(v.logo_url);
+      });
+  }, []);
+
+  async function saveBrand() {
+    setSavingBrand(true);
+    try {
+      const { data: existing } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "document_design_config")
+        .maybeSingle();
+      const prev = (existing?.value as Record<string, unknown> | null) ?? {};
+      const merged = {
+        ...prev,
+        background_color: brandBg,
+        dark_background_color: brandDarkBg,
+        dark_surface_primary: brandDarkSurface,
+        dark_surface_elevated: brandDarkElevated,
+        gold_color: brandGold,
+        text_color: brandText,
+        font_family: brandFontFamily,
+        logo_url: brandLogoUrl,
+      };
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({ key: "document_design_config", value: merged }, { onConflict: "key" });
+      if (error) throw error;
+      toast({ title: "Brand saved", description: "Changes apply to new PDFs, new emails, and on next page reload." });
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingBrand(false);
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -337,6 +400,30 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingPassword} onClick={changePassword} label="Update password" disabled={!newPassword} />
+        </Section>
+
+        {/* ── Brand ─────────────────────────────────────────────────── */}
+        <Section title="Brand">
+          <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
+            Single source of truth for the studio's brand colours. Used by every PDF (background), every email (background and accents), and the portal itself (dark mode page surface, card surfaces, gold accents). Changes apply to new PDFs/emails immediately and to the portal on next page reload.
+          </p>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-6 mb-8">
+            <ColourField label="Background (light surface / PDFs / client emails)" value={brandBg} onChange={setBrandBg} />
+            <ColourField label="Gold accent (buttons, links, dark-mode gold)" value={brandGold} onChange={setBrandGold} />
+            <ColourField label="Dark background (portal page ground)" value={brandDarkBg} onChange={setBrandDarkBg} />
+            <ColourField label="Dark surface — primary (cards)" value={brandDarkSurface} onChange={setBrandDarkSurface} />
+            <ColourField label="Dark surface — elevated (modals, popovers)" value={brandDarkElevated} onChange={setBrandDarkElevated} />
+            <ColourField label="Text colour" value={brandText} onChange={setBrandText} />
+            <div>
+              <label className={labelCls}>Font family</label>
+              <input type="text" value={brandFontFamily} onChange={(e) => setBrandFontFamily(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Logo URL</label>
+              <input type="text" value={brandLogoUrl} onChange={(e) => setBrandLogoUrl(e.target.value)} className={inputCls} placeholder="https://…" />
+            </div>
+          </div>
+          <SaveButton loading={savingBrand} onClick={saveBrand} label="Save brand" />
         </Section>
 
         {/* ── Studio Signature ──────────────────────────────────────── */}
@@ -615,6 +702,30 @@ export default function AdminSettings() {
         </Section>
       </div>
     </AdminLayout>
+  );
+}
+
+function ColourField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          className="w-8 h-8 border border-border/40 bg-transparent cursor-pointer"
+          style={{ padding: 0 }}
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputCls + " flex-1 font-mono"}
+          placeholder="#000000"
+        />
+      </div>
+    </div>
   );
 }
 
