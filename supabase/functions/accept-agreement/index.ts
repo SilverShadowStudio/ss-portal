@@ -79,7 +79,7 @@ function generateAgreementPdf(args: {
   // Editorial layout — mirrors the on-screen Services Agreement.
   // A4 page, generous side margins (~32mm) to mimic the constrained
   // 720px web column. Neutral typography, no accent colors.
-  const pdf = new jsPDF("p", "mm", "a4");
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
   const pageWidth = pdf.internal.pageSize.getWidth(); // 210
   const pageHeight = pdf.internal.pageSize.getHeight(); // 297
   const marginX = 34;

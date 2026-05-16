@@ -56,7 +56,7 @@ function generateSigningCertificate(args: {
     signedAt, ipAddress, userAgent, accountId, quotationId, sigImageDataUrl, backgroundHex,
   } = args
 
-  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true })
   const pageWidth = pdf.internal.pageSize.getWidth() as number
   const marginX = 34
   const contentWidth = pageWidth - marginX * 2

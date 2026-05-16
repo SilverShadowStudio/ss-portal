@@ -8,6 +8,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { jsPDF } from 'npm:jspdf@2.5.1'
 import { SILVERSHADOW_LOGO_DATA_URL } from '../_shared/brandLogo.ts'
 import { loadBrand, paintPageBackground } from '../_shared/brand.ts'
+import { downscalePngToMax, pngBytesToDataUrl } from '../_shared/imageUtils.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -81,7 +82,7 @@ function getClientIp(req: Request): string {
 // ── PDF factory ────────────────────────────────────────────────────────────────
 
 function makePdfDoc(backgroundHex: string) {
-  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true })
   const pageWidth = pdf.internal.pageSize.getWidth() as number
   const pageHeight = pdf.internal.pageSize.getHeight() as number
   const marginX = 34
@@ -440,16 +441,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Load Fred's signature from studio-assets (best-effort)
+    // Load Fred's signature from studio-assets and downscale before embedding.
+    // jsPDF inflates PNGs to raw RGB + alpha, so a 2000×1592 source PNG would
+    // add ~13 MB of uncompressed pixel data per embed. Cap at 600×400 — well
+    // above the ~50 mm × 14 mm print size at 300 dpi — for a ~30× reduction.
+    // The original file in storage is left untouched.
     let studioSigDataUrl: string | undefined
     try {
       const { data: sigBlob } = await admin.storage.from('studio-assets').download('silvershadow-signature.png')
       if (sigBlob) {
         const arrayBuf = await sigBlob.arrayBuffer()
-        const bytes = new Uint8Array(arrayBuf)
-        let binary = ''
-        for (const byte of bytes) binary += String.fromCharCode(byte)
-        studioSigDataUrl = `data:image/png;base64,${btoa(binary)}`
+        const raw = new Uint8Array(arrayBuf)
+        const resized = await downscalePngToMax(raw, 600, 400)
+        studioSigDataUrl = pngBytesToDataUrl(resized)
       }
     } catch { /* no studio signature uploaded yet — fall back to text */ }
 
