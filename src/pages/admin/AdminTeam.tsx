@@ -70,9 +70,7 @@ export default function AdminTeam() {
   const [dialogOpen, setDialogOpen]     = useState(false);
   const [inviting, setInviting]         = useState(false);
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
-  const [form, setForm] = useState({
-    firstName: "", lastName: "", email: "",
-  });
+  const [inviteEmail, setInviteEmail]   = useState("");
 
   useEffect(() => { fetchMembers(); }, []);
 
@@ -154,8 +152,9 @@ export default function AdminTeam() {
   }
 
   async function handleInvite() {
-    if (!form.firstName || !form.lastName || !form.email) {
-      toast({ title: "Please fill all fields", variant: "destructive" });
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      toast({ title: "Please enter an email address", variant: "destructive" });
       return;
     }
     setInviting(true);
@@ -163,12 +162,8 @@ export default function AdminTeam() {
       const { data, error } = await supabase.functions.invoke("admin-create-client", {
         body: {
           mode: "invite",
-          company: { companyName: `${form.firstName} ${form.lastName}` },
-          contact: {
-            email:     form.email,
-            firstName: form.firstName,
-            lastName:  form.lastName,
-          },
+          company: { companyName: email },
+          contact: { email },
           accountType: "team",
         },
       });
@@ -176,8 +171,8 @@ export default function AdminTeam() {
         const detail = (data as any)?.error || error.message;
         throw new Error(detail);
       }
-      setResultBanner({ email: form.email, inviteUrl: data?.inviteUrl });
-      setForm({ firstName: "", lastName: "", email: "" });
+      setResultBanner({ email, inviteUrl: data?.inviteUrl });
+      setInviteEmail("");
       setDialogOpen(false);
       fetchMembers();
     } catch (err: any) {
@@ -247,20 +242,23 @@ export default function AdminTeam() {
             <DialogHeader>
               <DialogTitle className="font-serif font-normal text-xl">Add team member</DialogTitle>
             </DialogHeader>
+            <p className="font-sans text-foreground/40 text-xs mt-1">
+              They'll enter their name and details during onboarding.
+            </p>
             <div className="space-y-4 pt-2">
-              {(["firstName", "lastName", "email"] as const).map((field) => (
-                <div key={field} className="space-y-1">
-                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
-                    {field === "firstName" ? "First name" : field === "lastName" ? "Last name" : "Email"}
-                  </label>
-                  <input
-                    type={field === "email" ? "email" : "text"}
-                    value={form[field]}
-                    onChange={(e) => setForm((p) => ({ ...p, [field]: e.target.value }))}
-                    className="w-full border-0 border-b border-border bg-transparent py-2 text-foreground focus:outline-none focus:border-gold text-sm"
-                  />
-                </div>
-              ))}
+              <div className="space-y-1">
+                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                  autoFocus
+                  className="w-full border-0 border-b border-border bg-transparent py-2 text-foreground focus:outline-none focus:border-gold text-sm"
+                />
+              </div>
               <Button
                 onClick={handleInvite}
                 disabled={inviting}
