@@ -285,14 +285,24 @@ Deno.serve(async (req) => {
     let inviteUrl: string
 
     if (existingUserId) {
-      // Check if already a member of any account — don't create a duplicate.
-      const { data: existingMembership } = await admin
+      // For team invites a user may also be a client — only block if they already
+      // have a team account. For all other account types block on any membership.
+      const { data: existingMemberships } = await admin
         .from('account_members')
-        .select('account_id')
+        .select('account_id, accounts!inner(account_type)')
         .eq('user_id', existingUserId)
-        .maybeSingle()
-      if (existingMembership) {
-        return json({ error: 'This user is already a member of an account.' }, 409)
+
+      if (accountType === 'team') {
+        const alreadyTeam = existingMemberships?.some(
+          (m) => (m.accounts as any).account_type === 'team',
+        )
+        if (alreadyTeam) {
+          return json({ error: 'This user already has a team account.' }, 409)
+        }
+      } else {
+        if (existingMemberships && existingMemberships.length > 0) {
+          return json({ error: 'This user is already a member of an account.' }, 409)
+        }
       }
 
       const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
@@ -348,16 +358,34 @@ Deno.serve(async (req) => {
       return json({ error: 'Failed to create account' }, 500)
     }
 
-    const profileInsert = await admin.from('profiles').upsert({
-      user_id: invitedUserId,
-      full_name: fullName,
-      first_name: body.contact.firstName ?? null,
-      last_name: body.contact.lastName ?? null,
-      position: body.contact.position ?? null,
-      company: companyName,
-      account_id: account.id,
-    }, { onConflict: 'user_id' })
-    if (profileInsert.error) console.error('profiles upsert error', profileInsert.error)
+    // For existing users (e.g. a client also becoming a team member) only fill in
+    // missing profile fields — don't overwrite account_id or other data.
+    const { data: existingProfile } = await admin
+      .from('profiles')
+      .select('id, account_id')
+      .eq('user_id', invitedUserId)
+      .maybeSingle()
+
+    if (existingProfile) {
+      // Only patch fields that are blank; preserve account_id.
+      await admin.from('profiles').update({
+        ...(fullName ? { full_name: fullName } : {}),
+        ...(body.contact.firstName ? { first_name: body.contact.firstName } : {}),
+        ...(body.contact.lastName ? { last_name: body.contact.lastName } : {}),
+        ...(body.contact.position ? { position: body.contact.position } : {}),
+      }).eq('user_id', invitedUserId)
+    } else {
+      const profileInsert = await admin.from('profiles').insert({
+        user_id: invitedUserId,
+        full_name: fullName,
+        first_name: body.contact.firstName ?? null,
+        last_name: body.contact.lastName ?? null,
+        position: body.contact.position ?? null,
+        company: companyName,
+        account_id: account.id,
+      })
+      if (profileInsert.error) console.error('profiles insert error', profileInsert.error)
+    }
 
     const memberInsert = await admin.from('account_members').insert({
       account_id: account.id,
