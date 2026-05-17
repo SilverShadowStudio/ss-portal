@@ -83,7 +83,10 @@ export default function AdminProjects() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const clientParam = searchParams.get("client");
+  // The ?client= query param carries an account_id (one account can own
+  // many users). We resolve it to the set of user_ids via account_members
+  // before auto-selecting the matching client entry below.
+  const accountParam = searchParams.get("client");
   const [clients, setClients] = useState<Client[]>([]);
   const [allClientOptions, setAllClientOptions] = useState<
     { user_id: string; label: string }[]
@@ -366,21 +369,35 @@ export default function AdminProjects() {
 
       setClients(clientList);
       setSceneRounds(roundsMap);
-      // Auto-select a client when navigating in from /admin/clients
-      if (clientParam) {
-        let target = clientList.find((c) => c.user_id === clientParam);
-        if (!target) {
-          // Client exists but has no projects yet — build a synthetic entry
-          // so the UI shows "No projects" rather than the full all-clients view.
-          const profileRow = (profiles || []).find((p) => p.user_id === clientParam);
-          if (profileRow) {
-            target = {
-              user_id: clientParam,
-              full_name: profileRow.full_name ?? null,
-              company: profileRow.company ?? null,
-              projects: [],
-            };
-          }
+      // Auto-select a client when navigating in from /admin/clients.
+      // accountParam is an account_id; resolve to the set of user_ids on
+      // that account, then pick the first matching client entry.
+      if (accountParam) {
+        const { data: memberRows } = await supabase
+          .from("account_members")
+          .select("user_id")
+          .eq("account_id", accountParam);
+        const userIdSet = new Set(
+          (memberRows ?? [])
+            .map((m: any) => m.user_id as string | null)
+            .filter((v): v is string => !!v),
+        );
+
+        let target = clientList.find((c) => userIdSet.has(c.user_id));
+        if (!target && userIdSet.size > 0) {
+          // No projects yet for any user on this account — build a synthetic
+          // entry so the UI shows "No projects" rather than the full
+          // all-clients view.
+          const firstUserId = [...userIdSet][0];
+          const profileRow = (profiles || []).find(
+            (p) => p.user_id === firstUserId,
+          );
+          target = {
+            user_id: firstUserId,
+            full_name: profileRow?.full_name ?? null,
+            company: profileRow?.company ?? null,
+            projects: [],
+          };
         }
         if (target) setSelectedClient(target);
       }
