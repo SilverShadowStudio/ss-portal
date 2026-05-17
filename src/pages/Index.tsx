@@ -21,6 +21,7 @@ import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { AssetViewer } from "@/components/client/AssetViewer";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
 import { logActivity } from "@/lib/activityLog";
+import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { toast as sonnerToast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -605,6 +606,56 @@ export default function Index() {
     }
   }
 
+  // Direct path for Round 2+: skip the brief modal and create the next round
+  // directly. The previous round's sketches + pin annotations are the brief.
+  async function handleRequestNextRoundDirect() {
+    if (focus.kind !== "review") return;
+    const round = focus.round;
+    try {
+      const schedule = computeRoundSchedule(new Date());
+      const previousLabel = String(round.round_number).padStart(2, "0");
+      const nextRoundNumber = round.round_number + 1;
+      const nextLabel = String(nextRoundNumber).padStart(2, "0");
+
+      const { error } = await supabase
+        .from("scene_rounds")
+        .insert({
+          scene_id: round.scene_id,
+          round_number: nextRoundNumber,
+          status: "pending",
+          start_date: schedule.start.toISOString(),
+          end_date: schedule.delivery.toISOString(),
+          instructions: `See annotations on Round ${previousLabel}`,
+        });
+      if (error) throw error;
+
+      // Move the old round out of the dashboard's review filter, matching
+      // handleCreateCorrections' behaviour.
+      await supabase
+        .from("scene_rounds")
+        .update({ status: "in_production" })
+        .eq("id", round.id);
+
+      await logActivity({
+        action: "round_created",
+        actorRole: "client",
+        description: `Round ${nextLabel} requested via annotations`,
+        entityType: "scene_round",
+        entityId: round.id,
+        sceneId: round.scene_id,
+        sceneName: round.scene_name,
+        roundNumber: nextRoundNumber,
+      });
+
+      setReviewOverlayOpen(false);
+      sonnerToast.success(`Round ${nextLabel} requested. Your sketches and annotations are the brief.`);
+      fetchFocus();
+    } catch (err: any) {
+      console.error("Error requesting next round:", err);
+      sonnerToast.error(err.message || "Failed to request round");
+    }
+  }
+
   const glowVariant =
     focus.kind === "delivered" ? "gold" :
     focus.kind === "countdown" ? "green" :
@@ -684,7 +735,16 @@ export default function Index() {
                 projectName={focus.round.project_name ?? undefined}
                 roundNumber={focus.round.round_number}
                 onClose={() => setReviewOverlayOpen(false)}
-                onRequestNextRound={() => setNewRoundModalOpen(true)}
+                onRequestNextRound={() => {
+                  // Round 1 still needs the full brief modal. Round 2+ uses
+                  // the previous round's annotations as the brief and creates
+                  // the next round directly.
+                  if (focus.round.round_number > 1) {
+                    handleRequestNextRoundDirect();
+                  } else {
+                    setNewRoundModalOpen(true);
+                  }
+                }}
                 nextRoundNumber={focus.round.round_number + 1}
                 siblingRounds={[{ id: focus.round.id, round_number: focus.round.round_number, status: focus.round.status }]}
               />

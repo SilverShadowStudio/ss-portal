@@ -31,6 +31,8 @@ import { SmartImage, preloadImages } from "@/components/ui/SmartImage";
 import { NewProjectModal } from "@/components/client/NewProjectModal";
 import { NewSceneModal } from "@/components/client/NewSceneModal";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
+import { computeRoundSchedule } from "@/lib/roundSchedule";
+import { logActivity } from "@/lib/activityLog";
 import {
   getStatusPhase,
   getSceneEffectivePhase,
@@ -595,6 +597,61 @@ export default function Portfolio() {
     }
   };
 
+  // Direct path for Round 2+: skip the brief modal entirely. The previous
+  // round's sketches (asset_drawings) and pin annotations (asset_pins) are
+  // the brief — production reads them in place.
+  const handleRequestNextRoundDirect = async () => {
+    if (!selectedProject || !selectedScene || !selectedRound) return;
+    try {
+      const existingRounds = sceneRounds.get(selectedScene.id) || [];
+      const nextRoundNumber = existingRounds.length + 1;
+      const previousLabel = String(selectedRound.round_number).padStart(2, "0");
+      const nextLabel = String(nextRoundNumber).padStart(2, "0");
+      const schedule = computeRoundSchedule(new Date());
+
+      const { data, error } = await supabase
+        .from("scene_rounds")
+        .insert({
+          scene_id: selectedScene.id,
+          round_number: nextRoundNumber,
+          status: "pending",
+          start_date: schedule.start.toISOString(),
+          end_date: schedule.delivery.toISOString(),
+          instructions: `See annotations on Round ${previousLabel}`,
+        })
+        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+        .single();
+      if (error) throw error;
+
+      const newRound: SceneRound = data;
+      setSceneRounds((prev) => {
+        const updated = new Map(prev);
+        const current = updated.get(selectedScene.id) || [];
+        updated.set(selectedScene.id, [...current, newRound]);
+        return updated;
+      });
+      setSelectedRound(newRound);
+
+      await logActivity({
+        action: "round_created",
+        actorRole: "client",
+        description: `Round ${nextLabel} requested via annotations`,
+        entityType: "scene_round",
+        entityId: newRound.id,
+        sceneId: selectedScene.id,
+        sceneName: selectedScene.name,
+        projectId: selectedProject.id,
+        projectName: selectedProject.name,
+        roundNumber: nextRoundNumber,
+      });
+
+      toast.success(`Round ${nextLabel} requested. Your sketches and annotations are the brief.`);
+    } catch (error: any) {
+      console.error("Error requesting next round:", error);
+      toast.error(error.message || "Failed to request round");
+    }
+  };
+
   // Build breadcrumbs
   const breadcrumbs = useMemo(() => {
     const items = [
@@ -695,7 +752,16 @@ export default function Portfolio() {
           endDate={selectedRound.end_date}
           onRequestNextRound={
             canRequestNext
-              ? () => setIsNewRoundModalOpen(true)
+              ? () => {
+                  // Round 1 still needs the full brief modal. Round 2+ infers
+                  // the brief from the previous round's annotations and creates
+                  // the new round directly.
+                  if (selectedRound.round_number > 1) {
+                    handleRequestNextRoundDirect();
+                  } else {
+                    setIsNewRoundModalOpen(true);
+                  }
+                }
               : undefined
           }
           nextRoundNumber={canRequestNext ? nextRoundNumber : undefined}
