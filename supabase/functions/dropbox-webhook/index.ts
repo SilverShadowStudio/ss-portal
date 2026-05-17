@@ -71,10 +71,11 @@ async function enqueueDeliveryNotification(
 ): Promise<void> {
   const { data: scene } = await supabase
     .from("scenes")
-    .select("name, projects(name, account_id)")
+    .select("name, project_id, projects(name, account_id)")
     .eq("id", args.sceneId)
     .maybeSingle();
   const project = (scene as any)?.projects ?? null;
+  const projectId: string | null = (scene as any)?.project_id ?? null;
   const accountId: string | null = project?.account_id ?? null;
   if (!accountId) {
     console.warn("[dropbox-webhook] enqueueDeliveryNotification: no account_id for scene", args.sceneId);
@@ -101,6 +102,9 @@ async function enqueueDeliveryNotification(
 
   const sendAt = computeUkSendAt(new Date());
   const payload = {
+    project_id: projectId,
+    scene_id: args.sceneId,
+    round_id: args.sceneRoundId,
     project_name: project?.name ?? null,
     scene_name: (scene as any)?.name ?? null,
     round_number: args.roundNumber,

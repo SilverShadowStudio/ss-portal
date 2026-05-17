@@ -19,7 +19,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    // Preserve the original URL (pathname + search) so a deep-link email
+    // click survives the login round-trip. Auth.tsx reads state.from after
+    // successful sign-in and redirects there instead of the default home.
+    return <Navigate to="/auth" replace state={{ from: location }} />;
   }
 
   // Ghost mode: admin viewing as client — skip all client gates

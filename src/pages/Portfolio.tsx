@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -82,6 +82,8 @@ export default function Portfolio() {
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedRound, setSelectedRound] = useState<SceneRound | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Long-press / drag to reorder scenes. 250ms hold + 8px tolerance keeps
   // taps and clicks intact on cards.
@@ -94,33 +96,50 @@ export default function Portfolio() {
     fetchProjects();
   }, []);
 
-  // Honor a sceneId / projectId passed via navigation state (e.g. from the
-  // dashboard pipeline) and auto-drill to the requested scene once data loads.
+  // Honor a sceneId / projectId / roundId passed via navigation state
+  // (e.g. dashboard pipeline) OR via query params (e.g. email deep-link
+  // /portfolio?project=…&scene=…&round=…). Query params take precedence
+  // over location.state. After consuming, both are cleared.
   useEffect(() => {
+    if (projects.length === 0) return;
+
+    const paramProject = searchParams.get("project");
+    const paramScene = searchParams.get("scene");
+    const paramRound = searchParams.get("round");
     const navState = location.state as {
       sceneId?: string;
       projectId?: string;
       roundId?: string;
     } | null;
-    if (!navState?.sceneId || projects.length === 0) return;
+
+    const sceneId = paramScene || navState?.sceneId;
+    const projectId = paramProject || navState?.projectId;
+    const roundId = paramRound || navState?.roundId;
+    if (!sceneId && !projectId) return;
+
     const project = projects.find(
-      (p) => p.id === navState.projectId || p.scenes.some((s) => s.id === navState.sceneId)
+      (p) => p.id === projectId || (sceneId && p.scenes.some((s) => s.id === sceneId)),
     );
     if (!project) return;
-    const scene = project.scenes.find((s) => s.id === navState.sceneId);
-    if (!scene) return;
+    const scene = sceneId
+      ? project.scenes.find((s) => s.id === sceneId)
+      : null;
+
     setSelectedProject(project);
-    setSelectedScene(scene);
-    // If a specific round was requested, drill straight into it (e.g. the
-    // dashboard hero card linking to the latest delivery). Otherwise just
-    // open the scene.
-    const requestedRound = navState.roundId
-      ? sceneRounds.get(scene.id)?.find((r) => r.id === navState.roundId) ?? null
+    if (scene) setSelectedScene(scene);
+    const requestedRound = roundId && scene
+      ? sceneRounds.get(scene.id)?.find((r) => r.id === roundId) ?? null
       : null;
     setSelectedRound(requestedRound);
-    // Clear the state so refresh / back nav doesn't keep re-triggering.
-    window.history.replaceState({}, "");
-  }, [projects, location.state, sceneRounds]);
+
+    // Clear navigation state so refresh / back nav doesn't keep re-triggering.
+    if (navState) window.history.replaceState({}, "");
+    // Clear query params for the same reason. Use navigate(replace) so the
+    // back button doesn't bounce the user out via the deep-link URL.
+    if (paramProject || paramScene || paramRound) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [projects, location.state, location.pathname, searchParams, sceneRounds, navigate]);
 
   // Keyboard navigation — when a round is open, ← / → flick to the previous
   // or next sibling round on the same scene. Skips when focus is in an input

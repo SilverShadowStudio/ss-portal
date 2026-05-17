@@ -38,8 +38,15 @@ export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Check if user is admin and set redirect path
+  // Check if user is admin and set redirect path.
+  // If ProtectedRoute bounced us here with `state.from` (a deep link), prefer
+  // that — preserves query params on email click-throughs. Otherwise fall back
+  // to role-based default (/admin for admins, /portfolio for clients).
   const checkUserRole = async (userId: string) => {
+    const fromLocation = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+    const fromPath = fromLocation?.pathname
+      ? `${fromLocation.pathname}${fromLocation.search ?? ""}`
+      : null;
     try {
       const { data } = await supabase
         .from("user_roles")
@@ -47,14 +54,16 @@ export default function Auth() {
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (data?.role === "admin") {
+      if (fromPath && fromPath !== "/auth") {
+        setRedirectPath(fromPath);
+      } else if (data?.role === "admin") {
         setRedirectPath("/admin");
       } else {
         setRedirectPath("/portfolio");
       }
     } catch (error) {
       console.error("Error checking user role:", error);
-      setRedirectPath("/portfolio");
+      setRedirectPath(fromPath && fromPath !== "/auth" ? fromPath : "/portfolio");
     }
   };
 
