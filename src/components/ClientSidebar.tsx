@@ -70,8 +70,14 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         { label: "Log off", onClick: handleSignOut },
       ]
     : [
-        { label: "Overview",   onClick: () => navigate("/dashboard"),  active: location.pathname === "/dashboard" },
-        { label: "Orders",     onClick: () => navigate("/orders"),     active: location.pathname === "/orders",     separatorAfter: true },
+        // Overview + Orders only apply to the lane-based partnership model.
+        // Project clients see Documents and Settings, then the system items.
+        ...(accountType === "project"
+          ? []
+          : [
+              { label: "Overview", onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard" },
+              { label: "Orders",   onClick: () => navigate("/orders"),    active: location.pathname === "/orders",   separatorAfter: true },
+            ] as SidebarAccountMenuItem[]),
         { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
         { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
         { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
