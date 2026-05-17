@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Download, Eye, FileText } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowRight, ChevronRight, Download, Eye, FileText } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import { cn } from "@/lib/utils";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -125,27 +127,51 @@ function invoiceStatusClass(status: string) {
   }
 }
 
-// Section header for the documents page. Label flush-left in gold, a 1px rule
-// in #2A2820 fills the remaining width, and an optional "view all" link
-// replaces the rule's right end. Used on all four sections so categories share
-// the same visual rhythm.
-function SectionHeader({ label, action }: {
+// Section header for the documents page, now serving as the accordion toggle.
+// Label + count flush-left in gold; rule in #2A2820 fills the remaining width;
+// optional inline action; chevron at the far right rotates 90° when expanded.
+// The whole row is clickable and toggles the open section; the optional action
+// button intercepts clicks so it doesn't trigger the toggle.
+function AccordionHeader({ label, count, isOpen, onToggle, action }: {
   label: string;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
   action?: { label: string; onClick: () => void };
 }) {
+  const countLabel = count === 0 ? "None" : String(count);
   return (
-    <header className="flex items-center gap-4 mb-5">
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={isOpen}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      className="group flex items-center gap-4 cursor-pointer select-none"
+    >
       <p
         className="shrink-0 font-sans uppercase text-gold"
         style={{ fontSize: 10, letterSpacing: "0.18em" }}
       >
         {label}
+        <span style={{ opacity: count === 0 ? 0.4 : 1 }}>
+          {" · "}
+          {countLabel}
+        </span>
       </p>
       <div className="flex-1 h-px" style={{ background: "#2A2820" }} />
       {action && (
         <button
           type="button"
-          onClick={action.onClick}
+          onClick={(e) => {
+            e.stopPropagation();
+            action.onClick();
+          }}
           className="shrink-0 flex items-center gap-1.5 font-sans uppercase text-foreground/40 hover:text-foreground transition-colors"
           style={{ fontSize: 10, letterSpacing: "0.16em" }}
         >
@@ -153,7 +179,38 @@ function SectionHeader({ label, action }: {
           <ArrowRight style={{ width: 11, height: 11 }} strokeWidth={1.5} />
         </button>
       )}
-    </header>
+      <ChevronRight
+        className="shrink-0 text-foreground/45 group-hover:text-foreground/70 transition-transform duration-200"
+        style={{
+          width: 14,
+          height: 14,
+          transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+        }}
+        strokeWidth={1.5}
+      />
+    </div>
+  );
+}
+
+// Wraps an accordion section body in a height + opacity transition.
+// Renders with overflow hidden so the height animation doesn't visibly leak.
+function AccordionPanel({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {isOpen && (
+        <motion.div
+          key="content"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          style={{ overflow: "hidden" }}
+        >
+          {/* 20px top margin from the header rule before content begins. */}
+          <div className="pt-5">{children}</div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -197,6 +254,29 @@ export default function Documents() {
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationViewerData | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+
+  // Accordion — only one section open at a time. Null until the first data
+  // load picks the best initial section based on the priorities below.
+  type SectionKey = "agreement" | "orders" | "quotations" | "invoices";
+  const [openSection, setOpenSection] = useState<SectionKey | null>(null);
+  const [defaultPicked, setDefaultPicked] = useState(false);
+
+  const toggleSection = (key: SectionKey) =>
+    setOpenSection((cur) => (cur === key ? null : key));
+
+  // Pick the initial open section the first time data settles. Priority:
+  // any unpaid invoice → Invoices; else no signed agreement → Agreement;
+  // else first non-empty section; else everything collapsed.
+  useEffect(() => {
+    if (defaultPicked || loading) return;
+    const unpaid = invoices.some((i) => i.status !== "paid" && i.status !== "draft");
+    if (unpaid) { setOpenSection("invoices"); setDefaultPicked(true); return; }
+    if (agreements.length === 0) { setOpenSection("agreement"); setDefaultPicked(true); return; }
+    if (orders.length > 0) { setOpenSection("orders"); setDefaultPicked(true); return; }
+    if (quotations.length > 0) { setOpenSection("quotations"); setDefaultPicked(true); return; }
+    if (invoices.length > 0) { setOpenSection("invoices"); setDefaultPicked(true); return; }
+    setDefaultPicked(true);
+  }, [defaultPicked, loading, invoices, agreements, orders, quotations]);
 
   async function handlePayInvoice(inv: Invoice) {
     if (inv.stripe_checkout_url) {
@@ -400,11 +480,17 @@ export default function Documents() {
           <BrandLoader size="md" />
         </div>
       ) : (
-        <div className="space-y-12 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
 
           {/* ── Client Agreement ─────────────────────────────────────────── */}
-          <section>
-            <SectionHeader label="Client Agreement" />
+          <section className={cn(openSection === "agreement" ? "mb-12" : "mb-6")}>
+            <AccordionHeader
+              label="Client Agreement"
+              count={agreements.length}
+              isOpen={openSection === "agreement"}
+              onToggle={() => toggleSection("agreement")}
+            />
+            <AccordionPanel isOpen={openSection === "agreement"}>
             {agreements.length === 0 ? (
               <EmptyState>Your signed agreement will appear here once your account is activated.</EmptyState>
             ) : (
@@ -449,11 +535,19 @@ export default function Documents() {
                 ))}
               </div>
             )}
+            </AccordionPanel>
           </section>
 
           {/* ── Orders ───────────────────────────────────────────────────── */}
-          <section>
-            <SectionHeader label="Orders" action={{ label: "View all", onClick: () => navigate("/orders") }} />
+          <section className={cn(openSection === "orders" ? "mb-12" : "mb-6")}>
+            <AccordionHeader
+              label="Orders"
+              count={orders.length}
+              isOpen={openSection === "orders"}
+              onToggle={() => toggleSection("orders")}
+              action={orders.length > 0 ? { label: "View all", onClick: () => navigate("/orders") } : undefined}
+            />
+            <AccordionPanel isOpen={openSection === "orders"}>
             {orders.length === 0 ? (
               <EmptyState>No orders yet.</EmptyState>
             ) : (
@@ -493,11 +587,18 @@ export default function Documents() {
                 })}
               </div>
             )}
+            </AccordionPanel>
           </section>
 
           {/* ── Quotations ───────────────────────────────────────────────── */}
-          <section>
-            <SectionHeader label="Quotations" />
+          <section className={cn(openSection === "quotations" ? "mb-12" : "mb-6")}>
+            <AccordionHeader
+              label="Quotations"
+              count={quotations.length}
+              isOpen={openSection === "quotations"}
+              onToggle={() => toggleSection("quotations")}
+            />
+            <AccordionPanel isOpen={openSection === "quotations"}>
             {quotations.length === 0 ? (
               <EmptyState>No quotations yet.</EmptyState>
             ) : (
@@ -536,11 +637,18 @@ export default function Documents() {
                 })}
               </div>
             )}
+            </AccordionPanel>
           </section>
 
           {/* ── Invoices ─────────────────────────────────────────────────── */}
-          <section>
-            <SectionHeader label="Invoices" />
+          <section className={cn(openSection === "invoices" ? "mb-12" : "mb-6", "last:mb-0")}>
+            <AccordionHeader
+              label="Invoices"
+              count={invoices.length}
+              isOpen={openSection === "invoices"}
+              onToggle={() => toggleSection("invoices")}
+            />
+            <AccordionPanel isOpen={openSection === "invoices"}>
             {invoices.length === 0 ? (
               <EmptyState>No invoices yet.</EmptyState>
             ) : (
@@ -593,6 +701,7 @@ export default function Documents() {
                 })}
               </div>
             )}
+            </AccordionPanel>
           </section>
 
         </div>
