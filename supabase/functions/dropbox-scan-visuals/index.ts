@@ -17,6 +17,7 @@
 // One entry per round — the highest version only.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enqueueDeliveryNotification } from "../_shared/deliveryNotification.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -361,6 +362,17 @@ Deno.serve(async (req) => {
             round_number: dbRound.round_number,
           });
           if (logErr) console.warn("activity log (round_delivered) failed", logErr);
+
+          // This branch only runs when the round actually transitions to
+          // delivered (gated above by !DELIVERED_STATES.includes). The
+          // pending_delivery_notifications partial unique index also
+          // protects against duplicate enqueues, so a second scan of the
+          // same already-delivered round is a no-op.
+          await enqueueDeliveryNotification(supabase, {
+            sceneRoundId: dbRound.id,
+            sceneId,
+            roundNumber: dbRound.round_number,
+          });
         }
       }
     }

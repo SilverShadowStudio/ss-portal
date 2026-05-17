@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { enqueueDeliveryNotification } from "../_shared/deliveryNotification.ts";
 
 // Inline review window logic (mirrors src/lib/reviewWindow.ts — no browser imports allowed in Deno)
 function computeReviewWindow(fromDate: Date): { start: Date; end: Date } {
@@ -13,117 +14,6 @@ function computeReviewWindow(fromDate: Date): { start: Date; end: Date } {
   end.setHours(DEADLINE_HOUR, 0, 0, 0);
   const start = new Date(fromDate);
   return { start, end };
-}
-
-// UK quiet-hours gating for delivery notifications.
-// If now is within 09:00-20:00 Europe/London → send immediately.
-// Else → schedule for the next 09:00 Europe/London.
-// Returns the send_at as a UTC Date.
-function computeUkSendAt(now: Date): Date {
-  // Get UK clock parts for `now` using Intl. en-GB with Europe/London handles BST/GMT.
-  const fmt = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(now).map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
-  const ukHour = parseInt(parts.hour, 10);
-  if (ukHour >= 9 && ukHour < 20) return now;
-
-  // Otherwise, target 09:00 UK on the appropriate day (today if pre-09:00, tomorrow if post-20:00).
-  const targetDay = ukHour >= 20
-    ? new Date(now.getTime() + 24 * 60 * 60 * 1000)
-    : now;
-  const targetParts = Object.fromEntries(
-    fmt.formatToParts(targetDay).map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
-  // Build the local UK timestamp string and find the UTC instant whose
-  // Europe/London representation matches "<date> 09:00:00".
-  const targetLocal = `${targetParts.year}-${targetParts.month}-${targetParts.day}T09:00:00`;
-  // Iterate UTC offset until the formatted UK clock matches. BST/GMT is +1/+0.
-  for (const offsetH of [0, -1, 1]) {
-    const candidate = new Date(Date.parse(`${targetLocal}Z`) - offsetH * 3600 * 1000);
-    const candParts = Object.fromEntries(
-      fmt.formatToParts(candidate).map((p) => [p.type, p.value]),
-    ) as Record<string, string>;
-    if (
-      candParts.year === targetParts.year &&
-      candParts.month === targetParts.month &&
-      candParts.day === targetParts.day &&
-      candParts.hour === "09"
-    ) {
-      return candidate;
-    }
-  }
-  return targetDay;
-}
-
-async function enqueueDeliveryNotification(
-  supabase: ReturnType<typeof createClient>,
-  args: { sceneRoundId: string; sceneId: string; roundNumber: number },
-): Promise<void> {
-  const { data: scene } = await supabase
-    .from("scenes")
-    .select("name, project_id, projects(name, account_id)")
-    .eq("id", args.sceneId)
-    .maybeSingle();
-  const project = (scene as any)?.projects ?? null;
-  const projectId: string | null = (scene as any)?.project_id ?? null;
-  const accountId: string | null = project?.account_id ?? null;
-  if (!accountId) {
-    console.warn("[dropbox-webhook] enqueueDeliveryNotification: no account_id for scene", args.sceneId);
-    return;
-  }
-
-  // Snapshot recipients at enqueue time so the email reflects who was on the
-  // account at delivery, not who is on it at send time (membership can shift).
-  const { data: members } = await supabase
-    .from("account_members")
-    .select("user_id")
-    .eq("account_id", accountId);
-  const recipients: string[] = [];
-  for (const m of members ?? []) {
-    const uid = (m as any).user_id as string | null;
-    if (!uid) continue;
-    try {
-      const { data } = await supabase.auth.admin.getUserById(uid);
-      if (data?.user?.email) recipients.push(data.user.email);
-    } catch (e) {
-      console.warn("[dropbox-webhook] getUserById failed", uid, e);
-    }
-  }
-
-  const sendAt = computeUkSendAt(new Date());
-  const payload = {
-    project_id: projectId,
-    scene_id: args.sceneId,
-    round_id: args.sceneRoundId,
-    project_name: project?.name ?? null,
-    scene_name: (scene as any)?.name ?? null,
-    round_number: args.roundNumber,
-    recipients,
-  };
-
-  const { error: enqueueErr } = await supabase
-    .from("pending_delivery_notifications")
-    .insert({
-      scene_round_id: args.sceneRoundId,
-      account_id: accountId,
-      send_at: sendAt.toISOString(),
-      payload,
-    });
-  // The partial unique index makes a duplicate insert for the same scene_round_id
-  // (while still unsent) fail. That's the expected idempotency guard — swallow.
-  if (enqueueErr && !String(enqueueErr.message ?? "").includes("duplicate")) {
-    console.warn("[dropbox-webhook] enqueueDeliveryNotification insert failed", enqueueErr);
-  }
 }
 
 async function deliverRound(supabase: ReturnType<typeof createClient>, sceneRoundId: string): Promise<void> {
