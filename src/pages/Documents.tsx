@@ -125,6 +125,47 @@ function invoiceStatusClass(status: string) {
   }
 }
 
+// Section header for the documents page. Label flush-left in gold, a 1px rule
+// in #2A2820 fills the remaining width, and an optional "view all" link
+// replaces the rule's right end. Used on all four sections so categories share
+// the same visual rhythm.
+function SectionHeader({ label, action }: {
+  label: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <header className="flex items-center gap-4 mb-5">
+      <p
+        className="shrink-0 font-sans uppercase text-gold"
+        style={{ fontSize: 10, letterSpacing: "0.18em" }}
+      >
+        {label}
+      </p>
+      <div className="flex-1 h-px" style={{ background: "#2A2820" }} />
+      {action && (
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="shrink-0 flex items-center gap-1.5 font-sans uppercase text-foreground/40 hover:text-foreground transition-colors"
+          style={{ fontSize: 10, letterSpacing: "0.16em" }}
+        >
+          {action.label}
+          <ArrowRight style={{ width: 11, height: 11 }} strokeWidth={1.5} />
+        </button>
+      )}
+    </header>
+  );
+}
+
+// Empty-state caption — italic serif at reduced opacity, reads as state.
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="font-serif italic text-foreground/45 py-4 border-t border-border/30" style={{ fontSize: 13 }}>
+      {children}
+    </p>
+  );
+}
+
 function toViewerData(q: Quotation): QuotationViewerData {
   return {
     ...q,
@@ -359,17 +400,13 @@ export default function Documents() {
           <BrandLoader size="md" />
         </div>
       ) : (
-        <div className="space-y-16 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        <div className="space-y-12 animate-fade-in" style={{ animationDelay: "0.1s" }}>
 
           {/* ── Client Agreement ─────────────────────────────────────────── */}
           <section>
-            <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-              Client Agreement
-            </p>
+            <SectionHeader label="Client Agreement" />
             {agreements.length === 0 ? (
-              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
-                Your signed agreement will appear here once your account is activated.
-              </p>
+              <EmptyState>Your signed agreement will appear here once your account is activated.</EmptyState>
             ) : (
               <div className="space-y-1">
                 {agreements.map((a) => (
@@ -416,23 +453,9 @@ export default function Documents() {
 
           {/* ── Orders ───────────────────────────────────────────────────── */}
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <p className="font-sans uppercase" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-                Orders
-              </p>
-              <button
-                onClick={() => navigate("/orders")}
-                className="flex items-center gap-1.5 text-foreground/40 hover:text-foreground transition-colors"
-                style={{ fontSize: 10, letterSpacing: "0.16em" }}
-              >
-                View all
-                <ArrowRight style={{ width: 11, height: 11 }} strokeWidth={1.5} />
-              </button>
-            </div>
+            <SectionHeader label="Orders" action={{ label: "View all", onClick: () => navigate("/orders") }} />
             {orders.length === 0 ? (
-              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
-                No orders yet.
-              </p>
+              <EmptyState>No orders yet.</EmptyState>
             ) : (
               <div className="space-y-1">
                 {orders.slice(0, 5).map((order) => {
@@ -474,13 +497,9 @@ export default function Documents() {
 
           {/* ── Quotations ───────────────────────────────────────────────── */}
           <section>
-            <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-              Quotations
-            </p>
+            <SectionHeader label="Quotations" />
             {quotations.length === 0 ? (
-              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
-                No quotations yet.
-              </p>
+              <EmptyState>No quotations yet.</EmptyState>
             ) : (
               <div>
                 {quotations.map((q) => {
@@ -521,13 +540,9 @@ export default function Documents() {
 
           {/* ── Invoices ─────────────────────────────────────────────────── */}
           <section>
-            <p className="font-sans uppercase mb-6" style={{ fontSize: 9, letterSpacing: "0.3em", color: "hsl(var(--foreground) / 0.35)" }}>
-              Invoices
-            </p>
+            <SectionHeader label="Invoices" />
             {invoices.length === 0 ? (
-              <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
-                No invoices yet.
-              </p>
+              <EmptyState>No invoices yet.</EmptyState>
             ) : (
               <div>
                 {invoices.map((inv) => {
