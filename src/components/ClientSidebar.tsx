@@ -93,7 +93,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
       sections={[{ items: navItems }]}
       accountMenuItems={accountMenuItems}
       accountDisplayName={displayName}
-      accountSubLabel={profile?.company ?? null}
+      accountSubLabel={accountType === "team" ? "Team" : (profile?.company ?? null)}
       accountInitials={initials}
       showMobileTabBar
       expanded={expanded}
