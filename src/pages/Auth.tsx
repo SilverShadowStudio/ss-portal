@@ -20,7 +20,10 @@ const signUpSchema = loginSchema.extend({
 export default function Auth() {
   const location = useLocation();
   const prefillEmail = (location.state as { prefillEmail?: string } | null)?.prefillEmail;
-  
+  // Hitting /forgot-password lands here with the recovery form pre-selected,
+  // so admin error toasts can deep-link directly at the right state.
+  const startInForgotMode = location.pathname.startsWith("/forgot-password");
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState(prefillEmail || "");
   const [password, setPassword] = useState("");
@@ -30,7 +33,7 @@ export default function Auth() {
   const [showSplash, setShowSplash] = useState(false);
   const [redirectPath, setRedirectPath] = useState("/portfolio");
   const [showPassword, setShowPassword] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(startInForgotMode);
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -220,6 +223,21 @@ export default function Auth() {
               {errors.password && (
                 <p className="text-xs text-destructive">{errors.password}</p>
               )}
+              {isLogin && (
+                <div className="pt-1 text-right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPassword(true);
+                      setErrors({});
+                    }}
+                    className="transition-smooth hover:opacity-70"
+                    style={{ fontFamily: "Arial, sans-serif", fontSize: 11, opacity: 0.5, letterSpacing: 0 }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -240,20 +258,10 @@ export default function Auth() {
           </button>
         </form>
 
-        {/* Forgot password / back */}
+        {/* Back to login link — only shown in recovery mode.
+            The "Forgot password?" entry point now sits directly below the
+            password input field above. */}
         <div className="mt-8 flex flex-col items-center gap-3 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-          {isLogin && !isForgotPassword && (
-            <button
-              onClick={() => {
-                setIsForgotPassword(true);
-                setErrors({});
-              }}
-              className="transition-smooth hover:opacity-70"
-              style={{ fontFamily: "Arial, sans-serif", fontSize: 11, opacity: 0.45, letterSpacing: 0 }}
-            >
-              Forgot password
-            </button>
-          )}
           {isForgotPassword && (
             <button
               onClick={() => {

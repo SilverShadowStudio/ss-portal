@@ -21,6 +21,18 @@ const APP_BASE_URL =
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Structured error responses for already-registered users. Each category
+// (client or team) gets its own message so the admin can give the right
+// next step in the toast.
+const ALREADY_REGISTERED_MESSAGE =
+  'User already registered — direct them to use the forgot password flow'
+const WRONG_CATEGORY_MESSAGE =
+  'User already registered in another category. Each user can only belong to one category (client or team).'
+
+function categoryOfAccountType(at: string): 'client' | 'team' {
+  return at === 'team' ? 'team' : 'client'
+}
+
 interface CompanyDetails {
   companyName: string
   country?: string | null
@@ -259,18 +271,30 @@ Deno.serve(async (req) => {
       createdAuthUser = true
     }
 
-    // Block if this user is already linked to another account
+    // Block if this user is already linked to another account.
+    // Same category → ALREADY_REGISTERED. Different category → WRONG_CATEGORY.
     const { data: existingMembership } = await admin
       .from('account_members')
-      .select('account_id')
+      .select('account_id, accounts!inner(account_type)')
       .eq('user_id', targetUserId)
       .maybeSingle()
     if (existingMembership) {
+      const provisionAccountType =
+        body.accountType === 'project' ? 'project'
+          : body.accountType === 'team' ? 'team'
+          : 'partnership'
+      const newCategory = categoryOfAccountType(provisionAccountType)
+      const existingCategory = categoryOfAccountType(
+        ((existingMembership as any).accounts?.account_type ?? '') as string,
+      )
+      if (newCategory === existingCategory) {
+        return json(
+          { code: 'ALREADY_REGISTERED', error: ALREADY_REGISTERED_MESSAGE, message: ALREADY_REGISTERED_MESSAGE },
+          409,
+        )
+      }
       return json(
-        {
-          error:
-            'This user is already a member of an account. Use the existing account instead.',
-        },
+        { code: 'WRONG_CATEGORY', error: WRONG_CATEGORY_MESSAGE, message: WRONG_CATEGORY_MESSAGE },
         409,
       )
     }
@@ -294,17 +318,25 @@ Deno.serve(async (req) => {
         .select('account_id, accounts!inner(account_type)')
         .eq('user_id', existingUserId)
 
-      if (accountType === 'team') {
-        const alreadyTeam = existingMemberships?.some(
-          (m) => (m.accounts as any).account_type === 'team',
+      // Categorise existing memberships against the category being invited.
+      // Same category → ALREADY_REGISTERED; different category → WRONG_CATEGORY.
+      const newCategory = categoryOfAccountType(accountType)
+      const existingCategories = new Set<'client' | 'team'>(
+        (existingMemberships ?? []).map((m) =>
+          categoryOfAccountType(((m.accounts as any)?.account_type ?? '') as string),
+        ),
+      )
+      if (existingCategories.has(newCategory)) {
+        return json(
+          { code: 'ALREADY_REGISTERED', error: ALREADY_REGISTERED_MESSAGE, message: ALREADY_REGISTERED_MESSAGE },
+          409,
         )
-        if (alreadyTeam) {
-          return json({ error: 'This user already has a team account.' }, 409)
-        }
-      } else {
-        if (existingMemberships && existingMemberships.length > 0) {
-          return json({ error: 'This user is already a member of an account.' }, 409)
-        }
+      }
+      if (existingCategories.size > 0) {
+        return json(
+          { code: 'WRONG_CATEGORY', error: WRONG_CATEGORY_MESSAGE, message: WRONG_CATEGORY_MESSAGE },
+          409,
+        )
       }
 
       const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({

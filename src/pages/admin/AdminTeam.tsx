@@ -156,17 +156,48 @@ export default function AdminTeam() {
     }
     setInviting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-client", {
-        body: {
+      // Direct fetch so we can read the structured 409 body
+      // (`code: ALREADY_REGISTERED | WRONG_CATEGORY`).
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-create-client`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           mode: "invite",
           company: { companyName: email },
           contact: { email },
           accountType: "team",
-        },
+        }),
       });
-      if (error) {
-        const detail = (data as any)?.error || error.message;
-        throw new Error(detail);
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        if (data?.code === "ALREADY_REGISTERED") {
+          toast({
+            title: "User already registered",
+            description: (
+              <div className="space-y-1.5">
+                <p>{data.message}</p>
+                <p className="opacity-60">They can recover access via the Forgot password link on the login screen.</p>
+              </div>
+            ),
+            variant: "destructive",
+          });
+          return;
+        }
+        if (data?.code === "WRONG_CATEGORY") {
+          toast({
+            title: "Wrong category",
+            description: data.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        throw new Error(data?.error || `Request failed (${res.status})`);
       }
       setResultBanner({ email, inviteUrl: data?.inviteUrl });
       setInviteEmail("");

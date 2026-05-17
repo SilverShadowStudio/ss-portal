@@ -85,6 +85,7 @@ const App = () => (
           <GhostModeShell>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/forgot-password" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/set-password" element={<SetPassword />} />
             <Route path="/sign-agreement" element={<SignAgreement />} />

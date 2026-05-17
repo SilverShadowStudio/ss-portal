@@ -299,33 +299,63 @@ export default function AdminClients() {
     setIsCreating(true);
     setResultBanner(null);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-create-client",
-        {
-          body: {
-            mode: "invite",
-            company: {
-              companyName: form.companyName.trim(),
-              country: form.country.trim() || null,
-              registrationNumber: form.registrationNumber.trim() || null,
-              streetName: form.streetName.trim() || null,
-              buildingNumber: form.buildingNumber.trim() || null,
-              city: form.city.trim() || null,
-              postcode: form.postcode.trim() || null,
-            },
-            contact: {
-              email: form.email.trim(),
-              firstName: form.firstName.trim() || null,
-              lastName: form.lastName.trim() || null,
-              position: form.position.trim() || null,
-            },
-            accountType: form.accountType,
-            clientCode: form.clientCode.trim() || null,
-          },
+      // Direct fetch instead of supabase.functions.invoke so we can read the
+      // structured 409 body (`code: ALREADY_REGISTERED | WRONG_CATEGORY`).
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-create-client`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
         },
-      );
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+        body: JSON.stringify({
+          mode: "invite",
+          company: {
+            companyName: form.companyName.trim(),
+            country: form.country.trim() || null,
+            registrationNumber: form.registrationNumber.trim() || null,
+            streetName: form.streetName.trim() || null,
+            buildingNumber: form.buildingNumber.trim() || null,
+            city: form.city.trim() || null,
+            postcode: form.postcode.trim() || null,
+          },
+          contact: {
+            email: form.email.trim(),
+            firstName: form.firstName.trim() || null,
+            lastName: form.lastName.trim() || null,
+            position: form.position.trim() || null,
+          },
+          accountType: form.accountType,
+          clientCode: form.clientCode.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        if (data?.code === "ALREADY_REGISTERED") {
+          toast({
+            title: "User already registered",
+            description: (
+              <div className="space-y-1.5">
+                <p>{data.message}</p>
+                <p className="opacity-60">They can recover access via the Forgot password link on the login screen.</p>
+              </div>
+            ),
+            variant: "destructive",
+          });
+          return;
+        }
+        if (data?.code === "WRONG_CATEGORY") {
+          toast({
+            title: "Wrong category",
+            description: data.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        throw new Error(data?.error || `Request failed (${res.status})`);
+      }
 
       setIsAddDialogOpen(false);
       setResultBanner({
