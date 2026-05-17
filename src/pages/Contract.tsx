@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -253,7 +253,7 @@ export default function Contract() {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                  <BrandLoader size="sm" className="h-3 w-3 mr-2" />
                   Activating account…
                 </>
               ) : (

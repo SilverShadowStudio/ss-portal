@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 type Status =
   | "loading"
@@ -118,7 +118,7 @@ export default function AcceptInvite() {
 
         {status === "loading" && (
           <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <BrandLoader size="sm" />
             <span className="text-sm">Loading invitation…</span>
           </div>
         )}
@@ -163,7 +163,7 @@ export default function AcceptInvite() {
 
         {status === "accepting" && (
           <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <BrandLoader size="sm" />
             <span className="text-sm">Adding you to the team…</span>
           </div>
         )}

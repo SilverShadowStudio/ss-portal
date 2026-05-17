@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -368,7 +369,7 @@ export default function AdminScenes() {
       <div className="space-y-6" style={{ animationDelay: "0.15s" }}>
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+            <BrandLoader size="md" />
           </div>
         ) : filteredScenes.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-12 text-center animate-fade-in">

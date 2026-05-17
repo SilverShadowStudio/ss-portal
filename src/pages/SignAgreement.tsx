@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import {
   AGREEMENT_SECTIONS,
   ACCEPTANCE_CHECKBOX_TEXT,
@@ -83,7 +84,7 @@ export default function SignAgreement() {
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+        <BrandLoader size="lg" />
       </div>
     );
   }
@@ -169,7 +170,7 @@ export default function SignAgreement() {
           >
             {submitting ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+                <BrandLoader size="sm" />
                 SAVING...
               </span>
             ) : (

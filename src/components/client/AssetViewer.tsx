@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { createPortal } from "react-dom";
 import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
@@ -354,7 +355,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+        <BrandLoader size="md" />
       </div>
     );
   }
@@ -483,7 +484,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
               />
             ) : (
               <div className="flex aspect-[16/10] items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+                <BrandLoader size="md" />
               </div>
             )}
           </button>
@@ -668,7 +669,7 @@ function PreviousBriefPanel({ sceneRoundId }: { sceneRoundId: string }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+        <BrandLoader size="md" className="h-5 w-5" />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { FolderOpen, Link as LinkIcon, Unlink, RefreshCw, Search } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,7 +193,7 @@ export function FolderMappingManager({
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <RefreshCw className="h-3 w-3 animate-spin" />
+        <BrandLoader size="sm" />
         Loading...
       </div>
     );
@@ -217,7 +218,7 @@ export function FolderMappingManager({
                 disabled={isRescanning}
                 className="h-7 px-2"
               >
-                <RefreshCw className={`h-3 w-3 ${isRescanning ? "animate-spin" : ""}`} />
+                {isRescanning ? <BrandLoader size="sm" /> : <RefreshCw className="h-3 w-3" />}
               </Button>
             )}
             <Button
@@ -279,7 +280,7 @@ export function FolderMappingManager({
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
               {browsing ? (
                 <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <BrandLoader size="md" />
                 </div>
               ) : folders.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">

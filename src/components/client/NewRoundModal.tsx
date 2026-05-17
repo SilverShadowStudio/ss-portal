@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
 import { X, FileIcon } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -176,7 +177,7 @@ function UploadItem({
                   {f.file.name}
                 </span>
                 {f.uploading && (
-                  <div className="h-2.5 w-2.5 animate-spin rounded-full border border-gold border-t-transparent" />
+                  <BrandLoader size="sm" className="h-2.5 w-2.5" />
                 )}
                 {f.error && (
                   <span className="text-[9px] text-destructive uppercase tracking-wider">Error</span>

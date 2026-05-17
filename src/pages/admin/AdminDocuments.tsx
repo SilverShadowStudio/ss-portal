@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Download, Eye, FileText, Loader2, Search } from "lucide-react";
+import { Download, Eye, FileText, Search } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -268,7 +269,7 @@ function AgreementsTab() {
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <BrandLoader size="md" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -308,7 +309,7 @@ function AgreementsTab() {
                     </button>
                     <button onClick={() => handleDownload(a)} disabled={downloadingId === a.id}
                       className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground transition-smooth hover:text-gold disabled:opacity-50">
-                      {downloadingId === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" strokeWidth={1.5} />}PDF
+                      {downloadingId === a.id ? <BrandLoader size="sm" className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" strokeWidth={1.5} />}PDF
                     </button>
                   </div>
                 </div>

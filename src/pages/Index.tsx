@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { AssetViewer } from "@/components/client/AssetViewer";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { logActivity } from "@/lib/activityLog";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { toast as sonnerToast } from "sonner";
@@ -674,7 +675,7 @@ export default function Index() {
               exit={{ opacity: 0 }}
               className="flex items-center justify-center min-h-[60vh]"
             >
-              <div className="h-5 w-5 rounded-full border border-gold/40 border-t-gold animate-spin" />
+              <BrandLoader size="md" className="h-5 w-5" />
             </motion.div>
           )}
 

@@ -31,6 +31,7 @@ import { SmartImage, preloadImages } from "@/components/ui/SmartImage";
 import { NewProjectModal } from "@/components/client/NewProjectModal";
 import { NewSceneModal } from "@/components/client/NewSceneModal";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { logActivity } from "@/lib/activityLog";
 import {
@@ -704,7 +705,7 @@ export default function Portfolio() {
     return (
       <ClientLayout>
         <div className="flex items-center justify-center py-24">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <BrandLoader size="lg" />
         </div>
       </ClientLayout>
     );

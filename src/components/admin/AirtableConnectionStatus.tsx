@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 function AirtableIcon({ className }: { className?: string }) {
   return (
@@ -78,7 +79,7 @@ export function AirtableConnectionStatus() {
   if (status.state === "loading") {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
-        <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+        <BrandLoader size="sm" />
         <span className="text-sm text-muted-foreground">Checking Airtable connection...</span>
       </div>
     );
@@ -101,7 +102,7 @@ export function AirtableConnectionStatus() {
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => check(true)} disabled={refreshing}>
-          <RefreshCw className={`mr-2 h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? <BrandLoader size="sm" className="mr-2 h-3 w-3" /> : <RefreshCw className="mr-2 h-3 w-3" />}
           Refresh
         </Button>
       </div>
@@ -132,7 +133,7 @@ export function AirtableConnectionStatus() {
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={() => check(true)} disabled={refreshing}>
-        <RefreshCw className={`mr-2 h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+        {refreshing ? <BrandLoader size="sm" className="mr-2 h-3 w-3" /> : <RefreshCw className="mr-2 h-3 w-3" />}
         Retry
       </Button>
     </div>

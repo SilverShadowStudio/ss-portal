@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
 import LoginSplash from "@/components/LoginSplash";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 const loginSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }).max(255),
@@ -258,7 +259,7 @@ export default function Auth() {
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <BrandLoader size="sm" />
                 {isForgotPassword ? "SENDING..." : isLogin ? "SIGNING IN..." : "CREATING ACCOUNT..."}
               </span>
             ) : (

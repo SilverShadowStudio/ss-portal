@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -358,7 +358,7 @@ function FsaPage({ form, today, onBack, signing, onSign }: {
 
           <div style={{ marginTop: "56px" }}>
             <button onClick={handleSign} disabled={signing} className={SIGN_BTN} style={SIGN_BTN_STYLE}>
-              {signing ? <><Loader2 className="h-3 w-3 animate-spin mr-2" />Signing…</> : "Sign Agreement"}
+              {signing ? <><BrandLoader size="sm" className="h-3 w-3 mr-2" />Signing…</> : "Sign Agreement"}
             </button>
             <p className="text-foreground/45" style={{ marginTop: "32px", fontSize: "12px", lineHeight: 1.75, maxWidth: "52ch" }}>
               On acceptance, binding PDFs of both agreements will be generated, timestamped, and stored in your Documents.

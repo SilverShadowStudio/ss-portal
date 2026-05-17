@@ -3,9 +3,10 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
-  Download, X, Loader2, ExternalLink,
+  Download, X, ExternalLink,
   ZoomIn, ZoomOut,
 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -208,7 +209,7 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
                 </Button>
                 <Button variant="outline" size="sm" disabled={!canDownload || downloading} onClick={handleDownload}>
                   {loading || downloading ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <BrandLoader size="sm" className="mr-1.5 h-3.5 w-3.5" />
                   ) : (
                     <Download className="mr-1.5 h-3.5 w-3.5" />
                   )}
@@ -225,7 +226,7 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
         <div ref={containerRef} className="flex-1 min-h-0 bg-muted/30 relative overflow-auto">
           {loading && (
             <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground gap-3">
-              <Loader2 className="h-6 w-6 animate-spin" />
+              <BrandLoader size="md" />
               <p className="text-sm">Preparing agreement…</p>
             </div>
           )}
@@ -252,7 +253,7 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
                 }}
                 loading={
                   <div className="flex items-center gap-2 text-muted-foreground py-12">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <BrandLoader size="md" />
                     <span className="text-sm">Rendering preview…</span>
                   </div>
                 }

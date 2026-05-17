@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Link2, Settings, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { RefreshCw, Link2, Settings, CheckCircle2, AlertCircle } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -136,7 +137,7 @@ export function AirtableSyncPanel({ sceneId, sceneName, onSynced }: AirtableSync
             style={{ fontSize: 9, letterSpacing: "0.22em" }}
             title={!config.scenes_table ? "Configure Airtable table first" : "Push scene to Airtable"}
           >
-            {syncing ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Link2 style={{ width: 10, height: 10 }} strokeWidth={1.5} />}
+            {syncing ? <BrandLoader size="sm" className="h-2.5 w-2.5" /> : <Link2 style={{ width: 10, height: 10 }} strokeWidth={1.5} />}
             Push to Airtable
           </button>
           <span className="text-foreground/20" style={{ fontSize: 10 }}>·</span>
@@ -260,7 +261,7 @@ export function AirtableSyncPanel({ sceneId, sceneName, onSynced }: AirtableSync
             className="flex items-center gap-2 bg-foreground text-background font-sans uppercase hover:opacity-80 disabled:opacity-50 transition-opacity"
             style={{ height: 36, paddingLeft: 20, paddingRight: 20, fontSize: 10, letterSpacing: "0.26em" }}
           >
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />}
+            {saving ? <BrandLoader size="sm" className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />}
             Save configuration
           </button>
 

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 const passwordSchema = z
   .object({
@@ -202,7 +203,7 @@ export default function ResetPassword() {
         >
           {isLoading ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+              <BrandLoader size="sm" />
               UPDATING...
             </span>
           ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, CheckCircle2, Clock, AlertCircle, ChevronRight, FileText } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, ChevronRight, FileText } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -224,7 +225,7 @@ function OrderModal({
             >
               {accepting ? (
                 <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <BrandLoader size="sm" className="h-3 w-3" />
                   Confirming…
                 </>
               ) : (
@@ -325,7 +326,7 @@ export default function Orders() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+          <BrandLoader size="md" />
         </div>
       ) : orders.length === 0 ? (
         <div className="py-24 text-center">

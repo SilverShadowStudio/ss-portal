@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, Ghost, Mail, Users2 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -293,7 +294,7 @@ export default function AdminTeam() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+          <BrandLoader size="md" className="h-5 w-5" />
         </div>
       ) : filteredGroups.length === 0 ? (
         <p className="font-serif text-foreground/35 text-sm py-8 border-t border-border/30">

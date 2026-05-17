@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ArborescenceTitle } from "@/components/client/ArborescenceTitle";
 import { LaneCard } from "@/components/client/LaneCard";
 import { TaskDetail } from "@/components/client/TaskDetail";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import {
   Dialog,
   DialogContent,
@@ -1185,7 +1186,7 @@ export default function AdminProjects() {
     return (
       <AdminLayout>
         <div className="flex items-center justify-center py-24">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <BrandLoader size="lg" />
         </div>
       </AdminLayout>
     );

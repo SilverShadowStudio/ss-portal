@@ -12,6 +12,7 @@ import {
   isWeekend,
 } from "date-fns";
 import { Activity, FileText, X, Paperclip, ExternalLink, ArrowRight, Clock, CheckCircle2 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -570,7 +571,7 @@ export default function Total() {
                 {/* Content */}
                 {loading ? (
                   <div className="py-32 flex items-center justify-center">
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <BrandLoader size="lg" />
                   </div>
                 ) : grouped.length === 0 ? (
                   <div
@@ -838,7 +839,7 @@ export default function Total() {
 
                 {popup.loadingUploads ? (
                   <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                    <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                    <BrandLoader size="sm" className="h-3 w-3" />
                     Loading files…
                   </div>
                 ) : popup.uploads.length > 0 ? (
@@ -952,7 +953,7 @@ function ScenesRail({
       <div>
         {loading ? (
           <div className="py-16 flex items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <BrandLoader size="md" />
           </div>
         ) : grouped.length === 0 ? (
           <div className="py-16 text-center opacity-30">

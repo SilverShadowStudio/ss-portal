@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Mail, UserMinus, X } from "lucide-react";
+import { Mail, UserMinus, X } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 interface AccountInfo {
   id: string;
@@ -187,7 +188,7 @@ export function TeamManagement() {
   if (loading) {
     return (
       <div className="card-elevated p-6 flex items-center justify-center">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <BrandLoader size="sm" />
       </div>
     );
   }
@@ -242,7 +243,7 @@ export function TeamManagement() {
               className="border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
             >
               {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <BrandLoader size="sm" />
               ) : (
                 <>
                   <Mail className="h-4 w-4 mr-2" />
@@ -295,7 +296,7 @@ export function TeamManagement() {
                       className="text-muted-foreground hover:text-destructive"
                     >
                       {removing === m.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <BrandLoader size="sm" className="h-3.5 w-3.5" />
                       ) : (
                         <UserMinus className="h-3.5 w-3.5" />
                       )}
@@ -343,7 +344,7 @@ export function TeamManagement() {
                       className="text-muted-foreground hover:text-destructive"
                     >
                       {revoking === inv.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <BrandLoader size="sm" className="h-3.5 w-3.5" />
                       ) : (
                         <X className="h-3.5 w-3.5" />
                       )}

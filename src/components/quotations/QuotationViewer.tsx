@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2, PenLine, X } from "lucide-react";
+import { Download, PenLine, X } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -187,7 +188,7 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
               <QuotationDocument ref={docRef} data={enriched} />
             ) : (
               <div className="flex items-center justify-center text-white/70 h-full">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <BrandLoader size="md" />
               </div>
             )}
           </div>

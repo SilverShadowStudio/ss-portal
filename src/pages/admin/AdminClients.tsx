@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, MoreHorizontal, Mail, Building2, Copy, Check, Trash2, Ghost, Pencil } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -664,7 +665,7 @@ export default function AdminClients() {
       <div className="animate-fade-in" style={{ animationDelay: "0.15s" }}>
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+            <BrandLoader size="md" />
           </div>
         ) : filteredGroups.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-12 text-center">

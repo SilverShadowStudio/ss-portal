@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
 import { Clock, X, Paperclip, ExternalLink, File } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
 import { differenceInSeconds, format } from "date-fns";
@@ -184,7 +185,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <BrandLoader size="md" />
       </div>
     );
   }

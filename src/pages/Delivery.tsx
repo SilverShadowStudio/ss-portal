@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
 import {
-  Mic, MicOff, Loader2, Pencil, X, RotateCcw, Eraser,
+  Mic, MicOff, Pencil, X, RotateCcw, Eraser,
   ChevronLeft, ChevronRight, ZoomIn, ArrowRight,
 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -241,7 +242,7 @@ function SketchOverlay({
           className="max-w-full max-h-full object-contain"
           style={{ cursor: eraseMode ? "cell" : "crosshair", display: imgLoaded ? "block" : "none", borderRadius: 2, boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}
         />
-        {!imgLoaded && <div className="flex items-center gap-3 text-foreground/30"><Loader2 size={14} className="animate-spin" /><span className="text-[10px] uppercase tracking-[0.28em]">Loading</span></div>}
+        {!imgLoaded && <div className="flex items-center gap-3 text-foreground/30"><BrandLoader size="sm" className="h-3.5 w-3.5" /><span className="text-[10px] uppercase tracking-[0.28em]">Loading</span></div>}
       </div>
       <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-border/20 shrink-0">
         <button type="button" onClick={onClose} className="px-7 py-3 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 border border-border/30 hover:text-foreground/55 transition-all" style={{ borderRadius: 2 }}>Cancel</button>
@@ -478,7 +479,7 @@ function FeedbackModal({ task, onClose, onSubmitted }: { task: Task; onClose: ()
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-sans uppercase tracking-[0.22em] border transition-all ${isRecording ? "border-rose-500/50 text-rose-400 bg-rose-500/5" : "border-border/35 text-foreground/30 hover:border-foreground/25 hover:text-foreground/55"}`}
                     style={{ borderRadius: 2 }}
                   >
-                    {isPolishing ? <Loader2 size={9} className="animate-spin" /> : isRecording ? <MicOff size={9} /> : <Mic size={9} />}
+                    {isPolishing ? <BrandLoader size="sm" className="h-2.5 w-2.5" /> : isRecording ? <MicOff size={9} /> : <Mic size={9} />}
                     {isPolishing ? "Polishing" : isRecording ? "Stop" : "Dictate"}
                   </button>
                 </div>
@@ -498,7 +499,7 @@ function FeedbackModal({ task, onClose, onSubmitted }: { task: Task; onClose: ()
                 className="flex-[2] py-4 text-[10px] font-sans uppercase tracking-[0.24em] bg-foreground text-background hover:bg-foreground/90 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                 style={{ borderRadius: 2 }}
               >
-                {submitting ? <span className="flex items-center justify-center gap-2"><Loader2 size={10} className="animate-spin" />Submitting</span> : "Submit feedback"}
+                {submitting ? <span className="flex items-center justify-center gap-2"><BrandLoader size="sm" className="h-2.5 w-2.5" />Submitting</span> : "Submit feedback"}
               </button>
             </div>
           </motion.div>
@@ -677,7 +678,7 @@ export default function Delivery() {
     return (
       <ClientLayout>
         <div className="flex items-center justify-center min-h-[70vh]">
-          <Loader2 className="h-4 w-4 animate-spin text-foreground/20" />
+          <BrandLoader size="sm" />
         </div>
       </ClientLayout>
     );

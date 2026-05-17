@@ -12,7 +12,8 @@ interface AccountForGenerator {
   registration_number: string | null;
   contact_name: string | null;
 }
-import { Plus, Search, Download, MoreHorizontal, Eye, Loader2, CreditCard, Copy, Trash2 } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -382,7 +383,7 @@ export default function AdminInvoices() {
                           onClick={() => createPaymentLink(r.id)}
                         >
                           {creatingLinkId === r.id ? (
-                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            <BrandLoader size="sm" className="mr-1.5 h-3.5 w-3.5" />
                           ) : (
                             <CreditCard className="mr-1.5 h-3.5 w-3.5" />
                           )}
@@ -401,7 +402,7 @@ export default function AdminInvoices() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => !downloading && downloadPdf(r)} disabled={downloading}>
                             {downloading ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              <BrandLoader size="sm" className="mr-2 h-4 w-4" />
                             ) : (
                               <Download className="mr-2 h-4 w-4" />
                             )}

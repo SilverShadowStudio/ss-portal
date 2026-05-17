@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 type Status = "loading" | "ready" | "already" | "invalid" | "submitting" | "done" | "error";
 
@@ -80,7 +80,7 @@ export default function Unsubscribe() {
 
         {status === "loading" && (
           <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <BrandLoader size="sm" />
             <span className="text-sm">Verifying link…</span>
           </div>
         )}
@@ -102,7 +102,7 @@ export default function Unsubscribe() {
 
         {status === "submitting" && (
           <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <BrandLoader size="sm" />
             <span className="text-sm">Updating preferences…</span>
           </div>
         )}

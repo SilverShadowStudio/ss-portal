@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Loader2, Send, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Send, ChevronDown } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -324,7 +325,7 @@ function CreateOrderForm({
         style={{ height: 42, paddingLeft: 28, paddingRight: 28, fontSize: 11, letterSpacing: "0.28em" }}
       >
         {submitting ? (
-          <><Loader2 className="h-3 w-3 animate-spin" /> Sending…</>
+          <><BrandLoader size="sm" className="h-3 w-3" /> Sending…</>
         ) : (
           <><Send className="h-3.5 w-3.5" strokeWidth={1.5} /> Send to client</>
         )}
@@ -405,7 +406,7 @@ export default function AdminOrders() {
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+              <BrandLoader size="md" />
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-center py-16 text-foreground/35 text-sm">No orders.</p>

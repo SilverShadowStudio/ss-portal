@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { RefreshCw } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 function DropboxIcon({ className }: { className?: string }) {
   return (
@@ -137,7 +138,7 @@ export function DropboxConnectionStatus() {
   if (status.loading) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
-        <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+        <BrandLoader size="sm" />
         <span className="text-sm text-muted-foreground">Checking connection...</span>
       </div>
     );
@@ -167,7 +168,7 @@ export function DropboxConnectionStatus() {
           <Button variant="outline" size="sm" onClick={() => handleConnect(true)} disabled={isConnecting}>
             {isConnecting ? (
               <>
-                <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                <BrandLoader size="sm" className="mr-2 h-3 w-3" />
                 Reconnecting...
               </>
             ) : (
@@ -196,7 +197,7 @@ export function DropboxConnectionStatus() {
       <Button size="sm" onClick={handleConnect} disabled={isConnecting}>
         {isConnecting ? (
           <>
-            <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+            <BrandLoader size="sm" className="mr-2 h-3 w-3" />
             Connecting...
           </>
         ) : (

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, ExternalLink, AlertTriangle, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 interface AirtableRow {
   id: string;
@@ -176,7 +177,7 @@ export function AirtableProductionTable() {
             />
           </div>
           <Button variant="outline" size="sm" onClick={() => load(true)} disabled={refreshing || loading} className="h-8">
-            <RefreshCw size={13} className={cn("mr-1.5", refreshing && "animate-spin")} />
+            {refreshing ? <BrandLoader size="sm" className="mr-1.5 h-3.5 w-3.5" /> : <RefreshCw size={13} className={cn("mr-1.5")} />}
             Refresh
           </Button>
         </div>

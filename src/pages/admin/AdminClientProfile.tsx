@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -468,7 +469,7 @@ export default function AdminClientProfile() {
 
             {emailsLoading ? (
               <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <BrandLoader size="sm" className="h-3.5 w-3.5" />
                 Loading email history…
               </div>
             ) : emails.length === 0 ? (
@@ -558,7 +559,7 @@ export default function AdminClientProfile() {
           <div className="bg-muted/30" style={{ height: "70vh" }}>
             {emailDetailLoading ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <BrandLoader size="sm" className="h-3.5 w-3.5" />
                 Loading email…
               </div>
             ) : emailDetailError ? (

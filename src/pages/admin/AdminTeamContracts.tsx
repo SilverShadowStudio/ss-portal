@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Download, FileText, Loader2 } from "lucide-react";
+import { Download, FileText } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -95,7 +96,7 @@ export default function AdminTeamContracts() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+          <BrandLoader size="md" className="h-5 w-5" />
         </div>
       ) : Object.keys(grouped).length === 0 ? (
         <p className="font-serif text-foreground/35 text-sm py-8 border-t border-border/30">
@@ -128,7 +129,7 @@ export default function AdminTeamContracts() {
                         style={{ fontSize: 10, letterSpacing: "0.16em" }}
                       >
                         {downloadingId === doc.id ? (
-                          <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                          <BrandLoader size="sm" className="h-3 w-3" />
                         ) : (
                           <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
                         )}

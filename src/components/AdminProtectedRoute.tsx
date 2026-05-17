@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 interface AdminProtectedRouteProps {
   children: ReactNode;
@@ -12,7 +13,7 @@ export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+        <BrandLoader size="lg" />
       </div>
     );
   }

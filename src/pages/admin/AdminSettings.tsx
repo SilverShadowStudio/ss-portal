@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { Loader2, CheckCircle2, Upload } from "lucide-react";
+import { CheckCircle2, Upload } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
@@ -455,7 +456,7 @@ export default function AdminSettings() {
               className="flex items-center gap-2 bg-foreground text-background font-sans uppercase hover:opacity-80 disabled:opacity-40 transition-opacity"
               style={{ height: 36, paddingLeft: 20, paddingRight: 20, fontSize: 10, letterSpacing: "0.26em" }}
             >
-              {savingSignature ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" strokeWidth={1.5} />}
+              {savingSignature ? <BrandLoader size="sm" className="h-3 w-3" /> : <Upload className="h-3 w-3" strokeWidth={1.5} />}
               {signaturePreviewUrl ? "Replace signature" : "Upload signature"}
             </button>
           </div>
@@ -748,7 +749,7 @@ function SaveButton({
       style={{ height: 36, paddingLeft: 20, paddingRight: 20, fontSize: 10, letterSpacing: "0.26em" }}
     >
       {loading ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <BrandLoader size="sm" className="h-3 w-3" />
       ) : (
         <CheckCircle2 className="h-3 w-3" strokeWidth={1.5} />
       )}

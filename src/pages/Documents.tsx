@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Download, Eye, FileText, Loader2 } from "lucide-react";
+import { ArrowRight, Download, Eye, FileText } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -295,7 +296,7 @@ export default function Documents() {
 
         {loading ? (
           <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+            <BrandLoader size="md" />
           </div>
         ) : freelancerDocuments.length === 0 ? (
           <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30 animate-fade-in">
@@ -323,7 +324,7 @@ export default function Documents() {
                     style={{ fontSize: 10, letterSpacing: "0.16em" }}
                   >
                     {downloadingId === doc.id ? (
-                      <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                      <BrandLoader size="sm" className="h-3 w-3" />
                     ) : (
                       <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
                     )}
@@ -355,7 +356,7 @@ export default function Documents() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+          <BrandLoader size="md" />
         </div>
       ) : (
         <div className="space-y-16 animate-fade-in" style={{ animationDelay: "0.1s" }}>
@@ -400,7 +401,7 @@ export default function Documents() {
                         style={{ fontSize: 10, letterSpacing: "0.16em" }}
                       >
                         {downloadingId === a.id ? (
-                          <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                          <BrandLoader size="sm" className="h-3 w-3" />
                         ) : (
                           <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
                         )}

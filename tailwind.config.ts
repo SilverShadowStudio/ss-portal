@@ -124,6 +124,10 @@ export default {
           from: { opacity: "1", transform: "translateY(0) scale(1)" },
           to: { opacity: "0", transform: "translateY(4px) scale(0.98)" },
         },
+        "brand-pulse": {
+          "0%, 100%": { opacity: "0.3", transform: "scale(0.95)" },
+          "50%":      { opacity: "1",   transform: "scale(1.05)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -132,6 +136,7 @@ export default {
         "slide-in-left": "slide-in-left 0.4s ease-out forwards",
         "account-menu-in": "account-menu-in 220ms cubic-bezier(0.4, 0, 0.2, 1)",
         "account-menu-out": "account-menu-out 160ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "brand-pulse": "brand-pulse 1800ms ease-in-out infinite",
       },
     },
   },

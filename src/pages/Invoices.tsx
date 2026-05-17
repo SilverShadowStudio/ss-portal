@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, CreditCard, Loader2, ChevronRight } from "lucide-react";
+import { Download, CreditCard, ChevronRight } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -168,7 +169,7 @@ export default function Invoices() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+          <BrandLoader size="md" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="py-24 text-center">
@@ -230,7 +231,7 @@ export default function Invoices() {
                       style={{ fontSize: 9, letterSpacing: "0.2em" }}
                     >
                       {paying === r.id ? (
-                        <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+                        <BrandLoader size="sm" className="h-2.5 w-2.5" />
                       ) : (
                         <CreditCard style={{ width: 10, height: 10 }} strokeWidth={1.5} />
                       )}

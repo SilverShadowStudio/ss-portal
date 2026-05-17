@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -91,7 +92,7 @@ export default function SetPassword() {
   if (!sessionReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+        <BrandLoader size="lg" />
       </div>
     );
   }
@@ -139,7 +140,7 @@ export default function SetPassword() {
         <button type="submit" disabled={isLoading} className="sp-submit">
           {isLoading ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              <BrandLoader size="sm" />
               SETTING UP...
             </span>
           ) : (

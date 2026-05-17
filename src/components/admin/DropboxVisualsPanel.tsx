@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, ImageIcon, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { FolderOpen, ImageIcon, AlertCircle, ExternalLink } from "lucide-react";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -127,7 +128,7 @@ export function DropboxVisualsPanel({
 
       {loading && (
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="h-4 w-4 animate-spin text-foreground/30" />
+          <BrandLoader size="sm" />
         </div>
       )}
 
