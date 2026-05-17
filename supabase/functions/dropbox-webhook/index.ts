@@ -384,6 +384,28 @@ async function processChanges(
       });
     }
 
+    // Detect team namespace. Dropbox Business stores files in a team
+    // namespace; without Dropbox-API-Path-Root the initial root-recursive
+    // list_folder targets the user's empty personal home. Mirrors the fix
+    // applied to dropbox-api in commit 4bf5c53 and the existing pattern in
+    // dropbox-scan-visuals.
+    let rootNamespaceId: string | null = null;
+    try {
+      const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (accountRes.ok) {
+        const accountData = await accountRes.json();
+        rootNamespaceId = accountData?.root_info?.root_namespace_id ?? null;
+      }
+    } catch (e) {
+      console.warn("[dropbox-webhook] namespace detection failed (non-fatal):", (e as Error).message);
+    }
+    const pathRootHeader: Record<string, string> = rootNamespaceId
+      ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }) }
+      : {};
+
     // Get list of changes from Dropbox
     const listUrl = cursor
       ? "https://api.dropboxapi.com/2/files/list_folder/continue"
@@ -398,6 +420,7 @@ async function processChanges(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
+        ...pathRootHeader,
       },
       body: JSON.stringify(listBody),
     });
