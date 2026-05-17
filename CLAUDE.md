@@ -558,18 +558,8 @@ The `GhostModeBanner` is fixed-position at the top. The client sidebar and layou
 
 Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replaces all previous agreement versions. Signed agreements stored in `agreements` table, PDF generated via `accept-agreement` edge function.
 
-## Clients in database
-
-| Company | Contact | account_id |
-|---------|---------|-----------|
-| Lürssen (Aqualuce Limited) | John Roberts | `dd85fe7a-1117-4379-b3f6-9ffef651f081` |
-| Winch Design | Simon Tomlinson | `7880c015-84ce-4273-8815-c97b9f74a74a` |
-| Bergman Design House | Marie Soliman | (check DB) |
-| Silvershadow Studio | Fred Colomb | `a09b2cdd-2c98-4415-a58d-ec6420d69bd6` |
-
 ## Pending
 
-- **Stripe payment link debugging** — secrets set, webhook registered, functions deployed, but payment link creation from the invoice table is not working as expected. Debug logging added to `create-invoice-checkout` (2026-05-14). Check Supabase Function logs after triggering from portal to identify the failure point.
 - **Quotation number auto-generation** — quotation numbers should be auto-generated from the account's `client_code` + sequence (e.g. `WIN-001`, `WIN-002`). Currently entered manually. Logic should live in `QuotationFormDialog` or a DB trigger.
 - **Clean up test invoices** — several test/dummy invoices in the database from development. Delete or archive before going live with real clients.
 - **Sidebar nav customisation** — review and finalise which nav items appear for each user type; hide any admin-only or unbuilt routes that clients might see.
@@ -577,59 +567,8 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 - **Client correction flow not built** — client clicks Review on dashboard → full-screen overlay with pins → Submit corrections → creates Round 02 → countdown resets. Currently admin-only round creation.
 - **New commission brief flow not built** — 3-step overlay from idle dashboard state.
 - **Airtable inbound webhook not set up** — `pull-status` is currently manual only.
-- **Pre-launch ghost mode test** — ghost as Simon Tomlinson (Winch) and Marie Soliman (Bergman) and walk through the full client flow.
+- **Pre-launch ghost mode test** — ghost into each active client account and walk through the full client flow before any real client is invited.
 - **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work.
 - **Email from address** — `airtable-auto-sync` sends from `portal@silvershadowstudio.com`. Confirm verified in Resend.
 - **SVG logo in generator** — `public/generator/images/SS - Logo 2019.svg` is not committed to git (filename has spaces, was skipped). Copy manually to that path on any new machine.
 
-## Session log — 2026-05-16
-
-### Signing / Audit trail
-- **Done:** Standardised the signing pattern across all three document types (quotations, client agreements, freelancer NDA+FSA). All flows now require a drawn `SignaturePad` canvas — submission is blocked until the pad is used. Forensic data (IP address, user agent, signature PNG, PDF SHA-256, jsPDF acceptance certificate) captured on every sign event. `signatures_audit_log` immutable table created and written to on every signing. Forensic columns added to `quotation_documents` and `freelancer_documents`.
-- **Done:** `sign-quotation` edge function rewritten — generates a jsPDF signing certificate with embedded signature image, uploads it to the `signatures` bucket, stores SHA-256 and certificate path on the quotation row.
-- **Done:** `sign-freelancer-documents` edge function rewritten — embeds contractor drawn signature and Fred's studio signature in both NDA and FSA PDFs. Fixed `https://esm.sh/` import to `npm:` and deployed (function had never been deployed after the rewrite — this was the cause of the FSA signing failure).
-- **Pending:** Live end-to-end test of both signing flows after deployment. Confirm PDFs generate, `signatures_audit_log` rows appear, and Fred's signature embeds correctly (requires studio signature to be uploaded first in AdminSettings).
-
-### AdminSettings — Studio Signature
-- **Done:** Added "Studio Signature" section to AdminSettings. Fred can upload a PNG of his signature; it is stored at `studio-assets/silvershadow-signature.png` and previewed via signed URL. The edge functions load this file at signing time and embed it in freelancer PDFs.
-- **Done:** `studio-assets` storage bucket was missing — created via SQL (`INSERT INTO storage.buckets`) after the Management API and Storage REST endpoint both rejected the access token.
-- **Pending:** Fred needs to upload his actual signature PNG via AdminSettings before it will appear in generated PDFs.
-
-### Team — invite flow
-- **Done:** Fixed invite failing for users who already have a client account (e.g. `canecht@gmail.com` owns "Katharine Pooley Limited"). `admin-create-client` now only blocks a team invite if the user already has a *team* account — client + team accounts can coexist. Existing profile `account_id` is no longer overwritten when a second account is created.
-- **Done:** Simplified the Add Team Member dialog to email only (removed first name and last name fields). Name and details are collected by the team member during onboarding.
-- **Pending:** Live test of full team member journey: invite → accept link → onboarding → FSA signing.
-
-### Afternoon — FSA signing fix + Nicolas cleanup
-
-- **Signing edge functions — root cause found (commit `0e07388`):** Both `sign-freelancer-documents` and `sign-quotation` were chaining `.catch()` onto `admin.from('signatures_audit_log').insert(...)`. PostgrestBuilder is a thenable, not a real Promise — `.catch()` is not a function. At runtime, after the real writes had already succeeded, this threw `TypeError` and the outer try/catch returned 500. Both functions fixed with `const { error: auditErr } = await ...` pattern and redeployed. **Done.**
-- **End-to-end verification via direct curl:** Used the Management API to extract the service-role key, then `auth/v1/admin/generate_link` + `auth/v1/verify` (with `token_hash`) to mint an access token for `nicolas@silvershadowstudio.com`. Pre-fix returned `500 admin.from(...).insert(...).catch is not a function`; post-fix returned `200 {"success":true}` with all expected rows landing. **Done — but UI-side flow not yet tested.**
-- **`sign-quotation` deployed but not live-tested:** Same fix landed, function redeployed, no test invocation against a real quotation. **Pending:** open a quotation in `QuotationViewer`, draw sig, confirm auto-deposit invoice + audit log row + signed quotation status.
-- **Nicolas test data wiped — clean slate for real onboarding:** Removed 10 `freelancer_documents` rows, 2 `signatures_audit_log` rows, 1 `freelancer_profiles` row, 10 PDFs in `freelancer-documents` storage, and 3 PNGs in `signatures` storage. Auth user + account_members + account row left intact. **Done.**
-- **Debug pattern documented:** Direct curl with a minted JWT bypasses the supabase-js client's error wrapper and surfaces the actual `err.message` from the function's catch block. Nicolas is the canonical team-member test fixture; cleanup procedure (DB rows + storage objects) documented in HANDOFF.md. **Done.**
-- **Studio signature still not uploaded by Fred:** Edge functions load `studio-assets/silvershadow-signature.png` best-effort and fall back to text-only signature blocks if missing. Signing succeeds either way. **Pending:** Fred uploads his real signature PNG via AdminSettings.
-- **Other potential `.catch()` chains on PostgrestBuilders:** Worth a targeted grep before launch. The two found in this session were the only places using that pattern on a query builder; everywhere else the same pattern is correctly used on real Promises (`fetch`, `admin.storage.createBucket`). **Pending:** sweep grep.
-
-## Session log — 2026-05-17
-
-### Roles & auth architecture
-- **Done (commit `a0496f3`):** Migration `20260516000003_role_team_and_super_admin.sql` applied — added `'team'` to the `app_role` enum (standalone first, since `ALTER TYPE ADD VALUE` can't run in the same transaction as code referencing the new value); added `profiles.is_super_admin BOOLEAN DEFAULT false` with Fred flagged true; migrated `user_roles 'client' → 'team'` for users on team-only memberships; added an `is_super_admin()` SECURITY DEFINER helper. `useUserRole` updated with new `isTeam` flag and `admin > client > team` precedence; new `useIsSuperAdmin` hook reads the profile flag. `admin-create-client` invite-mode now writes `role: 'team'` for team accounts. **Pending:** Kieran isn't yet `admin` in `user_roles`; `is_super_admin()` SQL helper and `useIsSuperAdmin` React hook are both implemented but no caller / RLS policy uses them yet.
-
-### Admin user listings
-- **Done (commit `da8ed14`):** New `supabase/functions/admin-list-account-users` edge function (service-role, admin-gated). Returns every individual user across every account with email + position + last_login_at. AdminClients and AdminTeam restructured around it: per-account group header + per-user rows (name / position / email / last-seen / ghost button). Per-user `enterGhostMode(userId, name)` replaces the owner-only ghost. AdminTeam's `.limit(1)` hack that silently dropped non-first team members is gone. **Pending:** the rewrite supports rendering N users per account, but `account_members_user_id_key UNIQUE (user_id)` means today there will only ever be 1 user per account. Decision needed if multi-user-per-account is the intended model. `handleMakeAdmin` in AdminClients is defined but currently unwired — to re-attach when adding a per-user actions dropdown.
-
-### Sidebar
-- **Done (commit `e534cfd`):** Consolidated `AdminSidebar.tsx` (344 lines) and `ClientSidebar.tsx` (308 lines) into a shared `src/components/Sidebar.tsx` primitive (357 lines). Wrappers shrank to config-only: Admin builds the SECTIONS array + `useNewClientsCount()` badge; Client picks `PARTNERSHIP_NAV` / `PROJECT_NAV` / `TEAM_NAV` and requests `showMobileTabBar`. The hover-account-menu animation block was copied verbatim per spec. One small cosmetic diff for client: nav items now use `transition-colors duration-quick` (matches admin + Part 1 motion-language directive) instead of `transition-all duration-300 ease-out`.
-- **Done (commit `dca01c3`):** Section headers (OVERVIEW / PRODUCTION / OPERATIONS / FINANCE) tightened to 9px / `letter-spacing 0.25em` / `text-sidebar-foreground/35`. Items within a group get `gap-2` (8px); titled sections get `mt-7` (28px). Item internal padding (`py-3`) deliberately untouched. **Pending:** visual identical-to-before check on the sidebar refactor hasn't been run in a real browser this session — recommend a 60-second eye-on-the-screen sweep next session.
-
-### Invite error handling (admin-create-client)
-- **Done (commit `23b11f2`):** Generic 403/409 "already member" responses replaced with structured 409s: `{ code: "ALREADY_REGISTERED", error/message: "User already registered — direct them to use the forgot password flow" }` for same-category invites, `{ code: "WRONG_CATEGORY", error/message: "User already registered in another category. Each user can only belong to one category (client or team)." }` for cross-category. New `categoryOfAccountType()` helper folds `team` vs (`client/project/partnership`). Both invite and provision modes covered. AdminClients + AdminTeam switched from `supabase.functions.invoke` to direct `fetch()` so the response body is reachable on non-2xx; ALREADY_REGISTERED toasts include the muted sub-line "They can recover access via the Forgot password link on the login screen." Live curl verified all three error paths.
-
-### Forgot password
-- **Done (commit `23b11f2`):** New `/forgot-password` route in `App.tsx` mounts the existing `Auth` page; `Auth.tsx` reads `location.pathname.startsWith("/forgot-password")` on mount and pre-selects the recovery form. Reuses `supabase.auth.resetPasswordForEmail()` — no duplicate code. "Forgot password?" link moved from below the submit button to **directly below the password input** (right-aligned, 11px, 50% opacity). "Back to login" link in recovery mode preserved.
-
-### Data cleanup
-- **Done (no commit, mid-session):** Deleted orphan team account `5b76f33b-5ee3-4fc7-8011-5e95b9b63cbc` (`company_name = 'canecht@gmail.com'`, `account_type = 'team'`, 0 linked rows across `account_members / projects / invoices / quotation_documents / orders / agreements / lane_tasks / subscriptions / freelancer_documents / account_invitations`). canecht@ is now single-category-clean: one `account_members` row (Katharine Pooley Limited, owner), `user_roles.role = 'client'`. The May 16 "dual-account fix" turned out to be a misdiagnosis — the UNIQUE constraint blocked duplicate memberships from the start; what actually got created back then was this orphan `accounts` row with no matching member.
-
-### Audit findings (no migration applied)
-- **Done:** Audited Part 1's proposed migration (`20260516000005_one_account_per_user.sql`). Result: **already enforced**. `account_members_user_id_key UNIQUE (user_id)` has been in production since an earlier migration. Zero rows violate it; zero cross-category users in `account_members`. The proposed migration was skipped — not authored, not applied. **Note for future**: if the design intent shifts to "multiple users per account," this is the constraint to drop. CLAUDE.md client list also flagged as stale (lists Lürssen / Winch / Bergman, but the live DB only has Katharine Pooley Limited as a non-team client + Silver Shadow Studio as Fred's own partnership).

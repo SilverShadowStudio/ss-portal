@@ -1,4 +1,51 @@
-# Session Handoff — 17 May 2026
+# Handoff Log
+
+## How to use this file
+
+This is the rolling session log. Each session appends a new block at the top. `CLAUDE.md` carries the stable rules, architecture, and migration history; `HANDOFF.md` carries the moving parts: what shipped, what's mid-flight, what's pending, and what was learned.
+
+**Promotion policy.** At the end of each session, review findings in HANDOFF.md. When a finding has stabilised into a durable rule, architectural decision, or piece of stable context, promote it to `CLAUDE.md`. HANDOFF.md should not accumulate rules — it is for state in motion. CLAUDE.md should not accumulate session noise — it is for rules at rest.
+
+---
+
+# Session — 17 May 2026 (evening)
+
+Pre-launch session before the Katharine Pooley project starts tomorrow morning. Focus: Stripe payment loop end-to-end.
+
+## Completed this session
+
+### Stripe deposit + balance invoice loop closed
+
+- **`1497770`** — Pre-generate Stripe URL on quotation signing; cache + on-demand Pay now.
+  - `sign-quotation` (edge function, deployed): when the deposit invoice is created on signing, immediately calls Stripe to create a checkout session and stores `stripe_checkout_url` on the invoice row. Fails soft if `STRIPE_SECRET_KEY` missing.
+  - `create-invoice-checkout` (edge function, modified, deployed): returns cached `stripe_checkout_url` if present; writes new URLs back via service-role client (clients can't UPDATE via RLS on quotation-linked invoices, so server-side caching is required).
+  - `Documents.tsx`: Pay now button always shows for non-paid, non-draft invoices; opens cached URL if present, otherwise calls `create-invoice-checkout` on demand. `{ pending: true }` triggers "Payments not configured yet" toast.
+- **`e6857c4`** — Add `create-balance-invoice` function + AdminProjects L5 button.
+  - `create-balance-invoice` (NEW edge function, deployed): admin-gated; takes `scene_id`, resolves scene → project.account → most recent signed quotation; balance = `gross_total * (1 - deposit_percentage / 100)`; creates invoice with `type: 'balance'`, pre-generates Stripe URL, dispatches `send-invoice-email`.
+  - `AdminProjects.tsx`: Level 5 round detail shows a gold "Create balance invoice" button when `selectedRound.status === "approved"`. Admin decides when to click (no auto-detection of "final" round).
+
+## Pending verification before going live
+
+- **Stripe key mode check.** Confirm whether `STRIPE_SECRET_KEY` in Supabase secrets is `sk_live_*` or `sk_test_*`. If live, either swap to test for dummy account flow, or do a £1 live test on a card you control and refund.
+- **End-to-end deposit flow** with dummy account: sign quotation → deposit invoice appears → Pay now → Stripe checkout → webhook marks paid.
+- **INV-202605-4769** has a cached `stripe_checkout_url` from the previous key. If keys are swapped, clear it: `update invoices set stripe_checkout_url = null where invoice_number = 'INV-202605-4769';`
+
+## Decisions made this session
+
+- **Balance invoice trigger is manual, not automatic.** The system cannot reliably know which round is the "final" one. Admin clicks the button when ready. Documented in `create-balance-invoice` function header.
+- **Stripe URL caching lives server-side, not client-side.** RLS prevents clients from updating quotation-linked invoices. The first time a client clicks Pay now on an uncached invoice, `create-invoice-checkout` (running as service-role) generates and caches the URL.
+- **Stale `Clients in database` table removed from CLAUDE.md.** Client list is operational data, not architecture. Source of truth is the `accounts` table. Query it when needed.
+
+## Carried forward, not addressed tonight
+
+- Client correction flow (item 7 in pre-session brief) — handled manually via email for the Katharine Pooley job; build properly this week.
+- Client instructions submission flow (item 3) — same, manual via email this week.
+- Uber/Deliveroo-style soft delete + denormalisation architectural brief — parked for post-launch strategic conversation.
+- CLAUDE.md / HANDOFF.md split applied this session: migrations stay in CLAUDE.md, promotion policy added here, stale client table dropped.
+
+---
+
+# Session — 17 May 2026 (morning)
 
 Picks up directly from the morning-of-16-May session. This session shipped five separate commits plus one in-session data cleanup (no commit). Head: `23b11f2` on `origin/main`.
 
