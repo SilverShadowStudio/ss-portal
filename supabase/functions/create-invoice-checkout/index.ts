@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     // RLS on invoices ensures users only see invoices they have access to
     const { data: invoice, error: invErr } = await supabase
       .from("invoices")
-      .select("id, invoice_number, reference_number, amount, currency, status, account_id")
+      .select("id, invoice_number, reference_number, amount, currency, status, account_id, stripe_checkout_url")
       .eq("id", invoiceId)
       .maybeSingle();
     if (invErr || !invoice) {
@@ -62,6 +62,14 @@ Deno.serve(async (req) => {
     if (invoice.status === "paid") {
       return new Response(JSON.stringify({ error: "Invoice already paid" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Return the cached URL if one was already generated for this invoice.
+    if (invoice.stripe_checkout_url) {
+      return new Response(JSON.stringify({ url: invoice.stripe_checkout_url, cached: true }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -100,6 +108,23 @@ Deno.serve(async (req) => {
       cancel_url: `${origin}/invoices?canceled=1`,
       metadata: { invoice_id: invoice.id },
     });
+
+    // Cache the URL on the invoice row using service-role (RLS blocks client
+    // UPDATE on quotation-linked invoices). Best-effort — return URL either way.
+    if (session.url) {
+      try {
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (serviceKey) {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+          await admin
+            .from("invoices")
+            .update({ stripe_checkout_url: session.url })
+            .eq("id", invoice.id);
+        }
+      } catch (cacheErr) {
+        console.warn("create-invoice-checkout cache write failed:", (cacheErr as Error).message);
+      }
+    }
 
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,

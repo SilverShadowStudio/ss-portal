@@ -312,6 +312,44 @@ Deno.serve(async (req) => {
 
   if (invoiceErr) console.error('Failed to create deposit invoice', invoiceErr)
 
+  // Pre-generate Stripe checkout URL for the deposit invoice so the client
+  // sees a working "Pay now" link immediately. Fails soft — signing must
+  // succeed even if Stripe is misconfigured or unreachable.
+  if (invoice?.id) {
+    try {
+      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
+      if (stripeKey) {
+        const Stripe = (await import('https://esm.sh/stripe@17.2.0?target=deno')).default
+        const stripe = new Stripe(stripeKey, { apiVersion: '2024-10-28.acacia' })
+        const origin = req.headers.get('origin') || 'https://portal.silvershadowstudio.com'
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          line_items: [{
+            price_data: {
+              currency: (quotation.currency ?? 'GBP').toLowerCase(),
+              unit_amount: Math.round(depositAmount * 100),
+              product_data: { name: `Invoice ${depositInvoiceNumber}` },
+            },
+            quantity: 1,
+          }],
+          success_url: `${origin}/invoices?paid=1&invoice=${invoice.id}`,
+          cancel_url: `${origin}/invoices?canceled=1`,
+          metadata: { invoice_id: invoice.id },
+        })
+        if (session.url) {
+          await admin
+            .from('invoices')
+            .update({ stripe_checkout_url: session.url })
+            .eq('id', invoice.id)
+        }
+      } else {
+        console.warn('[sign-quotation] STRIPE_SECRET_KEY not set — skipping checkout pre-gen')
+      }
+    } catch (e) {
+      console.warn('[sign-quotation] Stripe pre-gen failed (non-fatal):', (e as Error).message)
+    }
+  }
+
   if (invoice?.id) {
     fetch(`${supabaseUrl}/functions/v1/send-invoice-email`, {
       method: 'POST',

@@ -154,6 +154,41 @@ export default function Documents() {
   const [previewing, setPreviewing] = useState<AgreementViewerData | null>(null);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationViewerData | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+
+  async function handlePayInvoice(inv: Invoice) {
+    if (inv.stripe_checkout_url) {
+      window.open(inv.stripe_checkout_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setPayingInvoiceId(inv.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-invoice-checkout", {
+        body: { invoice_id: inv.id },
+      });
+      if (error) throw error;
+      if (data?.pending) {
+        toast({
+          title: "Payments not configured yet",
+          description: data.message || "Stripe is being set up. Please try again shortly.",
+        });
+        return;
+      }
+      if (!data?.url) throw new Error("No checkout URL returned");
+      setInvoices((list) =>
+        list.map((i) => (i.id === inv.id ? { ...i, stripe_checkout_url: data.url } : i))
+      );
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      toast({
+        title: "Could not start payment",
+        description: e?.message || "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setPayingInvoiceId(null);
+    }
+  }
 
   useEffect(() => {
     if (accountType === 'team') {
@@ -496,7 +531,8 @@ export default function Documents() {
               <div>
                 {invoices.map((inv) => {
                   const num = inv.invoice_number || inv.reference_number || "—";
-                  const canPay = !!inv.stripe_checkout_url && inv.status !== "paid";
+                  const canPay = inv.status !== "paid" && inv.status !== "draft";
+                  const isPaying = payingInvoiceId === inv.id;
                   return (
                     <div key={inv.id} className="flex items-center gap-5 py-4 border-t border-border/30">
                       <div className="flex-1 min-w-0">
@@ -526,15 +562,15 @@ export default function Documents() {
                         {INVOICE_STATUS_LABELS[inv.status] || inv.status}
                       </p>
                       {canPay && (
-                        <a
-                          href={inv.stripe_checkout_url!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 inline-flex items-center px-3 py-1.5 bg-gold text-background hover:bg-gold/90 transition-colors font-sans uppercase"
+                        <button
+                          type="button"
+                          disabled={isPaying}
+                          onClick={() => handlePayInvoice(inv)}
+                          className="shrink-0 inline-flex items-center px-3 py-1.5 bg-gold text-background hover:bg-gold/90 disabled:opacity-50 transition-colors font-sans uppercase"
                           style={{ fontSize: 9, letterSpacing: "0.16em" }}
                         >
-                          Pay now
-                        </a>
+                          {isPaying ? "Opening…" : "Pay now"}
+                        </button>
                       )}
                     </div>
                   );
