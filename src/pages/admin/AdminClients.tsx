@@ -676,9 +676,10 @@ export default function AdminClients() {
           <div className="space-y-6">
             {filteredGroups.map((group) => (
               <div key={group.account_id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-                {/* Account header — clickable, opens the profile */}
+                {/* Account header — clickable, opens the client's filtered Projects view.
+                    The profile page is still reachable via the "Edit profile" dropdown item. */}
                 <div
-                  onClick={() => navigate(`/admin/clients/${group.account_id}`)}
+                  onClick={() => navigate(`/admin/projects?client=${group.account_id}`)}
                   className="flex items-center justify-between px-5 py-4 bg-muted/10 border-b border-border/40 cursor-pointer hover:bg-muted/20 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
