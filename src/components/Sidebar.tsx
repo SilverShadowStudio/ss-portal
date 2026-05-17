@@ -92,7 +92,7 @@ export function Sidebar({
 
   const sidebarWidth = expanded ? SB.widthExpanded : SB.widthCollapsed;
 
-  const renderItem = (item: SidebarNavItem, indented: boolean) => {
+  const renderItem = (item: SidebarNavItem) => {
     const isActive = item.matchActive
       ? item.matchActive(location.pathname)
       : defaultMatchActive(item.path, location.pathname);
@@ -105,7 +105,7 @@ export function Sidebar({
         className={cn(
           "relative group flex items-center transition-colors duration-quick whitespace-nowrap font-sans uppercase",
           expanded
-            ? cn("w-full pr-3 py-3", indented ? "pl-8" : "pl-5")
+            ? "w-full pr-3 py-3 pl-5"
             : "h-11 w-12 justify-center mx-auto rounded-lg",
           isActive
             ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
@@ -235,21 +235,18 @@ export function Sidebar({
                 key={section.title ?? `unsectioned-${sIdx}`}
                 className={cn(
                   "w-full",
-                  expanded
-                    ? section.title ? "mt-7 first:mt-0" : "mt-3 first:mt-0"
-                    : sIdx > 0 ? "mt-2" : "",
+                  !expanded && sIdx > 0 && "mt-2",
                 )}
               >
-                {expanded && section.title && (
-                  <p
-                    className="px-5 mb-2 font-sans uppercase text-sidebar-foreground/35 select-none"
-                    style={{ fontSize: 9, letterSpacing: "0.25em" }}
-                  >
-                    {section.title}
-                  </p>
+                {expanded && sIdx > 0 && (
+                  <hr
+                    aria-hidden
+                    className="mx-6 my-4 border-0"
+                    style={{ borderTop: "1px solid #2A2820" }}
+                  />
                 )}
                 <div className={cn(expanded ? "flex flex-col gap-2" : "flex flex-col items-center gap-1")}>
-                  {section.items.map((item) => renderItem(item, expanded && !!section.title))}
+                  {section.items.map((item) => renderItem(item))}
                 </div>
               </div>
             ))}
