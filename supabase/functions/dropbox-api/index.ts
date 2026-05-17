@@ -127,6 +127,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Detect team namespace. Dropbox Business accounts store files in a team
+    // namespace; without Dropbox-API-Path-Root every path call returns
+    // path/not_found. Mirrors the pattern in dropbox-scan-visuals + dropbox-webhook.
+    let rootNamespaceId: string | null = null;
+    try {
+      const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (accountRes.ok) {
+        const accountData = await accountRes.json();
+        rootNamespaceId = accountData?.root_info?.root_namespace_id ?? null;
+      }
+    } catch (e) {
+      console.warn("[dropbox-api] namespace detection failed (non-fatal):", (e as Error).message);
+    }
+    const pathRootHeader: Record<string, string> = rootNamespaceId
+      ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }) }
+      : {};
+
     switch (action) {
       case "get-temporary-link": {
         const body = await req.json();
@@ -153,6 +173,7 @@ Deno.serve(async (req) => {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
+            ...pathRootHeader,
           },
           body: JSON.stringify({ path: validatedPath }),
         });
@@ -203,6 +224,7 @@ Deno.serve(async (req) => {
               size: { ".tag": size },
               mode: { ".tag": "strict" },
             }),
+            ...pathRootHeader,
           },
         });
 
@@ -259,6 +281,7 @@ Deno.serve(async (req) => {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
+            ...pathRootHeader,
           },
           body: JSON.stringify({ path: validatedPath, recursive: false }),
         });
@@ -356,6 +379,7 @@ Deno.serve(async (req) => {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
+            ...pathRootHeader,
           },
           body: JSON.stringify({ path: validatedFolderPath, recursive: false }),
         });
