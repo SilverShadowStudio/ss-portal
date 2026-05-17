@@ -115,6 +115,31 @@ export default function AdminProjects() {
   const [editProjectDropboxUrl, setEditProjectDropboxUrl] = useState("");
   const [isSavingProject, setIsSavingProject] = useState(false);
 
+  // Create balance invoice (L5 round detail)
+  const [creatingBalanceInvoice, setCreatingBalanceInvoice] = useState(false);
+
+  async function handleCreateBalanceInvoice(sceneId: string) {
+    if (creatingBalanceInvoice) return;
+    if (!window.confirm(
+      "Create a balance invoice for this scene? This will raise the remaining balance " +
+      "from the most recent signed quotation and email the client."
+    )) return;
+    setCreatingBalanceInvoice(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-balance-invoice", {
+        body: { scene_id: sceneId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const num = data?.invoiceNumber || "—";
+      toast.success(`Balance invoice ${num} created`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create balance invoice");
+    } finally {
+      setCreatingBalanceInvoice(false);
+    }
+  }
+
   useEffect(() => {
     fetchData();
   }, [showArchived]);
@@ -669,8 +694,23 @@ export default function AdminProjects() {
     // Level 5: Round detail
     if (selectedProject && selectedScene && selectedRound) {
       const sceneRoundsList = sceneRounds.get(selectedScene.id) || [];
+      const isApproved = selectedRound.status === "approved";
       return (
-        <TaskDetail
+        <>
+          {isApproved && (
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                disabled={creatingBalanceInvoice}
+                onClick={() => handleCreateBalanceInvoice(selectedScene.id)}
+                className="inline-flex items-center px-3 py-1.5 bg-gold text-background hover:bg-gold/90 disabled:opacity-50 transition-colors font-sans uppercase"
+                style={{ fontSize: 10, letterSpacing: "0.18em" }}
+              >
+                {creatingBalanceInvoice ? "Creating…" : "Create balance invoice"}
+              </button>
+            </div>
+          )}
+          <TaskDetail
           roundId={selectedRound.id}
           sceneId={selectedScene.id}
           projectId={selectedProject.id}
@@ -714,6 +754,7 @@ export default function AdminProjects() {
             fetchData();
           }}
         />
+        </>
       );
     }
 
