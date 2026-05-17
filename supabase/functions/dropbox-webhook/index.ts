@@ -63,14 +63,15 @@ async function deliverRound(supabase: ReturnType<typeof createClient>, sceneRoun
   }
 
   // Log activity
-  supabase.from("activity_log").insert({
+  const { error: logErr } = await supabase.from("activity_log").insert({
     actor_name: "Dropbox",
     actor_role: "system",
     action: "round_delivered",
     description: `Round ${String(round.round_number).padStart(2, "0")} delivered via Dropbox sync`,
     scene_id: round.scene_id,
     round_number: round.round_number,
-  }).catch((err: unknown) => console.warn("activity log (round_delivered) failed", err));
+  });
+  if (logErr) console.warn("activity log (round_delivered) failed", logErr);
 }
 
 const corsHeaders = {
@@ -364,7 +365,7 @@ async function processChanges(
           sceneRoundId = newRound.id;
           console.log("Created scene round", roundNumber, "for scene", matchedMapping.sceneId);
           // Activity log: new round auto-created by Dropbox sync.
-          supabase.from("activity_log").insert({
+          const { error: createdLogErr } = await supabase.from("activity_log").insert({
             actor_name: "Dropbox",
             actor_role: "system",
             action: "round_created",
@@ -374,7 +375,8 @@ async function processChanges(
             project_id: matchedMapping.projectId ?? null,
             project_name: matchedMapping.projectName ?? null,
             round_number: roundNumber,
-          }).catch((err: unknown) => console.warn("activity log (round_created) failed", err));
+          });
+          if (createdLogErr) console.warn("activity log (round_created) failed", createdLogErr);
         }
       }
 
@@ -449,7 +451,7 @@ async function processChanges(
         const projectPart = matchedMapping.projectName ?? null;
         const scenePart = matchedMapping.sceneName ?? null;
         const locationLabel = [projectPart, scenePart, `Round ${String(roundNumber).padStart(2, "0")}`].filter(Boolean).join(" / ");
-        supabase.from("activity_log").insert({
+        const { error: receivedLogErr } = await supabase.from("activity_log").insert({
           actor_name: "Dropbox",
           actor_role: "system",
           action: "dropbox_file_received",
@@ -460,7 +462,8 @@ async function processChanges(
           project_name: projectPart,
           round_number: roundNumber,
           metadata: { filename: entry.name, dropbox_path: entry.path_lower },
-        }).catch((err: unknown) => console.warn("activity log (dropbox_file_received) failed", err));
+        });
+        if (receivedLogErr) console.warn("activity log (dropbox_file_received) failed", receivedLogErr);
       }
 
       // Deliver round whenever a file arrives (new or updated) — idempotent.

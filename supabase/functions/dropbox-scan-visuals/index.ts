@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
             });
           }
 
-          supabase.from("activity_log").insert({
+          const { error: logErr } = await supabase.from("activity_log").insert({
             actor_name: "Dropbox",
             actor_role: "system",
             action: "round_delivered",
@@ -359,7 +359,8 @@ Deno.serve(async (req) => {
             scene_name: scene.name,
             project_id: scene.project_id,
             round_number: dbRound.round_number,
-          }).catch((err: unknown) => console.warn("activity log (round_delivered) failed", err));
+          });
+          if (logErr) console.warn("activity log (round_delivered) failed", logErr);
         }
       }
     }
