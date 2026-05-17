@@ -74,6 +74,7 @@ interface Project {
 
 interface Client {
   user_id: string;
+  account_id: string | null;
   full_name: string | null;
   company: string | null;
   projects: Project[];
@@ -249,6 +250,16 @@ export default function AdminProjects() {
         (profiles || []).map((p) => [p.user_id, p])
       );
 
+      // user_id → account_id from account_members. Each user belongs to
+      // at most one account (UNIQUE(user_id) on account_members).
+      const { data: memberRows } = await supabase
+        .from("account_members")
+        .select("user_id, account_id");
+      const accountByUser = new Map<string, string>();
+      for (const m of memberRows || []) {
+        if (m.user_id && m.account_id) accountByUser.set(m.user_id, m.account_id);
+      }
+
       const { data: projectsData, error: projectsError } = await supabase
         .from("projects")
         .select("id, name, status, user_id, created_at, archived_at, dropbox_folder_url")
@@ -344,6 +355,7 @@ export default function AdminProjects() {
         if (!client) {
           client = {
             user_id: p.user_id,
+            account_id: accountByUser.get(p.user_id) ?? null,
             full_name: profile?.full_name ?? null,
             company: profile?.company ?? null,
             projects: [],
@@ -394,6 +406,7 @@ export default function AdminProjects() {
           );
           target = {
             user_id: firstUserId,
+            account_id: accountParam,
             full_name: profileRow?.full_name ?? null,
             company: profileRow?.company ?? null,
             projects: [],
@@ -1210,6 +1223,16 @@ export default function AdminProjects() {
 
         <div className="flex items-center justify-between">
           <ArborescenceTitle items={breadcrumbs} />
+          {selectedClient && !selectedProject && selectedClient.account_id && (
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/clients/${selectedClient.account_id}`)}
+              className="font-sans uppercase text-foreground/55 hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer"
+              style={{ fontSize: 10, letterSpacing: "0.18em" }}
+            >
+              View profile →
+            </button>
+          )}
           {!selectedClient && (
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground cursor-pointer select-none">
