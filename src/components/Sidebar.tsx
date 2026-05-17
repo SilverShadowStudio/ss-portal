@@ -236,19 +236,19 @@ export function Sidebar({
                 className={cn(
                   "w-full",
                   expanded
-                    ? section.title ? "mt-6 first:mt-0" : "mt-3 first:mt-0"
+                    ? section.title ? "mt-7 first:mt-0" : "mt-3 first:mt-0"
                     : sIdx > 0 ? "mt-2" : "",
                 )}
               >
                 {expanded && section.title && (
                   <p
-                    className="px-5 mb-2 font-sans uppercase text-sidebar-foreground/45 select-none"
-                    style={{ fontSize: 9, letterSpacing: "0.28em" }}
+                    className="px-5 mb-2 font-sans uppercase text-sidebar-foreground/35 select-none"
+                    style={{ fontSize: 9, letterSpacing: "0.25em" }}
                   >
                     {section.title}
                   </p>
                 )}
-                <div className={cn(expanded ? "flex flex-col" : "flex flex-col items-center gap-1")}>
+                <div className={cn(expanded ? "flex flex-col gap-2" : "flex flex-col items-center gap-1")}>
                   {section.items.map((item) => renderItem(item, expanded && !!section.title))}
                 </div>
               </div>
