@@ -292,6 +292,9 @@ export default function Portfolio() {
         }
 
         // Resolve Dropbox previews via edge function (parallel).
+        // Use the thumbnail endpoint, not get-temporary-link: grid cards only
+        // need a 640x480 preview, not the full-resolution render. The lightbox
+        // (AssetViewer) still fetches full-res when an asset is opened.
         if (dropboxByRound.size > 0) {
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData?.session?.access_token;
@@ -300,16 +303,16 @@ export default function Portfolio() {
               [...dropboxByRound.entries()].map(async ([key, a]) => {
                 try {
                   const res = await fetch(
-                    `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+                    `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`,
                     {
                       method: "POST",
                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                      body: JSON.stringify({ path: (a as any).dropbox_path }),
+                      body: JSON.stringify({ path: (a as any).dropbox_path, size: "w640h480" }),
                     }
                   );
                   if (res.ok) {
                     const data = await res.json();
-                    if (data.link) previewByRoundId.set(key, data.link);
+                    if (data.thumbnail) previewByRoundId.set(key, data.thumbnail);
                   }
                 } catch { /* ignore — round simply won't have a preview */ }
               })

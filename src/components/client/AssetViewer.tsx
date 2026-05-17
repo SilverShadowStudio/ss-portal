@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { createPortal } from "react-dom";
 import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import { preloadImages } from "@/components/ui/SmartImage";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
@@ -112,6 +113,11 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   const [loading, setLoading] = useState(true);
   const hasLoadedOnceRef = useRef(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  // Low-res placeholder shown under thumbnailUrl while the full-res asset
+  // loads. Populated from dropbox-api/get-thumbnail (cached by the browser
+  // because the grid view already fetched the same path's thumbnail).
+  const [lowResUrl, setLowResUrl] = useState<string | null>(null);
+  const [fullResLoaded, setFullResLoaded] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -131,17 +137,71 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       // thumbnailUrl here: keeping the previous frame visible until the new
       // one resolves avoids a black flash when hopping between rounds.
       setImgDimensions(null);
+      setFullResLoaded(false);
       if (selectedAsset.source === "dropbox" && selectedAsset.dropbox_path) {
-        fetchThumbnail(selectedAsset.dropbox_path);
+        fetchAssetUrls(selectedAsset.dropbox_path);
       } else if (selectedAsset.source === "upload" && selectedAsset.storage_path) {
         const path = selectedAsset.storage_path.replace(/^\/+/, "");
         const { data } = supabase.storage
           .from("scene-assets")
           .getPublicUrl(path);
+        setLowResUrl(null);
         setThumbnailUrl(data.publicUrl);
       }
     }
   }, [selectedAsset]);
+
+  // Preload ±2 siblings' full-res images on every selectedAsset change so
+  // arrow-key navigation between rounds is instant.
+  useEffect(() => {
+    if (!selectedAsset || !siblingRounds || siblingRounds.length === 0) return;
+    const idx = siblingRounds.findIndex((r) => r.id === sceneRoundId);
+    if (idx < 0) return;
+    const neighbourIds = [
+      siblingRounds[idx - 2]?.id,
+      siblingRounds[idx - 1]?.id,
+      siblingRounds[idx + 1]?.id,
+      siblingRounds[idx + 2]?.id,
+    ].filter((v): v is string => !!v);
+    if (neighbourIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("round_assets")
+        .select("scene_round_id, storage_path, dropbox_path, source, is_current")
+        .in("scene_round_id", neighbourIds)
+        .eq("is_current", true);
+      if (cancelled || !rows) return;
+      const urls: string[] = [];
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      for (const a of rows) {
+        if (a.source === "upload" && a.storage_path) {
+          const { data } = supabase.storage
+            .from("scene-assets")
+            .getPublicUrl(a.storage_path.replace(/^\/+/, ""));
+          if (data.publicUrl) urls.push(data.publicUrl);
+        } else if (a.source === "dropbox" && a.dropbox_path && token) {
+          try {
+            const res = await fetch(
+              `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ path: a.dropbox_path }),
+              }
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.link) urls.push(data.link);
+            }
+          } catch { /* swallow — best-effort preload */ }
+        }
+      }
+      if (!cancelled) preloadImages(urls);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedAsset, siblingRounds, sceneRoundId]);
 
   async function fetchAssets() {
     try {
@@ -197,26 +257,43 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     }
   }
 
-  async function fetchThumbnail(path: string) {
+  async function fetchAssetUrls(path: string) {
+    // Two-step progressive load: thumbnail first (small, likely already in
+    // browser cache from the grid view), then full-resolution temporary link.
+    // Once the full-res image fires onLoad, fullResLoaded flips and we fade
+    // from the thumbnail to the full-res frame.
     try {
       const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) return;
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+
+      // 1) Thumbnail — settle the low-res frame as fast as possible.
+      fetch(`${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ path, size: "w640h480" }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.thumbnail) setLowResUrl(data.thumbnail);
+        })
+        .catch(() => { /* best-effort */ });
+
+      // 2) Full-resolution link — fades in on top once <img> loads.
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.data.session?.access_token}`,
-          },
-          body: JSON.stringify({ path }),
-        }
+        { method: "POST", headers, body: JSON.stringify({ path }) },
       );
       if (response.ok) {
         const data = await response.json();
         setThumbnailUrl(data.link);
       }
     } catch (err) {
-      console.error("Error fetching temporary link:", err);
+      console.error("Error fetching asset urls:", err);
     }
   }
 
@@ -469,19 +546,41 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             className="group relative block w-full overflow-hidden bg-secondary disabled:cursor-default cursor-zoom-in"
             aria-label="View full size"
           >
-            {thumbnailUrl ? (
-              <img
-                src={thumbnailUrl}
-                alt={selectedAsset?.filename}
-                className="block w-full h-auto"
-                draggable={false}
-                onLoad={(e) => {
-                  const img = e.currentTarget;
-                  if (img.naturalWidth && img.naturalHeight) {
-                    setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
-                  }
-                }}
-              />
+            {thumbnailUrl || lowResUrl ? (
+              <div className="relative block w-full">
+                {/* Low-res placeholder establishes the box dimensions and
+                    shows immediately (browser cache hit from grid view).
+                    Stays visible underneath the full-res image. */}
+                {lowResUrl && (
+                  <img
+                    src={lowResUrl}
+                    alt=""
+                    aria-hidden
+                    className="block w-full h-auto"
+                    draggable={false}
+                  />
+                )}
+                {thumbnailUrl && (
+                  <img
+                    src={thumbnailUrl}
+                    alt={selectedAsset?.filename}
+                    draggable={false}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      if (img.naturalWidth && img.naturalHeight) {
+                        setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+                      }
+                      setFullResLoaded(true);
+                    }}
+                    className={cn(
+                      "transition-opacity duration-300",
+                      lowResUrl
+                        ? cn("absolute inset-0 w-full h-full object-contain", fullResLoaded ? "opacity-100" : "opacity-0")
+                        : "block w-full h-auto",
+                    )}
+                  />
+                )}
+              </div>
             ) : (
               <div className="flex aspect-[16/10] items-center justify-center">
                 <BrandLoader size="md" />
@@ -570,6 +669,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       {lightboxOpen && thumbnailUrl && (
         <Lightbox
           src={thumbnailUrl}
+          placeholderSrc={lowResUrl ?? undefined}
           alt={selectedAsset?.filename ?? ""}
           assetId={selectedAsset?.id ?? null}
           sceneRoundId={sceneRoundId}
@@ -787,6 +887,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 export function Lightbox({
   src,
+  placeholderSrc,
   alt,
   assetId,
   sceneRoundId,
@@ -802,6 +903,8 @@ export function Lightbox({
   saveLabel = "Save annotation",
 }: {
   src: string;
+  /** Low-res placeholder rendered behind src; remains visible while src loads. */
+  placeholderSrc?: string;
   alt: string;
   assetId: string | null;
   sceneRoundId: string;
@@ -833,6 +936,12 @@ export function Lightbox({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
+  // Progressive-load fade: src starts at opacity 0 and flips to 1 once
+  // <img> onLoad fires. While that's happening, placeholderSrc (if any)
+  // is visible underneath. Reset on src change so round-to-round swaps
+  // re-trigger the fade.
+  const [fullResLoaded, setFullResLoaded] = useState(false);
+  useEffect(() => { setFullResLoaded(false); }, [src]);
   const didPan = useRef(false);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
     null
@@ -2291,11 +2400,23 @@ export function Lightbox({
             transition: isPanning ? "none" : "transform var(--duration-quick) var(--ease-default)",
           }}
         >
+          {/* Low-res placeholder. Sized in flow so the wrapper takes its
+              dimensions; the full-res img overlays it absolute and fades in. */}
+          {placeholderSrc && (
+            <img
+              src={placeholderSrc}
+              alt=""
+              aria-hidden
+              draggable={false}
+              className="block max-h-[96vh] max-w-[96vw] object-contain"
+            />
+          )}
           <img
             ref={imgRef}
             src={src}
             alt={alt}
             draggable={false}
+            onLoad={() => setFullResLoaded(true)}
             onClick={handleImageClick}
             onPointerEnter={() => setIsOverImage(true)}
             onPointerLeave={() => setIsOverImage(false)}
@@ -2348,7 +2469,12 @@ export function Lightbox({
                 await persistCurrentStroke();
               }
             }}
-            className="block max-h-[96vh] max-w-[96vw] object-contain"
+            className={cn(
+              "max-h-[96vh] max-w-[96vw] object-contain transition-opacity duration-300",
+              placeholderSrc
+                ? cn("absolute inset-0 m-auto", fullResLoaded ? "opacity-100" : "opacity-0")
+                : "block",
+            )}
           />
 
           {/* Drawing overlay — fluo green strokes anchored to the image */}

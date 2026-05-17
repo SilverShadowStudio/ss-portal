@@ -504,19 +504,22 @@ export default function Index() {
 
         let assetUrl: string | null = (asset as any)?.image_url || null;
         if (!assetUrl && (asset as any)?.dropbox_path) {
+          // Dashboard hero is a browsing surface — use the thumbnail endpoint
+          // so we don't pull down the full-resolution render just to render
+          // the hero card. AssetViewer fetches full-res on its own.
           try {
             const { data: sessionData } = await supabase.auth.getSession();
             const token = sessionData?.session?.access_token;
             if (token) {
               const res = await fetch(
-                `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+                `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ path: (asset as any).dropbox_path }),
+                  body: JSON.stringify({ path: (asset as any).dropbox_path, size: "w640h480" }),
                 }
               );
-              if (res.ok) assetUrl = (await res.json()).link ?? null;
+              if (res.ok) assetUrl = (await res.json()).thumbnail ?? null;
             }
           } catch { /* ignore */ }
         }

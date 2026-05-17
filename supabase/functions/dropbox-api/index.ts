@@ -188,9 +188,18 @@ Deno.serve(async (req) => {
         }
 
         const data = await response.json();
+        // Cache temporary-link responses for 1 hour. Dropbox links remain valid
+        // for ~4 hours, but we revalidate sooner to be safe. Browser caching
+        // this JSON response means repeat lightbox opens skip the round-trip.
         return new Response(
           JSON.stringify({ link: data.link, metadata: data.metadata }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Cache-Control": "private, max-age=3600",
+            },
+          }
         );
       }
 
@@ -236,14 +245,22 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Return thumbnail as base64
+        // Return thumbnail as base64. Cache aggressively — thumbnails are
+        // deterministic from path content; we cap at 1h to align with the
+        // temporary-link TTL so file replacements show up within an hour.
         const blob = await response.blob();
         const buffer = await blob.arrayBuffer();
         const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        
+
         return new Response(
           JSON.stringify({ thumbnail: `data:image/jpeg;base64,${base64}` }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Cache-Control": "private, max-age=3600",
+            },
+          }
         );
       }
 
