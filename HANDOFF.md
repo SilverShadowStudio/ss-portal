@@ -8,6 +8,104 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 18 May 2026
+
+Long session, 19 commits. Two major threads: (1) plumbing the delivery-notification email queue end-to-end and wiring it into the actually-active scan path, and (2) a sweep of UI polish — image performance, unified loader, sidebar/menu tightening, and a documents-page accordion. Head: `dc960e3` on `origin/main`.
+
+## Completed this session
+
+### 1. Documents / HANDOFF split (`74a0f2b`)
+- Replaced `CLAUDE.md` (rules at rest) and `HANDOFF.md` (state in motion) per the agreed split. Promotion policy now documented at the top of HANDOFF.md.
+
+### 2. AdminClients header → filtered Projects view + `account_id` fix (`04e2afb`, `0edb8e9`, `1462c6e`)
+- `AdminClients.tsx`: header card click now navigates to `/admin/projects?client=<account_id>` instead of the profile page; the existing "Edit profile" dropdown item still routes to `/admin/clients/<account_id>` so the profile stays reachable.
+- `AdminProjects.tsx`: the `?client=` query param was being treated as `user_id`; now resolved as `account_id` via `account_members` lookup, mapped to the set of user_ids on that account, and matched against the project list. Synthetic empty entry built when no projects exist for any user on the account. Renamed local `clientParam → accountParam`.
+- `Client` interface extended with `account_id: string | null`. Header now renders a 10px uppercase **"View profile →"** link when `selectedClient && !selectedProject && selectedClient.account_id` — routes back to `/admin/clients/<account_id>`. Live SQL sanity-checked the data path.
+
+### 3. Per-client email history in admin profile (`224bedb`)
+- New edge function `list-client-emails` (admin-gated, deployed). Resolves all `auth.users.email` for an account via `account_members`, paginates Resend `GET /emails` (cap 5 pages × 100 = 500), filters server-side by recipient, returns `[{ id, to, from, subject, created_at, last_event }]` plus a `warning` field on Resend errors.
+- New edge function `get-client-email` (admin-gated, deployed). Calls Resend `GET /emails/{id}`; returns full HTML + metadata. `events: []` is a single-entry array derived from `last_event` — Resend doesn't expose a per-email event timeline via API.
+- `AdminClientProfile.tsx`: new "Emails" section below Account-owner. Row format: date / recipient / subject / status badge (tone-coloured by `last_event`). Click → 4xl Dialog with sandboxed `iframe srcDoc={html} sandbox=""` preview.
+
+### 4. `.catch()` on PostgrestBuilder sweep (`42b5913`)
+- Same class of bug fixed earlier today for `sign-quotation` / `sign-freelancer-documents`. Found four more in `dropbox-scan-visuals/index.ts:353` and three in `dropbox-webhook/index.ts:66, 367, 452` — all on `supabase.from("activity_log").insert(...).catch(...)`. Rewritten with `await ... destructure { error }` + `if (error) console.warn`.
+- Audited all 36 `.catch(` call sites in `src/` and `supabase/functions/`. The four above were the only PostgrestBuilder targets; rest are correctly on real Promises (`fetch`, `resp.json`, `storage.createBucket`, `auth.admin.deleteUser`, `functions.invoke`, `navigator.clipboard.writeText`, `downloadWithDrawings`). Documented in HANDOFF.
+
+### 5. Dropbox team namespace headers in `dropbox-api` (`4bf5c53`) + `dropbox-webhook` (`361357f`)
+- Same fix landed in two passes. Both functions now call `/2/users/get_current_account` after token refresh, read `root_info.root_namespace_id`, and pass `Dropbox-API-Path-Root: {".tag":"namespace_id","namespace_id":"<id>"}` on every subsequent path-based call.
+- `dropbox-api`: threaded into all four call sites — `get-temporary-link`, `get-thumbnail`, `list-folder`, `rescan-folder`. Live verified: same team path returns `409 path/not_found` without the header, `200` with it.
+- `dropbox-webhook`: added in `processChanges` before the initial recursive `list_folder({path: "", recursive: true})`.
+
+### 6. Delivery-notification email queue end-to-end (`04fddac`, `47fbab0`, `66d9489`)
+- **Migration `20260518000001_delivery_notification_queue.sql` applied.** New table `pending_delivery_notifications` (id, scene_round_id → scene_rounds, account_id → accounts, send_at, sent_at, payload jsonb, attempts, last_error, created_at). Partial index `(send_at) WHERE sent_at IS NULL` for cron lookups; partial unique index `(scene_round_id) WHERE sent_at IS NULL` as the idempotency guard. RLS admin-only via `is_admin()`. pg_cron job `dispatch-pending-deliveries` scheduled `*/5 * * * *` calling `https://oodhsoiwnqxcimzmzick.supabase.co/functions/v1/dispatch-pending-deliveries` (jobid 1, active).
+- New edge function `send-delivery-notification` (deployed). Takes `{ pending_id }`, resolves recipients (preferring the payload snapshot, falling back to live `account_members → auth.users.email`), builds HTML matching `_shared/emailTemplates.ts` (logo, `#EDE8E0` background, Georgia serif body, 11px uppercase CTA), sends via Resend, stamps `sent_at` on success or `attempts + 1, last_error` on failure.
+- New edge function `dispatch-pending-deliveries` (deployed). Cron target. Pulls up to 50 due-but-unsent rows ordered by `send_at` asc, calls `send-delivery-notification` for each via server-to-server fetch with the service-role bearer. Live smoke-tested: empty queue returns `{"processed": 0}`.
+- `dropbox-webhook/index.ts`: added `computeUkSendAt(now)` (Europe/London 09:00–20:00 send-immediate, else next 09:00 UK via Intl + offset iteration to handle BST/GMT) and `enqueueDeliveryNotification` helper. Called inside `deliverRound` right after the activity_log insert.
+- **Deep-link CTA** (`47fbab0`): payload now carries `project_id / scene_id / round_id`; `send-delivery-notification` assembles `https://portal.silvershadowstudio.com/portfolio?project=…&scene=…&round=…`. `Portfolio.tsx` auto-drill `useEffect` extended to read `useSearchParams()` (URL params take precedence over `location.state`; cleared via `navigate(location.pathname, { replace: true })` after consume). `ProtectedRoute.tsx` redirects to `/auth` with `state={{ from: location }}`; `Auth.tsx` reads `state.from` and uses `${pathname}${search}` as the post-login target so email clicks survive the login round-trip.
+- **Helper extracted to shared file** (`66d9489`): `supabase/functions/_shared/deliveryNotification.ts` now owns `computeUkSendAt` + `enqueueDeliveryNotification`. Both `dropbox-webhook` and `dropbox-scan-visuals` import from it.
+- **Wired into the actually-active path**: `dropbox-scan-visuals/index.ts` now calls `enqueueDeliveryNotification` inside its `if (!DELIVERED_STATES.includes(dbRound.status))` block, right after the activity_log insert. The gate enforces "only on actual delivery transitions"; the DB unique index protects against duplicate enqueues from repeat scans.
+
+### 7. Round 2+ requested directly from annotations (`c42a762`)
+- `Portfolio.tsx` + `Index.tsx`: new `handleRequestNextRoundDirect()` helper. When `selectedRound.round_number > 1` (or `focus.round.round_number > 1` on the dashboard), clicking "Request Round NN" now skips the NewRoundModal entirely. Directly inserts `scene_rounds` row with `status: "pending"`, `start_date` + `end_date` from `computeRoundSchedule(now)`, `instructions: "See annotations on Round NN"`. Logs activity (`round_created`, `actorRole: "client"`, `"Round NN requested via annotations"`). Round 1 still uses the brief modal.
+- Dashboard path also updates the prior round to `status: "in_production"` so it leaves the review filter (mirrors existing `handleCreateCorrections`).
+
+### 8. ClientSidebar — team sub-label + project menu (`a692535`, `946af3c`)
+- `accountSubLabel={accountType === "team" ? "Team" : (profile?.company ?? null)}` — team users now see the literal "Team" under their name.
+- Account menu split: partnership keeps `Overview / Orders / Documents / Settings / Compact / Theme / Log off`. Project clients no longer see Overview or Orders. Team menu unchanged. `/dashboard` and `/orders` routes preserved in `App.tsx` for partnership clients + admin ghost mode.
+
+### 9. Unified pulsing SS BrandLoader across 99 sites (`b6dd250`, `c1a3bca`)
+- New `src/components/ui/BrandLoader.tsx` — renders `@/assets/ss-icon.png` with `brightness-0 dark:invert`, sized `sm/md/lg` (`h-4/h-6/h-10`), animated via custom Tailwind keyframe `brand-pulse` (1800ms ease-in-out, opacity 0.3 ↔ 1.0, scale 0.95 ↔ 1.05). Keyframe + `animate-brand-pulse` utility added to `tailwind.config.ts`.
+- Replaced every `<Loader2 ... animate-spin>` and every ad-hoc gold-border-spinner div across 42 files. RefreshCw with `animate-spin` toggles converted to `{isRefreshing ? <BrandLoader /> : <RefreshCw />}` so the static refresh icon affordance is preserved when idle. `Loader2` imports removed where no other usage remained.
+- `LoginSplash.tsx` deliberately untouched (signature entry experience).
+- Cleanup commit `c1a3bca` removed an accidentally-staged 0-byte stray file named `....` that `git add -A` swept up.
+
+### 10. Three-layer image strategy (`491ecd4`)
+- **Layer 1 — Cache headers.** `dropbox-api` `get-temporary-link` and `get-thumbnail` responses now return `Cache-Control: private, max-age=3600`. 1-hour TTL stays safely under Dropbox's ~4-hour temp-link lifetime; browser-cached JSON means repeat grid renders and repeat lightbox opens skip the round-trip.
+- **Layer 2 — Thumbnails in browsing views.** Portfolio.tsx and Index.tsx dashboard-hero Dropbox-preview resolution switched from `get-temporary-link` to `get-thumbnail` at `w640h480`. Storage-uploaded files keep their public URL (no thumbnail service available, per the constraint). AdminProjects only fetches `source: "upload"` assets so no Dropbox-thumb path to swap there.
+- **Layer 3 — Lightbox progressive load + adjacent preload.** `AssetViewer.tsx` now keeps two URLs: `lowResUrl` (thumbnail, typically a browser-cache hit from the grid) and `thumbnailUrl` (full-res, despite the legacy name). In-page preview renders low-res in flow then full-res absolute on top, fading in via `transition-opacity duration-300` on `onLoad`. `Lightbox` component gained `placeholderSrc` prop + internal `fullResLoaded` state (resets on `src` change). New `useEffect([selectedAsset, siblingRounds, sceneRoundId])` queries `round_assets` for ±2 neighbouring round IDs, resolves their full-res URLs, fires `preloadImages(urls)` — arrow-key flicks land on already-loaded images.
+
+### 11. Documents page polish (`6f51a03` earlier today, `0f895f9`, `dc960e3`)
+- Sidebar section labels replaced with horizontal rules (`6f51a03`).
+- **`SectionHeader` introduced (`0f895f9`)**: gold uppercase label flush-left, 1px `#2A2820` rule fills remaining width, optional inline action button (e.g. Orders' "View all →") replaces the rule's right end. Italic serif empty states (`EmptyState`) at `text-foreground/45`.
+- **Promoted to accordion (`dc960e3`)**: each of the four categories (Client Agreement / Orders / Quotations / Invoices) is now collapsible. Single-section-open invariant; 200ms ease height + opacity animation via framer-motion's `AnimatePresence`. Header now shows `LABEL · count` (`· None` at 40% opacity when empty), with a `ChevronRight` rotating 90° on open. Default-open priority: unpaid invoice → Invoices; else missing agreement → Client Agreement; else first non-empty section; else all collapsed. 24px between collapsed headers, 48px below an expanded section.
+
+## In progress / needs verification
+
+- **Live end-to-end test of the delivery email queue.** Dispatcher cron is active and returns `{"processed":0}` against an empty queue. Needs a real delivery transition (admin Rescan on a scene that flips from non-delivered to delivered) to exercise the full path: enqueue → cron picks up → Resend send → row stamped `sent_at`. The `pending_delivery_notifications` table is empty as of session end.
+- **CP117/SC01 round 02 image.** Dropbox file `CP117-SC01-VS_R02_10 .jpg` has a **trailing space before `.jpg`** which the scan-visuals regex `/_R(\d+)_(\d+)\.(jpg|jpeg|png|tiff|tif)$/i` correctly rejects. Round 02 row exists in DB (`29a2ec74-…`, status `pending`, kind `production`) from the Round 2+ direct flow but has zero `round_assets`. **User action required**: rename the file in Dropbox to remove the space.
+- **`folder_mappings` empty across all scenes.** Diagnosed: only writer is `FolderMappingManager.tsx:116` (manual admin step); no scene was ever set up via that legacy workflow. `dropbox-webhook` returns early at line 365 with "No folder mappings configured" on every fire — the webhook is structurally dead for the current scene-code workflow. Mitigation: `dropbox-scan-visuals` now also fires the email enqueue, so email notifications work via admin Rescan. Webhook fix landed (namespace header) but functionally idle until the path is migrated or `folder_mappings` populated.
+
+## Pending
+
+- **`STRIPE_SECRET_KEY` is `sk_live_`.** Verified live earlier today via a one-shot diagnostic function (deployed, invoked, deleted). Any payment smoke-test still risks real money on real cards. Decision parked from previous session — recommendation: swap to `sk_test_` for dummy account flow, or use a card you control with a £1 test + refund. `INV-202605-4769`'s cached `cs_live_...` URL also still in DB and will resolve via the cache shortcut.
+- **Sidebar visual diff check.** The `dca01c3` tightening landed yesterday; no live browser sweep this session. Recommend a 60-second eye-on-the-screen check at next opportunity.
+- **`is_super_admin()` SQL helper + `useIsSuperAdmin` React hook.** Both implemented (`a0496f3`) but no caller / RLS policy uses them yet. Available when needed.
+- **`handleMakeAdmin` in `AdminClients.tsx`** — defined but unwired (per-user actions dropdown not yet built). Re-attach when adding it.
+
+## Decisions made
+
+- **`dropbox-webhook` stays in code but is structurally dead** until either (a) `folder_mappings` is populated for active scenes, or (b) the webhook is migrated to scene-code resolution mirroring `dropbox-scan-visuals`. Option (b) is the recommended end-state when picked up — eliminates a manual admin step and unifies the two sync paths. Today's path-root fix is forward-compatible with either choice.
+- **`scene_rounds.image_url` is and remains DEPRECATED.** Migration `20260201213741` marked the column deprecated. The actually-functional client image pipeline is `round_assets → dropbox-api/get-temporary-link` (or storage public URL for uploads). The earlier brief's framing "the webhook should populate `scene_rounds.image_url`" was rejected; the real bug was `dropbox-api` missing the team namespace header.
+- **Delivery-notification queue uses option 1 (proper table + cron)**, not option 2 (one-shot cron). Trade-off: pays a schema cost for retry visibility, idempotency, and debuggability. The partial unique index `(scene_round_id) WHERE sent_at IS NULL` is the idempotency lock.
+- **Recipients are snapshotted at enqueue time** in the payload. If membership changes between delivery and send (delayed by quiet hours), the email reflects who was on the account at delivery, not at send time. `send-delivery-notification` falls back to live resolution only if the payload snapshot is empty.
+- **CTA deep-links use query params, not `location.state`.** `location.state` doesn't survive external HTTP clicks. Portfolio reads `?project=…&scene=…&round=…` and clears them after consume.
+- **Round 2+ skips the brief modal.** Previous round's `asset_drawings` + `asset_pins` are the brief. Production reads them in place on the previous round; no copy/move. Round 1 still uses the full brief modal (initial brief is still needed).
+- **Three CP107 duplicate `project_code` rows** (Eiffel Tower, 10 Downing St, Parc des Princes — all `project_code = "CP107"`): legacy from before scan-by-name existed; deliberately not addressed per the previous-session instruction. Worth a cleanup pass before more production codes are issued.
+- **BrandLoader replaces `Loader2 + animate-spin` everywhere except `LoginSplash`.** Dual opacity + scale pulse (1800ms ease-in-out, opacity 0.3↔1.0, scale 0.95↔1.05). RefreshCw remains for idle refresh icons; only the spinning state swaps to BrandLoader.
+- **Documents accordion default-open priority**: unpaid invoice → missing agreement → first non-empty section → all collapsed. Picks the section the client is most likely to need to act on.
+
+## Open questions or things to watch
+
+- **Resend list-emails pagination cap** is 5 pages × 100 = 500 emails per account in `list-client-emails`. If volume grows past that, older emails roll off. Trivial to raise `MAX_PAGES`.
+- **`pending_delivery_notifications` retry semantics**: `attempts` field is bumped on failures but never blocks retries. Effectively: cron will keep trying every 5 minutes until either the row is `sent_at`-stamped or manually cleaned up. No exponential backoff. Acceptable for current volume; revisit if Resend starts rate-limiting.
+- **`SmartImage.loadedSrcs` is session-scoped** (module-level `Set`). Cross-session caching now relies on the `Cache-Control` header added to `dropbox-api` JSON responses — adequate but means a hard refresh re-warms the cache.
+- **Edge function source for `_shared/deliveryNotification.ts`**: both callers pin different `supabase-js` versions (`@2.89.0` in webhook, `@2` floating in scan-visuals). The helper's supabase param is typed `any` deliberately; behaviourally compatible at runtime. If a future caller wants tighter typing, pin a single version in the shared file.
+- **Documents accordion: smart-default heuristic only fires once per page load.** Subsequent data refetches (mutations from inside the page) don't re-trigger it. Acceptable; if the user signs an agreement inline and expects the accordion to flip to Invoices, that's a future enhancement.
+- **Three-layer image perf**: not benchmarked. The thumbnail-vs-temp-link swap is conceptually large (640×480 jpg ≈ 30 KB vs full-res 4K render ≈ 10 MB) but actual savings depend on how many rounds are visible in a typical grid. Worth a quick devtools network sweep.
+- **`folder_mappings` decision** (see above) — needs to land before the webhook is reconnected to anything. Until then, every delivery is admin-initiated via Rescan.
+
+---
+
 # Session — 17 May 2026 (evening)
 
 Pre-launch session before the Katharine Pooley project starts tomorrow morning. Focus: Stripe payment loop end-to-end.
