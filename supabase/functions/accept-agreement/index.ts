@@ -429,8 +429,14 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
   // 8. Compute SHA-256 of the final PDF.
   const pdfSha256 = await sha256Hex(pdfBytes);
 
-  // 9. Upload to storage at agreements/{account_id}/{agreement_uid}.pdf.
-  const storagePath = `${acct.id}/${agreementUid}.pdf`;
+  // 9. Upload to storage at agreements/{user_id}/{agreement_uid}.pdf.
+  // The "Users can view their own agreement files" RLS policy on the
+  // agreements bucket requires the first path segment to equal the
+  // requesting user's auth.uid(). An earlier draft used {account_id}/...
+  // (cleaner data model) but RLS blocked the signing client from reading
+  // their own file. Option A (account-aware RLS) is the proper end state
+  // — see HANDOFF.md note pinned to the studio-account cleanup.
+  const storagePath = `${user.id}/${agreementUid}.pdf`;
   const { error: uploadErr } = await admin.storage
     .from("agreements")
     .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });

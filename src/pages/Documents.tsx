@@ -177,19 +177,24 @@ export default function Documents() {
   const toggleSection = (key: SectionKey) =>
     setOpenSection((cur) => (cur === key ? null : key));
 
+  // Project clients don't have Orders — hide that section + skip it from
+  // the default-open priority.
+  const showOrders = accountType !== "project";
+
   // Pick the initial open section the first time data settles. Priority:
   // any unpaid invoice → Invoices; else no signed agreement → Agreement;
   // else first non-empty section; else everything collapsed.
+  // Orders is omitted from the priority chain when `showOrders` is false.
   useEffect(() => {
     if (defaultPicked || loading) return;
     const unpaid = invoices.some((i) => i.status !== "paid" && i.status !== "draft");
     if (unpaid) { setOpenSection("invoices"); setDefaultPicked(true); return; }
     if (agreements.length === 0) { setOpenSection("agreement"); setDefaultPicked(true); return; }
-    if (orders.length > 0) { setOpenSection("orders"); setDefaultPicked(true); return; }
+    if (showOrders && orders.length > 0) { setOpenSection("orders"); setDefaultPicked(true); return; }
     if (quotations.length > 0) { setOpenSection("quotations"); setDefaultPicked(true); return; }
     if (invoices.length > 0) { setOpenSection("invoices"); setDefaultPicked(true); return; }
     setDefaultPicked(true);
-  }, [defaultPicked, loading, invoices, agreements, orders, quotations]);
+  }, [defaultPicked, loading, invoices, agreements, orders, quotations, showOrders]);
 
   async function handlePayInvoice(inv: Invoice) {
     if (inv.stripe_checkout_url) {
@@ -452,6 +457,10 @@ export default function Documents() {
           </section>
 
           {/* ── Orders ───────────────────────────────────────────────────── */}
+          {/* Hidden for project clients — they don't have orders, and Orders
+              was already removed from their sidebar. Partnership clients keep
+              the full accordion. */}
+          {showOrders && (
           <section className={cn(openSection === "orders" ? "mb-12" : "mb-6")}>
             <AccordionHeader
               label="Orders"
@@ -502,6 +511,7 @@ export default function Documents() {
             )}
             </AccordionPanel>
           </section>
+          )}
 
           {/* ── Quotations ───────────────────────────────────────────────── */}
           <section className={cn(openSection === "quotations" ? "mb-12" : "mb-6")}>
