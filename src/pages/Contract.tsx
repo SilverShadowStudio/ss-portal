@@ -53,13 +53,13 @@ interface AccountInfo {
   country: string | null;
   registration_number: string | null;
   building_number: string | null;
-  street: string | null;
+  street_name: string | null;
   city: string | null;
   postcode: string | null;
 }
 
 function joinAddress(a: AccountInfo): string | null {
-  const parts = [a.building_number, a.street, a.postcode, a.city].filter(Boolean) as string[];
+  const parts = [a.building_number, a.street_name, a.postcode, a.city].filter(Boolean) as string[];
   return parts.length ? parts.join(", ") : null;
 }
 
@@ -346,7 +346,7 @@ export default function Contract() {
       try {
         const { data: membership, error: mErr } = await supabase
           .from("account_members")
-          .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street, city, postcode)")
+          .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street_name, city, postcode)")
           .eq("user_id", user.id)
           .maybeSingle();
         if (cancelled) return;

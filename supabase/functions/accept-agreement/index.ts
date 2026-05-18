@@ -327,7 +327,7 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
   // 3. Fetch account via account_members → reject if no membership.
   const { data: membership, error: memberErr } = await admin
     .from("account_members")
-    .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street, city, postcode)")
+    .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street_name, city, postcode)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (memberErr) {
@@ -341,7 +341,7 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
     country: string | null;
     registration_number: string | null;
     building_number: string | null;
-    street: string | null;
+    street_name: string | null;
     city: string | null;
     postcode: string | null;
   } | null;
@@ -376,7 +376,7 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
 
   // 6. Build the document via the shared library — same source as Contract.tsx.
   const acceptedAtIso = new Date().toISOString();
-  const registeredAddress = [acct.building_number, acct.street, acct.postcode, acct.city]
+  const registeredAddress = [acct.building_number, acct.street_name, acct.postcode, acct.city]
     .filter(Boolean).join(", ") || null;
   const document_ = getAgreement({
     schedule: payload.schedule_type,

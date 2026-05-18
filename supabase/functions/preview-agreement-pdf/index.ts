@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
   // Fetch account via account_members
   const { data: membership } = await admin
     .from("account_members")
-    .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street, city, postcode)")
+    .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street_name, city, postcode)")
     .eq("user_id", user.id)
     .maybeSingle();
   // deno-lint-ignore no-explicit-any
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     country: string | null;
     registration_number: string | null;
     building_number: string | null;
-    street: string | null;
+    street_name: string | null;
     city: string | null;
     postcode: string | null;
   } | null;
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const registeredAddress = [acct.building_number, acct.street, acct.postcode, acct.city]
+  const registeredAddress = [acct.building_number, acct.street_name, acct.postcode, acct.city]
     .filter(Boolean).join(", ") || null;
   const now = new Date();
   const doc = getAgreement({
