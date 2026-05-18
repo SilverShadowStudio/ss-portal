@@ -1,7 +1,12 @@
 // Single source of truth for the Silvershadow Studio Client Agreement.
 // Rendered in the portal at signup and server-side into the signed PDF.
 
-export const CURRENT_AGREEMENT_VERSION = "SSS-CA-v2.0";
+// CHANGELOG:
+//   v2.1 (2026-05-18) — Project payment terms updated: 50/50 split (was 40/60),
+//     deposit Net 7 max 7 days before start (was vague "on commencement"),
+//     balance Net 14 (was Net 30). Clause 2 and Clause 6 amended.
+//   v2.0 — Initial published version.
+export const CURRENT_AGREEMENT_VERSION = "SSS-CA-v2.1";
 
 export const ACCEPTANCE_CHECKBOX_TEXT =
   "I confirm that I am authorised to bind the Client and agree to the Silvershadow Studio Client Agreement on behalf of the Client. I understand that every order I place through the platform is a binding transaction under these terms.";
@@ -27,7 +32,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     body: [
       "Every piece of work begins with an order confirmation. This is either a monthly lane subscription or a project order. You see the scope and the price in your portal and confirm with a single click. That confirmation is a binding order under this agreement.",
       "Subscription — Lanes: A Lane is one unit of dedicated production capacity, equivalent to a full-time visualiser working eight hours a day, five days a week. You subscribe to the number of Lanes that matches your workload. Each Lane runs one active task at a time. When a task is complete, the next begins immediately. There is no cap on requests or complexity.",
-      "Project — Per Order: A project order defines a specific scope — the scenes, cameras, rounds of review, and total fee. Work begins when you confirm the order and the commencement payment is received.",
+      "Project — Per Order: A project order defines a specific scope — the scenes, cameras, rounds of review, and total fee. Work begins on the agreed project start date, subject to confirmation of the order and receipt of the deposit invoice.",
     ],
   },
   {
@@ -64,7 +69,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     title: "FEES AND PAYMENT",
     body: [
       "Subscription: Monthly, upfront, aligned to calendar months. Adding Lanes mid-month is billed pro rata. Reducing Lanes requires 30 days written notice — all Lanes remain billable throughout. All subscription fees are non-refundable once a billing period commences.",
-      "Project: 40% due on commencement, 60% due within 30 calendar days of delivery. Deliverables are not released until payment is received.",
+      "Project: 50% deposit invoice issued on quotation acceptance, due within 7 days of receipt and in any event no later than 7 days before the agreed project start date. Work commences on the agreed start date subject to receipt of the deposit. The remaining 50% balance invoice is issued on final delivery, due within 14 days of receipt. Deliverables are released against payment of the balance invoice.",
       "All orders: Fees are exclusive of VAT. Late payment accrues interest at 5% per annum above the Bank of England base rate, applied every 10 days. Non-payment entitles us to suspend platform access and withhold delivery.",
     ],
   },
