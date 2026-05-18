@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { buildInviteEmailHtml, InviteEmailConfig } from '../_shared/emailTemplates.ts'
+import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS, InviteEmailConfig } from '../_shared/emailTemplates.ts'
 import { loadBrand } from '../_shared/brand.ts'
 
 const corsHeaders = {
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
-            subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
+            subject: emailConfig.subject || EMAIL_INVITE_DEFAULTS.subject,
             html: buildInviteEmailHtml(acct.company_name, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: resendFirstName }),
             headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
             tags: [{ name: 'category', value: 'reinvite' }],
@@ -483,7 +483,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
-            subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
+            subject: emailConfig.subject || EMAIL_INVITE_DEFAULTS.subject,
             html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: body.contact?.firstName ?? null }),
             headers: {
               'X-Entity-Ref-ID': crypto.randomUUID(),
