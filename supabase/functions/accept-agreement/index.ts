@@ -568,7 +568,7 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
         body: JSON.stringify({
           from: "Silver Shadow Studio <portal@silvershadowstudio.com>",
           to: [user.email],
-          subject: "Your Silver Shadow Studio Services Agreement",
+          subject: "Your Services Agreement",
           html,
           attachments: [{ filename: fileName, content: pdfBase64 }],
         }),
