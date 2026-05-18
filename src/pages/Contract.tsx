@@ -312,7 +312,7 @@ function ExecutionBlockView({ execution }: { execution: AgreementDocument["execu
 
 export default function Contract() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshAgreementStatus } = useAuth();
 
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [accountState, setAccountState] = useState<"loading" | "ready" | "error" | "no_account">("loading");
@@ -491,6 +491,11 @@ export default function Contract() {
       if (!data?.success) {
         throw new Error((data as any)?.error || "Acceptance failed.");
       }
+      // Refresh AuthContext's cached `hasSignedAgreement` before navigating
+      // away. ProtectedRoute reads that cached boolean; without the refresh
+      // the next route would redirect right back to /sign-agreement and
+      // produce a loop until the next full page reload.
+      try { await refreshAgreementStatus(); } catch { /* best-effort */ }
       navigate("/");
     } catch (e: any) {
       console.error("[Contract] accept failed:", e);
@@ -501,6 +506,7 @@ export default function Contract() {
   }, [
     canAccept, document_, account, signatoryName, signatoryPosition,
     scrolledToEndAt, pdfDownloadedBefore, computeTimeOnPageSeconds, navigate,
+    refreshAgreementStatus,
   ]);
 
   // ── Page-level loading / error states ────────────────────────────────────

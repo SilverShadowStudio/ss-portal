@@ -1,14 +1,14 @@
 // useAgreementGate — decides whether a route should render, redirect to
-// /contract, or redirect away from /contract, based on the authenticated
+// /sign-agreement, or redirect away from /sign-agreement, based on the authenticated
 // user's role + account + agreement state.
 //
 // Returns one of:
 //   "loading"          — auth or query in flight; render a quiet spinner.
 //   "bypass"           — admin / team / ghost-mode; render the route as-is.
 //   "ok"               — client has an active agreement; render the route.
-//                        (If they're on /contract, the AgreementGate
+//                        (If they're on /sign-agreement, the AgreementGate
 //                        component redirects them to /.)
-//   "needs_signature"  — client without an active agreement; route to /contract.
+//   "needs_signature"  — client without an active agreement; route to /sign-agreement.
 //
 // "Active agreement" means a row in `agreements` for the user's account
 // with `agreement_version` IN the SUPPORTED_AGREEMENT_VERSIONS set.
@@ -60,7 +60,7 @@ export function useAgreementGate(): AgreementGateStatus {
         if (cancelled) return;
         if (roleErr) {
           // Make role-query errors visible. Falling through here would
-          // trap an admin on /contract on the next render — log loudly so
+          // trap an admin on /sign-agreement on the next render — log loudly so
           // a regression is caught in dev tools immediately.
           console.error("[useAgreementGate] role lookup failed:", roleErr);
         }
@@ -92,7 +92,7 @@ export function useAgreementGate(): AgreementGateStatus {
         const accountId = (membership as { account_id: string } | null)?.account_id ?? null;
         if (!accountId) {
           // No account membership found — treat as needs_signature so
-          // they're routed to /contract, which shows the polite
+          // they're routed to /sign-agreement, which shows the polite
           // "We couldn't load your account" message.
           setStatus("needs_signature");
           return;

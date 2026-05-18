@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -23,7 +23,6 @@ import InvoicePreview from "./pages/InvoicePreview";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import SetPassword from "./pages/SetPassword";
-import SignAgreement from "./pages/SignAgreement";
 import Onboarding from "./pages/Onboarding";
 import Contract from "./pages/Contract";
 import NotFound from "./pages/NotFound";
@@ -90,7 +89,17 @@ const App = () => (
             <Route path="/forgot-password" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/set-password" element={<SetPassword />} />
-            <Route path="/sign-agreement" element={<SignAgreement />} />
+            {/* /sign-agreement is the canonical URL for the v3 acceptance
+                gate. The legacy `SignAgreement` page is left on disk but
+                no longer routed; the v3 `Contract` component renders here. */}
+            <Route
+              path="/sign-agreement"
+              element={
+                <ProtectedClient>
+                  <Contract />
+                </ProtectedClient>
+              }
+            />
             <Route
               path="/onboarding"
               element={
@@ -99,14 +108,10 @@ const App = () => (
                 </ProtectedClient>
               }
             />
-            <Route
-              path="/contract"
-              element={
-                <ProtectedClient>
-                  <Contract />
-                </ProtectedClient>
-              }
-            />
+            {/* /contract was the v3 dev URL — kept as a redirect to the
+                canonical /sign-agreement so any stale internal link
+                (comments, screenshots, dev notes) still resolves. */}
+            <Route path="/contract" element={<Navigate to="/sign-agreement" replace />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/partnership" element={<Partnership />} />
