@@ -5,7 +5,7 @@ export const EMAIL_INVITE_DEFAULTS = {
   subject: 'Your portal is ready.',
   illustrationUrl:
     'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png',
-  bodyCopy: 'Your Silver Shadow Studio portal is now ready. You will find your projects, deliveries, and studio correspondence within.',
+  bodyCopy: 'Your Silver Shadow Studio portal is now ready.<br>You will find your projects, deliveries,<br>and studio correspondence within.',
   ctaLabel: 'ENTER',
   backgroundColor: '#EDE8E0',
 }
