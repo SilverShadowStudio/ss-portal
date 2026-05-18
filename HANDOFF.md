@@ -77,6 +77,7 @@ Long session, 19 commits. Two major threads: (1) plumbing the delivery-notificat
 
 ## Pending
 
+- **`/onboarding` self-registration path broken.** The legacy state-based `formData` flow that routed `/onboarding → /contract` no longer works after the v3 gate landed (commit `86f161a`). The new `Contract.tsx` is a post-login acceptance gate that expects an authenticated user with an `account_members` row, not a freshly-collected company form in `location.state.formData`. The `/onboarding` route still exists in `App.tsx` but reaching `/contract` from it shows "We couldn't load your account". Currently dormant — admin-invite is the production onboarding path and the DB wipe earlier today confirmed no in-flight self-registrations. Next session: either remove `/onboarding` from `App.tsx` entirely, or rebuild it as the v3-aware self-registration flow if self-serve sign-up is wanted back.
 - **Studio account architectural cleanup (post-Maybourne).** The studio's own account row (Silver Shadow Studio, `account_type = 'partnership'`, id `a09b2cdd-2c98-4415-a58d-ec6420d69bd6`) is currently misclassified as a client. Temporary fix in place: client-side filter in `AccountList.tsx` hides it from the Clients page. Proper fix to be done after the Maybourne launch:
   - The studio is not a customer of itself — it shouldn't have an `accounts` row at all.
   - Move company-level fields (company name, registration number, address, country) from the account row to a new `app_settings.studio_profile` JSONB column or a dedicated `studio_profile` singleton table.

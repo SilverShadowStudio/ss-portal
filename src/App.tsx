@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ProtectedClient } from "@/components/ProtectedClient";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
 import { RootRedirect } from "@/components/RootRedirect";
 import Index from "./pages/Index";
@@ -94,12 +94,19 @@ const App = () => (
             <Route
               path="/onboarding"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Onboarding />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
-            <Route path="/contract" element={<Contract />} />
+            <Route
+              path="/contract"
+              element={
+                <ProtectedClient>
+                  <Contract />
+                </ProtectedClient>
+              }
+            />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/partnership" element={<Partnership />} />
@@ -110,89 +117,89 @@ const App = () => (
             <Route
               path="/delivery"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Delivery />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Index />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/portfolio"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Portfolio />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/lanes"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Lanes />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/timeline"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Timeline />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/tasks/new"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <NewTask />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/messages"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Messages />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/documents"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Documents />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/account"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Account />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/invoices"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Invoices />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
             <Route
               path="/orders"
               element={
-                <ProtectedRoute>
+                <ProtectedClient>
                   <Orders />
-                </ProtectedRoute>
+                </ProtectedClient>
               }
             />
 
