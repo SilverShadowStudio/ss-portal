@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
 
 interface AccountForGenerator {
   id: string;
@@ -18,7 +17,6 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { QuotationsTab } from "@/components/admin/QuotationsTab";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -62,9 +60,6 @@ interface InvoiceRow {
 const STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
 
 export default function AdminInvoices() {
-  const location = useLocation();
-  // Route-determined default tab: /admin/quotes lands on Quotations, otherwise Invoices.
-  const defaultTab = location.pathname.startsWith("/admin/quotes") ? "quotations" : "invoices";
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -258,15 +253,14 @@ export default function AdminInvoices() {
     <AdminLayout>
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Finance</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Invoices to Clients</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage invoices and payment status.</p>
         </div>
       </div>
 
-      <Tabs key={defaultTab} defaultValue={defaultTab} className="w-full">
+      <Tabs defaultValue="invoices" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="quotations">Quotations</TabsTrigger>
           <TabsTrigger value="generator">Generator</TabsTrigger>
         </TabsList>
 
@@ -460,10 +454,6 @@ export default function AdminInvoices() {
             </Select>
           </div>
           <iframe key={generatorSrc} src={generatorSrc} width="100%" style={{ height: "calc(100vh - 180px)", border: "none" }} />
-        </TabsContent>
-
-        <TabsContent value="quotations">
-          <QuotationsTab />
         </TabsContent>
       </Tabs>
     </AdminLayout>

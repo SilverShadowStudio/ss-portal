@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Download, Eye, FileText, Search } from "lucide-react";
+import { Download, Eye, FileText, MoreHorizontal, Search, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
@@ -209,10 +213,40 @@ function AgreementsTab() {
   const [agreements, setAgreements] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [previewing, setPreviewing] = useState<AgreementViewerData | null>(null);
 
   useEffect(() => { void fetchAgreements(); }, []);
+
+  const handleDelete = async (a: AgreementRow) => {
+    if (!window.confirm(`Delete the signed agreement for "${a.company_name}"? This cannot be undone.`)) return;
+    setDeletingId(a.id);
+    try {
+      // Best-effort storage cleanup — log a warning if the file is gone but
+      // continue with the DB delete so the row doesn't get stuck.
+      if (a.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("agreements")
+          .remove([a.storage_path]);
+        if (storageError) {
+          console.warn("[AdminDocuments] storage remove failed:", storageError);
+        }
+      }
+      const { error } = await supabase.from("agreements").delete().eq("id", a.id);
+      if (error) throw error;
+      toast({ title: "Agreement deleted" });
+      void fetchAgreements();
+    } catch (err: any) {
+      toast({
+        title: "Could not delete agreement",
+        description: err?.message || "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   async function fetchAgreements() {
     try {
@@ -277,12 +311,12 @@ function AgreementsTab() {
           </div>
         ) : (
           <div className="divide-y divide-border/60">
-            <div className="hidden md:grid grid-cols-[1.4fr_1.2fr_0.8fr_1fr_120px] gap-4 px-6 py-3 bg-muted/30 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="hidden md:grid grid-cols-[1.4fr_1.2fr_0.8fr_1fr_160px] gap-4 px-6 py-3 bg-muted/30 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
               <span>Client / Company</span><span>Contact</span><span>Version</span><span>Accepted</span>
-              <span className="text-right">Action</span>
+              <span className="text-right">Actions</span>
             </div>
             {filtered.map((a) => (
-              <div key={a.id} className="grid grid-cols-1 md:grid-cols-[1.4fr_1.2fr_0.8fr_1fr_120px] gap-3 md:gap-4 px-6 py-4 items-center hover:bg-muted/20 transition-colors">
+              <div key={a.id} className="grid grid-cols-1 md:grid-cols-[1.4fr_1.2fr_0.8fr_1fr_160px] gap-3 md:gap-4 px-6 py-4 items-center hover:bg-muted/20 transition-colors">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full border border-gold/40 text-gold shrink-0">
                     <FileText className="h-4 w-4" strokeWidth={1.5} />
@@ -302,7 +336,7 @@ function AgreementsTab() {
                   {a.ip_address && <span className="block text-[10px] text-muted-foreground/60 mt-0.5">IP {a.ip_address}</span>}
                 </div>
                 <div className="md:text-right">
-                  <div className="inline-flex items-center gap-4">
+                  <div className="inline-flex items-center gap-3">
                     <button onClick={() => setPreviewing({ id: a.id, storage_path: a.storage_path, file_name: a.file_name, company_name: a.company_name, agreement_version: a.agreement_version })}
                       className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground transition-smooth hover:text-gold">
                       <Eye className="h-3.5 w-3.5" strokeWidth={1.5} />Preview
@@ -311,6 +345,29 @@ function AgreementsTab() {
                       className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground transition-smooth hover:text-gold disabled:opacity-50">
                       {downloadingId === a.id ? <BrandLoader size="sm" className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" strokeWidth={1.5} />}PDF
                     </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setPreviewing({ id: a.id, storage_path: a.storage_path, file_name: a.file_name, company_name: a.company_name, agreement_version: a.agreement_version })}>
+                          <Eye className="mr-2 h-4 w-4" /> Preview
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownload(a)} disabled={downloadingId === a.id}>
+                          <Download className="mr-2 h-4 w-4" /> Download PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={deletingId === a.id}
+                          onClick={() => handleDelete(a)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete agreement
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </div>
@@ -548,10 +605,10 @@ export default function AdminDocuments() {
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold">Document Management</span>
+          <span className="text-label-gold">Client Management</span>
         </div>
         <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
-          DOCUMENTS
+          Agreements to Clients
         </h1>
       </div>
 

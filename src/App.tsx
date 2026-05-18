@@ -40,6 +40,7 @@ import AdminDocuments from "./pages/admin/AdminDocuments";
 import AdminTimeline from "./pages/admin/AdminTimeline";
 import AdminActivity from "./pages/admin/AdminActivity";
 import AdminInvoices from "./pages/admin/AdminInvoices";
+import AdminQuotes from "./pages/admin/AdminQuotes";
 import AdminTeamInvoices from "./pages/admin/AdminTeamInvoices";
 import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
@@ -296,7 +297,7 @@ const App = () => (
               path="/admin/quotes"
               element={
                 <AdminProtectedRoute>
-                  <AdminInvoices />
+                  <AdminQuotes />
                 </AdminProtectedRoute>
               }
             />
