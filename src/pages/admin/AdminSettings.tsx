@@ -4,6 +4,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
+import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -12,18 +13,35 @@ import { cn } from "@/lib/utils";
 const labelCls = "block text-[9px] uppercase tracking-[0.26em] text-foreground/40 mb-1.5";
 const inputCls = "w-full bg-transparent border-b border-border/50 py-2 text-sm text-foreground focus:outline-none focus:border-gold transition-colors placeholder:text-foreground/25";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-t border-border/30 pt-10">
-      <p className="text-[9px] uppercase tracking-[0.32em] text-foreground/35 font-sans mb-6">{title}</p>
-      {children}
-    </div>
-  );
-}
-
 export default function AdminSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Accordion — only one section open at a time. Null until the first effect
+  // picks the default (profile). Same pattern as Documents.tsx / Account.tsx.
+  type SectionKey =
+    | "profile"
+    | "password"
+    | "brand"
+    | "signature"
+    | "dropbox"
+    | "airtable"
+    | "airtable_contact_sync"
+    | "airtable_project_sync"
+    | null;
+  const [openSection, setOpenSection] = useState<SectionKey>(null);
+  const [defaultPicked, setDefaultPicked] = useState(false);
+
+  const toggleSection = (key: Exclude<SectionKey, null>) =>
+    setOpenSection((cur) => (cur === key ? null : key));
+
+  // First-load default: profile. Admin will reach for whatever they need;
+  // profile is the safest landing section.
+  useEffect(() => {
+    if (defaultPicked) return;
+    setOpenSection("profile");
+    setDefaultPicked(true);
+  }, [defaultPicked]);
 
   // ── Profile ──────────────────────────────────────────────────────────────
   const [firstName, setFirstName] = useState("");
@@ -340,7 +358,13 @@ export default function AdminSettings() {
         </p>
 
         {/* ── Profile ──────────────────────────────────────────────────── */}
-        <Section title="Profile">
+        <section className={cn(openSection === "profile" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Profile"
+            isOpen={openSection === "profile"}
+            onToggle={() => toggleSection("profile")}
+          />
+          <AccordionPanel isOpen={openSection === "profile"}>
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div>
               <label className={labelCls}>First name</label>
@@ -374,10 +398,17 @@ export default function AdminSettings() {
             />
           </div>
           <SaveButton loading={savingProfile} onClick={saveProfile} label="Save profile" />
-        </Section>
+          </AccordionPanel>
+        </section>
 
         {/* ── Password ─────────────────────────────────────────────────── */}
-        <Section title="Password">
+        <section className={cn(openSection === "password" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Password"
+            isOpen={openSection === "password"}
+            onToggle={() => toggleSection("password")}
+          />
+          <AccordionPanel isOpen={openSection === "password"}>
           <div className="grid grid-cols-2 gap-6 mb-8">
             <div>
               <label className={labelCls}>New password</label>
@@ -401,10 +432,17 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingPassword} onClick={changePassword} label="Update password" disabled={!newPassword} />
-        </Section>
+          </AccordionPanel>
+        </section>
 
         {/* ── Brand ─────────────────────────────────────────────────── */}
-        <Section title="Brand">
+        <section className={cn(openSection === "brand" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Brand"
+            isOpen={openSection === "brand"}
+            onToggle={() => toggleSection("brand")}
+          />
+          <AccordionPanel isOpen={openSection === "brand"}>
           <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
             Single source of truth for the studio's brand colours. Used by every PDF (background), every email (background and accents), and the portal itself (dark mode page surface, card surfaces, gold accents). Changes apply to new PDFs/emails immediately and to the portal on next page reload.
           </p>
@@ -425,10 +463,17 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingBrand} onClick={saveBrand} label="Save brand" />
-        </Section>
+          </AccordionPanel>
+        </section>
 
         {/* ── Studio Signature ──────────────────────────────────────── */}
-        <Section title="Studio Signature">
+        <section className={cn(openSection === "signature" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Studio Signature"
+            isOpen={openSection === "signature"}
+            onToggle={() => toggleSection("signature")}
+          />
+          <AccordionPanel isOpen={openSection === "signature"}>
           <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
             Fred's drawn signature PNG. Embedded in the Silvershadow signature block of every freelancer document PDF.
             Upload a PNG with a transparent or white background, ideally 600 × 150 px or similar landscape ratio.
@@ -460,20 +505,41 @@ export default function AdminSettings() {
               {signaturePreviewUrl ? "Replace signature" : "Upload signature"}
             </button>
           </div>
-        </Section>
+          </AccordionPanel>
+        </section>
 
         {/* ── Dropbox ──────────────────────────────────────────────────── */}
-        <Section title="Dropbox">
-          <DropboxConnectionStatus />
-        </Section>
+        <section className={cn(openSection === "dropbox" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Dropbox"
+            isOpen={openSection === "dropbox"}
+            onToggle={() => toggleSection("dropbox")}
+          />
+          <AccordionPanel isOpen={openSection === "dropbox"}>
+            <DropboxConnectionStatus />
+          </AccordionPanel>
+        </section>
 
         {/* ── Airtable ─────────────────────────────────────────────────── */}
-        <Section title="Airtable">
-          <AirtableSyncPanel />
-        </Section>
+        <section className={cn(openSection === "airtable" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Airtable"
+            isOpen={openSection === "airtable"}
+            onToggle={() => toggleSection("airtable")}
+          />
+          <AccordionPanel isOpen={openSection === "airtable"}>
+            <AirtableSyncPanel />
+          </AccordionPanel>
+        </section>
 
         {/* ── Airtable Contact Sync ─────────────────────────────────── */}
-        <Section title="Airtable Contact Sync">
+        <section className={cn(openSection === "airtable_contact_sync" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Airtable Contact Sync"
+            isOpen={openSection === "airtable_contact_sync"}
+            onToggle={() => toggleSection("airtable_contact_sync")}
+          />
+          <AccordionPanel isOpen={openSection === "airtable_contact_sync"}>
           <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
             Users table (one row per person) + Clients table (one row per company). Called when a new client is created.
           </p>
@@ -610,10 +676,17 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingContactConfig} onClick={saveContactConfig} label="Save config" />
-        </Section>
+          </AccordionPanel>
+        </section>
 
         {/* ── Airtable Project Sync ─────────────────────────────────── */}
-        <Section title="Airtable Project Sync">
+        <section className={cn(openSection === "airtable_project_sync" ? "mb-12" : "mb-6", "last:mb-0")}>
+          <AccordionHeader
+            label="Airtable Project Sync"
+            isOpen={openSection === "airtable_project_sync"}
+            onToggle={() => toggleSection("airtable_project_sync")}
+          />
+          <AccordionPanel isOpen={openSection === "airtable_project_sync"}>
           <p className="text-[10px] font-sans text-foreground/35 mb-6 leading-relaxed">
             Projects table. Called when a new project is created. Auto-generates project code (CP or RUP prefix).
           </p>
@@ -700,7 +773,8 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingProjectConfig} onClick={saveProjectConfig} label="Save config" />
-        </Section>
+          </AccordionPanel>
+        </section>
       </div>
     </AdminLayout>
   );
