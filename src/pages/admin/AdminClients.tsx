@@ -12,7 +12,8 @@ export default function AdminClients() {
         addButtonLabel="Add Client"
         showClientCode
         showAccountType
-        showAccountActions
+        headerNavigatesToProjects
+        accountActions={{ editProfile: true, delete: true }}
       />
     </AdminLayout>
   );

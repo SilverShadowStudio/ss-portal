@@ -12,7 +12,7 @@ export default function AdminTeam() {
         addButtonLabel="Add Member"
         showClientCode={false}
         showAccountType={false}
-        showAccountActions={false}
+        accountActions={{ delete: true }}
       />
     </AdminLayout>
   );

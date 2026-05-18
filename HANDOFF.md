@@ -77,6 +77,14 @@ Long session, 19 commits. Two major threads: (1) plumbing the delivery-notificat
 
 ## Pending
 
+- **Studio account architectural cleanup (post-Maybourne).** The studio's own account row (Silver Shadow Studio, `account_type = 'partnership'`, id `a09b2cdd-2c98-4415-a58d-ec6420d69bd6`) is currently misclassified as a client. Temporary fix in place: client-side filter in `AccountList.tsx` hides it from the Clients page. Proper fix to be done after the Maybourne launch:
+  - The studio is not a customer of itself — it shouldn't have an `accounts` row at all.
+  - Move company-level fields (company name, registration number, address, country) from the account row to a new `app_settings.studio_profile` JSONB column or a dedicated `studio_profile` singleton table.
+  - Add a "Studio Information" section to the admin Settings page (`AdminSettings.tsx`) where these fields are edited.
+  - Migrate the data, then delete the Silver Shadow Studio account row.
+  - Remove the temporary client-side filter in `AccountList.tsx`.
+  - Decide whether the existing signed agreement for Silver Shadow Studio (id `9eb1277e-7080-4556-bcf7-b2661fd9ba4a`, signed 2026-05-06) needs to be migrated, archived, or deleted as part of this.
+- **`AccountList` action props split for Team delete (shipped this session).** `showAccountActions: boolean` replaced with `headerNavigatesToProjects?: boolean` + `accountActions?: { editProfile?: boolean; delete?: boolean }`. AdminClients passes all three (header nav, edit, delete); AdminTeam passes only `{ delete: true }`. The delete-confirmation toast/dialog wording is now neutral ("Account deleted", not "Client deleted") so the same handler works for both pages.
 - **Partnership / subscription model — paused, to be revisited.** The Orders system (`/admin/orders`, `Orders.tsx` for partnership clients, the `orders` table, the subscription and project order types in code, and the Lane subscription content in clauses 2 and 6 of the Client Agreement) is dormant infrastructure for a commercial model that is not currently active. All real Silvershadow clients today are project-based and use the quotation flow. Orders entry hidden from `AdminSidebar.tsx` this session; route + page kept reachable by direct URL so the code isn't lost. When the partnership / subscription model is finalised, revisit:
   - Re-enable the Orders sidebar entry in `AdminSidebar.tsx`.
   - Confirm the Orders menu item is correctly shown only to partnership clients in `ClientSidebar.tsx`.

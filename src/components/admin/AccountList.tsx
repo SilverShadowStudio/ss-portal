@@ -75,10 +75,23 @@ export interface AccountListProps {
   showClientCode?: boolean;
   /** Show the account type pill (PROJECT / PARTNERSHIP / TEAM). */
   showAccountType?: boolean;
-  /** Enable Clients-only header features: clickable header (→ /admin/projects?client=...)
-   *  and the per-account dropdown menu with Edit profile / Delete. */
-  showAccountActions?: boolean;
+  /** Click on the account header navigates to /admin/projects?client=<id>. Clients-only. */
+  headerNavigatesToProjects?: boolean;
+  /** Which per-account dropdown items are available. If neither flag is true,
+   *  the dropdown trigger is omitted entirely. */
+  accountActions?: {
+    editProfile?: boolean;
+    delete?: boolean;
+  };
 }
+
+// TEMPORARY: Silver Shadow Studio is the studio's own account, currently
+// misclassified as `partnership`. Hidden from the Clients UI pending the
+// proper architectural fix — see HANDOFF.md "Studio account architectural
+// cleanup" for the planned approach (delete the account row entirely, move
+// studio info to app_settings.studio_profile, add Studio Information section
+// to admin Settings).
+const SILVER_SHADOW_ACCOUNT_ID = "a09b2cdd-2c98-4415-a58d-ec6420d69bd6";
 
 function timeAgo(iso: string) {
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -129,8 +142,16 @@ export function AccountList({
   addButtonLabel,
   showClientCode = false,
   showAccountType = false,
-  showAccountActions = false,
+  headerNavigatesToProjects = false,
+  accountActions,
 }: AccountListProps) {
+  const showEditProfile = !!accountActions?.editProfile;
+  const showDelete = !!accountActions?.delete;
+  const showDropdown = showEditProfile || showDelete;
+  // The Clients page filters partnership/project; in that mode hide the
+  // studio's own (mis-classified) account from the list.
+  const filterStudioAccount =
+    accountTypes.includes("partnership") || accountTypes.includes("project");
   const navigate = useNavigate();
   const { enterGhostMode } = useAuth();
   const { toast } = useToast();
@@ -207,6 +228,7 @@ export function AccountList({
   const accountGroups = useMemo<AccountGroup[]>(() => {
     const byId = new Map<string, AccountGroup>();
     for (const u of accountUsers) {
+      if (filterStudioAccount && u.account_id === SILVER_SHADOW_ACCOUNT_ID) continue;
       let g = byId.get(u.account_id);
       if (!g) {
         g = {
@@ -725,7 +747,7 @@ export function AccountList({
         ) : (
           <div className="space-y-6">
             {filteredGroups.map((group) => {
-              const headerClickable = showAccountActions;
+              const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
               return (
                 <div key={group.account_id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -763,7 +785,7 @@ export function AccountList({
                       <span className="text-xs text-muted-foreground">
                         {group.users.length} {isTeamOnly ? "member" : "user"}{group.users.length === 1 ? "" : "s"}
                       </span>
-                      {showAccountActions && (
+                      {showDropdown && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -774,17 +796,21 @@ export function AccountList({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() =>
-                                handleDeleteAccount(group.account_id, group.company_name, group.users.length)
-                              }
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete client
-                            </DropdownMenuItem>
+                            {showEditProfile && (
+                              <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit profile
+                              </DropdownMenuItem>
+                            )}
+                            {showDelete && (
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() =>
+                                  handleDeleteAccount(group.account_id, group.company_name, group.users.length)
+                                }
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
