@@ -483,42 +483,71 @@ The Dropbox account is a Business team account. All files live in the team names
 
 ## Airtable sync
 
-Kieran's production tracker lives in Airtable. The portal syncs bidirectionally via the `airtable-sync` edge function. Airtable remains Kieran's source of truth.
+Kieran's production tracker lives in Airtable. Airtable remains Kieran's source of truth. The portal syncs to it (one-way for round events via `airtable-auto-sync`, bidirectional on demand via `airtable-sync`).
 
-**Base ID**: `appyidJqOmdNB8WUd`
-**Table**: `Tasks` (table ID `tbleHaU9DxHyvixdL`)
+### Airtable schema (canonical)
 
-The `airtable-list-models` function is separate — it reads from the **Models** table (`tbls6j4jyNifFyucU`) and powers the admin Production Tracker view.
+Source: Q&A between Fred and Kieran, 18 May 2026.
 
-### Field mapping (stored in `app_settings.airtable_field_config`)
+- **Base**: `AIRTABLE_BASE_ID` (Supabase secret).
+- **PAT**: `AIRTABLE_PAT` (Supabase secret).
 
-| Config key | Airtable field | Type | Notes |
-|---|---|---|---|
-| `field_scene_name` | `Task name` | singleLineText | Primary field |
-| `field_status` | `Status` | singleSelect | Emoji-prefixed values (see below) |
-| `field_delivery_date` | `Deadline` | dateTime | Stored as `scene_rounds.delivery_due_at` |
-| `field_project_name` | _(blank)_ | — | Linked records — not writable as text |
-| `field_portal_scene_id` | _(blank)_ | — | No free-text ID field in Tasks; portal stores Airtable record ID in `scenes.airtable_record_id` instead |
+#### Tasks table — `tbleHaU9DxHyvixdL`
 
-### Status values
+The only Airtable table the portal reads from.
+
+- **Accountable to** — linked record to the Users table. Used for freelancer assignment. Never exposed to clients.
+- **Status** — single-select with exactly four values, in this order:
+  - `🔴 TO DO`
+  - `🟡 IN PROGRESS`
+  - `🟠 REVIEW`
+  - `🟢 DONE`
+- **Last Modified Time Status** — auto-populated timestamp of the last status change. Closest available signal to a completion timestamp; not a true "done at" (a task can be marked DONE and revisited).
+- No "task accepted" timestamp, no "task rejected" status. Freelancers communicate with the studio directly rather than rejecting in Airtable.
+- Tasks are mostly created ahead of time; some retroactive entries exist from before the system was in place.
+
+#### Portal field mapping
+
+Confirmed via AdminSettings → Airtable Field Mapping panel. Mapping is stored in `app_settings.airtable_field_config`.
+
+| Panel label | Airtable field |
+|---|---|
+| Scenes table name or ID | Tasks table (`tbleHaU9DxHyvixdL`) |
+| Portal Scene ID field | _(blank)_ — portal stores Airtable record ID in `scenes.airtable_record_id` instead |
+| Scene name field | `Task name` |
+| Status field | `Status` |
+| Delivery date field | `Deadline` |
+| Round field | _(current value to be confirmed via the panel)_ |
+
+#### Status mapping (Airtable ↔ portal)
 
 | Airtable value | Portal status |
 |---|---|
 | `🔴 TO DO` | `pending` |
 | `🟡 IN PROGRESS` | `in_production` |
-| `🔵 REVIEW` | `awaiting_review` |
+| `🟠 REVIEW` | `awaiting_review` |
 | `🟢 DONE` | `approved` |
+
+#### Other Airtable tables (not consumed by the portal)
+
+- **Scene Manager Day Logs** — daily time entries by scene managers (date, project, time spent). Used for monthly-rate freelancer payroll (Maycon, Katerina, Fiodor, Taya, Julia). Rates and rollup fields drive cost-per-day and feed invoices.
+- **Cost / Budget table** — name TBC. Configures costs and shows budget in terms of time per production stage.
+- **Team Holiday Tracker** — logs time off across the broader team.
+- **Scene Manager Invoices** — grouped invoice entries for scene managers.
+- **Modeller Invoices** — grouped invoice entries for modellers.
+
+**Portal rule**: the portal only reads from the Tasks table (Status field, Deadline field, scene/round identifiers). It does not and must not surface anything from Scene Manager Day Logs, the Cost/Budget table, Holiday Tracker, or either Invoices table — these are internal/payroll-only.
 
 ### Actions on `airtable-sync`
 
-- `push-scene` — creates/updates a Task row in Airtable; stores returned record ID in `scenes.airtable_record_id`
-- `push-status` — writes portal round status to Airtable (maps to emoji value)
-- `pull-status` — reads Status + Deadline; updates `scene_rounds.status` and `scene_rounds.delivery_due_at`
-- `get-config` / `set-config` — read/write field mapping from `app_settings`
-- `get-fields` — calls Airtable metadata API, returns all tables + field names (debugging)
-- `probe-records` — fetches raw records from configured table (debugging)
+- `push-scene` — creates/updates a Task row in Airtable; stores returned record ID in `scenes.airtable_record_id`.
+- `push-status` — writes portal round status to Airtable (maps to emoji value).
+- `pull-status` — reads Status + Deadline; updates `scene_rounds.status` and `scene_rounds.delivery_due_at`.
+- `get-config` / `set-config` — read/write field mapping from `app_settings`.
+- `get-fields` — calls Airtable metadata API; returns all tables + field names (debugging).
+- `probe-records` — fetches raw records from the configured table (debugging).
 
-**Verified**: push-scene + pull-status round-trip confirmed working. Record `recCTevx1HCoPQqA1` created for "Entrance" scene; `🔴 TO DO` → `pending` mapped correctly.
+No migration is required by this schema documentation.
 
 ## Activity log
 
