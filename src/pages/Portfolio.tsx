@@ -792,26 +792,13 @@ export default function Portfolio() {
       // can land here is when the scene has zero rounds yet.
       return (
         <div>
-          <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
+          <div className="flex items-center justify-center min-h-[50vh] animate-fade-in">
             <p
-              className="font-serif italic text-center text-foreground/55"
-              style={{ fontSize: 15 }}
+              className="font-serif italic text-center text-foreground"
+              style={{ fontSize: 15, opacity: 0.15 }}
             >
               No rounds yet.
             </p>
-            <button
-              onClick={() => setIsNewRoundModalOpen(true)}
-              className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.15em",
-                color: "#B89A6A",
-                borderBottom: "1px solid #B89A6A",
-                paddingBottom: 6,
-              }}
-            >
-              Add a round
-            </button>
           </div>
         </div>
       );
@@ -822,26 +809,13 @@ export default function Portfolio() {
       return (
         <div>
           {selectedProject.scenes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
+            <div className="flex items-center justify-center min-h-[50vh] animate-fade-in">
               <p
-                className="font-serif italic text-center text-foreground/55"
-                style={{ fontSize: 15 }}
+                className="font-serif italic text-center text-foreground"
+                style={{ fontSize: 15, opacity: 0.15 }}
               >
                 No scenes yet.
               </p>
-              <button
-                onClick={() => setIsNewSceneModalOpen(true)}
-                className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
-                style={{
-                  fontSize: 11,
-                  letterSpacing: "0.15em",
-                  color: "#B89A6A",
-                  borderBottom: "1px solid #B89A6A",
-                  paddingBottom: 6,
-                }}
-              >
-                Add a scene
-              </button>
             </div>
           ) : (
             (() => {
@@ -1103,27 +1077,14 @@ export default function Portfolio() {
         {projects.length === 0 ? (
           <div
             key="projects-empty"
-            className="flex flex-col items-center justify-center py-32 animate-fade-in"
+            className="flex items-center justify-center min-h-[50vh] animate-fade-in"
           >
             <p
-              className="font-serif italic text-center text-foreground/55"
-              style={{ fontSize: 15 }}
+              className="font-serif italic text-center text-foreground"
+              style={{ fontSize: 15, opacity: 0.15 }}
             >
               No active commissions.
             </p>
-            <button
-              onClick={() => setIsNewTaskModalOpen(true)}
-              className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.15em",
-                color: "#B89A6A",
-                borderBottom: "1px solid #B89A6A",
-                paddingBottom: 6,
-              }}
-            >
-              Add a project
-            </button>
           </div>
         ) : projects.length === 1 ? (
           (() => {

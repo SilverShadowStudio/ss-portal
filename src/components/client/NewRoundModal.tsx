@@ -232,6 +232,14 @@ export function NewRoundModal({
   const [isPolishing, setIsPolishing] = useState(false);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>("");
+  // Review panel state for the dictation flow. After dictation + formatting,
+  // both the raw transcript and the formatted brief are shown side-by-side
+  // for the client to choose. Choosing populates the textarea but never
+  // auto-submits — the client always has a final review inside the input.
+  const [briefReview, setBriefReview] = useState<{
+    raw: string;
+    formatted: string;
+  } | null>(null);
   const instructionsRef = useRef<HTMLTextAreaElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -263,25 +271,44 @@ export function NewRoundModal({
   }, [isOpen]);
 
   // ── Dictation ────────────────────────────────────────────
+  // After speech-to-text completes, send the raw transcript to the
+  // `format-brief` edge function (Anthropic Claude) which rewrites it as a
+  // structured interior-design brief. The result is surfaced in a review
+  // panel; the client picks "Use formatted" or "Use original" before it
+  // enters the textarea. We never auto-submit — the client always confirms.
   const polishDictation = useCallback(async (raw: string) => {
     setIsPolishing(true);
     try {
-      const res = await supabase.functions.invoke("polish-task", {
-        body: { raw },
+      const res = await supabase.functions.invoke("format-brief", {
+        body: { transcript: raw },
       });
-      const data = res.data as { description?: string } | null;
-      if (data?.description) {
-        setInstructions(data.description);
-        sonnerToast.success("Dictation polished — review and request");
+      const data = res.data as { formatted?: string; error?: string } | null;
+      if (data?.formatted) {
+        setBriefReview({ raw, formatted: data.formatted });
       } else {
+        // Formatter failed — populate the textarea with the raw transcript
+        // so the client still has something to edit, and toast the error.
         setInstructions(raw);
+        sonnerToast.error("Could not format brief — using raw transcript");
       }
-    } catch {
+    } catch (err: any) {
+      console.warn("[NewRoundModal] format-brief failed:", err);
       setInstructions(raw);
+      sonnerToast.error("Could not format brief — using raw transcript");
     } finally {
       setIsPolishing(false);
     }
   }, []);
+
+  const acceptFormatted = useCallback(() => {
+    if (briefReview) setInstructions(briefReview.formatted);
+    setBriefReview(null);
+  }, [briefReview]);
+
+  const useOriginal = useCallback(() => {
+    if (briefReview) setInstructions(briefReview.raw);
+    setBriefReview(null);
+  }, [briefReview]);
 
   const startDictation = useCallback(async () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -475,32 +502,116 @@ export function NewRoundModal({
                     <button
                       type="button"
                       onClick={isRecording ? stopDictation : startDictation}
-                      disabled={isPolishing}
+                      disabled={isPolishing || !!briefReview}
                       className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
                         isRecording
                           ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
-                          : isPolishing
+                          : (isPolishing || briefReview)
                           ? "border-border/30 text-foreground/25 cursor-not-allowed"
                           : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
                       }`}
                       style={{ borderRadius: 2 }}
                     >
-                      {isPolishing ? "Polishing…" : isRecording ? "Stop" : "Dictate"}
+                      {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
                     </button>
                   </div>
 
-                  <textarea
-                    ref={instructionsRef}
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
-                    autoFocus
-                    rows={3}
-                    maxLength={2000}
-                    required
-                    className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
-                    style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
-                  />
+                  {isPolishing ? (
+                    // Loading state shown while the LLM formats the transcript.
+                    // Holds the textarea-sized space so the layout doesn't jump.
+                    <div
+                      className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
+                      style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
+                    >
+                      Formatting your brief…
+                    </div>
+                  ) : briefReview ? (
+                    // Review panel: raw transcript vs LLM-formatted brief.
+                    // Picking either populates the textarea and clears the
+                    // review state. The client still has a final pass in
+                    // the textarea — we never auto-submit.
+                    <div className="space-y-5">
+                      <div>
+                        <p
+                          className="font-sans uppercase text-foreground/55 mb-2"
+                          style={{ fontSize: 9, letterSpacing: "0.22em" }}
+                        >
+                          What you said
+                        </p>
+                        <p
+                          className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap"
+                          style={{ fontSize: 13, opacity: 0.45 }}
+                        >
+                          {briefReview.raw}
+                        </p>
+                      </div>
+                      <div>
+                        <p
+                          className="font-sans uppercase text-foreground mb-2"
+                          style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}
+                        >
+                          Formatted brief
+                        </p>
+                        <p
+                          className="font-sans text-foreground leading-relaxed whitespace-pre-wrap"
+                          style={{ fontSize: 14 }}
+                        >
+                          {briefReview.formatted}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-6 pt-2">
+                        <button
+                          type="button"
+                          onClick={acceptFormatted}
+                          className="font-sans uppercase hover:opacity-80 transition-opacity"
+                          style={{
+                            fontSize: 11,
+                            letterSpacing: "0.15em",
+                            color: "#B89A6A",
+                            borderBottom: "1px solid #B89A6A",
+                            paddingBottom: 6,
+                            background: "transparent",
+                            border: "none",
+                            borderBottomWidth: 1,
+                            borderBottomStyle: "solid",
+                            borderBottomColor: "#B89A6A",
+                          }}
+                        >
+                          Use formatted
+                        </button>
+                        <button
+                          type="button"
+                          onClick={useOriginal}
+                          className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
+                          style={{
+                            fontSize: 11,
+                            letterSpacing: "0.15em",
+                            opacity: 0.35,
+                            background: "transparent",
+                            border: "none",
+                            padding: 0,
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                        >
+                          Use original
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={instructionsRef}
+                      value={instructions}
+                      onChange={(e) => setInstructions(e.target.value)}
+                      placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
+                      autoFocus
+                      rows={3}
+                      maxLength={2000}
+                      required
+                      className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
+                      style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
+                    />
+                  )}
                   <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
                     Upload what you have. The more detail you share, the better Round 01 we can deliver.
                   </p>
