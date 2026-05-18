@@ -222,20 +222,34 @@ function AgreementsTab() {
   const handleDelete = async (a: AgreementRow) => {
     if (!window.confirm(`Delete the signed agreement for "${a.company_name}"? This cannot be undone.`)) return;
     setDeletingId(a.id);
+    // Track storage-cleanup outcome so we can surface it to the admin if it
+    // fails. The `agreements` storage bucket is missing an admin DELETE RLS
+    // policy (siblings like `round-uploads` / `scene-assets` have one) — see
+    // HANDOFF.md "Agreements bucket — admin DELETE policy missing". Until
+    // that's added, blobs are orphaned silently; this toast makes the gap
+    // visible so admins know what's left behind.
+    let storageRemoveError: { message?: string } | null = null;
     try {
-      // Best-effort storage cleanup — log a warning if the file is gone but
-      // continue with the DB delete so the row doesn't get stuck.
       if (a.storage_path) {
         const { error: storageError } = await supabase.storage
           .from("agreements")
           .remove([a.storage_path]);
         if (storageError) {
+          storageRemoveError = storageError;
           console.warn("[AdminDocuments] storage remove failed:", storageError);
         }
       }
       const { error } = await supabase.from("agreements").delete().eq("id", a.id);
       if (error) throw error;
-      toast({ title: "Agreement deleted" });
+      if (storageRemoveError) {
+        toast({
+          title: "Storage cleanup failed",
+          description: "DB row removed but PDF blob remains in storage.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Agreement deleted" });
+      }
       void fetchAgreements();
     } catch (err: any) {
       toast({
