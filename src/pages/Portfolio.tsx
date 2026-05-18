@@ -1095,25 +1095,13 @@ export default function Portfolio() {
     return (
       <div>
         {projects.length === 0 ? (
-          <div
+          <p
             key="projects-empty"
-            className="flex flex-col items-center justify-center p-20 border border-dashed border-border rounded-sm bg-card"
+            className="font-serif italic text-foreground/45 text-left"
+            style={{ fontSize: 13 }}
           >
-            <div className="w-16 h-16 rounded-sm bg-primary/10 text-primary flex items-center justify-center mb-6">
-              <Plus size={32} />
-            </div>
-            <h3 className="text-xl font-medium mb-3 font-serif">Create your first project</h3>
-            <p className="text-muted-foreground mb-8 text-center max-w-sm font-sans leading-relaxed">
-              Start by creating a new project to manage your visualisation tasks and deliverables.
-            </p>
-            <button
-              onClick={() => setIsNewTaskModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 border-l-2 border-gold text-foreground text-[11px] uppercase tracking-[0.18em] font-medium hover:bg-foreground/5 transition-all font-sans"
-            >
-              <Plus size={16} />
-              New Project
-            </button>
-          </div>
+            No active commissions. Your studio will add projects to your portal as they begin.
+          </p>
         ) : projects.length === 1 ? (
           (() => {
             const project = projects[0];
@@ -1208,21 +1196,24 @@ export default function Portfolio() {
 
         <div className="flex items-center justify-between">
           <ArborescenceTitle items={breadcrumbs} />
-          {!selectedRound && !(selectedScene && hasRoundInProduction) && (
+          {/* Clients cannot create projects — the studio originates those
+              from quotations. The button only renders for drill-down
+              contexts ("New Scene" inside a project, "New Round" inside a
+              scene). The top-level "New Project" variant is intentionally
+              suppressed. */}
+          {(selectedScene || selectedProject) && !selectedRound && !(selectedScene && hasRoundInProduction) && (
             <button
               onClick={() => {
                 if (selectedScene) {
                   setIsNewRoundModalOpen(true);
                 } else if (selectedProject) {
                   setIsNewSceneModalOpen(true);
-                } else {
-                  setIsNewTaskModalOpen(true);
                 }
               }}
               className="flex items-center gap-2 px-6 py-3 border-l-2 border-gold text-foreground text-[11px] uppercase tracking-[0.18em] font-medium hover:bg-foreground/5 transition-all font-sans"
             >
               <Plus size={18} />
-              {selectedScene ? "New Round" : selectedProject ? "New Scene" : "New Project"}
+              {selectedScene ? "New Round" : "New Scene"}
             </button>
           )}
         </div>
