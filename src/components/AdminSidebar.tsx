@@ -7,6 +7,7 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   FileText, Landmark, ScrollText, Receipt, TrendingUp,
+  Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -93,10 +94,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   }));
 
   const accountMenuItems: SidebarAccountMenuItem[] = [
-    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
-    { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
-    { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true },
-    { label: "Log off", onClick: handleSignOut },
+    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
+    { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+    { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true, Icon: Settings },
+    { label: "Log off", onClick: handleSignOut, Icon: LogOut },
   ];
 
   const displayName =

@@ -41,6 +41,11 @@ export interface SidebarAccountMenuItem {
   onClick: () => void;
   active?: boolean;
   separatorAfter?: boolean;
+  /** Lucide icon shown in compact (collapsed) mode. Expanded mode shows the
+   *  text label only; compact mode shows the icon centred with the label as
+   *  a tooltip. Items without an Icon fall back to truncated text in compact
+   *  mode (legacy behaviour). */
+  Icon?: LucideIcon;
 }
 
 export interface SidebarProps {
@@ -278,47 +283,79 @@ export function Sidebar({
           {/* Animated stack above account row */}
           <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
             <div className="flex flex-col">
-              {accountMenuItems.map((it, idx) => (
-                <div key={it.label} className="contents">
+              {accountMenuItems.map((it, idx) => {
+                const buttonClass = cn(
+                  "relative pointer-events-auto transition-all duration-standard whitespace-nowrap",
+                  it.active
+                    ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
+                    : cn(
+                        "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                        menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+                      ),
+                  expanded
+                    ? "font-sans uppercase text-left flex items-center w-full pl-5 pr-3 py-3.5"
+                    : "flex items-center justify-center w-full py-3.5",
+                );
+                const buttonStyle = {
+                  ...(expanded ? SB.menuItemStyle : {}),
+                  transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
+                };
+                const activeBar = it.active ? (
+                  <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+                ) : null;
+
+                // Compact mode with an Icon: render icon-only + tooltip. Falls
+                // back to text if no Icon is provided.
+                const renderButton = !expanded && it.Icon ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={it.onClick}
+                        aria-label={it.label}
+                        className={buttonClass}
+                        style={buttonStyle}
+                      >
+                        {activeBar}
+                        <it.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
+                      {it.label}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
                   <button
                     type="button"
                     onClick={it.onClick}
                     title={expanded ? undefined : it.label}
-                    className={cn(
-                      "relative pointer-events-auto transition-all duration-standard font-sans uppercase whitespace-nowrap text-left",
-                      it.active
-                        ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
-                        : cn(
-                            "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
-                            menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-                          ),
-                      "flex items-center w-full pl-5 pr-3 py-3.5",
-                    )}
-                    style={{
-                      ...SB.menuItemStyle,
-                      transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
-                    }}
+                    className={buttonClass}
+                    style={buttonStyle}
                   >
-                    {it.active && (
-                      <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                    )}
+                    {activeBar}
                     <span>{it.label}</span>
                   </button>
-                  {it.separatorAfter && (
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "pointer-events-none transition-all duration-standard",
-                        menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
-                      )}
-                      style={{
-                        ...SB.separatorStyle,
-                        transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
-                      }}
-                    />
-                  )}
-                </div>
-              ))}
+                );
+
+                return (
+                  <div key={it.label} className="contents">
+                    {renderButton}
+                    {it.separatorAfter && (
+                      <div
+                        aria-hidden
+                        className={cn(
+                          "pointer-events-none transition-all duration-standard",
+                          menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
+                        )}
+                        style={{
+                          ...SB.separatorStyle,
+                          transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

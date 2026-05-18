@@ -24,6 +24,8 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Download } from "lucide-react";
 import ssIcon from "@/assets/ss-icon.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -43,6 +45,7 @@ const INK = "#1A1814";
 const MUTED = "#8A8070";
 const GOLD = "#B89A6A";
 const RULE = "#C8BFB0";
+const DARK_GROUND = "#0E0D0B";
 const DEFINITION_RULE = "#D8D2C5";
 const NOTICE_TINT = "#E5DFD4";
 // "Headings are for convenience only…" was inline in clause 2's last
@@ -376,6 +379,11 @@ export default function Contract() {
 
   const sigPadRef = useRef<SignaturePadRef | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // The document frame (#EDE8E0 article) is the scrollable container. The
+  // IntersectionObserver below uses it as its root so the scroll-to-end
+  // sentinel fires when the user scrolls the frame's content, not when the
+  // window scrolls (the window does not scroll in this layout).
+  const frameRef = useRef<HTMLElement | null>(null);
 
   // Time-on-page tracking. The active segment runs from `segmentStartRef` to
   // now; when the tab hides we add the segment to `accumulatedRef` and stop;
@@ -445,7 +453,7 @@ export default function Contract() {
           }
         }
       },
-      { threshold: [0.9] },
+      { root: frameRef.current ?? null, threshold: [0.9] },
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -560,20 +568,43 @@ export default function Contract() {
   // ── Page-level loading / error states ────────────────────────────────────
 
   const pageShell = (children: React.ReactNode) => (
-    <div style={{ background: PAPER, minHeight: "100vh", color: INK }}>{children}</div>
+    <div style={{ background: DARK_GROUND, minHeight: "100vh", color: PAPER }}>{children}</div>
+  );
+
+  // Reusable tinted pulsing SS icon for the dark ground. The shared
+  // BrandLoader renders black-on-light and would be invisible here.
+  const tintedSsIcon = (size: number, tint: string) => (
+    <span
+      aria-hidden
+      className="animate-brand-pulse"
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        backgroundColor: tint,
+        WebkitMaskImage: `url(${ssIcon})`,
+        maskImage: `url(${ssIcon})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+      }}
+    />
   );
 
   if (accountState === "loading") {
     return pageShell(
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <BrandLoader size="md" />
+        {tintedSsIcon(24, MUTED)}
       </div>,
     );
   }
 
   if (accountState === "no_account" || accountState === "error") {
     return pageShell(
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: PAPER }}>
         <EyebrowLabel>Silver Shadow Studio</EyebrowLabel>
         <p style={{ fontSize: 15, lineHeight: 1.7 }}>
           We couldn't load your account. Please contact{" "}
@@ -589,7 +620,7 @@ export default function Contract() {
   if (!document_) {
     const isPartnership = account?.account_type === "partnership";
     return pageShell(
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: PAPER }}>
         <EyebrowLabel>Silver Shadow Studio</EyebrowLabel>
         {isPartnership ? (
           <p style={{ fontSize: 15, lineHeight: 1.7 }}>
@@ -641,47 +672,98 @@ export default function Contract() {
   }
 
   // ── Full page render ─────────────────────────────────────────────────────
+  // Layout: dimmed dark ground with a centred cream document frame. The
+  // top bar (title left, download icon right) sits on the dark ground
+  // above the frame. The frame itself is the scrollable container — the
+  // window does not scroll. The IntersectionObserver above uses the frame
+  // as its root.
   return pageShell(
-    <>
-      {/* Top utility bar — Download as PDF, right-aligned */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        padding: 40,
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Top bar — on the dark ground, above the frame */}
       <div
         style={{
-          height: 40,
+          maxWidth: 880,
+          width: "100%",
+          margin: "0 auto 16px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-end",
-          padding: "0 32px",
+          justifyContent: "space-between",
+          gap: 16,
+          flexShrink: 0,
         }}
       >
-        <button
-          type="button"
-          onClick={handleDownloadPreview}
+        <p
           style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            color: MUTED,
-            opacity: 0.55,
             fontFamily: META_STACK,
             fontSize: 11,
-            letterSpacing: "0.15em",
+            letterSpacing: "0.18em",
             textTransform: "uppercase",
-            cursor: "pointer",
-            transition: "opacity 200ms ease",
+            color: GOLD,
+            opacity: 0.8,
+            margin: 0,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.55"; }}
         >
-          Download as PDF
-        </button>
+          Services Agreement — {account!.company_name}
+        </p>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Download"
+                onClick={handleDownloadPreview}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  width: 28,
+                  height: 28,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: PAPER,
+                  opacity: 0.35,
+                  cursor: "pointer",
+                  transition: "opacity 200ms ease",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+              >
+                <Download className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={8}>Download</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
-      {/* Content column */}
+      {/* Document frame — cream, max 880px, fills remaining viewport,
+          scrolls internally. */}
       <article
+        ref={frameRef}
         style={{
-          maxWidth: 720,
+          maxWidth: 880,
+          width: "100%",
           margin: "0 auto",
-          padding: "32px 32px 120px",
+          background: PAPER,
+          color: INK,
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: "48px 56px 96px",
         }}
       >
         <CoverBlock cover={document_.cover} />
@@ -898,6 +980,6 @@ export default function Contract() {
           </button>
         </div>
       </article>
-    </>,
+    </div>,
   );
 }

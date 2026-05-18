@@ -2,13 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import {
-  Download, X, ExternalLink,
-  ZoomIn, ZoomOut,
-} from "lucide-react";
+import { Download } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -37,7 +34,6 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
-  const [scale, setScale] = useState(1);
   const [containerWidth, setContainerWidth] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -57,28 +53,6 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
     if (!res.ok) throw new Error(`Refetch failed: ${res.status} ${res.statusText}`);
     const buf = await res.arrayBuffer();
     return URL.createObjectURL(new Blob([buf], { type: "application/pdf" }));
-  };
-
-  const handleOpenInNewTab = async () => {
-    if (loading) return;
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    try {
-      const blobUrl = await getBlobUrlForPdf();
-      if (win) win.location.href = blobUrl;
-      else {
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (e: any) {
-      win?.close();
-      toast({ title: "Could not open agreement", description: e?.message, variant: "destructive" });
-    }
   };
 
   const handleDownload = async () => {
@@ -113,7 +87,6 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
       setPdfData(null);
       setError(null);
       setNumPages(0);
-      setScale(1);
       return;
     }
     let cancelled = false;
@@ -168,7 +141,7 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
 
   if (!agreement) return null;
 
-  const pageWidth = containerWidth ? Math.min(containerWidth - 32, 900) * scale : undefined;
+  const pageWidth = containerWidth ? Math.min(containerWidth - 32, 900) : undefined;
   const canDownload = !!(downloadUrl || previewUrl) && !loading && !error;
 
   return (
@@ -179,48 +152,38 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
           Preview and download the signed services agreement PDF.
         </DialogDescription>
 
+        {/* Top bar: title (left) + download icon (right) only.
+            Dialog still closes via outside-click and Escape — no explicit
+            close button is rendered. */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b border-border/60 bg-background/95 backdrop-blur shrink-0">
           <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground truncate pr-4">
             {label}
-            {agreement.agreement_version && (
-              <span className="ml-2 text-muted-foreground/60">· {agreement.agreement_version}</span>
-            )}
           </div>
-          <div className="flex items-center gap-2">
-            {pdfData && numPages > 0 && (
-              <div className="flex items-center gap-1 mr-2">
-                <span className="text-xs tabular-nums text-muted-foreground min-w-[3rem] text-center">
-                  {numPages} {numPages === 1 ? "page" : "pages"}
-                </span>
-                <Button variant="ghost" size="icon" className="h-8 w-8 ml-1"
-                  onClick={() => setScale((s) => Math.max(0.5, +(s - 0.1).toFixed(2)))}>
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8"
-                  onClick={() => setScale((s) => Math.min(2.5, +(s + 0.1).toFixed(2)))}>
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {(loading || previewUrl) && (
-              <>
-                <Button variant="outline" size="sm" disabled={!previewUrl} onClick={handleOpenInNewTab}>
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open in new tab
-                </Button>
-                <Button variant="outline" size="sm" disabled={!canDownload || downloading} onClick={handleDownload}>
-                  {loading || downloading ? (
-                    <BrandLoader size="sm" className="mr-1.5 h-3.5 w-3.5" />
-                  ) : (
-                    <Download className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  {loading ? "Preparing PDF…" : downloading ? "Downloading…" : "Download PDF"}
-                </Button>
-              </>
-            )}
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          {(loading || previewUrl) && (
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Download"
+                    disabled={!canDownload || downloading}
+                    onClick={handleDownload}
+                    className="shrink-0 inline-flex h-8 w-8 items-center justify-center bg-transparent border-0 p-0 cursor-pointer transition-opacity disabled:cursor-not-allowed"
+                    style={{ opacity: 0.35 }}
+                    onMouseEnter={(e) => { if (canDownload && !downloading) e.currentTarget.style.opacity = "1"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                  >
+                    {loading || downloading ? (
+                      <BrandLoader size="sm" className="h-4 w-4" />
+                    ) : (
+                      <Download className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8}>Download</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         <div ref={containerRef} className="flex-1 min-h-0 bg-muted/30 relative overflow-auto">
@@ -234,11 +197,6 @@ export function AgreementViewer({ agreement, open, onOpenChange }: Props) {
             <div className="h-full w-full flex flex-col items-center justify-center text-center px-6 gap-3">
               <p className="text-sm font-medium">Unable to load agreement</p>
               <p className="text-xs text-muted-foreground max-w-md">{error}</p>
-              {(downloadUrl || previewUrl) && (
-                <Button variant="outline" size="sm" onClick={handleOpenInNewTab}>
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open in new tab
-                </Button>
-              )}
             </div>
           )}
           {!loading && !error && fileProp && (

@@ -3,7 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
-import { CalendarDays, Inbox, Images, FileText } from "lucide-react";
+import {
+  CalendarDays, Inbox, Images, FileText,
+  LayoutDashboard, Package, Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
+} from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
 
 const PARTNERSHIP_NAV: SidebarNavItem[] = [
@@ -65,9 +68,9 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [
-        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
-        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
-        { label: "Log off", onClick: handleSignOut },
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
+        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+        { label: "Log off", onClick: handleSignOut, Icon: LogOut },
       ]
     : [
         // Overview + Orders only apply to the lane-based partnership model.
@@ -75,14 +78,14 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         ...(accountType === "project"
           ? []
           : [
-              { label: "Overview", onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard" },
-              { label: "Orders",   onClick: () => navigate("/orders"),    active: location.pathname === "/orders",   separatorAfter: true },
+              { label: "Overview", onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard", Icon: LayoutDashboard },
+              { label: "Orders",   onClick: () => navigate("/orders"),    active: location.pathname === "/orders",   separatorAfter: true, Icon: Package },
             ] as SidebarAccountMenuItem[]),
-        { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents" },
-        { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true },
-        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.() },
-        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true },
-        { label: "Log off",    onClick: handleSignOut },
+        { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents", Icon: FileText },
+        { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true, Icon: Settings },
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
+        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+        { label: "Log off",    onClick: handleSignOut, Icon: LogOut },
       ];
 
   const displayName =
