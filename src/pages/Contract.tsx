@@ -42,6 +42,15 @@ const INK = "#1A1814";
 const MUTED = "#8A8070";
 const GOLD = "#B89A6A";
 const RULE = "#C8BFB0";
+const DEFINITION_RULE = "#D8D2C5";
+const NOTICE_TINT = "#E5DFD4";
+// "Headings are for convenience only…" was inline in clause 2's last
+// paragraph (see _shared/agreements/project-v3.ts). The on-screen render
+// filters it out of clause 2 and shows it instead in the document footer.
+// We match on prefix rather than touching the shared content file.
+const HEADINGS_PARAGRAPH_PREFIX = "Headings are for convenience only";
+const HEADINGS_FOOTER_TEXT =
+  "Headings are for convenience only. References to writing include email and portal confirmations. Words in the singular include the plural and vice versa.";
 
 const BODY_STACK = "Georgia, 'Times New Roman', serif";
 const META_STACK = "Arial, sans-serif";
@@ -105,7 +114,7 @@ function ParagraphView({ p }: { p: Paragraph }) {
           fontSize: 15,
           color: INK,
           lineHeight: 1.7,
-          margin: "0 0 12px 0",
+          margin: "0 0 24px 0",
         }}
       >
         {p.text}
@@ -114,7 +123,7 @@ function ParagraphView({ p }: { p: Paragraph }) {
   }
   if (p.type === "bullet_list") {
     return (
-      <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px 0" }}>
+      <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0" }}>
         {p.items.map((item, i) => (
           <li
             key={i}
@@ -123,8 +132,9 @@ function ParagraphView({ p }: { p: Paragraph }) {
               fontSize: 15,
               color: INK,
               lineHeight: 1.7,
-              padding: "4px 0 4px 28px",
+              paddingLeft: 28,
               textIndent: "-16px",
+              marginBottom: i < p.items.length - 1 ? 12 : 0,
             }}
           >
             <span style={{ color: GOLD, marginRight: 12 }}>·</span>
@@ -142,7 +152,7 @@ function ParagraphView({ p }: { p: Paragraph }) {
           fontSize: 15,
           color: INK,
           lineHeight: 1.7,
-          margin: "0 0 12px 0",
+          margin: "0 0 24px 0",
         }}
       >
         <strong style={{ fontWeight: 600 }}>{p.term}</strong>
@@ -160,7 +170,7 @@ function ParagraphView({ p }: { p: Paragraph }) {
         opacity: 0.9,
         fontStyle: "italic",
         lineHeight: 1.7,
-        margin: "0 0 12px 0",
+        margin: "0 0 24px 0",
       }}
     >
       {p.text}
@@ -169,6 +179,16 @@ function ParagraphView({ p }: { p: Paragraph }) {
 }
 
 function ClauseView({ clause }: { clause: Clause }) {
+  const isDefinitionsClause = clause.number === "2";
+  // Filter out the closing "Headings are for convenience only" line from
+  // clause 2. It is rendered in the document footer instead. This keeps
+  // the shared agreement content file untouched.
+  const paragraphs = isDefinitionsClause
+    ? clause.paragraphs.filter(
+        (p) => !(p.type === "prose" && p.text.startsWith(HEADINGS_PARAGRAPH_PREFIX)),
+      )
+    : clause.paragraphs;
+
   return (
     <section style={{ marginTop: 32 }}>
       <h3
@@ -184,9 +204,39 @@ function ClauseView({ clause }: { clause: Clause }) {
         <span style={{ color: GOLD, marginRight: 10 }}>{clause.number}.</span>
         {clause.title}
       </h3>
-      {clause.paragraphs.map((p, i) => (
-        <ParagraphView key={i} p={p} />
-      ))}
+      {paragraphs.map((p, i) => {
+        const next = paragraphs[i + 1];
+        // In the Definitions clause, render a 1px rule between consecutive
+        // definitions (but not after the final definition).
+        const hasFollowingDefinition =
+          isDefinitionsClause && p.type === "definition" && next?.type === "definition";
+        if (hasFollowingDefinition) {
+          return (
+            <div
+              key={i}
+              style={{
+                paddingBottom: 16,
+                marginBottom: 16,
+                borderBottom: `1px solid ${DEFINITION_RULE}`,
+              }}
+            >
+              <p
+                style={{
+                  fontFamily: BODY_STACK,
+                  fontSize: 15,
+                  color: INK,
+                  lineHeight: 1.7,
+                  margin: 0,
+                }}
+              >
+                <strong style={{ fontWeight: 600 }}>{p.term}</strong>
+                <span> — {p.text}</span>
+              </p>
+            </div>
+          );
+        }
+        return <ParagraphView key={i} p={p} />;
+      })}
     </section>
   );
 }
@@ -196,8 +246,8 @@ function NoticeBlockView({ notice }: { notice: AgreementDocument["notice"] }) {
     <section
       style={{
         marginTop: 48,
-        paddingTop: 28,
-        paddingBottom: 28,
+        padding: 24,
+        background: NOTICE_TINT,
         borderTop: `1px solid ${GOLD}`,
         borderBottom: `1px solid ${GOLD}`,
       }}
@@ -232,7 +282,7 @@ function NoticeBlockView({ notice }: { notice: AgreementDocument["notice"] }) {
   );
 }
 
-function CoverBlock({ cover, version }: { cover: AgreementDocument["cover"]; version: string }) {
+function CoverBlock({ cover }: { cover: AgreementDocument["cover"] }) {
   return (
     <section>
       <h1
@@ -256,7 +306,10 @@ function CoverBlock({ cover, version }: { cover: AgreementDocument["cover"]; ver
         <EyebrowLabel>Client</EyebrowLabel>
         <PartyLine block={cover.client} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 28, marginBottom: 28 }}>
+      {/* Two-column meta grid. The internal "Agreement Version" pill is
+          hidden from clients here and rendered in the document footer
+          instead — see the document-footer block in the main render. */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 48, rowGap: 24, marginBottom: 28 }}>
         <div>
           <EyebrowLabel>Effective Date</EyebrowLabel>
           <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
@@ -267,12 +320,6 @@ function CoverBlock({ cover, version }: { cover: AgreementDocument["cover"]; ver
           <EyebrowLabel>Engagement Model</EyebrowLabel>
           <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
             {cover.engagementModel}
-          </p>
-        </div>
-        <div>
-          <EyebrowLabel>Agreement Version</EyebrowLabel>
-          <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
-            {version}
           </p>
         </div>
       </div>
@@ -590,16 +637,18 @@ export default function Contract() {
           style={{
             background: "transparent",
             border: "none",
+            padding: 0,
             color: MUTED,
+            opacity: 0.55,
             fontFamily: META_STACK,
             fontSize: 11,
-            letterSpacing: "0.24em",
+            letterSpacing: "0.15em",
             textTransform: "uppercase",
             cursor: "pointer",
-            padding: "8px 4px",
+            transition: "opacity 200ms ease",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = INK; e.currentTarget.style.textDecoration = "underline"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = MUTED; e.currentTarget.style.textDecoration = "none"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.55"; }}
         >
           Download as PDF
         </button>
@@ -613,7 +662,7 @@ export default function Contract() {
           padding: "32px 32px 120px",
         }}
       >
-        <CoverBlock cover={document_.cover} version={document_.version} />
+        <CoverBlock cover={document_.cover} />
         <NoticeBlockView notice={document_.notice} />
 
         <div style={{ marginTop: 16 }}>
@@ -624,9 +673,52 @@ export default function Contract() {
 
         <ExecutionBlockView execution={document_.execution} />
 
+        {/* Document footer — small meta-legal note on the left + internal
+            version reference on the right. Both sit below the execution
+            block, above the signature area. */}
+        <footer
+          style={{
+            marginTop: 48,
+            paddingTop: 24,
+            borderTop: `1px solid ${RULE}`,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 24,
+          }}
+        >
+          <p
+            style={{
+              fontFamily: BODY_STACK,
+              fontSize: 10,
+              fontStyle: "italic",
+              color: INK,
+              opacity: 0.45,
+              lineHeight: 1.6,
+              margin: 0,
+              flex: 1,
+            }}
+          >
+            {HEADINGS_FOOTER_TEXT}
+          </p>
+          <p
+            style={{
+              fontFamily: META_STACK,
+              fontSize: 8,
+              color: INK,
+              opacity: 0.35,
+              margin: 0,
+              textAlign: "right",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {document_.version}
+          </p>
+        </footer>
+
         {/* Scroll sentinel — IntersectionObserver fires when this enters the
-            viewport at ≥90% visibility. Placed above the signature pad so
-            scrolling to the bottom of the execution block opens the gate. */}
+            viewport at ≥90% visibility. Placed below the document footer so
+            scrolling past everything (including the footer) opens the gate. */}
         <div ref={sentinelRef} style={{ height: 1, width: "100%" }} aria-hidden />
 
         {/* Signature pad area */}
@@ -661,15 +753,17 @@ export default function Contract() {
                 background: "transparent",
                 border: "none",
                 color: MUTED,
+                opacity: 0.45,
                 fontFamily: META_STACK,
                 fontSize: 10,
                 letterSpacing: "0.22em",
                 textTransform: "uppercase",
                 cursor: "pointer",
                 padding: "4px 0",
+                transition: "opacity 200ms ease",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = INK; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = MUTED; }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.45"; }}
             >
               Clear signature
             </button>
@@ -764,17 +858,18 @@ export default function Contract() {
             disabled={!canAccept}
             onClick={handleAccept}
             style={{
-              background: PAPER,
+              background: "transparent",
               border: `1px solid ${GOLD}`,
-              color: INK,
+              color: canAccept ? GOLD : MUTED,
               fontFamily: META_STACK,
-              fontSize: 12,
-              letterSpacing: "0.16em",
-              textTransform: "lowercase",
-              padding: "16px 32px",
+              fontSize: 11,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              height: 48,
+              padding: "0 32px",
               cursor: canAccept ? "pointer" : "default",
               opacity: canAccept ? 1 : 0.4,
-              transition: "opacity 320ms ease",
+              transition: "opacity 320ms ease, color 320ms ease",
             }}
           >
             Accept and enter the portal
