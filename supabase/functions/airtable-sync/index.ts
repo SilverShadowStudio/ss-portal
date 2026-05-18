@@ -33,7 +33,7 @@ const DEFAULT_CONFIG = {
   // matches "🔴 TO DO". Push writes the exact stored value.
   status_pending: "🔴 TO DO",
   status_in_production: "🟡 IN PROGRESS",
-  status_awaiting_review: "🔵 REVIEW",
+  status_awaiting_review: "🟠 REVIEW",
   status_approved: "🟢 DONE",
   status_delivered: "",
   status_client_review: "",

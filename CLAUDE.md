@@ -536,7 +536,11 @@ Confirmed via AdminSettings → Airtable Field Mapping panel. Mapping is stored 
 - **Scene Manager Invoices** — grouped invoice entries for scene managers.
 - **Modeller Invoices** — grouped invoice entries for modellers.
 
-**Portal rule**: the portal only reads from the Tasks table (Status field, Deadline field, scene/round identifiers). It does not and must not surface anything from Scene Manager Day Logs, the Cost/Budget table, Holiday Tracker, or either Invoices table — these are internal/payroll-only.
+**Portal ↔ Airtable rules**:
+
+- **Reads**: The portal only reads from the Tasks table — Status, deadline, scene/round identifiers — and only for client-facing display.
+- **Writes**: The portal writes one-way to Airtable for studio operations (Users / Clients / Projects sync per `airtable-sync`). This is for Kieran's workflow, not for client display.
+- **Never**: The portal does not read or surface anything from Scene Manager Day Logs, the Cost/Budget table, Team Holiday Tracker, or either of the Invoices tables. These are internal/payroll-only.
 
 ### Actions on `airtable-sync`
 
