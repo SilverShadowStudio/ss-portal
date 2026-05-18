@@ -45,22 +45,31 @@ export function useAgreementGate(): AgreementGateStatus {
         return;
       }
 
-      // Admin / super_admin users bypass entirely.
+      // Admin users bypass entirely. The `app_role` Postgres enum only
+      // contains: admin, client, owner, user, team. `super_admin` is a
+      // separate concept handled by the `is_super_admin()` SQL helper +
+      // `useIsSuperAdmin` hook (currently unwired per HANDOFF.md); when
+      // that's wired into a caller, add it as a second bypass here.
       try {
-        const { data: roleRow } = await supabase
+        const { data: roleRow, error: roleErr } = await supabase
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id)
-          .in("role", ["admin", "super_admin"])
+          .eq("role", "admin")
           .maybeSingle();
         if (cancelled) return;
+        if (roleErr) {
+          // Make role-query errors visible. Falling through here would
+          // trap an admin on /contract on the next render — log loudly so
+          // a regression is caught in dev tools immediately.
+          console.error("[useAgreementGate] role lookup failed:", roleErr);
+        }
         if (roleRow) {
           setStatus("bypass");
           return;
         }
-      } catch {
-        // Role lookup failures fall through to the client path — they
-        // never lock an admin out because admins also pass other checks.
+      } catch (err) {
+        console.error("[useAgreementGate] role lookup threw:", err);
       }
 
       // Team / freelancer accounts have their own flow and do not see
