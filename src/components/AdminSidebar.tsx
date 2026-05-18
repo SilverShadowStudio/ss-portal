@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Package, Landmark, FolderOpen, ScrollText, Receipt, TrendingUp,
+  FileText, Landmark, FolderOpen, ScrollText, Receipt, TrendingUp,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -28,7 +28,6 @@ const SECTIONS: SidebarNavSection[] = [
   {
     title: "Production",
     items: [
-      { path: "/admin/orders",              label: "Orders",  Icon: Package  },
       { path: "/admin/production-tracker",  label: "Tracker", Icon: Activity },
     ],
   },

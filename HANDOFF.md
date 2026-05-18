@@ -77,6 +77,12 @@ Long session, 19 commits. Two major threads: (1) plumbing the delivery-notificat
 
 ## Pending
 
+- **Partnership / subscription model — paused, to be revisited.** The Orders system (`/admin/orders`, `Orders.tsx` for partnership clients, the `orders` table, the subscription and project order types in code, and the Lane subscription content in clauses 2 and 6 of the Client Agreement) is dormant infrastructure for a commercial model that is not currently active. All real Silvershadow clients today are project-based and use the quotation flow. Orders entry hidden from `AdminSidebar.tsx` this session; route + page kept reachable by direct URL so the code isn't lost. When the partnership / subscription model is finalised, revisit:
+  - Re-enable the Orders sidebar entry in `AdminSidebar.tsx`.
+  - Confirm the Orders menu item is correctly shown only to partnership clients in `ClientSidebar.tsx`.
+  - Review the contract's clauses 2 and 6 around Lanes and subscriptions to confirm they still match the intended model.
+  - Decide whether subscription billing automation is needed (currently no automatic invoice on subscription orders).
+  - Decide whether the Orders system should be unified with Quotations or remain a separate commercial track.
 - **`STRIPE_SECRET_KEY` is `sk_live_`.** Verified live earlier today via a one-shot diagnostic function (deployed, invoked, deleted). Any payment smoke-test still risks real money on real cards. Decision parked from previous session — recommendation: swap to `sk_test_` for dummy account flow, or use a card you control with a £1 test + refund. `INV-202605-4769`'s cached `cs_live_...` URL also still in DB and will resolve via the cache shortcut.
 - **Sidebar visual diff check.** The `dca01c3` tightening landed yesterday; no live browser sweep this session. Recommend a 60-second eye-on-the-screen check at next opportunity.
 - **`is_super_admin()` SQL helper + `useIsSuperAdmin` React hook.** Both implemented (`a0496f3`) but no caller / RLS policy uses them yet. Available when needed.
