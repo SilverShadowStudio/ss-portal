@@ -168,6 +168,17 @@ Deno.serve(async (req) => {
     } catch { /* use defaults */ }
     const brand = await loadBrand(admin)
 
+    // Look up the existing user's first name from profiles for the greeting line.
+    let resendFirstName: string | null = null
+    try {
+      const { data: profileRow } = await admin
+        .from('profiles')
+        .select('first_name')
+        .eq('user_id', linkData.user.id)
+        .maybeSingle()
+      resendFirstName = (profileRow?.first_name as string | null) ?? null
+    } catch { /* greeting line is optional */ }
+
     if (resendKey && inviteUrl) {
       try {
         const res = await fetch('https://api.resend.com/emails', {
@@ -177,7 +188,7 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
-            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined }),
+            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: resendFirstName }),
             headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
             tags: [{ name: 'category', value: 'reinvite' }],
           }),
@@ -473,7 +484,7 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || 'Your Silvershadow Studio portal is ready.',
-            html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined }),
+            html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: body.contact?.firstName ?? null }),
             headers: {
               'X-Entity-Ref-ID': crypto.randomUUID(),
             },

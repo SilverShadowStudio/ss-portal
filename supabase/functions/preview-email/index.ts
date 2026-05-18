@@ -52,6 +52,12 @@ Deno.serve(async (req) => {
 
   const p = (key: string) => url.searchParams.has(key) ? (url.searchParams.get(key) ?? undefined) : undefined
 
+  // Default the preview greeting to a sample name so admins see the
+  // canonical render of the new greeting line. Pass `?firstName=` (empty)
+  // to preview the unnamed variant.
+  const firstNameParam = p('firstName')
+  const firstName = firstNameParam === undefined ? 'Frederic' : firstNameParam
+
   const config: InviteEmailConfig = {
     illustrationUrl: p('illustrationUrl') ?? stored.illustrationUrl,
     bodyCopy: p('bodyCopy') ?? stored.bodyCopy,
@@ -59,6 +65,7 @@ Deno.serve(async (req) => {
     ctaUrl: p('ctaUrl') ?? stored.ctaUrl,
     footerText: p('footerText') ?? stored.footerText,
     backgroundColor: p('backgroundColor') ?? stored.backgroundColor,
+    firstName,
   }
 
   const inviteUrl = url.searchParams.get('ctaUrl') || 'https://portal.silvershadowstudio.com/set-password?token=PREVIEW'
