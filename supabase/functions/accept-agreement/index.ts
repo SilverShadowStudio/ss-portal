@@ -485,8 +485,11 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
   // 11. signatures_audit_log — best-effort; do not fail the response if it errors.
   //     Uses the await + destructure { error } pattern (NOT .catch on PostgrestBuilder).
   {
+    // document_type is constrained to ('client_agreement','quotation','nda','service_agreement').
+    // The brief said to fall back to the existing value if custom types
+    // aren't supported. The v3 specificity lives in `version_code`.
     const { error: auditErr } = await admin.from("signatures_audit_log").insert({
-      document_type: "client_agreement_v3",
+      document_type: "client_agreement",
       document_id: agreementId,
       account_id: acct.id,
       user_id: user.id,
