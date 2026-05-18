@@ -6,15 +6,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Landmark, FolderOpen, ScrollText, Receipt, TrendingUp,
+  FileText, Landmark, ScrollText, Receipt, TrendingUp,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
-// Admin sidebar structure — Sidebar.tsx renders this, including the eyebrow
-// section headers and indented item layout.
+// Admin sidebar — grouped by audience.
+//   Group 1: Dashboard + Timeline (overview).
+//   Group 2: Clients (clickable top-level) + their indented sub-routes.
+//   Group 3: Team (clickable top-level) + their indented sub-routes.
+//   Group 4: Finance (non-clickable label) + its indented sub-routes.
+// Sections are separated by a 1px rule rendered by Sidebar.tsx.
 const SECTIONS: SidebarNavSection[] = [
   {
-    title: "Overview",
     items: [
       { path: "/admin",          label: "Dashboard", Icon: LayoutDashboard, matchActive: (p) => p === "/admin" },
       { path: "/admin/timeline", label: "Timeline",  Icon: CalendarDays    },
@@ -22,30 +25,27 @@ const SECTIONS: SidebarNavSection[] = [
   },
   {
     items: [
-      { path: "/admin/clients", label: "Clients", Icon: Users2 },
+      { path: "/admin/clients",   label: "Clients",    Icon: Users2 },
+      { path: "/admin/documents", label: "Agreements", Icon: FileText,   indent: true },
+      { path: "/admin/quotes",    label: "Quotes",     Icon: ScrollText, indent: true },
+      { path: "/admin/invoices",  label: "Invoices",   Icon: Landmark,   indent: true },
     ],
   },
   {
-    title: "Production",
     items: [
-      { path: "/admin/production-tracker",  label: "Tracker", Icon: Activity },
-    ],
-  },
-  {
-    title: "Operations",
-    items: [
-      { path: "/admin/team/contracts", label: "Contracts", Icon: FileText   },
-      { path: "/admin/documents",      label: "Documents", Icon: FolderOpen },
-      { path: "/admin/team",           label: "Team",      Icon: UserPlus   },
+      // Team's own listing page; matchActive excludes sub-routes so /admin/team/contracts
+      // doesn't dual-highlight Team and Agreements.
+      { path: "/admin/team",               label: "Team",       Icon: UserPlus, matchActive: (p) => p === "/admin/team" },
+      { path: "/admin/team/contracts",     label: "Agreements", Icon: FileText, indent: true },
+      { path: "/admin/team/invoices",      label: "Invoices",   Icon: Landmark, indent: true },
+      { path: "/admin/production-tracker", label: "Tracker",    Icon: Activity, indent: true },
     ],
   },
   {
     title: "Finance",
     items: [
-      { path: "/admin/quotes",           label: "Quotes",   Icon: ScrollText },
-      { path: "/admin/invoices",         label: "Invoices", Icon: Landmark   },
-      { path: "/admin/finance/expenses", label: "Expenses", Icon: Receipt    },
-      { path: "/admin/finance/pnl",      label: "P&L",      Icon: TrendingUp },
+      { path: "/admin/finance/pnl",      label: "P&L",      Icon: TrendingUp, indent: true },
+      { path: "/admin/finance/expenses", label: "Expenses", Icon: Receipt,    indent: true },
     ],
   },
 ];

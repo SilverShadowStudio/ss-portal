@@ -25,6 +25,9 @@ export interface SidebarNavItem {
    *  `current.startsWith(path + "/")`. Use for items like "/admin" that
    *  must NOT match every sub-route. */
   matchActive?: (currentPath: string) => boolean;
+  /** If true, render with deeper left padding to read as a child of the
+   *  preceding (parent) item or section header. Expanded mode only. */
+  indent?: boolean;
 }
 
 export interface SidebarNavSection {
@@ -105,7 +108,7 @@ export function Sidebar({
         className={cn(
           "relative group flex items-center transition-colors duration-quick whitespace-nowrap font-sans uppercase",
           expanded
-            ? "w-full pr-3 py-3 pl-5"
+            ? cn("w-full pr-3 py-3", item.indent ? "pl-10" : "pl-5")
             : "h-11 w-12 justify-center mx-auto rounded-lg",
           isActive
             ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
@@ -244,6 +247,14 @@ export function Sidebar({
                     className="mx-6 my-4 border-0"
                     style={{ borderTop: "1px solid #2A2820" }}
                   />
+                )}
+                {expanded && section.title && (
+                  <div
+                    className="font-sans uppercase text-sidebar-foreground/50 select-none pr-3 py-3 pl-5"
+                    style={SB.navStyle}
+                  >
+                    {section.title}
+                  </div>
                 )}
                 <div className={cn(expanded ? "flex flex-col gap-2" : "flex flex-col items-center gap-1")}>
                   {section.items.map((item) => renderItem(item))}

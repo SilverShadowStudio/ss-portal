@@ -40,6 +40,7 @@ import AdminDocuments from "./pages/admin/AdminDocuments";
 import AdminTimeline from "./pages/admin/AdminTimeline";
 import AdminActivity from "./pages/admin/AdminActivity";
 import AdminInvoices from "./pages/admin/AdminInvoices";
+import AdminTeamInvoices from "./pages/admin/AdminTeamInvoices";
 import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
@@ -371,6 +372,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminTeamContracts />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/team/invoices"
+              element={
+                <AdminProtectedRoute>
+                  <AdminTeamInvoices />
                 </AdminProtectedRoute>
               }
             />
