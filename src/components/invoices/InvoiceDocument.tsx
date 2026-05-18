@@ -187,7 +187,7 @@ export const InvoiceDocument = forwardRef<HTMLDivElement, { data: InvoiceDocumen
           <div>
             <img
               src={SILVERSHADOW_LOGO_DATA_URL}
-              alt="Silvershadow Studio"
+              alt="Silver Shadow Studio"
               style={{ width: 150, height: "auto", display: "block" }}
               crossOrigin="anonymous"
             />

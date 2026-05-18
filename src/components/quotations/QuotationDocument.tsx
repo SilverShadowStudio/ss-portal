@@ -199,7 +199,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
           <div style={{ display: "flex", justifyContent: "center" }}>
             <img
               src={SILVERSHADOW_LOGO_DATA_URL}
-              alt="Silvershadow Studio"
+              alt="Silver Shadow Studio"
               style={{ width: 150, height: "auto", display: "block" }}
               crossOrigin="anonymous"
             />
@@ -244,7 +244,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
             <div style={label}>Brief</div>
             <div style={{ ...prose, marginTop: 10, maxWidth: 480 }}>
               The Client hereby commissions the production of the deliverables
-              listed below. These will be produced to Silvershadow Studio's
+              listed below. These will be produced to Silver Shadow Studio's
               signature standard, suitable for premium presentations and
               distribution.
             </div>
@@ -378,11 +378,11 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
             <ul style={{ ...body, marginTop: 4, paddingLeft: 22, maxWidth: "65%" }}>
               <li><em>Virtual Photoshoot</em>{" — "}Upon receipt of the Client's feedback on Round 01, a meeting with our Director of Photography determines optimal camera angles and framing aligned with the design intent.</li>
               <li><em>Finalisation</em>{" — "}Incorporates the Client's feedback from Round 01, limited to corrections required to align with the initial design brief: refinements to positions, dimensions, finishes, lighting, and overall visual composition.</li>
-              <li><em>Post-Production</em>{" — "}Final adjustments to colour, balance, and contrast applied to achieve Silvershadow Studio's signature standard of realism and photographic quality.</li>
+              <li><em>Post-Production</em>{" — "}Final adjustments to colour, balance, and contrast applied to achieve Silver Shadow Studio's signature standard of realism and photographic quality.</li>
               <li>No new design concepts or modelling changes are permitted at this stage. Any new direction or major modification will require an additional Redesign Round.</li>
             </ul>
             <div style={{ ...prose, marginTop: 10 }}>
-              Each image undergoes this structured process to ensure both aesthetic quality and technical accuracy, with the Client fully involved at each feedback stage. This outline represents Silvershadow Studio's standard process and can be adapted to specific client requirements by mutual agreement.
+              Each image undergoes this structured process to ensure both aesthetic quality and technical accuracy, with the Client fully involved at each feedback stage. This outline represents Silver Shadow Studio's standard process and can be adapted to specific client requirements by mutual agreement.
             </div>
           </div>
 
@@ -454,7 +454,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
             </ul>
             <div style={{ ...body, marginTop: 10, fontWeight: 400 }}>Non-Payment and Delivery Clause</div>
             <div style={{ ...prose, marginTop: 4 }}>
-              Delivery of any visuals or scenes is contingent upon receipt of payments as scheduled. If any instalment is not paid by its due date, Silvershadow Studio reserves the right to withhold delivery of any pending visuals until such payments are fully received.
+              Delivery of any visuals or scenes is contingent upon receipt of payments as scheduled. If any instalment is not paid by its due date, Silver Shadow Studio reserves the right to withhold delivery of any pending visuals until such payments are fully received.
             </div>
             <div style={{ ...body, marginTop: 10, fontWeight: 400 }}>Late Payment Policy</div>
             <div style={{ ...prose, marginTop: 4 }}>
@@ -466,7 +466,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
           <div style={{ marginTop: 24 }}>
             <div style={label}>Project Inactivity</div>
             <div style={{ ...prose, marginTop: 10 }}>
-              If the Client provides no feedback or communication for more than 30 calendar days, Silvershadow Studio reserves the right to terminate the project. In such cases, the Studio will issue an invoice covering the pro-rata value of the work completed to date, along with any confirmed external or recoverable production costs incurred during that period. Reactivation of a suspended or terminated project will require a new quotation, revised timeline, and written confirmation of reactivation.
+              If the Client provides no feedback or communication for more than 30 calendar days, Silver Shadow Studio reserves the right to terminate the project. In such cases, the Studio will issue an invoice covering the pro-rata value of the work completed to date, along with any confirmed external or recoverable production costs incurred during that period. Reactivation of a suspended or terminated project will require a new quotation, revised timeline, and written confirmation of reactivation.
             </div>
           </div>
 
@@ -474,7 +474,7 @@ export const QuotationDocument = forwardRef<HTMLDivElement, { data: QuotationDoc
           <div style={{ marginTop: 24 }}>
             <div style={label}>Intellectual Property</div>
             <div style={{ ...prose, marginTop: 10 }}>
-              All work remains the property of Silvershadow Studio until full payment has been received. Upon full payment, the copyright and intellectual property rights for the completed work shall transfer to the Client. Silvershadow Studio may, at its discretion, feature the commissioned visuals within its professional portfolio and in award submissions. The Studio must be credited as the creator of the visual content in any publications or media exposure.
+              All work remains the property of Silver Shadow Studio until full payment has been received. Upon full payment, the copyright and intellectual property rights for the completed work shall transfer to the Client. Silver Shadow Studio may, at its discretion, feature the commissioned visuals within its professional portfolio and in award submissions. The Studio must be credited as the creator of the visual content in any publications or media exposure.
             </div>
           </div>
 

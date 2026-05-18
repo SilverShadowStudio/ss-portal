@@ -530,6 +530,11 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
   }
 
   // 13. Send confirmation email with attached PDF (best-effort).
+  // Visual system matches the invitation email: cream #EDE8E0 ground,
+  // centred wordmark + architectural illustration, serif body in #1A1814,
+  // small "silvershadowstudio.com" footer at 45% opacity. No internal
+  // version/date metadata appears in the visible body — that lives in the
+  // attached PDF.
   try {
     const resendKey = Deno.env.get("RESEND_API_KEY");
     if (resendKey && user.email) {
@@ -540,18 +545,30 @@ async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>
         binary += String.fromCharCode(...pdfBytes.subarray(i, i + chunk));
       }
       const pdfBase64 = btoa(binary);
-      const html = `<div style="font-family:Georgia,'Times New Roman',serif;max-width:520px;margin:0 auto;padding:48px 32px;color:#1A1814;background:${design.background_color}">
-        <p style="font-size:15px;line-height:1.7;margin:0 0 16px">Thank you for accepting the Silvershadow Studio Services Agreement.</p>
-        <p style="font-size:15px;line-height:1.7;margin:0 0 16px">A signed copy of the agreement is attached for your records. You will also find it in your portal Documents area.</p>
-        <p style="font-size:11px;color:#8A8070;margin-top:32px;letter-spacing:0.12em;text-transform:uppercase">Agreement ${payload.agreement_version} — ${new Date(acceptedAtIso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
-      </div>`;
+
+      // Greeting: first whitespace token of the signatory name. Omitted
+      // entirely when null/empty. Same logic the invitation email uses.
+      const firstNameRaw = (payload.signatory_name || "").trim().split(/\s+/)[0] || "";
+      const escapeHtml = (s: string) => s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+      const greetingHtml = firstNameRaw ? `${escapeHtml(firstNameRaw)},<br><br>` : "";
+
+      const LOGO_URL = "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png";
+      const ILLUSTRATION_URL = "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png";
+
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#EDE8E0"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EDE8E0"><tr><td align="center" valign="top"><table width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%"><tr><td style="font-family:Arial,sans-serif;padding:48px 40px"><div style="text-align:center;margin-bottom:40px"><img src="${LOGO_URL}" alt="Silver Shadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none"></div><div style="margin:32px 0;text-align:center"><img src="${ILLUSTRATION_URL}" alt="" style="display:inline-block;max-width:160px;width:100%;height:auto;border:none"></div><p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;max-width:360px;margin:0 auto 32px">${greetingHtml}Thank you for accepting the Silver Shadow Studio Services Agreement. A signed copy is attached to this email and is also available in your portal under Documents.</p><p style="font-family:Arial,sans-serif;font-size:11px;text-align:center;margin:32px 0 0 0"><a href="https://www.silvershadowstudio.com" style="color:#1A1814;opacity:0.45;text-decoration:none">silvershadowstudio.com</a></p></td></tr></table></td></tr></table></body></html>`;
+
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "Silvershadow Studio <portal@silvershadowstudio.com>",
+          from: "Silver Shadow Studio <portal@silvershadowstudio.com>",
           to: [user.email],
-          subject: `Your Services Agreement — ${acct.company_name}`,
+          subject: "Your Silver Shadow Studio Services Agreement",
           html,
           attachments: [{ filename: fileName, content: pdfBase64 }],
         }),

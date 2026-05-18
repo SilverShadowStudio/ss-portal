@@ -215,7 +215,7 @@ export function Sidebar({
             {expanded ? (
               <img
                 src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png"
-                alt="Silvershadow Studio"
+                alt="Silver Shadow Studio"
                 className="h-7 w-auto object-contain"
                 style={{ filter: theme === "dark" ? "brightness(0) invert(1)" : "brightness(0)" }}
               />

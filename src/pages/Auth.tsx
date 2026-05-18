@@ -140,7 +140,7 @@ export default function Auth() {
         } else {
           toast({
             title: "Account Created",
-            description: "Welcome to Silvershadow Studio.",
+            description: "Welcome to Silver Shadow Studio.",
           });
           navigate("/");
         }
@@ -167,7 +167,7 @@ export default function Auth() {
         <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
           <img
             src={silvershadowLogo}
-            alt="Silvershadow Studio"
+            alt="Silver Shadow Studio"
             className="h-7 w-auto brightness-0 invert-0 dark:invert"
           />
         </div>

@@ -1,4 +1,4 @@
-// Single source of truth for the Silvershadow Studio Client Agreement.
+// Single source of truth for the Silver Shadow Studio Client Agreement.
 // Rendered in the portal at signup and server-side into the signed PDF.
 
 // CHANGELOG:
@@ -9,7 +9,7 @@
 export const CURRENT_AGREEMENT_VERSION = "SSS-CA-v2.1";
 
 export const ACCEPTANCE_CHECKBOX_TEXT =
-  "I confirm that I am authorised to bind the Client and agree to the Silvershadow Studio Client Agreement on behalf of the Client. I understand that every order I place through the platform is a binding transaction under these terms.";
+  "I confirm that I am authorised to bind the Client and agree to the Silver Shadow Studio Client Agreement on behalf of the Client. I understand that every order I place through the platform is a binding transaction under these terms.";
 
 export interface AgreementSection {
   number: string;
@@ -22,7 +22,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     number: "1",
     title: "WHO WE ARE AND WHAT WE DO",
     body: [
-      "Silvershadow Studio is an architectural and interior visualisation studio based in London. We produce CGI stills, VR, film, and related visual content for interior designers, developers, and architects worldwide.",
+      "Silver Shadow Studio is an architectural and interior visualisation studio based in London. We produce CGI stills, VR, film, and related visual content for interior designers, developers, and architects worldwide.",
       "You get access to our full production capability: 3D modelling, rendering, post-production, asset libraries, and a dedicated project manager throughout your engagement.",
     ],
   },
@@ -100,7 +100,7 @@ export const AGREEMENT_SECTIONS: AgreementSection[] = [
     title: "CONFIDENTIALITY",
     body: [
       "Both parties treat each other's non-public information as confidential for the duration of the engagement and three years thereafter.",
-      "You may identify Silvershadow Studio as your visualisation studio. Pricing, workflows, and portal contents are confidential and not to be shared without our written consent.",
+      "You may identify Silver Shadow Studio as your visualisation studio. Pricing, workflows, and portal contents are confidential and not to be shared without our written consent.",
       "We treat all materials you provide with strict confidentiality. Our team operates under internal NDAs. All rendering is processed on our in-house infrastructure.",
     ],
   },

@@ -67,13 +67,13 @@ export default function SignAgreement() {
         throw new Error(data?.error || error?.message || "Agreement could not be saved.");
       }
 
-      toast({ title: "Agreement accepted", description: "Welcome to Silvershadow Studio." });
+      toast({ title: "Agreement accepted", description: "Welcome to Silver Shadow Studio." });
       await refreshAgreementStatus();
       navigate("/");
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Please try again or contact Silvershadow Studio.",
+        description: err.message || "Please try again or contact Silver Shadow Studio.",
         variant: "destructive",
       });
     } finally {
@@ -108,7 +108,7 @@ export default function SignAgreement() {
             className="font-serif font-normal text-foreground/90"
             style={{ fontSize: "38px", letterSpacing: "-0.005em", lineHeight: 1.05 }}
           >
-            Silvershadow Studio Client Agreement
+            Silver Shadow Studio Client Agreement
           </h1>
         </header>
 

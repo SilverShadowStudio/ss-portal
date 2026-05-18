@@ -26,7 +26,7 @@ const CLAUSES: Clause[] = [
     number: "1",
     title: "Who we are and what we do",
     paragraphs: [
-      { type: "prose", text: "Silvershadow Studio is an architectural and interior visualisation studio based in London. We produce CGI stills, virtual reality, film, and related visual content for interior designers, developers, and architects worldwide." },
+      { type: "prose", text: "Silver Shadow Studio is an architectural and interior visualisation studio based in London. We produce CGI stills, virtual reality, film, and related visual content for interior designers, developers, and architects worldwide." },
       { type: "prose", text: "You get access to our full production capability — 3D modelling, rendering, post-production, asset libraries, and a dedicated project manager throughout your engagement." },
     ],
   },
@@ -161,7 +161,7 @@ const CLAUSES: Clause[] = [
     number: "12",
     title: "Non-solicitation",
     paragraphs: [
-      { type: "prose", text: "During the term of this agreement and for twelve months after it ends, you agree not to — directly or indirectly, on your own behalf or through any third party — solicit, approach, employ, engage, or offer to employ or engage any individual who has worked on your account in the twelve months preceding the approach, whether as employee, freelancer, or subcontractor of Silvershadow Studio." },
+      { type: "prose", text: "During the term of this agreement and for twelve months after it ends, you agree not to — directly or indirectly, on your own behalf or through any third party — solicit, approach, employ, engage, or offer to employ or engage any individual who has worked on your account in the twelve months preceding the approach, whether as employee, freelancer, or subcontractor of Silver Shadow Studio." },
       { type: "prose", text: "This restriction applies whether or not the individual would commit a breach of contract by accepting such an approach." },
       { type: "prose", text: "Breach of this clause causes us identifiable harm — replacement cost, recruitment cost, training cost, and disruption to ongoing work — that is genuinely difficult to quantify in advance. The parties agree that a fair pre-estimate of that loss is six months of the individual's total compensation at the time of the breach. That sum is payable on demand. The parties agree this is a genuine pre-estimate and not a penalty." },
     ],
@@ -171,7 +171,7 @@ const CLAUSES: Clause[] = [
     title: "Confidentiality",
     paragraphs: [
       { type: "prose", text: "Each party will keep confidential all non-public information disclosed by the other in connection with this agreement, including designs, processes, technical and commercial data, pricing, client identities, methods of working, and portal contents. Each party will use such information only for the purposes of this agreement, and will not disclose it to any third party without the prior written consent of the disclosing party." },
-      { type: "prose", text: "You may identify Silvershadow Studio as your visualisation studio in your own marketing. Our pricing, workflows, and the contents of the portal are confidential and may not be shared without our written consent." },
+      { type: "prose", text: "You may identify Silver Shadow Studio as your visualisation studio in your own marketing. Our pricing, workflows, and the contents of the portal are confidential and may not be shared without our written consent." },
       { type: "prose", text: "We treat all material you supply with strict confidentiality. Our team operates under internal non-disclosure agreements. We apply reasonable technical and organisational security measures, including in-house infrastructure for rendering and storage." },
       { type: "prose", text: "These obligations do not apply to information that is already publicly available, was already lawfully known to the receiving party, is independently developed without reference to the confidential information, or is required to be disclosed by law (in which case the receiving party will give as much prior notice as is legally permissible)." },
       { type: "prose", text: "These obligations apply during the term of this agreement and for three years after it ends. On written request or on termination, the receiving party will return or delete the disclosing party's confidential information, subject to standard backup retention periods and any legal obligation to retain records." },
@@ -280,7 +280,7 @@ export function buildProjectV3Document(input: {
     },
     clauses: CLAUSES,
     execution: {
-      intro: "This agreement is executed electronically through the Silvershadow Studio portal. Acceptance is captured by a drawn signature, IP address, user agent, and timestamp, and recorded in an immutable audit log. A signed PDF copy is delivered to the email address registered to the Client account on completion.",
+      intro: "This agreement is executed electronically through the Silver Shadow Studio portal. Acceptance is captured by a drawn signature, IP address, user agent, and timestamp, and recorded in an immutable audit log. A signed PDF copy is delivered to the email address registered to the Client account on completion.",
       confirmation: "By accepting this agreement, the individual signing confirms they are duly authorised to bind the Client and to accept these terms on the Client's behalf, and confirms that they have read and understood the matters drawn to their attention at the start of this document.",
     },
   };

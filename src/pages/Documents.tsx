@@ -418,7 +418,7 @@ export default function Documents() {
                     <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
                     <div className="flex-1 min-w-0">
                       <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
-                        Silvershadow Studio Client Agreement — {a.company_name}
+                        Silver Shadow Studio Client Agreement — {a.company_name}
                       </p>
                       <p className="font-sans uppercase text-foreground/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
                         Signed {formatDate(a.signed_at)}

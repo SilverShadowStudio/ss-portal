@@ -6,7 +6,7 @@ const DEFAULTS = {
   illustrationUrl:
     "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png",
   bodyCopy:
-    "Your Silvershadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.",
+    "Your Silver Shadow Studio portal is ready. Your projects, deliveries, and studio communications are now accessible in one place.",
   ctaLabel: "ACCESS YOUR PORTAL",
   ctaUrl: "https://portal.silvershadowstudio.com/set-password?token=PREVIEW",
   footerText: "silvershadowstudio.com",

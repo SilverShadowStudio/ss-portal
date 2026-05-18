@@ -15,7 +15,7 @@ const corsHeaders = {
 
 const LOGO_URL =
   "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png";
-const FROM_ADDRESS = "Silvershadow Studio <portal@silvershadowstudio.com>";
+const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
 const PORTAL_DOCS_URL = "https://portal.silvershadowstudio.com/documents";
 
 function buildQuotationEmailHtml(
@@ -25,8 +25,8 @@ function buildQuotationEmailHtml(
   backgroundColor: string,
 ): string {
   const intro = companyName
-    ? `Silvershadow Studio has prepared a new quotation for ${companyName}.`
-    : `Silvershadow Studio has prepared a new quotation for your review.`;
+    ? `Silver Shadow Studio has prepared a new quotation for ${companyName}.`
+    : `Silver Shadow Studio has prepared a new quotation for your review.`;
 
   const projectLine = projectName
     ? `<p style="font-family:Georgia,'Times New Roman',serif;font-size:13px;color:#6B6358;line-height:1.5;text-align:center;margin:0 auto 4px;max-width:360px;letter-spacing:0.03em;">${projectName}</p>`
@@ -47,7 +47,7 @@ function buildQuotationEmailHtml(
             <td style="font-family:Arial,sans-serif;padding:48px 40px;">
 
               <div style="text-align:center;margin-bottom:44px;">
-                <img src="${LOGO_URL}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none;">
+                <img src="${LOGO_URL}" alt="Silver Shadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none;">
               </div>
 
               <p style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:400;color:#1A1814;line-height:1.15;text-align:center;margin:0 auto 10px;letter-spacing:0.02em;">
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     if (uErr || !user?.email) throw new Error(`User not found: ${uErr?.message}`);
 
     const quotationNumber = quotation.quotation_number || quotation.reference_number || "—";
-    const subject = `New quotation from Silvershadow Studio — ${quotationNumber}`;
+    const subject = `New quotation from Silver Shadow Studio — ${quotationNumber}`;
     const brand = await loadBrand(supabase);
     const html = buildQuotationEmailHtml(
       quotationNumber,

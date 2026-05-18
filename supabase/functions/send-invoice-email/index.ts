@@ -16,7 +16,7 @@ const corsHeaders = {
 
 const LOGO_URL =
   "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png";
-const FROM_ADDRESS = "Silvershadow Studio <portal@silvershadowstudio.com>";
+const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
 const PORTAL_DOCS_URL = "https://portal.silvershadowstudio.com/documents";
 
 function fmtMoney(amount: number, currency = "GBP") {
@@ -52,8 +52,8 @@ function buildInvoiceEmailHtml(
       : "Invoice";
 
   const intro = companyName
-    ? `Silvershadow Studio has issued a new invoice for ${companyName}.`
-    : `Silvershadow Studio has issued a new invoice for your review.`;
+    ? `Silver Shadow Studio has issued a new invoice for ${companyName}.`
+    : `Silver Shadow Studio has issued a new invoice for your review.`;
 
   const formattedAmount = fmtMoney(amount, currency);
   const formattedDue = fmtDate(dueDate);
@@ -79,7 +79,7 @@ function buildInvoiceEmailHtml(
             <td style="font-family:Arial,sans-serif;padding:48px 40px;">
 
               <div style="text-align:center;margin-bottom:44px;">
-                <img src="${LOGO_URL}" alt="Silvershadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none;">
+                <img src="${LOGO_URL}" alt="Silver Shadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none;">
               </div>
 
               <p style="font-family:Georgia,'Times New Roman',serif;font-size:11px;font-weight:400;color:#6B6358;line-height:1.5;text-align:center;margin:0 auto 8px;letter-spacing:0.18em;text-transform:uppercase;">
@@ -97,7 +97,7 @@ function buildInvoiceEmailHtml(
               <div style="width:36px;height:1px;background:#C8C0B0;margin:22px auto 26px;"></div>
 
               <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.75;text-align:center;max-width:360px;margin:0 auto 32px;">
-                ${intro} Please log in to your Silvershadow Studio portal to view the full invoice and proceed with payment.
+                ${intro} Please log in to your Silver Shadow Studio portal to view the full invoice and proceed with payment.
               </p>
 
               <p style="text-align:center;margin:0 0 44px;">
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
     if (uErr || !user?.email) throw new Error(`User not found: ${uErr?.message}`);
 
     const invoiceNumber = invoice.invoice_number || invoice.reference_number || "—";
-    const subject = `Invoice ${invoiceNumber} from Silvershadow Studio`;
+    const subject = `Invoice ${invoiceNumber} from Silver Shadow Studio`;
     const brand = await loadBrand(supabase);
     const html = buildInvoiceEmailHtml(
       invoiceNumber,

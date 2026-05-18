@@ -146,7 +146,7 @@ function generateInvoicePdf(invoice: {
       doc.setFont("times", "normal");
       doc.setFontSize(28);
       doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
-      doc.text("Silvershadow Studio", margin, margin + 30);
+      doc.text("Silver Shadow Studio", margin, margin + 30);
     }
   }
 
@@ -301,7 +301,7 @@ function generateInvoicePdf(invoice: {
   const TOTALS_HEIGHT = 28 + 18 + 18 + 14 + 30;
   const NOTES_TOP_GAP = 36;
 
-  // Continuation-page header: minimal "INVOICE / Silvershadow Studio · No."
+  // Continuation-page header: minimal "INVOICE / Silver Shadow Studio · No."
   const drawContinuationHeader = (): number => {
     doc.setFillColor(bgCream[0], bgCream[1], bgCream[2]);
     doc.rect(0, 0, pageWidth, pageHeight, "F");

@@ -1,5 +1,5 @@
 /**
- * Silvershadow Studio — Shared Design Constants
+ * Silver Shadow Studio — Shared Design Constants
  *
  * Single source of truth for every styling decision that must be
  * consistent across the client portal and the admin panel.

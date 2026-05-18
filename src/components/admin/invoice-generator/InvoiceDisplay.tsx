@@ -35,7 +35,7 @@ export const InvoiceDisplay: React.FC<Props> = ({ data, type }) => {
       <div className="flex flex-col items-center mb-12">
         <img
           src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/SilvershadowStudio.png"
-          alt="Silvershadow Studio"
+          alt="Silver Shadow Studio"
           className="w-[160px] h-auto mb-4"
           style={{ filter: "brightness(0)" }}
           referrerPolicy="no-referrer"

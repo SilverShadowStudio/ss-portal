@@ -70,15 +70,15 @@ export default function SetPassword() {
           <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
             <img
               src={silvershadowLogo}
-              alt="Silvershadow Studio"
+              alt="Silver Shadow Studio"
               className="h-7 w-auto brightness-0 invert-0 dark:invert"
             />
           </div>
           <div className="w-full animate-fade-in text-center" style={{ animationDelay: "0.05s" }}>
             <p className="text-sm text-muted-foreground leading-relaxed mb-8">
               {isExpired
-                ? "This invitation link has expired. Please contact Silvershadow Studio to receive a new one."
-                : "This link is invalid. Please contact Silvershadow Studio."}
+                ? "This invitation link has expired. Please contact Silver Shadow Studio to receive a new one."
+                : "This link is invalid. Please contact Silver Shadow Studio."}
             </p>
             <button onClick={() => navigate("/")} className="sp-submit">
               Return to login
@@ -103,7 +103,7 @@ export default function SetPassword() {
       <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
         <img
           src={silvershadowLogo}
-          alt="Silvershadow Studio"
+          alt="Silver Shadow Studio"
           className="h-7 w-auto brightness-0 invert-0 dark:invert"
         />
       </div>

@@ -150,7 +150,7 @@ export default function ResetPassword() {
       <div className="mb-10 animate-fade-in">
         <img
           src={silvershadowLogo}
-          alt="Silvershadow Studio"
+          alt="Silver Shadow Studio"
           className="h-10 w-auto brightness-0 invert-0 dark:invert md:h-12"
         />
       </div>

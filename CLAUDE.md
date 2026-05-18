@@ -1,8 +1,8 @@
-# Silvershadow Studio — Client Portal (ss-portal)
+# Silver Shadow Studio — Client Portal (ss-portal)
 
 ## What this is
 
-A dual-portal web application for Silvershadow Studio, a London-based CGI and architectural visualisation studio. Two user types:
+A dual-portal web application for Silver Shadow Studio, a London-based CGI and architectural visualisation studio. Two user types:
 
 - **Admin** (Fred + studio team) — manage clients, projects, scenes, rounds, invoices, orders, Dropbox sync
 - **Client** (design studios) — view renders, submit corrections, approve rounds, sign agreements, confirm orders
@@ -437,7 +437,7 @@ The `/admin/email-preview` route still exists but is no longer linked from the s
 ## Email invite configuration
 
 Stored in `app_settings` key `email_invite_config`. Fields:
-- `subject` — email subject line (default: "Your Silvershadow Studio portal is ready.")
+- `subject` — email subject line (default: "Your Silver Shadow Studio portal is ready.")
 - `illustrationUrl`, `bodyCopy`, `ctaLabel`, `ctaUrl`, `footerText`, `backgroundColor`
 
 The `subject` field is read by `admin-create-client` in both `invite` and `resend` modes. Falls back to the default if not set.
@@ -453,8 +453,8 @@ On the admin client profile page (`AdminClientProfile.tsx`), a "RESEND INVITATIO
 ## /set-password error handling
 
 `SetPassword.tsx` reads the URL hash on load (before any async work). Supabase appends error params to the hash when an invite link is invalid or expired:
-- `error_code=otp_expired` → "This invitation link has expired. Please contact Silvershadow Studio to receive a new one."
-- Any other `error` → "This link is invalid. Please contact Silvershadow Studio."
+- `error_code=otp_expired` → "This invitation link has expired. Please contact Silver Shadow Studio to receive a new one."
+- Any other `error` → "This link is invalid. Please contact Silver Shadow Studio."
 
 Error state renders immediately with no spinner, so clients always see a clear message. The "Return to login" button navigates to `/`.
 

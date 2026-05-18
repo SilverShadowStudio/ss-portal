@@ -573,7 +573,7 @@ export default function Contract() {
   if (accountState === "no_account" || accountState === "error") {
     return pageShell(
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
-        <EyebrowLabel>Silvershadow Studio</EyebrowLabel>
+        <EyebrowLabel>Silver Shadow Studio</EyebrowLabel>
         <p style={{ fontSize: 15, lineHeight: 1.7 }}>
           We couldn't load your account. Please contact{" "}
           <a href="mailto:fred@silvershadowstudio.com" style={{ color: GOLD }}>fred@silvershadowstudio.com</a>{" "}
@@ -589,7 +589,7 @@ export default function Contract() {
     const isPartnership = account?.account_type === "partnership";
     return pageShell(
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
-        <EyebrowLabel>Silvershadow Studio</EyebrowLabel>
+        <EyebrowLabel>Silver Shadow Studio</EyebrowLabel>
         {isPartnership ? (
           <p style={{ fontSize: 15, lineHeight: 1.7 }}>
             Your Partnership Agreement is being finalised. We will contact you when it is ready to review and sign.
@@ -598,7 +598,7 @@ export default function Contract() {
           </p>
         ) : (
           <p style={{ fontSize: 15, lineHeight: 1.7 }}>
-            This page is for project and partnership clients of Silvershadow Studio. If you reached it in error,
+            This page is for project and partnership clients of Silver Shadow Studio. If you reached it in error,
             please return to your <a href="/" style={{ color: GOLD }}>dashboard</a>.
           </p>
         )}

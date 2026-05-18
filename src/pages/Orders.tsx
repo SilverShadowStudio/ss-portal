@@ -215,7 +215,7 @@ function OrderModal({
         {isPending && (
           <div className="px-8 py-6 border-t border-border/30">
             <p style={{ fontSize: 12, color: "hsl(var(--foreground) / 0.5)", marginBottom: 16, lineHeight: 1.7 }}>
-              By confirming this order, you agree to the scope and fee above. This constitutes a binding commitment under the Silvershadow Studio Client Agreement you signed on registration.
+              By confirming this order, you agree to the scope and fee above. This constitutes a binding commitment under the Silver Shadow Studio Client Agreement you signed on registration.
             </p>
             <button
               onClick={() => onAccept(order.id)}
