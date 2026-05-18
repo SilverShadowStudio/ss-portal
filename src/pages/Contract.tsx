@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import ssIcon from "@/assets/ss-icon.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { getAgreement } from "@/lib/agreements";
@@ -607,13 +608,34 @@ export default function Contract() {
   }
 
   // ── Loading overlay while submitting ─────────────────────────────────────
+  // The pulsing SS icon is tinted to MUTED (#8A8070) via CSS mask so it
+  // matches the "Signing your agreement" eyebrow above. The shared
+  // BrandLoader bakes a black tint in and isn't easily recolourable, so
+  // this one place inlines its own version.
   if (submitting) {
     return pageShell(
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 18 }}>
         <p style={{ fontFamily: META_STACK, fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase" }}>
           Signing your agreement
         </p>
-        <BrandLoader size="md" />
+        <span
+          aria-hidden
+          className="animate-brand-pulse"
+          style={{
+            display: "inline-block",
+            width: 24,
+            height: 24,
+            backgroundColor: MUTED,
+            WebkitMaskImage: `url(${ssIcon})`,
+            maskImage: `url(${ssIcon})`,
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskSize: "contain",
+            maskSize: "contain",
+            WebkitMaskPosition: "center",
+            maskPosition: "center",
+          }}
+        />
       </div>,
     );
   }
