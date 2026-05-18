@@ -9,10 +9,17 @@ export interface SignaturePadRef {
 
 interface SignaturePadProps {
   onEnd?: () => void;
+  /** Optional pen colour override. Defaults to the cream tone used on the
+   *  portal's dark surfaces. The v3 client agreement page passes warm black
+   *  (`#1A1814`) for the cream document surface. */
+  penColor?: string;
+  /** Optional container className override for the wrapper. Defaults to the
+   *  cream-on-dark style used in the existing freelancer/quotation flows. */
+  containerClassName?: string;
 }
 
 const SignaturePad = forwardRef<SignaturePadRef, SignaturePadProps>(
-  ({ onEnd }, ref) => {
+  ({ onEnd, penColor, containerClassName }, ref) => {
     const sigCanvas = useRef<SignatureCanvas>(null);
 
     useImperativeHandle(ref, () => ({
@@ -28,10 +35,10 @@ const SignaturePad = forwardRef<SignaturePadRef, SignaturePadProps>(
     }));
 
     return (
-      <div className="border border-muted-foreground/30 rounded-sm bg-white/5">
+      <div className={containerClassName ?? "border border-muted-foreground/30 rounded-sm bg-white/5"}>
         <SignatureCanvas
           ref={sigCanvas}
-          penColor="#e8e0d4"
+          penColor={penColor ?? "#e8e0d4"}
           canvasProps={{
             className: "w-full h-40",
             style: { width: "100%", height: "160px" },

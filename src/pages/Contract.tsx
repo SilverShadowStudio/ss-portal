@@ -1,288 +1,780 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
-import { BrandLoader } from "@/components/ui/BrandLoader";
-import { Checkbox } from "@/components/ui/checkbox";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import {
-  AGREEMENT_SECTIONS,
-  ACCEPTANCE_CHECKBOX_TEXT,
-  CURRENT_AGREEMENT_VERSION,
-} from "@/lib/agreementTerms";
+// /contract — Client Agreement v3.0 acceptance gate.
+//
+// This is the only page in the portal that uses the document/paper visual
+// world (cream surface, warm-black ink, gold accents). Sidebar and portal
+// chrome are absent: the client is in a contractual moment, not a workspace.
+//
+// Behaviour:
+//   - Fetches the client's account for the cover block + schedule choice.
+//   - Renders the structured AgreementDocument from src/lib/agreements.
+//   - Tracks scroll-to-end via IntersectionObserver, signature, name, position.
+//   - Enables Accept only when all four conditions are met.
+//   - Tracks time-on-page (paused while tab is hidden).
+//   - Sends acceptance payload to `accept-agreement` edge function.
+//   - On success → /  (the gate in App.tsx will then keep the client out
+//     of /contract going forward).
+//
+// Naming reconciliation: the form fields are labelled "Full name" and
+// "Position / Title" and persist into the existing DB columns
+// `signatory_name` / `signatory_position`. We do not introduce
+// `signed_by_*` aliases — the DB column names are kept everywhere.
 
-interface FormData {
-  companyName: string;
-  country: string;
-  registrationNumber: string;
-  streetName: string;
-  buildingNumber: string;
-  city: string;
-  postcode: string;
-  firstName: string;
-  familyName: string;
-  position: string;
-  emailAddress: string;
-  password: string;
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
+import { BrandLoader } from "@/components/ui/BrandLoader";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
+import { getAgreement } from "@/lib/agreements";
+import type {
+  AgreementDocument,
+  Clause,
+  NoticeItem,
+  Paragraph,
+  PartyBlock,
+} from "@/lib/agreements/types";
+
+// Document-world palette. Kept inline; deliberately not aliased to portal
+// tokens so a future portal restyle does not bleed into the contract page.
+const PAPER = "#EDE8E0";
+const INK = "#1A1814";
+const MUTED = "#8A8070";
+const GOLD = "#B89A6A";
+const RULE = "#C8BFB0";
+
+const BODY_STACK = "Georgia, 'Times New Roman', serif";
+const META_STACK = "Arial, sans-serif";
+
+interface AccountInfo {
+  id: string;
+  company_name: string;
+  account_type: "project" | "partnership" | "team" | null;
+  country: string | null;
+  registration_number: string | null;
+  building_number: string | null;
+  street: string | null;
+  city: string | null;
+  postcode: string | null;
 }
 
-export default function Contract() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const formData = location.state?.formData as FormData | undefined;
+function joinAddress(a: AccountInfo): string | null {
+  const parts = [a.building_number, a.street, a.postcode, a.city].filter(Boolean) as string[];
+  return parts.length ? parts.join(", ") : null;
+}
 
-  const [accepted, setAccepted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [showError, setShowError] = useState(false);
-  const checkboxRef = useRef<HTMLDivElement | null>(null);
+// ── Render helpers ──────────────────────────────────────────────────────────
 
-  const partyLine = useMemo(() => {
-    if (!formData) return "";
-    const fullAddress = `${formData.buildingNumber} ${formData.streetName}, ${formData.city}, ${formData.postcode}`;
-    return `${formData.companyName}, incorporated or registered in ${formData.country} with registration number ${formData.registrationNumber}, whose registered address is ${fullAddress}.`;
-  }, [formData]);
+function PartyLine({ block }: { block: PartyBlock }) {
+  const segments = [
+    block.legalName,
+    block.country ? `Registered in ${block.country}` : null,
+    block.registrationNumber || null,
+    block.registeredAddress || null,
+  ].filter(Boolean) as string[];
+  return (
+    <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.7, margin: 0 }}>
+      {segments.join(" · ")}
+    </p>
+  );
+}
 
-  useEffect(() => {
-    // Scroll to top whenever the page loads.
-    window.scrollTo({ top: 0 });
-  }, []);
+function EyebrowLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      style={{
+        fontFamily: META_STACK,
+        fontSize: 10,
+        letterSpacing: "0.28em",
+        textTransform: "uppercase",
+        color: MUTED,
+        margin: "0 0 10px 0",
+      }}
+    >
+      {children}
+    </p>
+  );
+}
 
-  if (!formData) {
+function ParagraphView({ p }: { p: Paragraph }) {
+  if (p.type === "prose") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-4">No registration data found.</p>
-          <button
-            onClick={() => navigate("/onboarding")}
-            className="text-label-gold transition-smooth hover:opacity-80"
-          >
-            RETURN TO REGISTRATION
-          </button>
-        </div>
-      </div>
+      <p
+        style={{
+          fontFamily: BODY_STACK,
+          fontSize: 15,
+          color: INK,
+          lineHeight: 1.7,
+          margin: "0 0 12px 0",
+        }}
+      >
+        {p.text}
+      </p>
     );
   }
+  if (p.type === "bullet_list") {
+    return (
+      <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px 0" }}>
+        {p.items.map((item, i) => (
+          <li
+            key={i}
+            style={{
+              fontFamily: BODY_STACK,
+              fontSize: 15,
+              color: INK,
+              lineHeight: 1.7,
+              padding: "4px 0 4px 28px",
+              textIndent: "-16px",
+            }}
+          >
+            <span style={{ color: GOLD, marginRight: 12 }}>·</span>
+            {item}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (p.type === "definition") {
+    return (
+      <p
+        style={{
+          fontFamily: BODY_STACK,
+          fontSize: 15,
+          color: INK,
+          lineHeight: 1.7,
+          margin: "0 0 12px 0",
+        }}
+      >
+        <strong style={{ fontWeight: 600 }}>{p.term}</strong>
+        <span> — {p.text}</span>
+      </p>
+    );
+  }
+  // note
+  return (
+    <p
+      style={{
+        fontFamily: BODY_STACK,
+        fontSize: 15,
+        color: INK,
+        opacity: 0.9,
+        fontStyle: "italic",
+        lineHeight: 1.7,
+        margin: "0 0 12px 0",
+      }}
+    >
+      {p.text}
+    </p>
+  );
+}
 
-  const currentDate = format(new Date(), "d MMMM yyyy");
+function ClauseView({ clause }: { clause: Clause }) {
+  return (
+    <section style={{ marginTop: 32 }}>
+      <h3
+        style={{
+          fontFamily: BODY_STACK,
+          fontSize: 18,
+          fontWeight: 600,
+          color: INK,
+          margin: "0 0 16px 0",
+          lineHeight: 1.3,
+        }}
+      >
+        <span style={{ color: GOLD, marginRight: 10 }}>{clause.number}.</span>
+        {clause.title}
+      </h3>
+      {clause.paragraphs.map((p, i) => (
+        <ParagraphView key={i} p={p} />
+      ))}
+    </section>
+  );
+}
 
-  const handleAccept = async () => {
-    if (!accepted) {
-      setShowError(true);
-      checkboxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+function NoticeBlockView({ notice }: { notice: AgreementDocument["notice"] }) {
+  return (
+    <section
+      style={{
+        marginTop: 48,
+        paddingTop: 28,
+        paddingBottom: 28,
+        borderTop: `1px solid ${GOLD}`,
+        borderBottom: `1px solid ${GOLD}`,
+      }}
+    >
+      <EyebrowLabel>{notice.heading}</EyebrowLabel>
+      <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.7, margin: "0 0 18px 0" }}>
+        {notice.intro}
+      </p>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {notice.items.map((item: NoticeItem) => (
+          <li
+            key={item.clauseRef}
+            style={{
+              fontFamily: BODY_STACK,
+              fontSize: 15,
+              color: INK,
+              lineHeight: 1.7,
+              padding: "6px 0",
+            }}
+          >
+            <span style={{ color: GOLD, fontWeight: 600, marginRight: 8 }}>
+              Clause {item.clauseRef} —
+            </span>
+            {item.text}
+          </li>
+        ))}
+      </ul>
+      <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.7, margin: "18px 0 0 0" }}>
+        {notice.closing}
+      </p>
+    </section>
+  );
+}
+
+function CoverBlock({ cover, version }: { cover: AgreementDocument["cover"]; version: string }) {
+  return (
+    <section>
+      <h1
+        style={{
+          fontFamily: "Cinzel, Georgia, serif",
+          fontSize: 28,
+          fontWeight: 400,
+          color: INK,
+          letterSpacing: "0.06em",
+          textAlign: "center",
+          margin: "0 0 48px 0",
+        }}
+      >
+        SILVERSHADOW STUDIO
+      </h1>
+      <div style={{ marginBottom: 28 }}>
+        <EyebrowLabel>Studio</EyebrowLabel>
+        <PartyLine block={cover.studio} />
+      </div>
+      <div style={{ marginBottom: 28 }}>
+        <EyebrowLabel>Client</EyebrowLabel>
+        <PartyLine block={cover.client} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 28, marginBottom: 28 }}>
+        <div>
+          <EyebrowLabel>Effective Date</EyebrowLabel>
+          <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
+            {cover.effectiveDate}
+          </p>
+        </div>
+        <div>
+          <EyebrowLabel>Engagement Model</EyebrowLabel>
+          <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
+            {cover.engagementModel}
+          </p>
+        </div>
+        <div>
+          <EyebrowLabel>Agreement Version</EyebrowLabel>
+          <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.6, margin: 0 }}>
+            {version}
+          </p>
+        </div>
+      </div>
+      <p
+        style={{
+          fontFamily: BODY_STACK,
+          fontSize: 13,
+          fontStyle: "italic",
+          color: MUTED,
+          lineHeight: 1.6,
+          margin: 0,
+          paddingTop: 20,
+          borderTop: `1px solid ${RULE}`,
+        }}
+      >
+        {cover.footer}
+      </p>
+    </section>
+  );
+}
+
+function ExecutionBlockView({ execution }: { execution: AgreementDocument["execution"] }) {
+  return (
+    <section style={{ marginTop: 48 }}>
+      <EyebrowLabel>Execution</EyebrowLabel>
+      <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.7, margin: "0 0 12px 0" }}>
+        {execution.intro}
+      </p>
+      <p style={{ fontFamily: BODY_STACK, fontSize: 15, color: INK, lineHeight: 1.7, margin: 0 }}>
+        {execution.confirmation}
+      </p>
+    </section>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
+
+export default function Contract() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [accountState, setAccountState] = useState<"loading" | "ready" | "error" | "no_account">("loading");
+
+  const [signatoryName, setSignatoryName] = useState("");
+  const [signatoryPosition, setSignatoryPosition] = useState("");
+  const [hasSignature, setHasSignature] = useState(false);
+  const [scrolledToEndAt, setScrolledToEndAt] = useState<string | null>(null);
+  const [pdfDownloadedBefore, setPdfDownloadedBefore] = useState(false);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const sigPadRef = useRef<SignaturePadRef | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Time-on-page tracking. The active segment runs from `segmentStartRef` to
+  // now; when the tab hides we add the segment to `accumulatedRef` and stop;
+  // when it shows again, a new segment starts.
+  const segmentStartRef = useRef<number>(Date.now());
+  const accumulatedRef = useRef<number>(0);
+
+  // ── Fetch account ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) {
+      setAccountState("loading");
       return;
     }
-    setSubmitting(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: membership, error: mErr } = await supabase
+          .from("account_members")
+          .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street, city, postcode)")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (mErr) throw mErr;
+        const acct = (membership as any)?.accounts as AccountInfo | null;
+        if (!acct) {
+          setAccountState("no_account");
+          return;
+        }
+        setAccount(acct);
+        setAccountState("ready");
+      } catch (e) {
+        console.error("[Contract] account fetch failed:", e);
+        if (!cancelled) setAccountState("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ── Time-on-page (visibility-aware) ──────────────────────────────────────
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.hidden) {
+        accumulatedRef.current += (Date.now() - segmentStartRef.current) / 1000;
+      } else {
+        segmentStartRef.current = Date.now();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  const computeTimeOnPageSeconds = useCallback((): number => {
+    const liveSegment = document.hidden ? 0 : (Date.now() - segmentStartRef.current) / 1000;
+    return Math.round(accumulatedRef.current + liveSegment);
+  }, []);
+
+  // ── IntersectionObserver for scroll-to-end ───────────────────────────────
+  useEffect(() => {
+    if (accountState !== "ready") return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.intersectionRatio >= 0.9) {
+            setScrolledToEndAt((cur) => cur ?? new Date().toISOString());
+          }
+        }
+      },
+      { threshold: [0.9] },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [accountState]);
+
+  // ── Build the agreement document ─────────────────────────────────────────
+  const document_: AgreementDocument | null = useMemo(() => {
+    if (!account || accountState !== "ready") return null;
+    if (account.account_type !== "project" && account.account_type !== "partnership") {
+      return null;
+    }
+    return getAgreement({
+      schedule: account.account_type,
+      client: {
+        legalName: account.company_name,
+        country: account.country,
+        registrationNumber: account.registration_number,
+        registeredAddress: joinAddress(account),
+      },
+      effectiveDate: format(new Date(), "d MMMM yyyy"),
+    });
+  }, [account, accountState]);
+
+  // ── Accept gating ────────────────────────────────────────────────────────
+  const canAccept =
+    !!scrolledToEndAt &&
+    hasSignature &&
+    signatoryName.trim().length > 0 &&
+    signatoryPosition.trim().length > 0 &&
+    !submitting;
+
+  // ── Download as PDF ──────────────────────────────────────────────────────
+  // Marks `pdf_downloaded_before_signing = true` client-side regardless of
+  // whether the network call succeeds. The preview function (section 6)
+  // streams a watermarked PDF; before it's deployed, the click is still
+  // recorded as intent but the actual download will fail.
+  const handleDownloadPreview = useCallback(async () => {
+    setPdfDownloadedBefore(true);
     try {
-      const { data, error } = await supabase.functions.invoke("accept-agreement", {
-        body: {
-          formData,
-          acceptance: {
-            checkboxText: ACCEPTANCE_CHECKBOX_TEXT,
-            versionCode: CURRENT_AGREEMENT_VERSION,
-            acceptedAtClient: new Date().toISOString(),
-          },
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/preview-agreement-pdf`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
         },
       });
-
-      if (error || !data?.success) {
-        const message =
-          data?.error ||
-          error?.message ||
-          "Account creation could not be completed. Please contact Silver Shadow Studio.";
-        toast({
-          title: "Account creation failed",
-          description: message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Sign the user in by setting the session returned from the edge function.
-      if (data.session?.access_token && data.session?.refresh_token) {
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
-      }
-
-      toast({
-        title: "Agreement accepted",
-        description: "Your account is active and the signed agreement has been saved to Documents.",
-      });
-      navigate("/");
+      if (!res.ok) throw new Error(`Preview returned ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = "Silvershadow_Services_Agreement_Preview.pdf";
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("accept-agreement failed", err);
-      toast({
-        title: "Account creation failed",
-        description:
-          "Account creation could not be completed. Please contact Silver Shadow Studio.",
-        variant: "destructive",
+      console.warn("[Contract] preview download failed:", err);
+      // Stay silent on failure — the click intent is recorded.
+    }
+  }, []);
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+  const handleAccept = useCallback(async () => {
+    if (!canAccept || !document_ || !account) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const signaturePng = sigPadRef.current?.toDataURL() ?? "";
+      const payload = {
+        agreement_version: document_.version,
+        schedule_type: document_.schedule,
+        signatory_name: signatoryName.trim(),
+        signatory_position: signatoryPosition.trim(),
+        signature_png_base64: signaturePng,
+        scrolled_to_end_at: scrolledToEndAt,
+        time_on_page_seconds: computeTimeOnPageSeconds(),
+        pdf_downloaded_before_signing: pdfDownloadedBefore,
+        client_timestamp: new Date().toISOString(),
+      };
+      const { data, error } = await supabase.functions.invoke("accept-agreement", {
+        body: payload,
       });
+      if (error) {
+        const real = (data as any)?.error || error.message || "Acceptance failed.";
+        throw new Error(real);
+      }
+      if (!data?.success) {
+        throw new Error((data as any)?.error || "Acceptance failed.");
+      }
+      navigate("/");
+    } catch (e: any) {
+      console.error("[Contract] accept failed:", e);
+      setSubmitError(e?.message || "Acceptance failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [
+    canAccept, document_, account, signatoryName, signatoryPosition,
+    scrolledToEndAt, pdfDownloadedBefore, computeTimeOnPageSeconds, navigate,
+  ]);
 
-  return (
-    <div className="min-h-screen bg-background">
-      <article
-        className="mx-auto w-full px-6 animate-fade-in"
-        style={{ maxWidth: "680px", paddingTop: "160px", paddingBottom: "180px" }}
+  // ── Page-level loading / error states ────────────────────────────────────
+
+  const pageShell = (children: React.ReactNode) => (
+    <div style={{ background: PAPER, minHeight: "100vh", color: INK }}>{children}</div>
+  );
+
+  if (accountState === "loading") {
+    return pageShell(
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <BrandLoader size="md" />
+      </div>,
+    );
+  }
+
+  if (accountState === "no_account" || accountState === "error") {
+    return pageShell(
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
+        <EyebrowLabel>Silvershadow Studio</EyebrowLabel>
+        <p style={{ fontSize: 15, lineHeight: 1.7 }}>
+          We couldn't load your account. Please contact{" "}
+          <a href="mailto:fred@silvershadowstudio.com" style={{ color: GOLD }}>fred@silvershadowstudio.com</a>{" "}
+          for assistance.
+        </p>
+      </div>,
+    );
+  }
+
+  // Partnership client whose v3.0 schedule isn't yet written, or a non-client
+  // (team / admin) hitting this route. Polite placeholder; no signing UI.
+  if (!document_) {
+    const isPartnership = account?.account_type === "partnership";
+    return pageShell(
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "120px 32px", fontFamily: BODY_STACK, color: INK }}>
+        <EyebrowLabel>Silvershadow Studio</EyebrowLabel>
+        {isPartnership ? (
+          <p style={{ fontSize: 15, lineHeight: 1.7 }}>
+            Your Partnership Agreement is being finalised. We will contact you when it is ready to review and sign.
+            For any urgent questions please contact{" "}
+            <a href="mailto:fred@silvershadowstudio.com" style={{ color: GOLD }}>fred@silvershadowstudio.com</a>.
+          </p>
+        ) : (
+          <p style={{ fontSize: 15, lineHeight: 1.7 }}>
+            This page is for project and partnership clients of Silvershadow Studio. If you reached it in error,
+            please return to your <a href="/" style={{ color: GOLD }}>dashboard</a>.
+          </p>
+        )}
+      </div>,
+    );
+  }
+
+  // ── Loading overlay while submitting ─────────────────────────────────────
+  if (submitting) {
+    return pageShell(
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 18 }}>
+        <p style={{ fontFamily: META_STACK, fontSize: 10, letterSpacing: "0.28em", color: MUTED, textTransform: "uppercase" }}>
+          Signing your agreement
+        </p>
+        <BrandLoader size="md" />
+      </div>,
+    );
+  }
+
+  // ── Full page render ─────────────────────────────────────────────────────
+  return pageShell(
+    <>
+      {/* Top utility bar — Download as PDF, right-aligned */}
+      <div
+        style={{
+          height: 40,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          padding: "0 32px",
+        }}
       >
-        {/* Title block */}
-        <header>
-          <p
-            className="uppercase text-foreground/50"
-            style={{ fontSize: "10px", letterSpacing: "0.3em", marginBottom: "40px" }}
-          >
-            {CURRENT_AGREEMENT_VERSION}
-          </p>
-          <h1
-            className="font-serif font-normal text-foreground/90"
-            style={{ fontSize: "46px", letterSpacing: "-0.005em", lineHeight: 1.05 }}
-          >
-            SilverShadow Studio Limited
-          </h1>
-          <h2
-            className="font-serif font-normal italic text-foreground/55"
-            style={{ fontSize: "17px", letterSpacing: "0.01em", marginTop: "20px", lineHeight: 1.4 }}
-          >
-            Client Agreement
-          </h2>
-          <p
-            className="uppercase text-foreground/45"
-            style={{ fontSize: "10px", letterSpacing: "0.3em", marginTop: "40px" }}
-          >
-            {currentDate}
-          </p>
-        </header>
+        <button
+          type="button"
+          onClick={handleDownloadPreview}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: MUTED,
+            fontFamily: META_STACK,
+            fontSize: 11,
+            letterSpacing: "0.24em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+            padding: "8px 4px",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = INK; e.currentTarget.style.textDecoration = "underline"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = MUTED; e.currentTarget.style.textDecoration = "none"; }}
+        >
+          Download as PDF
+        </button>
+      </div>
 
-        {/* Personalised party line — no box, no border */}
-        <section style={{ marginTop: "72px" }}>
-          <p
-            className="uppercase text-foreground/45"
-            style={{ fontSize: "10px", letterSpacing: "0.3em", marginBottom: "22px" }}
-          >
-            Client identified during registration
-          </p>
-          <p className="text-foreground/85" style={{ fontSize: "15px", lineHeight: 1.9 }}>
-            {partyLine}
-          </p>
-          <p
-            className="text-foreground/45"
-            style={{ fontSize: "13.5px", lineHeight: 1.85, marginTop: "20px" }}
-          >
-            Authorised contact:&nbsp;{formData.firstName}&nbsp;{formData.familyName}&nbsp;—&nbsp;{formData.position}&nbsp;—&nbsp;{formData.emailAddress}
-          </p>
-        </section>
+      {/* Content column */}
+      <article
+        style={{
+          maxWidth: 720,
+          margin: "0 auto",
+          padding: "32px 32px 120px",
+        }}
+      >
+        <CoverBlock cover={document_.cover} version={document_.version} />
+        <NoticeBlockView notice={document_.notice} />
 
-        {/* Sections — strict editorial rhythm */}
-        <div>
-          {AGREEMENT_SECTIONS.map((section) => (
-            <section key={section.number} style={{ marginTop: "64px" }}>
-              <h3
-                className="font-sans uppercase text-foreground/75"
-                style={{ fontSize: "12px", letterSpacing: "0.22em", fontWeight: 500, marginBottom: "24px" }}
-              >
-                {section.number}. {section.title}
-              </h3>
-              <div className="text-foreground/70" style={{ fontSize: "15px", lineHeight: 1.9 }}>
-                {section.body.map((line, i) => {
-                  const isBullet = line.startsWith("\u2022");
-                  const text = isBullet ? line.replace(/^\u2022\s*/, "") : line;
-                  return (
-                    <p
-                      key={i}
-                      style={{
-                        marginBottom: isBullet ? "8px" : "20px",
-                        paddingLeft: isBullet ? "22px" : 0,
-                        textIndent: isBullet ? "-22px" : 0,
-                      }}
-                    >
-                      {isBullet ? `—\u00A0\u00A0${text}` : text}
-                    </p>
-                  );
-                })}
-              </div>
-            </section>
+        <div style={{ marginTop: 16 }}>
+          {document_.clauses.map((c) => (
+            <ClauseView key={c.number} clause={c} />
           ))}
         </div>
 
-        {/* Acceptance — quiet, separated, no accent */}
-        <div style={{ marginTop: "128px" }}>
-          <div className="h-px w-full bg-foreground/[0.06]" />
+        <ExecutionBlockView execution={document_.execution} />
 
-          <div ref={checkboxRef} style={{ marginTop: "64px" }}>
-            <label className="flex items-start gap-5 cursor-pointer">
-              <Checkbox
-                checked={accepted}
-                onCheckedChange={(v) => {
-                  setAccepted(v === true);
-                  if (v === true) setShowError(false);
-                }}
-                className="mt-[6px] h-[14px] w-[14px] shrink-0 rounded-none border-foreground/40 data-[state=checked]:bg-foreground/85 data-[state=checked]:border-foreground/85 data-[state=checked]:text-background"
-              />
-              <span className="text-foreground/85" style={{ fontSize: "15px", lineHeight: 1.75 }}>
-                {ACCEPTANCE_CHECKBOX_TEXT}
-              </span>
-            </label>
-            {showError && !accepted && (
-              <p
-                className="text-foreground/55 uppercase"
-                style={{ fontSize: "10px", letterSpacing: "0.22em", marginTop: "18px", marginLeft: "34px" }}
-              >
-                Acceptance is required to activate the account.
-              </p>
-            )}
-          </div>
+        {/* Scroll sentinel — IntersectionObserver fires when this enters the
+            viewport at ≥90% visibility. Placed above the signature pad so
+            scrolling to the bottom of the execution block opens the gate. */}
+        <div ref={sentinelRef} style={{ height: 1, width: "100%" }} aria-hidden />
 
-          <div style={{ marginTop: "56px" }}>
-            <button
-              onClick={handleAccept}
-              disabled={submitting}
-              className="font-sans uppercase text-background bg-foreground/85 hover:bg-foreground rounded-none disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center transition-opacity duration-300"
-              style={{
-                fontSize: "11px",
-                letterSpacing: "0.28em",
-                fontWeight: 500,
-                height: "46px",
-                paddingLeft: "40px",
-                paddingRight: "40px",
+        {/* Signature pad area */}
+        <section
+          style={{
+            marginTop: 64,
+            padding: "32px 24px",
+            borderTop: `1px solid ${GOLD}`,
+            borderBottom: `1px solid ${GOLD}`,
+          }}
+        >
+          <EyebrowLabel>Sign here</EyebrowLabel>
+          <div style={{ background: "#F2EDE5", border: `1px solid ${RULE}`, marginBottom: 6 }}>
+            <SignaturePad
+              ref={sigPadRef}
+              penColor={INK}
+              containerClassName="signature-canvas-paper"
+              onEnd={() => {
+                const empty = sigPadRef.current?.isEmpty() ?? true;
+                setHasSignature(!empty);
               }}
-            >
-              {submitting ? (
-                <>
-                  <BrandLoader size="sm" className="h-3 w-3 mr-2" />
-                  Activating account…
-                </>
-              ) : (
-                "Accept Agreement"
-              )}
-            </button>
-
-            <p
-              className="text-foreground/45"
-              style={{ marginTop: "32px", fontSize: "12px", lineHeight: 1.75, maxWidth: "52ch" }}
-            >
-              On acceptance, a binding PDF record of this Agreement will be generated,
-              timestamped and stored in your Documents. The Agreement is legally binding
-              from this moment.
-            </p>
+            />
           </div>
-
-          <div style={{ marginTop: "64px" }}>
+          <div style={{ textAlign: "right" }}>
             <button
-              onClick={() => navigate("/onboarding", { state: { formData } })}
-              disabled={submitting}
-              className="uppercase text-foreground/45 hover:text-foreground/75 transition-opacity duration-300 disabled:opacity-50"
-              style={{ fontSize: "10px", letterSpacing: "0.3em" }}
+              type="button"
+              onClick={() => {
+                sigPadRef.current?.clear();
+                setHasSignature(false);
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: MUTED,
+                fontFamily: META_STACK,
+                fontSize: 10,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                padding: "4px 0",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = INK; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = MUTED; }}
             >
-              Back to registration
+              Clear signature
             </button>
           </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28, marginTop: 24 }}>
+            <div>
+              <label htmlFor="signatory-name" style={{ display: "block" }}>
+                <EyebrowLabel>Full name</EyebrowLabel>
+              </label>
+              <input
+                id="signatory-name"
+                type="text"
+                value={signatoryName}
+                onChange={(e) => setSignatoryName(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: `1px solid ${RULE}`,
+                  outline: "none",
+                  fontFamily: BODY_STACK,
+                  fontSize: 15,
+                  color: INK,
+                  padding: "6px 0",
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderBottomColor = GOLD; }}
+                onBlur={(e) => { e.currentTarget.style.borderBottomColor = RULE; }}
+              />
+            </div>
+            <div>
+              <label htmlFor="signatory-position" style={{ display: "block" }}>
+                <EyebrowLabel>Position / Title</EyebrowLabel>
+              </label>
+              <input
+                id="signatory-position"
+                type="text"
+                value={signatoryPosition}
+                onChange={(e) => setSignatoryPosition(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: `1px solid ${RULE}`,
+                  outline: "none",
+                  fontFamily: BODY_STACK,
+                  fontSize: 15,
+                  color: INK,
+                  padding: "6px 0",
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderBottomColor = GOLD; }}
+                onBlur={(e) => { e.currentTarget.style.borderBottomColor = RULE; }}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Confirmation paragraph — plain prose, not a checkbox */}
+        <p
+          style={{
+            fontFamily: BODY_STACK,
+            fontStyle: "italic",
+            fontSize: 14,
+            color: INK,
+            lineHeight: 1.7,
+            margin: "40px 0 0 0",
+          }}
+        >
+          By signing above I confirm that I am duly authorised to bind {account!.company_name} and to accept these terms on the Client's behalf. I have read this agreement, including the matters specifically drawn to my attention at the top of this document, and understand that any confirmation, approval, or instruction I give through the portal is legally binding under clause 10.
+        </p>
+
+        {submitError && (
+          <p
+            style={{
+              fontFamily: BODY_STACK,
+              fontSize: 14,
+              color: INK,
+              margin: "32px 0 16px 0",
+              padding: "12px 16px",
+              border: `1px solid ${INK}`,
+              background: "#F6EFE2",
+            }}
+          >
+            {submitError}
+          </p>
+        )}
+
+        {/* Accept button */}
+        <div style={{ marginTop: 40 }}>
+          <button
+            type="button"
+            disabled={!canAccept}
+            onClick={handleAccept}
+            style={{
+              background: PAPER,
+              border: `1px solid ${GOLD}`,
+              color: INK,
+              fontFamily: META_STACK,
+              fontSize: 12,
+              letterSpacing: "0.16em",
+              textTransform: "lowercase",
+              padding: "16px 32px",
+              cursor: canAccept ? "pointer" : "default",
+              opacity: canAccept ? 1 : 0.4,
+              transition: "opacity 320ms ease",
+            }}
+          >
+            Accept and enter the portal
+          </button>
         </div>
       </article>
-    </div>
+    </>,
   );
 }

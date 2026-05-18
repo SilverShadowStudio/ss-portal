@@ -16,6 +16,15 @@ import {
   AGREEMENT_SECTIONS,
   type AgreementSection,
 } from "./agreementContent.ts";
+// v3.0 agreement library — mirror of src/lib/agreements/. The same
+// AgreementDocument the client sees on /contract is rendered into the PDF
+// so the on-screen and signed-PDF copies are byte-identical in content.
+import {
+  getAgreement,
+  SUPPORTED_AGREEMENT_VERSIONS,
+} from "../_shared/agreements/index.ts";
+import { loadDesignConfig } from "../_shared/pdfUtils.ts";
+import { generateAgreementPdfV3 } from "../_shared/agreementPdfV3.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -242,6 +251,318 @@ function generateAgreementPdf(args: {
   return new Uint8Array(arr);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// v3.0 PATH — schedule-aware acceptance gate with embedded drawn signature
+// and forensic certificate page. Coexists with the existing v2.x onboarding
+// and invite flows below; the v3 branch is selected by payload shape.
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface AcceptV3Payload {
+  agreement_version: string;
+  schedule_type: "project" | "partnership";
+  signatory_name: string;
+  signatory_position: string;
+  signature_png_base64: string;
+  scrolled_to_end_at: string;
+  time_on_page_seconds: number;
+  pdf_downloaded_before_signing: boolean;
+  client_timestamp: string;
+}
+
+// The v3 PDF generator lives in `_shared/agreementPdfV3.ts` and is
+// imported at the top of this file. Helpers (jsPdfFontFor, hexToRgb) moved
+// with it.
+
+async function handleV3Acceptance(req: Request, rawBody: Record<string, unknown>): Promise<Response> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  // 1. Authenticate
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: userErr } = await userClient.auth.getUser();
+  if (userErr || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 2. Validate payload shape
+  const payload = rawBody as unknown as AcceptV3Payload;
+  const requiredKeys: (keyof AcceptV3Payload)[] = [
+    "agreement_version", "schedule_type", "signatory_name", "signatory_position",
+    "signature_png_base64", "scrolled_to_end_at", "client_timestamp",
+  ];
+  for (const k of requiredKeys) {
+    const v = (payload as Record<string, unknown>)[k as string];
+    if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) {
+      return new Response(JSON.stringify({ error: `Missing field: ${k}` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+  if (payload.schedule_type !== "project" && payload.schedule_type !== "partnership") {
+    return new Response(JSON.stringify({ error: "Invalid schedule_type" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!(SUPPORTED_AGREEMENT_VERSIONS as readonly string[]).includes(payload.agreement_version)) {
+    return new Response(JSON.stringify({ error: "Unsupported agreement_version" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  // 3. Fetch account via account_members → reject if no membership.
+  const { data: membership, error: memberErr } = await admin
+    .from("account_members")
+    .select("account_id, accounts(id, company_name, account_type, country, registration_number, building_number, street, city, postcode)")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (memberErr) {
+    console.error("[v3] member lookup failed:", memberErr);
+  }
+  // deno-lint-ignore no-explicit-any
+  const acct = (membership as any)?.accounts as {
+    id: string;
+    company_name: string;
+    account_type: string | null;
+    country: string | null;
+    registration_number: string | null;
+    building_number: string | null;
+    street: string | null;
+    city: string | null;
+    postcode: string | null;
+  } | null;
+  if (!acct) {
+    return new Response(JSON.stringify({ error: "No account membership found for this user" }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 4. Schedule ↔ account_type integrity check — prevent tampered requests.
+  if (acct.account_type !== payload.schedule_type) {
+    return new Response(JSON.stringify({ error: "schedule_type does not match account_type" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 5. Reject if an active (supported-version) agreement already exists.
+  const { data: existing } = await admin
+    .from("agreements")
+    .select("id, agreement_version")
+    .eq("account_id", acct.id)
+    .in("agreement_version", SUPPORTED_AGREEMENT_VERSIONS as readonly string[]);
+  if (existing && existing.length > 0) {
+    return new Response(JSON.stringify({
+      error: "An active agreement already exists for this account",
+      code: "ALREADY_ACCEPTED",
+      existing_version: existing[0].agreement_version,
+    }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 6. Build the document via the shared library — same source as Contract.tsx.
+  const acceptedAtIso = new Date().toISOString();
+  const registeredAddress = [acct.building_number, acct.street, acct.postcode, acct.city]
+    .filter(Boolean).join(", ") || null;
+  const document_ = getAgreement({
+    schedule: payload.schedule_type,
+    client: {
+      legalName: acct.company_name,
+      country: acct.country,
+      registrationNumber: acct.registration_number,
+      registeredAddress,
+    },
+    effectiveDate: new Date(acceptedAtIso).toLocaleDateString("en-GB", {
+      day: "numeric", month: "long", year: "numeric",
+    }),
+  });
+  if (!document_) {
+    return new Response(JSON.stringify({ error: "Agreement schedule not yet supported" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 7. Generate PDF.
+  const agreementUid = crypto.randomUUID();
+  const ipAddress = getClientIp(req);
+  const userAgent = req.headers.get("user-agent") ?? "unknown";
+  const design = await loadDesignConfig(admin);
+
+  let pdfBytes: Uint8Array;
+  try {
+    pdfBytes = generateAgreementPdfV3({
+      doc: document_,
+      signaturePngDataUrl: payload.signature_png_base64,
+      signatoryName: payload.signatory_name.trim(),
+      signatoryPosition: payload.signatory_position.trim(),
+      acceptedAt: acceptedAtIso,
+      agreementUid,
+      accountId: acct.id,
+      ipAddress,
+      userAgent,
+      scrolledToEndAt: payload.scrolled_to_end_at,
+      timeOnPageSeconds: payload.time_on_page_seconds ?? 0,
+      pdfDownloadedBeforeSigning: !!payload.pdf_downloaded_before_signing,
+      design,
+    });
+  } catch (e) {
+    console.error("[v3] PDF generation failed:", e);
+    return new Response(JSON.stringify({ error: "Failed to generate agreement PDF" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 8. Compute SHA-256 of the final PDF.
+  const pdfSha256 = await sha256Hex(pdfBytes);
+
+  // 9. Upload to storage at agreements/{account_id}/{agreement_uid}.pdf.
+  const storagePath = `${acct.id}/${agreementUid}.pdf`;
+  const { error: uploadErr } = await admin.storage
+    .from("agreements")
+    .upload(storagePath, pdfBytes, { contentType: "application/pdf", upsert: false });
+  if (uploadErr) {
+    console.error("[v3] PDF upload failed:", uploadErr);
+    return new Response(JSON.stringify({ error: "Failed to store agreement PDF" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 10. Insert agreement row.
+  const safeCompany = acct.company_name.replace(/[^a-zA-Z0-9]+/g, "_");
+  const fileName = `Services_Agreement_${safeCompany}_${Date.now()}.pdf`;
+  const { data: agreementRow, error: agreementErr } = await admin
+    .from("agreements")
+    .insert({
+      user_id: user.id,
+      account_id: acct.id,
+      company_name: acct.company_name,
+      signatory_name: payload.signatory_name.trim(),
+      signatory_position: payload.signatory_position.trim(),
+      storage_path: storagePath,
+      file_name: fileName,
+      file_size: pdfBytes.byteLength,
+      agreement_version: payload.agreement_version,
+      agreement_uid: agreementUid,
+      accepted_at: acceptedAtIso,
+      accepted_by_name: payload.signatory_name.trim(),
+      accepted_by_email: user.email ?? "",
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      checkbox_text: document_.execution.confirmation,
+      pdf_sha256: pdfSha256,
+      // v3 forensic columns
+      schedule_type: payload.schedule_type,
+      scrolled_to_end_at: payload.scrolled_to_end_at,
+      time_on_page_seconds: payload.time_on_page_seconds ?? 0,
+      pdf_downloaded_before_signing: !!payload.pdf_downloaded_before_signing,
+    })
+    .select("id")
+    .single();
+  if (agreementErr || !agreementRow) {
+    console.error("[v3] agreement insert failed:", agreementErr);
+    // Best-effort: remove the uploaded blob so a retry can re-upload.
+    try { await admin.storage.from("agreements").remove([storagePath]); } catch { /* ignore */ }
+    return new Response(JSON.stringify({ error: "Failed to record agreement" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const agreementId = agreementRow.id as string;
+
+  // 11. signatures_audit_log — best-effort; do not fail the response if it errors.
+  //     Uses the await + destructure { error } pattern (NOT .catch on PostgrestBuilder).
+  {
+    const { error: auditErr } = await admin.from("signatures_audit_log").insert({
+      document_type: "client_agreement_v3",
+      document_id: agreementId,
+      account_id: acct.id,
+      user_id: user.id,
+      signatory_name: payload.signatory_name.trim(),
+      signatory_position: payload.signatory_position.trim(),
+      signed_at: acceptedAtIso,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      acceptance_text: document_.execution.confirmation,
+      version_code: payload.agreement_version,
+      pdf_sha256: pdfSha256,
+    });
+    if (auditErr) console.warn("[v3] signatures_audit_log insert failed:", auditErr);
+  }
+
+  // 12. activity_log entry. Best-effort.
+  {
+    const { error: actErr } = await admin.from("activity_log").insert({
+      actor_user_id: user.id,
+      actor_name: payload.signatory_name.trim(),
+      actor_role: "client",
+      action: "agreement_signed",
+      description: `${payload.signatory_name.trim()} signed ${payload.agreement_version}`,
+      metadata: {
+        company_name: acct.company_name,
+        version_code: payload.agreement_version,
+        schedule_type: payload.schedule_type,
+        agreement_id: agreementId,
+      },
+    });
+    if (actErr) console.warn("[v3] activity_log insert failed:", actErr);
+  }
+
+  // 13. Send confirmation email with attached PDF (best-effort).
+  try {
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (resendKey && user.email) {
+      // Base64-encode the PDF for the Resend attachments payload.
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < pdfBytes.length; i += chunk) {
+        binary += String.fromCharCode(...pdfBytes.subarray(i, i + chunk));
+      }
+      const pdfBase64 = btoa(binary);
+      const html = `<div style="font-family:Georgia,'Times New Roman',serif;max-width:520px;margin:0 auto;padding:48px 32px;color:#1A1814;background:${design.background_color}">
+        <p style="font-size:15px;line-height:1.7;margin:0 0 16px">Thank you for accepting the Silvershadow Studio Services Agreement.</p>
+        <p style="font-size:15px;line-height:1.7;margin:0 0 16px">A signed copy of the agreement is attached for your records. You will also find it in your portal Documents area.</p>
+        <p style="font-size:11px;color:#8A8070;margin-top:32px;letter-spacing:0.12em;text-transform:uppercase">Agreement ${payload.agreement_version} — ${new Date(acceptedAtIso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+      </div>`;
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "Silvershadow Studio <portal@silvershadowstudio.com>",
+          to: [user.email],
+          subject: `Your Services Agreement — ${acct.company_name}`,
+          html,
+          attachments: [{ filename: fileName, content: pdfBase64 }],
+        }),
+      });
+    }
+  } catch (e) {
+    console.warn("[v3] confirmation email failed:", e);
+  }
+
+  // 14. Return success. Public URL is generated via a signed URL on demand
+  // by the Documents page; here we return the storage path.
+  return new Response(JSON.stringify({
+    success: true,
+    agreement_id: agreementId,
+    storage_path: storagePath,
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -262,6 +583,13 @@ Deno.serve(async (req) => {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // ── v3 acceptance path ──────────────────────────────────────────────────────
+  // Detected by payload shape: presence of `schedule_type` + `agreement_version`
+  // at top level. Coexists with the legacy v2.x flows below.
+  if (typeof rawBody.schedule_type === "string" && typeof rawBody.agreement_version === "string") {
+    return handleV3Acceptance(req, rawBody);
   }
 
   // ── Invite mode: user already provisioned, just sign the agreement ─────────

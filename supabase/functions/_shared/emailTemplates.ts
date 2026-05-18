@@ -5,7 +5,7 @@ export const EMAIL_INVITE_DEFAULTS = {
   subject: 'Your portal is ready.',
   illustrationUrl:
     'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png',
-  bodyCopy: 'Your Silvershadow Studio portal is now ready. You will find your projects, deliveries, and studio correspondence within.',
+  bodyCopy: 'Your portal is ready. The first time you sign in, you will be asked to review and accept our Services Agreement. This usually takes around ten minutes. We recommend doing this from a desktop.',
   ctaLabel: 'ENTER',
   backgroundColor: '#EDE8E0',
 }
