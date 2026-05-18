@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { TeamManagement } from "@/components/account/TeamManagement";
+import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
+import { cn } from "@/lib/utils";
 
 interface ProfileData {
   firstName: string;
@@ -25,12 +27,21 @@ interface NotificationPrefs {
 }
 
 export default function Account() {
-  const { user } = useAuth();
+  const { user, accountType } = useAuth();
   const [loading, setLoading] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+
+  // Accordion — only one section open at a time. Null until the first data
+  // load picks the default section based on the priorities below.
+  type SectionKey = "profile" | "notifications" | "team" | "password";
+  const [openSection, setOpenSection] = useState<SectionKey | null>(null);
+  const [defaultPicked, setDefaultPicked] = useState(false);
+
+  const toggleSection = (key: SectionKey) =>
+    setOpenSection((cur) => (cur === key ? null : key));
   
   const [profile, setProfile] = useState<ProfileData>({
     firstName: "",
@@ -108,6 +119,17 @@ export default function Account() {
     setNotifications(prev => ({ ...prev, [field]: value }));
   };
 
+  // Pick the initial open section the first time data settles. Priority:
+  // never-set-password → password; else → profile. The "never set" signal
+  // relies on `user_metadata.password_set === false`; if absent we fall
+  // through to profile, which is the common case for returning clients.
+  useEffect(() => {
+    if (defaultPicked || loading) return;
+    const neverSetPassword = (user as any)?.user_metadata?.password_set === false;
+    setOpenSection(neverSetPassword ? "password" : "profile");
+    setDefaultPicked(true);
+  }, [defaultPicked, loading, user]);
+
   // Autosave: persist profile + notifications whenever they change (after initial load)
   useEffect(() => {
     if (!user || loading) return;
@@ -163,14 +185,15 @@ export default function Account() {
         </h1>
       </div>
 
-      <div className="max-w-2xl space-y-12">
+      <div className="max-w-2xl animate-fade-in" style={{ animationDelay: "0.1s" }}>
         {/* Profile Section */}
-        <section className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold-muted" />
-            <h2 className="text-label">Profile</h2>
-          </div>
-
+        <section className={cn(openSection === "profile" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Profile"
+            isOpen={openSection === "profile"}
+            onToggle={() => toggleSection("profile")}
+          />
+          <AccordionPanel isOpen={openSection === "profile"}>
           <div className="card-elevated p-6 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="firstName" className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -243,15 +266,17 @@ export default function Account() {
               />
             </div>
           </div>
+          </AccordionPanel>
         </section>
 
         {/* Notification Preferences Section */}
-        <section className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold-muted" />
-            <h2 className="text-label">Notification Preferences</h2>
-          </div>
-
+        <section className={cn(openSection === "notifications" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Notification Preferences"
+            isOpen={openSection === "notifications"}
+            onToggle={() => toggleSection("notifications")}
+          />
+          <AccordionPanel isOpen={openSection === "notifications"}>
           <div className="card-elevated p-6 space-y-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
@@ -311,24 +336,31 @@ export default function Account() {
               />
             </div>
           </div>
+          </AccordionPanel>
         </section>
 
-        {/* Team Management Section */}
-        <section className="animate-fade-in" style={{ animationDelay: "0.25s" }}>
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold-muted" />
-            <h2 className="text-label">Team Management</h2>
-          </div>
-          <TeamManagement />
-        </section>
+        {/* Team Management Section — only for team accounts */}
+        {accountType === "team" && (
+          <section className={cn(openSection === "team" ? "mb-12" : "mb-6")}>
+            <AccordionHeader
+              label="Team Management"
+              isOpen={openSection === "team"}
+              onToggle={() => toggleSection("team")}
+            />
+            <AccordionPanel isOpen={openSection === "team"}>
+              <TeamManagement />
+            </AccordionPanel>
+          </section>
+        )}
 
         {/* Change Password Section */}
-        <section className="animate-fade-in" style={{ animationDelay: "0.28s" }}>
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-8 bg-gold-muted" />
-            <h2 className="text-label">Change Password</h2>
-          </div>
-
+        <section className={cn(openSection === "password" ? "mb-12" : "mb-6", "last:mb-0")}>
+          <AccordionHeader
+            label="Change Password"
+            isOpen={openSection === "password"}
+            onToggle={() => toggleSection("password")}
+          />
+          <AccordionPanel isOpen={openSection === "password"}>
           <div className="card-elevated p-6 space-y-6">
             <div className="space-y-2">
               <Label htmlFor="currentPassword" className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -423,6 +455,7 @@ export default function Account() {
               {changingPassword ? "UPDATING..." : "UPDATE PASSWORD"}
             </Button>
           </div>
+          </AccordionPanel>
         </section>
       </div>
     </ClientLayout>
