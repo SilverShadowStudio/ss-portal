@@ -792,22 +792,25 @@ export default function Portfolio() {
       // can land here is when the scene has zero rounds yet.
       return (
         <div>
-          <div
-            className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-border rounded-[32px] bg-card"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6">
-              <Plus size={32} />
-            </div>
-            <h3 className="text-xl font-medium mb-2 font-serif">No rounds yet</h3>
-            <p className="text-muted-foreground text-center max-w-sm font-sans text-sm">
-              Rounds will appear here once production begins.
+          <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
+            <p
+              className="font-serif italic text-center text-foreground/55"
+              style={{ fontSize: 15 }}
+            >
+              No rounds yet.
             </p>
             <button
               onClick={() => setIsNewRoundModalOpen(true)}
-              className="flex items-center gap-2 px-6 py-3 mt-6 border-l-2 border-gold text-foreground text-[11px] uppercase tracking-[0.18em] font-medium hover:bg-foreground/5 transition-all font-sans"
+              className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.15em",
+                color: "#B89A6A",
+                borderBottom: "1px solid #B89A6A",
+                paddingBottom: 6,
+              }}
             >
-              <Plus size={18} />
-              New Round
+              Add a round
             </button>
           </div>
         </div>
@@ -819,22 +822,25 @@ export default function Portfolio() {
       return (
         <div>
           {selectedProject.scenes.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-border rounded-[32px] bg-card"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-6">
-                <Plus size={32} />
-              </div>
-              <h3 className="text-xl font-medium mb-2 font-serif">No scenes yet</h3>
-              <p className="text-muted-foreground text-center max-w-sm font-sans text-sm">
-                Scenes will appear here once they are added to this project.
+            <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
+              <p
+                className="font-serif italic text-center text-foreground/55"
+                style={{ fontSize: 15 }}
+              >
+                No scenes yet.
               </p>
               <button
                 onClick={() => setIsNewSceneModalOpen(true)}
-                className="flex items-center gap-2 px-6 py-3 mt-6 border-l-2 border-gold text-foreground text-[11px] uppercase tracking-[0.18em] font-medium hover:bg-foreground/5 transition-all font-sans"
+                className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.15em",
+                  color: "#B89A6A",
+                  borderBottom: "1px solid #B89A6A",
+                  paddingBottom: 6,
+                }}
               >
-                <Plus size={18} />
-                New Scene
+                Add a scene
               </button>
             </div>
           ) : (
@@ -1095,13 +1101,30 @@ export default function Portfolio() {
     return (
       <div>
         {projects.length === 0 ? (
-          <p
+          <div
             key="projects-empty"
-            className="font-serif italic text-foreground/45 text-left"
-            style={{ fontSize: 13 }}
+            className="flex flex-col items-center justify-center py-32 animate-fade-in"
           >
-            No active commissions. Your studio will add projects to your portal as they begin.
-          </p>
+            <p
+              className="font-serif italic text-center text-foreground/55"
+              style={{ fontSize: 15 }}
+            >
+              No active commissions.
+            </p>
+            <button
+              onClick={() => setIsNewTaskModalOpen(true)}
+              className="mt-8 font-sans uppercase hover:opacity-80 transition-opacity"
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.15em",
+                color: "#B89A6A",
+                borderBottom: "1px solid #B89A6A",
+                paddingBottom: 6,
+              }}
+            >
+              Add a project
+            </button>
+          </div>
         ) : projects.length === 1 ? (
           (() => {
             const project = projects[0];
@@ -1177,45 +1200,53 @@ export default function Portfolio() {
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-gold font-sans">Portfolio</span>
         </div>
 
-        <div>
-          <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
-            {selectedRound
-              ? `ROUND ${selectedRound.round_number.toString().padStart(2, "0")}`
-              : selectedScene
-              ? selectedScene.name.toUpperCase()
-              : selectedProject
-              ? selectedProject.name.toUpperCase()
-              : "YOUR COMMISSIONS"}
-          </h1>
-          {!selectedProject && !selectedScene && !selectedRound && (
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[hsl(var(--gold))]/70 font-sans mb-2">
-              Active
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <ArborescenceTitle items={breadcrumbs} />
-          {/* Clients cannot create projects — the studio originates those
-              from quotations. The button only renders for drill-down
-              contexts ("New Scene" inside a project, "New Round" inside a
-              scene). The top-level "New Project" variant is intentionally
-              suppressed. */}
-          {(selectedScene || selectedProject) && !selectedRound && !(selectedScene && hasRoundInProduction) && (
+        {/* Title row — the contextual "Add a …" CTA sits top-right, baseline-
+            aligned with the H1. Text-only gold-underlined treatment matches
+            the ENTER CTA in the invitation email. */}
+        <div className="flex items-baseline justify-between gap-6">
+          <div>
+            <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
+              {selectedRound
+                ? `ROUND ${selectedRound.round_number.toString().padStart(2, "0")}`
+                : selectedScene
+                ? selectedScene.name.toUpperCase()
+                : selectedProject
+                ? selectedProject.name.toUpperCase()
+                : "YOUR COMMISSIONS"}
+            </h1>
+            {!selectedProject && !selectedScene && !selectedRound && (
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[hsl(var(--gold))]/70 font-sans mb-2">
+                Active
+              </p>
+            )}
+          </div>
+          {!selectedRound && !(selectedScene && hasRoundInProduction) && (
             <button
               onClick={() => {
                 if (selectedScene) {
                   setIsNewRoundModalOpen(true);
                 } else if (selectedProject) {
                   setIsNewSceneModalOpen(true);
+                } else {
+                  setIsNewTaskModalOpen(true);
                 }
               }}
-              className="flex items-center gap-2 px-6 py-3 border-l-2 border-gold text-foreground text-[11px] uppercase tracking-[0.18em] font-medium hover:bg-foreground/5 transition-all font-sans"
+              className="shrink-0 font-sans uppercase hover:opacity-80 transition-opacity"
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.15em",
+                color: "#B89A6A",
+                borderBottom: "1px solid #B89A6A",
+                paddingBottom: 6,
+              }}
             >
-              <Plus size={18} />
-              {selectedScene ? "New Round" : "New Scene"}
+              {selectedScene ? "Add a round" : selectedProject ? "Add a scene" : "Add a project"}
             </button>
           )}
+        </div>
+
+        <div className="mt-2">
+          <ArborescenceTitle items={breadcrumbs} />
         </div>
       </div>
 
