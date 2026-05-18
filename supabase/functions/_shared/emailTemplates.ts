@@ -4,7 +4,7 @@ const LOGO_URL =
 export const EMAIL_INVITE_DEFAULTS = {
   illustrationUrl:
     'https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png',
-  bodyCopy: 'Your portal is ready.',
+  bodyCopy: 'Your Silvershadow Studio portal is now ready. You will find your projects, deliveries, and studio correspondence within.',
   ctaLabel: 'ENTER',
   footerText: 'silvershadowstudio.com',
   backgroundColor: '#EDE8E0',
