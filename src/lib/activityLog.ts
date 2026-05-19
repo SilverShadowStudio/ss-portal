@@ -9,6 +9,7 @@ export type ActivityAction =
   | "project_restored"
   | "scene_created"
   | "round_created"
+  | "round_rescheduled"
   | "round_delivered"
   | "asset_uploaded"
   | "asset_deleted"
@@ -28,6 +29,7 @@ export const ACTION_LABELS: Record<string, string> = {
   project_restored: "Project",
   scene_created: "Scene",
   round_created: "Round",
+  round_rescheduled: "Reschedule",
   round_delivered: "Delivery",
   asset_uploaded: "Upload",
   asset_deleted: "Removed",

@@ -55,6 +55,10 @@ interface TaskDetailProps {
    *  a top-left round picker. Optional; passing nothing hides the picker. */
   siblingRounds?: { id: string; round_number: number; status?: string }[];
   onSelectRound?: (roundId: string) => void;
+  /** When provided, shows a "Reschedule" link next to View Instructions on
+   *  the in-production view. The parent decides whether to provide it
+   *  based on the round's start_date / lock cutoff. */
+  onReschedule?: () => void;
 }
 
 interface BriefData {
@@ -81,7 +85,7 @@ function titleCase(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: TaskDetailProps) {
+export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, onReschedule }: TaskDetailProps) {
   // Strict status → UI mapping:
   //   in_production / in_progress / pending → "Production in Progress" (no image)
   //   client_review / delivered             → image + annotation tools
@@ -199,6 +203,16 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
       View Instructions
     </button>
   );
+
+  const rescheduleTrigger = onReschedule ? (
+    <button
+      type="button"
+      onClick={onReschedule}
+      className="text-[11px] tracking-[0.14em] uppercase text-foreground/60 hover:text-foreground hover:underline underline-offset-4 transition-colors font-sans"
+    >
+      Reschedule
+    </button>
+  ) : null;
 
   // Admin-only manual status override. Three canonical states map to the
   // existing scene_rounds.status values used by the timeline coloring logic.
@@ -557,8 +571,9 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           })()}
         </div>
 
-        <div className="mt-10">
+        <div className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-3">
           {briefTrigger}
+          {rescheduleTrigger}
         </div>
 
       </div>

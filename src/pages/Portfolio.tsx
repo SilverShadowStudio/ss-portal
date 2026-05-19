@@ -31,6 +31,7 @@ import { SmartImage, preloadImages } from "@/components/ui/SmartImage";
 import { NewProjectModal } from "@/components/client/NewProjectModal";
 import { NewSceneModal } from "@/components/client/NewSceneModal";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
+import { RescheduleRoundModal } from "@/components/client/RescheduleRoundModal";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { logActivity } from "@/lib/activityLog";
@@ -83,6 +84,9 @@ export default function Portfolio() {
   // (one-draft-per-scene rule, enforced at DB level by the partial unique
   // index added in migration 20260519000001).
   const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null } | null>(null);
+  // Reschedule modal — the round being rescheduled is the currently
+  // selected one (only ever surfaced from the in-production view).
+  const [rescheduleTarget, setRescheduleTarget] = useState<SceneRound | null>(null);
   const { user } = useAuth();
 
   // Drill-down state
@@ -667,6 +671,65 @@ export default function Portfolio() {
     }
   };
 
+  // Push a round's delivery (end_date) to a later Monday. start_date is
+  // shifted to the prior Monday (end_date - 7d). No edge-function side
+  // effects — the activity_log entry is the visible signal for admins.
+  const handleRescheduleRound = async (round: SceneRound, newEndDate: Date) => {
+    if (!selectedScene || !selectedProject) return;
+    const newEnd = new Date(newEndDate);
+    newEnd.setHours(11, 0, 0, 0);
+    const newStart = new Date(newEnd);
+    newStart.setDate(newEnd.getDate() - 7);
+    try {
+      const { data, error } = await supabase
+        .from("scene_rounds")
+        .update({
+          start_date: newStart.toISOString(),
+          end_date: newEnd.toISOString(),
+        })
+        .eq("id", round.id)
+        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+        .single();
+      if (error) throw error;
+      setSceneRounds((prev) => {
+        const next = new Map(prev);
+        const list = next.get(selectedScene.id) || [];
+        next.set(selectedScene.id, list.map((r) => (r.id === data.id ? { ...r, ...data } : r)));
+        return next;
+      });
+      if (selectedRound?.id === data.id) {
+        setSelectedRound((prev) => (prev ? { ...prev, ...data } : prev));
+      }
+      const dateStr = newEnd.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      await logActivity({
+        action: "round_rescheduled",
+        description: `Round ${round.round_number.toString().padStart(2, "0")} rescheduled to ${dateStr}`,
+        actorRole: "client",
+        entityType: "scene_round",
+        entityId: round.id,
+        projectId: selectedProject.id,
+        projectName: selectedProject.name,
+        sceneId: selectedScene.id,
+        sceneName: selectedScene.name,
+        roundId: round.id,
+        roundNumber: round.round_number,
+        metadata: {
+          new_end_date: newEnd.toISOString(),
+          new_start_date: newStart.toISOString(),
+        },
+      });
+      setRescheduleTarget(null);
+      toast.success(`Rescheduled to ${dateStr}`);
+    } catch (err: any) {
+      console.error("Reschedule failed:", err);
+      toast.error(err?.message || "Could not reschedule");
+    }
+  };
+
   const handleCreateRound = async (instructions: string, deliveryDate?: Date, startDate?: Date) => {
     if (!selectedProject || !selectedScene) return;
 
@@ -914,6 +977,18 @@ export default function Portfolio() {
       const successorRoundNumber = !isLatestRound && highestDeliveredRoundNumber > 0
         ? highestDeliveredRoundNumber
         : undefined;
+      // Reschedule eligibility: the viewed round is still upcoming
+      // (pending / in_production / in_progress) AND its production start is
+      // still more than 7 days away. Once within the 7-day cutoff the link
+      // is hidden entirely — admins handle exceptions out-of-band.
+      const reschedulableStatuses = ["pending", "in_production", "in_progress"];
+      const daysUntilStart = selectedRound.start_date
+        ? (new Date(selectedRound.start_date).getTime() - Date.now()) / 86400000
+        : null;
+      const canReschedule =
+        reschedulableStatuses.includes(selectedRound.status) &&
+        daysUntilStart !== null &&
+        daysUntilStart > 7;
       return (
         <TaskDetail
           roundId={selectedRound.id}
@@ -924,6 +999,9 @@ export default function Portfolio() {
           deliveredAt={selectedRound.delivered_at}
           startDate={selectedRound.start_date}
           endDate={selectedRound.end_date}
+          onReschedule={
+            canReschedule ? () => setRescheduleTarget(selectedRound) : undefined
+          }
           onRequestNextRound={
             canRequestNext
               ? () => {
@@ -1456,6 +1534,14 @@ export default function Portfolio() {
       sceneId={selectedScene?.id}
       roundNumber={selectedScene ? (sceneRounds.get(selectedScene.id)?.length || 0) + 1 : 1}
       existingDraft={editingDraft}
+    />
+    <RescheduleRoundModal
+      isOpen={!!rescheduleTarget}
+      onClose={() => setRescheduleTarget(null)}
+      onConfirm={(d) => rescheduleTarget && handleRescheduleRound(rescheduleTarget, d)}
+      sceneName={selectedScene?.name || ""}
+      roundNumber={rescheduleTarget?.round_number || 1}
+      currentEndDate={rescheduleTarget?.end_date || null}
     />
     </>
   );
