@@ -25,6 +25,26 @@ interface ContactConfig {
   clients_table_id: string;     // Clients table (tblWDmSeRB4P88ALw)
   field_company_name: string;   // "Company name" in Clients table
   field_client_representative: string; // "Client Representative" in Clients table
+  // Optional Clients-table columns. Only patched when the config key is
+  // set to a non-empty Airtable column name. If a key is absent the
+  // function silently skips that field — Fred can add columns to Kieran's
+  // base and then enable them by updating app_settings.
+  field_client_address?: string;
+  field_client_registration_number?: string;
+  field_client_country?: string;
+}
+
+interface AccountProfile {
+  id: string;
+  company_name: string | null;
+  account_type: string | null;
+  airtable_client_id: string | null;
+  building_number: string | null;
+  street_name: string | null;
+  city: string | null;
+  country: string | null;
+  postcode: string | null;
+  registration_number: string | null;
 }
 
 const REQUIRED_KEYS: (keyof ContactConfig)[] = [
@@ -40,14 +60,53 @@ function mapAccountType(accountType: string | null): string[] {
   return [];
 }
 
-// Search Clients table for a matching company name; create one if not found.
-async function resolveCompanyRecordId(
+// Compose a single-line address from the portal account fields. Empty
+// pieces are dropped; if nothing survives the function returns null so
+// the caller can skip the field rather than push an empty string.
+function composeAddress(account: AccountProfile): string | null {
+  const line1 = [account.building_number, account.street_name]
+    .map((p) => p?.trim())
+    .filter((p): p is string => !!p)
+    .join(" ");
+  const parts = [line1, account.city?.trim(), account.postcode?.trim(), account.country?.trim()]
+    .filter((p): p is string => !!p);
+  if (parts.length === 0) return null;
+  return parts.join(", ");
+}
+
+// Verify an Airtable Clients record id still exists. Returns true on 200,
+// false on 404. A non-2xx that isn't 404 is treated as "trust the stored
+// id" — we don't want a transient Airtable hiccup to fork the link.
+async function airtableRecordExists(
+  baseId: string,
+  tableId: string,
+  recordId: string,
+  headers: Record<string, string>,
+): Promise<boolean> {
+  const res = await fetch(
+    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableId)}/${recordId}`,
+    { headers },
+  );
+  if (res.ok) return true;
+  if (res.status === 404) return false;
+  console.warn(
+    "[airtable-sync-contact] Clients record existence check returned non-2xx:",
+    res.status,
+    await res.text(),
+  );
+  return true;
+}
+
+// Search Clients table for a matching company name; create one if not
+// found. Returns { id, created } where `created` flags whether the row
+// was newly created (so the caller can log appropriately).
+async function searchOrCreateCompanyByName(
   baseId: string,
   clientsTableId: string,
   companyNameField: string,
   companyName: string,
   headers: Record<string, string>,
-): Promise<string | null> {
+): Promise<{ id: string; created: boolean } | null> {
   const filter = encodeURIComponent(`{${companyNameField}} = "${companyName.replace(/"/g, '\\"')}"`);
   const searchRes = await fetch(
     `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(clientsTableId)}?filterByFormula=${filter}&maxRecords=1`,
@@ -59,8 +118,8 @@ async function resolveCompanyRecordId(
   }
   const searchData = await searchRes.json() as { records: Array<{ id: string }> };
   if (searchData.records?.length > 0) {
-    console.log("[airtable-sync-contact] Found existing Clients record:", searchData.records[0].id);
-    return searchData.records[0].id;
+    console.log("[airtable-sync-contact] Found existing Clients record by name:", searchData.records[0].id);
+    return { id: searchData.records[0].id, created: false };
   }
 
   const createRes = await fetch(
@@ -77,7 +136,97 @@ async function resolveCompanyRecordId(
   }
   const created = await createRes.json() as { id: string };
   console.log("[airtable-sync-contact] Created new Clients record:", created.id);
-  return created.id;
+  return { id: created.id, created: true };
+}
+
+// Resolve the Airtable Clients record for an account using the stored
+// airtable_client_id first; fall back to by-name lookup if NULL or the
+// stored id has been deleted in Airtable. Persists the resolved id back
+// to accounts.airtable_client_id whenever we just learned (or relearned)
+// the link.
+async function resolveAndStoreCompanyRecordId(
+  supabase: ReturnType<typeof createClient>,
+  account: AccountProfile,
+  baseId: string,
+  clientsTableId: string,
+  companyNameField: string,
+  headers: Record<string, string>,
+): Promise<string | null> {
+  if (account.airtable_client_id) {
+    const stillExists = await airtableRecordExists(
+      baseId, clientsTableId, account.airtable_client_id, headers,
+    );
+    if (stillExists) return account.airtable_client_id;
+    console.warn(
+      "[airtable-sync-contact] Stored airtable_client_id no longer exists in Airtable; re-resolving:",
+      account.airtable_client_id,
+    );
+  }
+
+  if (!account.company_name) return null;
+
+  const resolved = await searchOrCreateCompanyByName(
+    baseId, clientsTableId, companyNameField, account.company_name, headers,
+  );
+  if (!resolved) return null;
+
+  const { error: updErr } = await supabase
+    .from("accounts")
+    .update({ airtable_client_id: resolved.id } as Record<string, unknown>)
+    .eq("id", account.id);
+  if (updErr) {
+    console.warn("[airtable-sync-contact] Failed to persist airtable_client_id:", updErr.message);
+  } else {
+    console.log("[airtable-sync-contact] Stored airtable_client_id on account", account.id, "→", resolved.id);
+  }
+  return resolved.id;
+}
+
+// Patch the Clients row with the portal-side company profile. Only
+// fields whose config key is configured AND whose portal value is
+// non-empty are sent. Field-level failures are logged but never break
+// the user-sync flow.
+async function patchClientProfileFields(
+  baseId: string,
+  clientsTableId: string,
+  recordId: string,
+  account: AccountProfile,
+  cfg: ContactConfig,
+  headers: Record<string, string>,
+): Promise<void> {
+  const fields: Record<string, unknown> = {};
+
+  // Company name — always re-asserted in case it changed in the portal.
+  if (cfg.field_company_name && account.company_name) {
+    fields[cfg.field_company_name] = account.company_name;
+  }
+
+  if (cfg.field_client_address) {
+    const composed = composeAddress(account);
+    if (composed) fields[cfg.field_client_address] = composed;
+  }
+  if (cfg.field_client_registration_number && account.registration_number) {
+    fields[cfg.field_client_registration_number] = account.registration_number;
+  }
+  if (cfg.field_client_country && account.country) {
+    fields[cfg.field_client_country] = account.country;
+  }
+
+  if (Object.keys(fields).length === 0) return;
+
+  const res = await fetch(
+    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(clientsTableId)}/${recordId}`,
+    { method: "PATCH", headers, body: JSON.stringify({ fields }) },
+  );
+  if (!res.ok) {
+    console.warn(
+      "[airtable-sync-contact] Clients profile patch failed:",
+      res.status,
+      await res.text(),
+    );
+    return;
+  }
+  console.log("[airtable-sync-contact] Patched Clients profile fields:", Object.keys(fields).join(", "));
 }
 
 // Search Users table for an existing record by email; return record ID or null.
@@ -155,27 +304,38 @@ Deno.serve(async (req) => {
 
   const email = body.email.trim().toLowerCase();
 
-  // Load account for company_name and account_type
-  let companyName: string | null = null;
-  let accountType: string | null = null;
+  // Load full account profile for company resolution + Clients patch.
+  let account: AccountProfile | null = null;
   if (body.account_id) {
-    const { data: account } = await supabase
+    const { data: accountRow } = await supabase
       .from("accounts")
-      .select("company_name, account_type")
+      .select("id, company_name, account_type, airtable_client_id, building_number, street_name, city, country, postcode, registration_number")
       .eq("id", body.account_id)
       .maybeSingle();
-    companyName = account?.company_name ?? null;
-    accountType = (account as Record<string, unknown> | null)?.account_type as string | null ?? null;
+    account = (accountRow as AccountProfile | null) ?? null;
   }
+  const accountType = account?.account_type ?? null;
 
   // ── Step 1: Resolve company record in Clients table ───────────────────────
+  // Prefer the stored airtable_client_id on accounts; fall back to a
+  // by-name lookup and persist the resolved id for next time.
   let companyRecordId: string | null = null;
-  if (companyName) {
-    companyRecordId = await resolveCompanyRecordId(
-      c.base_id, c.clients_table_id, c.field_company_name, companyName, atHeaders,
+  if (account) {
+    companyRecordId = await resolveAndStoreCompanyRecordId(
+      supabase, account, c.base_id, c.clients_table_id, c.field_company_name, atHeaders,
     );
   } else {
-    console.warn("[airtable-sync-contact] No company_name — skipping Clients table link");
+    console.warn("[airtable-sync-contact] No account_id — skipping Clients table link");
+  }
+
+  // ── Step 1b: Patch Clients row with full portal company profile ──────────
+  // Optional config keys (field_client_address, field_client_registration_number,
+  // field_client_country) gate which Airtable columns are written. Field-level
+  // failures don't break the user-sync flow.
+  if (companyRecordId && account) {
+    await patchClientProfileFields(
+      c.base_id, c.clients_table_id, companyRecordId, account, c, atHeaders,
+    );
   }
 
   // ── Step 2: Build Users record fields ────────────────────────────────────
