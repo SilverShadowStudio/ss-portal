@@ -513,6 +513,18 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
+    // Draft gate: drafts must never touch Dropbox. The folder + file
+    // upload + instructions PDF only happen when the client submits the
+    // draft for production (status transitions away from 'draft'). The
+    // sync at submit time fires from a separate code path (see Submit
+    // For Production handler in NewRoundModal).
+    if (record.status === "draft") {
+      console.log(`[dropbox-save-round-files] skipping for draft round ${roundId}`);
+      return new Response(JSON.stringify({ skipped: true, reason: "draft" }), {
+        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+      });
+    }
+
     console.log(`[dropbox-save-round-files] round=${roundId} scene=${sceneId} number=${roundNumber}`);
 
     // Get Dropbox connection

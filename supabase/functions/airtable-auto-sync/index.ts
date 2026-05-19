@@ -226,6 +226,26 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Draft gate: drafts live exclusively inside the portal database and
+    // must never touch Airtable, Dropbox, the notification email, or the
+    // PDF generator. This early-return covers the INSERT (round_created)
+    // path and any UPDATE that lands while still in draft. The transition
+    // out of draft (draft → in_production, fired by Submit For Production)
+    // is a separate status_changed event whose `record.status` is no
+    // longer 'draft', so the normal sync path runs at that moment.
+    const recordStatus = record.status as string | undefined;
+    const oldStatus = body.old_record?.status as string | undefined;
+    if (recordStatus === "draft") {
+      console.log(`[airtable-auto-sync] skipping ${triggerName} for draft round ${record.id}`);
+      return new Response(JSON.stringify({ skipped: true, reason: "draft" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Status changed FROM draft TO something else is the Submit moment —
+    // treat it as the equivalent of round_created so the Airtable record,
+    // notification email, and downstream pipeline are kicked off here.
+    const isDraftSubmit = triggerName === "status_changed" && oldStatus === "draft" && recordStatus !== "draft";
+
     const roundId = record.id as string;
     const sceneId = record.scene_id as string;
     const roundNumber = record.round_number as number;
@@ -273,8 +293,11 @@ Deno.serve(async (req) => {
       console.warn("[airtable-auto-sync] Airtable not configured — skipping sync, sending email only");
     }
 
-    // ── round_created ─────────────────────────────────────────────────────────
-    if (triggerName === "round_created") {
+    // ── round_created (also fires on the draft→non-draft Submit transition) ──
+    // When a draft transitions to a real status, we treat that transition
+    // as the moment the round is "created" from the external systems'
+    // point of view: Airtable record + delivery email kick off here.
+    if (triggerName === "round_created" || isDraftSubmit) {
       const status = record.status as string;
       const deliveryDueAt = record.delivery_due_at as string | null;
       const instructions = record.instructions as string | null;

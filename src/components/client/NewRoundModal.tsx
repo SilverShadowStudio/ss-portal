@@ -33,9 +33,18 @@ interface NewRoundModalProps {
   onClose: () => void;
   onCreate: (instructions: string) => void;
   onCreateWithDate?: (instructions: string, deliveryDate: Date, startDate: Date) => void;
+  /** Persist current state as a draft (status='draft') without firing
+   *  Submit For Production. Edge functions (airtable-auto-sync,
+   *  dropbox-save-round-files) early-return on draft so nothing leaks
+   *  outside the portal. */
+  onSaveDraft?: (instructions: string) => void;
   sceneName?: string;
   sceneId?: string;
   roundNumber?: number;
+  /** If the scene already has a draft round, the parent passes its id +
+   *  instructions here so the modal opens pre-populated and Save Draft
+   *  updates that row instead of inserting a new one. */
+  existingDraft?: { id: string; instructions: string | null } | null;
 }
 
 function UploadItem({
@@ -210,9 +219,11 @@ export function NewRoundModal({
   onClose,
   onCreate,
   onCreateWithDate,
+  onSaveDraft,
   sceneName,
   sceneId,
   roundNumber = 1,
+  existingDraft,
 }: NewRoundModalProps) {
   const [instructions, setInstructions] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -261,14 +272,20 @@ export function NewRoundModal({
 
   useEffect(() => {
     if (isOpen) {
-      setInstructions("");
+      // Restore instructions from an existing draft if the parent passed
+      // one. Files uploaded during the prior draft session are already
+      // in storage and linked to the scene via `round_uploads`; the
+      // modal's `filesByCategory` lives only for new uploads in this
+      // session and starts empty.
+      setInstructions(existingDraft?.instructions ?? "");
       setFilesByCategory({
         floor_plan: [], elevations: [], rcp: [],
         furniture_schedule: [], finishes_schedule: [], lighting_plan: [],
         lighting_mood_reference: [], models_3d: [], cgi_package: [],
       });
+      setBriefReview(null);
     }
-  }, [isOpen]);
+  }, [isOpen, existingDraft?.id, existingDraft?.instructions]);
 
   // ── Dictation ────────────────────────────────────────────
   // After speech-to-text completes, send the raw transcript to the
@@ -420,6 +437,24 @@ export function NewRoundModal({
     hours > 0 ? `${hours} ${hours === 1 ? "hour" : "hours"}` : null,
     `${mins} ${mins === 1 ? "minute" : "minutes"}`,
   ].filter(Boolean).join(", ");
+
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft) return;
+    setIsSubmitting(true);
+    try {
+      // Files persist regardless of submit/draft state — they live on the
+      // scene (round_uploads.scene_id), not on the round row. Upload any
+      // new ones now so they survive across draft edits.
+      const success = await uploadAllFiles();
+      if (!success) {
+        toast({ title: "Upload failed", description: "Some files could not be uploaded. Please try again.", variant: "destructive" });
+        return;
+      }
+      onSaveDraft(instructions.trim());
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -669,13 +704,17 @@ export function NewRoundModal({
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  className="h-12 px-8 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/65 hover:text-foreground/85 transition-colors"
-                  style={{ borderRadius: 2 }}
-                >
-                  Save Draft
-                </button>
+                {onSaveDraft && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleSaveDraft}
+                    className="h-12 px-8 text-[10px] font-sans uppercase tracking-[0.24em] border border-[#3A3530] bg-transparent text-foreground/65 hover:text-foreground/85 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    {isSubmitting ? "Saving…" : "Save Draft"}
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={!instructions.trim() || isSubmitting}

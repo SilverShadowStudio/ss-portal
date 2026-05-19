@@ -78,6 +78,11 @@ export default function Portfolio() {
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [isNewSceneModalOpen, setIsNewSceneModalOpen] = useState(false);
   const [isNewRoundModalOpen, setIsNewRoundModalOpen] = useState(false);
+  // When the user opens the Round modal on a scene that already has a
+  // draft, we pre-load it here so the modal updates that row on save
+  // (one-draft-per-scene rule, enforced at DB level by the partial unique
+  // index added in migration 20260519000001).
+  const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null } | null>(null);
   const { user } = useAuth();
 
   // Drill-down state
@@ -554,14 +559,134 @@ export default function Portfolio() {
     }
   };
 
+  // Open the Round modal. If a draft round already exists for this scene
+  // (enforced unique by the partial index in 20260519000001), preload it so
+  // Save Draft updates that row and Submit For Production transitions it
+  // out of draft state.
+  const openRoundModalForScene = async (sceneId: string) => {
+    try {
+      const { data } = await supabase
+        .from("scene_rounds")
+        .select("id, instructions")
+        .eq("scene_id", sceneId)
+        .eq("status", "draft")
+        .maybeSingle();
+      if (data) {
+        setEditingDraft({ id: data.id, instructions: data.instructions });
+      } else {
+        setEditingDraft(null);
+      }
+    } catch (e) {
+      console.warn("[Portfolio] draft lookup failed:", e);
+      setEditingDraft(null);
+    }
+    setIsNewRoundModalOpen(true);
+  };
+
+  // Save Draft — persist instructions on the existing draft row (if any),
+  // or INSERT a new scene_rounds row with status='draft'. The edge
+  // functions (airtable-auto-sync, dropbox-save-round-files) skip drafts,
+  // so nothing leaks outside the portal.
+  const handleSaveDraft = async (instructions: string) => {
+    if (!selectedScene) return;
+    try {
+      if (editingDraft) {
+        const { data, error } = await supabase
+          .from("scene_rounds")
+          .update({ instructions, updated_at: new Date().toISOString() })
+          .eq("id", editingDraft.id)
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          .single();
+        if (error) throw error;
+        const updated: SceneRound = data;
+        setSceneRounds((prev) => {
+          const next = new Map(prev);
+          const list = next.get(selectedScene.id) || [];
+          next.set(selectedScene.id, list.map((r) => (r.id === updated.id ? updated : r)));
+          return next;
+        });
+        toast.success("Draft saved");
+      } else {
+        const existingRounds = sceneRounds.get(selectedScene.id) || [];
+        const nextRoundNumber = existingRounds.length + 1;
+        const { data, error } = await supabase
+          .from("scene_rounds")
+          .insert({
+            scene_id: selectedScene.id,
+            round_number: nextRoundNumber,
+            status: "draft",
+            start_date: new Date().toISOString(),
+            instructions,
+          })
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          .single();
+        if (error) throw error;
+        const newDraft: SceneRound = data;
+        setSceneRounds((prev) => {
+          const next = new Map(prev);
+          const list = next.get(selectedScene.id) || [];
+          next.set(selectedScene.id, [...list, newDraft]);
+          return next;
+        });
+        toast.success("Draft saved");
+      }
+      setIsNewRoundModalOpen(false);
+      setEditingDraft(null);
+    } catch (err: any) {
+      console.error("Save draft failed:", err);
+      toast.error(err?.message || "Could not save draft");
+    }
+  };
+
   const handleCreateRound = async (instructions: string, deliveryDate?: Date, startDate?: Date) => {
     if (!selectedProject || !selectedScene) return;
 
     try {
+      const startIso = (startDate ?? new Date()).toISOString();
+
+      // Submit-from-draft path: a draft row already exists for this scene.
+      // Transition it from 'draft' → 'pending' and fill in the schedule.
+      // The status_changed trigger on scene_rounds fires airtable-auto-sync
+      // which routes draft→non-draft as the "Submit moment" — Airtable +
+      // notification email kick off there.
+      if (editingDraft) {
+        const { data, error } = await supabase
+          .from("scene_rounds")
+          .update({
+            status: "pending",
+            start_date: startIso,
+            instructions,
+            ...(deliveryDate ? { end_date: deliveryDate.toISOString() } : {}),
+          })
+          .eq("id", editingDraft.id)
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          .single();
+        if (error) throw error;
+        const updatedRound: SceneRound = data;
+        setSceneRounds((prev) => {
+          const updated = new Map(prev);
+          const current = updated.get(selectedScene.id) || [];
+          updated.set(
+            selectedScene.id,
+            current.map((r) => (r.id === updatedRound.id ? updatedRound : r)),
+          );
+          return updated;
+        });
+        // Dropbox folder + file upload is gated to skip drafts. Fire it
+        // explicitly here at submit time so the production pipeline sees
+        // the round's files.
+        supabase.functions.invoke("dropbox-save-round-files", {
+          body: { record: { ...data, scene_id: selectedScene.id } },
+        }).catch((e: unknown) => console.warn("[Portfolio] dropbox submit-from-draft failed:", e));
+        setSelectedRound(updatedRound);
+        setIsNewRoundModalOpen(false);
+        setEditingDraft(null);
+        toast.success("Round submitted — production will begin shortly");
+        return;
+      }
+
       const existingRounds = sceneRounds.get(selectedScene.id) || [];
       const nextRoundNumber = existingRounds.length + 1;
-
-      const startIso = (startDate ?? new Date()).toISOString();
 
       const { data, error } = await supabase
         .from("scene_rounds")
@@ -762,8 +887,8 @@ export default function Portfolio() {
                   // the new round directly.
                   if (selectedRound.round_number > 1) {
                     handleRequestNextRoundDirect();
-                  } else {
-                    setIsNewRoundModalOpen(true);
+                  } else if (selectedScene) {
+                    openRoundModalForScene(selectedScene.id);
                   }
                 }
               : undefined
@@ -1185,7 +1310,7 @@ export default function Portfolio() {
             <button
               onClick={() => {
                 if (selectedScene) {
-                  setIsNewRoundModalOpen(true);
+                  openRoundModalForScene(selectedScene.id);
                 } else if (selectedProject) {
                   setIsNewSceneModalOpen(true);
                 } else {
@@ -1241,12 +1366,14 @@ export default function Portfolio() {
     />
     <NewRoundModal
       isOpen={isNewRoundModalOpen}
-      onClose={() => setIsNewRoundModalOpen(false)}
+      onClose={() => { setIsNewRoundModalOpen(false); setEditingDraft(null); }}
       onCreate={handleCreateRound}
       onCreateWithDate={handleCreateRound}
+      onSaveDraft={handleSaveDraft}
       sceneName={selectedScene?.name}
       sceneId={selectedScene?.id}
       roundNumber={selectedScene ? (sceneRounds.get(selectedScene.id)?.length || 0) + 1 : 1}
+      existingDraft={editingDraft}
     />
     </>
   );
