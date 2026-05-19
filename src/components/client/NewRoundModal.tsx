@@ -40,13 +40,18 @@ type Category =
 interface NewRoundModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (instructions: string) => void;
-  onCreateWithDate?: (instructions: string, deliveryDate: Date, startDate: Date) => void;
+  onCreate: (instructions: string, bufferWeeks: number) => void;
+  onCreateWithDate?: (
+    instructions: string,
+    deliveryDate: Date,
+    startDate: Date,
+    bufferWeeks: number,
+  ) => void;
   /** Persist current state as a draft (status='draft') without firing
    *  Submit For Production. Edge functions (airtable-auto-sync,
    *  dropbox-save-round-files) early-return on draft so nothing leaks
    *  outside the portal. */
-  onSaveDraft?: (instructions: string) => void;
+  onSaveDraft?: (instructions: string, bufferWeeks: number) => void;
   /** Discard the existing draft — deletes the scene_rounds row but leaves
    *  scene-level uploads alone (they're not round-scoped). Only used when
    *  `existingDraft` is set; the modal closes after success. */
@@ -54,10 +59,10 @@ interface NewRoundModalProps {
   sceneName?: string;
   sceneId?: string;
   roundNumber?: number;
-  /** If the scene already has a draft round, the parent passes its id +
-   *  instructions here so the modal opens pre-populated and Save Draft
-   *  updates that row instead of inserting a new one. */
-  existingDraft?: { id: string; instructions: string | null } | null;
+  /** If the scene already has a draft round, the parent passes its id,
+   *  instructions and buffer setting here so the modal opens pre-populated
+   *  and Save Draft updates that row instead of inserting a new one. */
+  existingDraft?: { id: string; instructions: string | null; buffer_weeks?: number | null } | null;
 }
 
 function UploadItem({
@@ -240,6 +245,7 @@ export function NewRoundModal({
   existingDraft,
 }: NewRoundModalProps) {
   const [instructions, setInstructions] = useState("");
+  const [bufferWeeks, setBufferWeeks] = useState<number>(1);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [filesByCategory, setFilesByCategory] = useState<Record<Category, UploadedFile[]>>({
     floor_plan: [],
@@ -287,6 +293,7 @@ export function NewRoundModal({
   useEffect(() => {
     if (!isOpen) return;
     setInstructions(existingDraft?.instructions ?? "");
+    setBufferWeeks(existingDraft?.buffer_weeks ?? 1);
     setBriefReview(null);
     // Start with empty widgets; if reopening a draft, hydrate from
     // `round_uploads` so files the client uploaded before saving the
@@ -535,7 +542,7 @@ export function NewRoundModal({
         toast({ title: "Upload failed", description: "Some files could not be uploaded. Please try again.", variant: "destructive" });
         return;
       }
-      onSaveDraft(instructions.trim());
+      onSaveDraft(instructions.trim(), bufferWeeks);
     } finally {
       setIsSubmitting(false);
     }
@@ -552,9 +559,9 @@ export function NewRoundModal({
         return;
       }
       if (onCreateWithDate) {
-        onCreateWithDate(instructions.trim(), deliveryDate, startDate);
+        onCreateWithDate(instructions.trim(), deliveryDate, startDate, bufferWeeks);
       } else {
-        onCreate(instructions.trim());
+        onCreate(instructions.trim(), bufferWeeks);
       }
     } finally {
       setIsSubmitting(false);
@@ -764,6 +771,59 @@ export function NewRoundModal({
                   </div>
                 </div>
 
+              </div>
+
+              {/* ── Buffer between rounds — sits between brief inputs and delivery summary ── */}
+              <div className="px-12 pt-2 pb-6">
+                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                  Buffer between rounds
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
+                    disabled={bufferWeeks <= 1}
+                    aria-label="Decrease buffer"
+                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={bufferWeeks}
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value, 10);
+                      if (Number.isNaN(raw)) return;
+                      setBufferWeeks(Math.min(12, Math.max(1, raw)));
+                    }}
+                    className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
+                    style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
+                    disabled={bufferWeeks >= 12}
+                    aria-label="Increase buffer"
+                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    +
+                  </button>
+                  <select
+                    value="weeks"
+                    onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
+                    className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
+                    style={{ borderRadius: 2 }}
+                  >
+                    <option value="weeks">weeks</option>
+                  </select>
+                </div>
+                <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
+                  How long you want between each round of work. Default is one week of production plus your buffer time.
+                </p>
               </div>
 
               {/* ── Delivery timing — outside space-y to allow 24px top margin ── */}

@@ -61,6 +61,9 @@ interface SceneRound {
   start_date: string | null;
   end_date: string | null;
   instructions?: string | null;
+  /** Idle weeks between this round's delivery and the next round's start.
+   *  Default 1 (matches pre-buffer scheduling). Range 1-12 in the UI. */
+  buffer_weeks?: number | null;
   /** Resolved preview URL — either image_url or the latest uploaded asset. */
   preview_url?: string | null;
 }
@@ -83,7 +86,7 @@ export default function Portfolio() {
   // draft, we pre-load it here so the modal updates that row on save
   // (one-draft-per-scene rule, enforced at DB level by the partial unique
   // index added in migration 20260519000001).
-  const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null } | null>(null);
+  const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null; buffer_weeks: number | null } | null>(null);
   // Reschedule modal — the round being rescheduled is the currently
   // selected one (only ever surfaced from the in-production view).
   const [rescheduleTarget, setRescheduleTarget] = useState<SceneRound | null>(null);
@@ -260,7 +263,7 @@ export default function Portfolio() {
       const { data: allRounds } = sceneIds.length
         ? await supabase
             .from("scene_rounds")
-            .select("id, round_number, status, delivered_at, image_url, start_date, end_date, scene_id, kind")
+            .select("id, round_number, status, delivered_at, image_url, start_date, end_date, scene_id, kind, buffer_weeks")
             .in("scene_id", sceneIds)
             // Review rounds are a timeline-only artifact and must not show
             // up as separate cards in the per-scene round list.
@@ -571,12 +574,16 @@ export default function Portfolio() {
     try {
       const { data } = await supabase
         .from("scene_rounds")
-        .select("id, instructions")
+        .select("id, instructions, buffer_weeks")
         .eq("scene_id", sceneId)
         .eq("status", "draft")
         .maybeSingle();
       if (data) {
-        setEditingDraft({ id: data.id, instructions: data.instructions });
+        setEditingDraft({
+          id: data.id,
+          instructions: data.instructions,
+          buffer_weeks: (data as { buffer_weeks?: number | null }).buffer_weeks ?? null,
+        });
       } else {
         setEditingDraft(null);
       }
@@ -591,15 +598,15 @@ export default function Portfolio() {
   // or INSERT a new scene_rounds row with status='draft'. The edge
   // functions (airtable-auto-sync, dropbox-save-round-files) skip drafts,
   // so nothing leaks outside the portal.
-  const handleSaveDraft = async (instructions: string) => {
+  const handleSaveDraft = async (instructions: string, bufferWeeks: number) => {
     if (!selectedScene) return;
     try {
       if (editingDraft) {
         const { data, error } = await supabase
           .from("scene_rounds")
-          .update({ instructions, updated_at: new Date().toISOString() })
+          .update({ instructions, buffer_weeks: bufferWeeks, updated_at: new Date().toISOString() } as Record<string, unknown>)
           .eq("id", editingDraft.id)
-          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
           .single();
         if (error) throw error;
         const updated: SceneRound = data;
@@ -621,8 +628,9 @@ export default function Portfolio() {
             status: "draft",
             start_date: new Date().toISOString(),
             instructions,
-          })
-          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+            buffer_weeks: bufferWeeks,
+          } as Record<string, unknown>)
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
           .single();
         if (error) throw error;
         const newDraft: SceneRound = data;
@@ -688,7 +696,7 @@ export default function Portfolio() {
           end_date: newEnd.toISOString(),
         })
         .eq("id", round.id)
-        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
         .single();
       if (error) throw error;
       setSceneRounds((prev) => {
@@ -730,11 +738,17 @@ export default function Portfolio() {
     }
   };
 
-  const handleCreateRound = async (instructions: string, deliveryDate?: Date, startDate?: Date) => {
+  const handleCreateRound = async (
+    instructions: string,
+    deliveryDate?: Date,
+    startDate?: Date,
+    bufferWeeks?: number,
+  ) => {
     if (!selectedProject || !selectedScene) return;
 
     try {
       const startIso = (startDate ?? new Date()).toISOString();
+      const buffer = bufferWeeks ?? 1;
 
       // Submit-from-draft path: a draft row already exists for this scene.
       // Transition it from 'draft' → 'pending' and fill in the schedule.
@@ -748,10 +762,11 @@ export default function Portfolio() {
             status: "pending",
             start_date: startIso,
             instructions,
+            buffer_weeks: buffer,
             ...(deliveryDate ? { end_date: deliveryDate.toISOString() } : {}),
-          })
+          } as Record<string, unknown>)
           .eq("id", editingDraft.id)
-          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
           .single();
         if (error) throw error;
         const updatedRound: SceneRound = data;
@@ -797,9 +812,10 @@ export default function Portfolio() {
           status: "pending",
           start_date: startIso,
           instructions: instructions,
+          buffer_weeks: buffer,
           ...(deliveryDate ? { end_date: deliveryDate.toISOString() } : {}),
-        })
-        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+        } as Record<string, unknown>)
+        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
         .single();
 
       if (error) throw error;
@@ -844,7 +860,17 @@ export default function Portfolio() {
       const nextRoundNumber = existingRounds.length + 1;
       const previousLabel = String(selectedRound.round_number).padStart(2, "0");
       const nextLabel = String(nextRoundNumber).padStart(2, "0");
-      const schedule = computeRoundSchedule(new Date());
+      // Anchor the next round's start to the previous round's delivery
+      // plus its chosen buffer; clamped against the default "next slot
+      // from now" so a delayed request never lands in the past. The new
+      // round inherits the same buffer until the client overrides it on
+      // a future round modal.
+      const buffer = selectedRound.buffer_weeks ?? 1;
+      const previousEnd = selectedRound.end_date ? new Date(selectedRound.end_date) : null;
+      const schedule = computeRoundSchedule(new Date(), {
+        previousRoundEnd: previousEnd,
+        bufferWeeks: buffer,
+      });
 
       const { data, error } = await supabase
         .from("scene_rounds")
@@ -855,8 +881,9 @@ export default function Portfolio() {
           start_date: schedule.start.toISOString(),
           end_date: schedule.delivery.toISOString(),
           instructions: `See annotations on Round ${previousLabel}`,
-        })
-        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions")
+          buffer_weeks: buffer,
+        } as Record<string, unknown>)
+        .select("id, round_number, status, delivered_at, image_url, start_date, end_date, instructions, buffer_weeks")
         .single();
       if (error) throw error;
 

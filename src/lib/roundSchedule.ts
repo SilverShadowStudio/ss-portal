@@ -57,9 +57,56 @@ export interface RoundSchedule {
   delivery: Date;
 }
 
-export function computeRoundSchedule(from: Date = new Date()): RoundSchedule {
+/** First Monday 10:00 that is at-or-after `d`. If `d` is already Mon 10:00
+ *  exactly, returns `d`; otherwise rolls forward to the next Monday. */
+function rollToNextMonday10am(d: Date): Date {
+  const out = new Date(d.getTime());
+  const day = out.getDay(); // 0=Sun, 1=Mon...
+  const daysUntilMon = (1 - day + 7) % 7;
+  out.setDate(out.getDate() + daysUntilMon);
+  out.setHours(10, 0, 0, 0);
+  // If d was already past Monday-10am of the landing week, push another 7 days.
+  if (out.getTime() < d.getTime()) {
+    out.setDate(out.getDate() + 7);
+  }
+  return out;
+}
+
+/**
+ * Compute the next round schedule.
+ *
+ * Default mode (no options): the next Friday-9am deadline + Monday-10am
+ * start + Monday-11am delivery, anchored to `from`. This matches the
+ * pre-buffer behaviour and is used for Round 01 of a scene.
+ *
+ * Buffered mode (options.previousRoundEnd provided): the start is the
+ * first Monday-10am at-or-after `previousRoundEnd + bufferWeeks * 7d`,
+ * clamped so it never lands earlier than the default-computed start
+ * (which protects against picking a slot in the past for delayed
+ * requests). bufferWeeks defaults to 1, which reproduces the pre-buffer
+ * behaviour exactly when Round N+1 is requested promptly after Round N
+ * delivers.
+ */
+export function computeRoundSchedule(
+  from: Date = new Date(),
+  options?: { previousRoundEnd?: Date | null; bufferWeeks?: number },
+): RoundSchedule {
   const orderDeadline = nextOrderDeadline(from);
-  const start = roundStartDate(from);
-  const delivery = roundDeliveryDate(from);
+  let start = roundStartDate(from);
+
+  if (options?.previousRoundEnd) {
+    const buffer = options.bufferWeeks ?? 1;
+    const target = new Date(options.previousRoundEnd.getTime());
+    target.setDate(target.getDate() + buffer * 7);
+    const candidate = rollToNextMonday10am(target);
+    if (candidate.getTime() > start.getTime()) {
+      start = candidate;
+    }
+  }
+
+  const delivery = new Date(start.getTime());
+  delivery.setDate(delivery.getDate() + 7);
+  delivery.setHours(delivery.getHours() + 1);
+
   return { orderDeadline, start, delivery };
 }
