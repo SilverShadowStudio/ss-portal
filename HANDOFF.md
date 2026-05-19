@@ -102,6 +102,31 @@ Four feature requests surfaced during the Maybourne Hotels portal demo. None blo
 
 Kieran's "one point of contact" policy is preserved for other clients. The multi-user mode is opt-in per-account and must be toggleable in admin so it doesn't appear by default for non-Maybourne clients. The invitation button on the client side should be hidden unless multi-user is enabled for that account. Largest of the four — affects schema (per-user pin colour, `account_members.role` enum), RLS, UI permissions on the Documents page, role-based filtering on quotations/invoice recipients, and the invitation flow. When live, notify Sabrina at Maybourne.
 
+---
+
+**Internal — Operational instrumentation: onboarding funnel + connection visibility.** Not a Maybourne request. Internal tooling for studio visibility into client/team onboarding behaviour and engagement. Build after the four Maybourne features. Five components:
+
+1. **`password_set` activity event.** New `ActivityAction` type. Fires from `SetPassword.tsx` on successful password mutation, for both client and team users. Captures `actor_role` correctly. Goes into `activity_log` like every other event.
+2. **Time-to-sign metric on admin Agreements page.** On `/admin/documents` Agreements tab, display two computed time deltas per row:
+   - Invite-to-signed (from `auth.users.email_confirmed_at` or `account_invitations.created_at` to `agreements.created_at`)
+   - Password-set-to-signed (from the new `password_set` activity event to `agreements.created_at`)
+   - Both rendered as a small line: e.g. "Signed 4h 12m after password set" in muted text.
+   - Admin-only metric. Never expose to clients.
+3. **Last connection summary on admin Clients list.** Each client account card in `/admin/clients` shows a small line at the bottom of the per-user row: "Last seen 3h ago · 18m session" or similar. Reads from existing `client_activity` table (`started_at`, `duration_ms`, `kind = 'session'`).
+4. **Expandable connection history.** Clicking the last-connection summary line expands to show the last 10 sessions for that user: timestamp, duration, page count. Subtle accordion, same style as the rest of the admin UI. Closeable.
+5. **Existing `client_activity` table audit.** Before building 3 and 4, verify the existing heartbeat / session-tracking logic captures what we need:
+   - Are sessions actually closed reliably (do `ended_at` and `duration_ms` get populated when the user navigates away, or only on explicit logout)?
+   - Is the `kind`-based filter (e.g. `kind = 'session'` vs `kind = 'page_view'`) the right anchor for "session duration"?
+   - The existing `/admin/client-activity` route already renders this data — confirm whether building 3 + 4 means duplicating that view at smaller scale on `/admin/clients`, or refactoring shared components.
+
+Honest caveats to revisit before building:
+
+- Tab-focus time is a noisy proxy for engagement. Long-running background tabs inflate duration. Decide whether to filter sessions over a threshold (e.g. cap at 30 minutes) or accept the noise.
+- "Time to sign" is interesting but not actionable as a single metric. Useful only in aggregate or as a trigger for follow-up ("they got the invite 3 days ago and haven't signed").
+- Consider whether a "stuck in onboarding" admin alert (auto-generated when a client has set password but not signed within N days) is more useful than just exposing the raw delta. Possibly the real product.
+
+No code changes from this entry — captured for future implementation. Build order: after all four Maybourne features ship.
+
 ## Decisions made
 
 - **Quotation v2.0 — new tables, not in-place migration.** Brief proposed refactoring `quotation_documents` OR a successor table; chose successor (`quotation_orders` + `quotation_order_line_items`). Additive, preserves all signed historical quotations under the legacy code path, no destructive DDL. Awaiting Fred's confirmation on the specific name.
