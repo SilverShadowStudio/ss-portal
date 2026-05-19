@@ -707,7 +707,16 @@ export default function Portfolio() {
         supabase.functions.invoke("dropbox-save-round-files", {
           body: { record: { ...data, scene_id: selectedScene.id } },
         }).catch((e: unknown) => console.warn("[Portfolio] dropbox submit-from-draft failed:", e));
-        setSelectedRound(updatedRound);
+        // Round 01: return to the scenes view rather than drilling down
+        // into the round detail — there's nothing to look at yet, and the
+        // scenes overview is the more useful place to land after the
+        // brief has been submitted.
+        if (updatedRound.round_number === 1) {
+          setSelectedRound(null);
+          setSelectedScene(null);
+        } else {
+          setSelectedRound(updatedRound);
+        }
         setIsNewRoundModalOpen(false);
         setEditingDraft(null);
         toast.success("Round submitted — production will begin shortly");
@@ -742,8 +751,15 @@ export default function Portfolio() {
         return updated;
       });
 
-      // Auto-drilldown into the new round
-      setSelectedRound(newRound);
+      // Round 01: return to the scenes view rather than drilling down
+      // into the round detail — there's nothing to look at yet. For
+      // subsequent rounds we keep the existing auto-drilldown behaviour.
+      if (newRound.round_number === 1) {
+        setSelectedRound(null);
+        setSelectedScene(null);
+      } else {
+        setSelectedRound(newRound);
+      }
 
       // Close modal
       setIsNewRoundModalOpen(false);
