@@ -85,6 +85,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
 
         // Track client logins — best-effort, never blocks auth.
+        //
+        // Supabase fires SIGNED_IN for more than just real sign-ins: token
+        // refresh, cross-tab storage sync, and (on some library versions)
+        // tab focus regain and initial session restore all surface as
+        // SIGNED_IN. Without a guard the activity_log fills up with
+        // phantom rows (sub-second duplicates, late-day "logins" for
+        // tabs left open). The diagnostic on 2026-05-19 captured six
+        // such rows for one user while auth.users.last_sign_in_at was
+        // frozen.
+        //
+        // Guard: only insert a row when the user's auth.users.last_sign_in_at
+        // is more recent than the most recent client_login/client_registered
+        // row we've already written for them. A 10s tolerance absorbs
+        // clock skew between auth and the activity_log clock.
         if (event === "SIGNED_IN" && session?.user && !isGhostModeActive()) {
           const userId = session.user.id;
           (async () => {
@@ -98,6 +112,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 .eq("role", "admin")
                 .maybeSingle();
               if (roleRow || roleError) return;
+
+              const [{ data: userData }, { data: lastLog }] = await Promise.all([
+                supabase.auth.getUser(),
+                supabase
+                  .from("activity_log")
+                  .select("created_at")
+                  .eq("actor_user_id", userId)
+                  .in("action", ["client_login", "client_registered"])
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+              ]);
+
+              const lastSignInIso = userData?.user?.last_sign_in_at ?? null;
+              if (!lastSignInIso) return; // No auth-side sign-in stamp — ignore.
+
+              if (lastLog?.created_at) {
+                const SKEW_MS = 10_000;
+                const signInMs = new Date(lastSignInIso).getTime();
+                const lastLogMs = new Date(lastLog.created_at).getTime();
+                if (signInMs <= lastLogMs + SKEW_MS) return; // Synthetic — already accounted for.
+              }
 
               const [{ data: profile }, { data: priorSessions }] = await Promise.all([
                 supabase

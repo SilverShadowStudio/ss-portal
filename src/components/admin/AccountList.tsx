@@ -487,8 +487,14 @@ export function AccountList({
     );
     if (!confirmed) return;
     try {
-      const { error } = await supabase.from("accounts").delete().eq("id", accountId);
-      if (error) throw error;
+      // Routes through admin-delete-account so auth.users entries cascade
+      // for members whose only membership was this account. The inline
+      // accounts.delete() used to leave orphan auth rows behind; the
+      // 2026-05-19 phantom-login incident traced back to that gap.
+      const { data, error } = await supabase.functions.invoke("admin-delete-account", {
+        body: { account_id: accountId },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Delete failed");
       toast({ title: "Account deleted", description: companyName });
       fetchAccounts();
     } catch (e: any) {

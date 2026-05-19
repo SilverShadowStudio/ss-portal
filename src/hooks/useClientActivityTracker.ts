@@ -23,6 +23,12 @@ export function useClientActivityTracker() {
     startedAt: string;
     startedTs: number;
   } | null>(null);
+  // session_end fires on both pagehide and visibilitychange→hidden. Tab
+  // focus loss therefore wrote a session_end every time, with no paired
+  // session_start when focus returned. Diagnostic on 2026-05-19 found
+  // 8 session_end rows against 3 session_start for one user. Track a
+  // ref so session_end fires at most once per session lifetime.
+  const sessionEndedRef = useRef(false);
 
   // Keep latest access token reachable from the unload handler.
   useEffect(() => {
@@ -34,6 +40,7 @@ export function useClientActivityTracker() {
     if (isGhostMode || isGhostModeActive()) return; // Ghost Mode: never log impersonated activity.
     if (user && lastUserId.current !== user.id) {
       lastUserId.current = user.id;
+      sessionEndedRef.current = false;
       const sid = getOrCreateSessionId();
       void insertClientActivity({
         userId: user.id,
@@ -47,10 +54,15 @@ export function useClientActivityTracker() {
     if (!user && lastUserId.current) {
       const prevId = lastUserId.current;
       lastUserId.current = null;
-      void insertClientActivity({
-        userId: prevId,
-        kind: "session_end",
-      }).finally(() => clearSessionId());
+      if (!sessionEndedRef.current) {
+        sessionEndedRef.current = true;
+        void insertClientActivity({
+          userId: prevId,
+          kind: "session_end",
+        }).finally(() => clearSessionId());
+      } else {
+        clearSessionId();
+      }
     }
   }, [user, isGhostMode]);
 
@@ -106,16 +118,19 @@ export function useClientActivityTracker() {
           durationMs: Date.now() - page.startedTs,
         });
       }
-      beaconClientActivity({
-        userId: user.id,
-        actorName,
-        actorRole,
-        kind: "session_end",
-        sessionId: sid,
-        path: page?.path ?? null,
-        startedAt: new Date().toISOString(),
-        durationMs: null,
-      });
+      if (!sessionEndedRef.current) {
+        sessionEndedRef.current = true;
+        beaconClientActivity({
+          userId: user.id,
+          actorName,
+          actorRole,
+          kind: "session_end",
+          sessionId: sid,
+          path: page?.path ?? null,
+          startedAt: new Date().toISOString(),
+          durationMs: null,
+        });
+      }
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
