@@ -195,7 +195,61 @@ export function AccountList({
   // Team-only simple invite state.
   const [inviteEmail, setInviteEmail] = useState("");
 
+  // Airtable pre-flight match panel. Populated by a debounced lookup on
+  // the company-name input — surfaces existing Clients rows so the admin
+  // can link rather than create a duplicate (see commit c469277 for the
+  // stored-id sync that the link relies on).
+  type AirtableMatch = {
+    record_id: string;
+    company_name: string;
+    address: string | null;
+    client_representative: string | null;
+    has_projects: number;
+  };
+  const [airtableMatches, setAirtableMatches] = useState<AirtableMatch[]>([]);
+  const [matchesLoading, setMatchesLoading] = useState(false);
+  const [linkedAirtableId, setLinkedAirtableId] = useState<string | null>(null);
+
   useEffect(() => { fetchAccounts(); }, [accountTypes.join(",")]);
+
+  // Debounced Airtable match lookup. Only fires when the dialog is open,
+  // we're not in team-only mode, and the trimmed company name has at
+  // least 3 characters. The chosen-link state is cleared whenever the
+  // input changes, so a previously-linked record never silently sticks
+  // to a new search.
+  useEffect(() => {
+    const trimmed = form.companyName.trim();
+    if (!isAddDialogOpen || isTeamOnly || trimmed.length < 3) {
+      setAirtableMatches([]);
+      setMatchesLoading(false);
+      return;
+    }
+    setLinkedAirtableId(null);
+    let cancelled = false;
+    setMatchesLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "airtable-find-matching-clients",
+          { body: { company_name: trimmed } },
+        );
+        if (cancelled) return;
+        if (error) {
+          setAirtableMatches([]);
+        } else {
+          setAirtableMatches((data?.matches ?? []) as AirtableMatch[]);
+        }
+      } catch {
+        if (!cancelled) setAirtableMatches([]);
+      } finally {
+        if (!cancelled) setMatchesLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.companyName, isAddDialogOpen, isTeamOnly]);
 
   async function fetchAccounts() {
     try {
@@ -282,6 +336,9 @@ export function AccountList({
     setForm(initialForm);
     setSignature("");
     setParsedConfirm(false);
+    setAirtableMatches([]);
+    setMatchesLoading(false);
+    setLinkedAirtableId(null);
   };
 
   const handleParseSignature = async () => {
@@ -376,6 +433,7 @@ export function AccountList({
     }
     setIsCreating(true);
     try {
+      const wasLinkedToExisting = !!linkedAirtableId;
       const ok = await postInvite({
         mode: "invite",
         company: {
@@ -395,6 +453,7 @@ export function AccountList({
         },
         accountType: form.accountType,
         clientCode: form.clientCode.trim() || null,
+        airtableClientId: linkedAirtableId,
       }, form.email.trim());
       if (ok) {
         const clientLabel =
@@ -405,6 +464,12 @@ export function AccountList({
           action: "client_created",
           description: `Added client ${clientLabel}`,
           actorRole: "admin",
+        });
+        toast({
+          title: wasLinkedToExisting
+            ? "Created and linked to existing Airtable record"
+            : "Created (new Airtable record)",
+          description: clientLabel,
         });
         resetForm();
         setIsAddDialogOpen(false);
@@ -714,6 +779,68 @@ export function AccountList({
                       </div>
                     </div>
                   </div>
+
+                  {/* Airtable pre-flight match panel — surfaces existing Clients
+                      rows so admins can link rather than duplicate. Non-blocking:
+                      submission proceeds regardless. */}
+                  {(matchesLoading || airtableMatches.length > 0) && (
+                    <div className="border border-border rounded-sm bg-muted/30 px-4 py-3 space-y-3">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                        {matchesLoading ? "Checking Airtable…" : "Possible matches in Airtable"}
+                      </div>
+                      {!matchesLoading && airtableMatches.map((m) => {
+                        const isLinked = linkedAirtableId === m.record_id;
+                        const projectLabel =
+                          m.has_projects > 0
+                            ? `${m.has_projects} project${m.has_projects === 1 ? "" : "s"}`
+                            : "no projects";
+                        const parts = [m.address, m.client_representative, projectLabel]
+                          .filter((v): v is string => !!v);
+                        return (
+                          <div
+                            key={m.record_id}
+                            className={`flex items-start justify-between gap-3 py-1.5 ${
+                              isLinked ? "" : "border-b border-border/50 last:border-b-0"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium text-foreground">{m.company_name}</div>
+                              <div className="text-[11px] text-muted-foreground mt-0.5 break-words">
+                                {parts.join(" — ")}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLinkedAirtableId(isLinked ? null : m.record_id)
+                              }
+                              className={`shrink-0 text-[10px] uppercase tracking-[0.18em] font-medium px-2.5 py-1 rounded-sm border transition-colors ${
+                                isLinked
+                                  ? "border-gold/70 text-gold bg-gold/10"
+                                  : "border-border text-muted-foreground hover:border-gold/50 hover:text-gold"
+                              }`}
+                            >
+                              {isLinked ? "Linked ✓" : "Link to this"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {!matchesLoading && (
+                        <button
+                          type="button"
+                          onClick={() => setLinkedAirtableId(null)}
+                          className={`text-[10px] uppercase tracking-[0.18em] font-medium transition-colors ${
+                            linkedAirtableId
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "text-foreground/45 cursor-default"
+                          }`}
+                          disabled={!linkedAirtableId}
+                        >
+                          {linkedAirtableId ? "Create new anyway" : "No link selected — will create new"}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   <Button className="w-full" onClick={handleSubmit} disabled={isCreating}>
                     {isCreating ? "Working…" : "Create account & send invite"}

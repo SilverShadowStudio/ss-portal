@@ -379,6 +379,12 @@ Deno.serve(async (req) => {
     }
 
     const clientCode = body.clientCode?.trim().toUpperCase() || null
+    // Optional: if the admin chose to link to an existing Airtable Clients
+    // row in the Add Client pre-flight match panel, the chosen record id
+    // arrives here. Writing it onto the account row at insert time lets
+    // the downstream airtable-sync-contact (fired below) recognise the
+    // link and PATCH the existing row instead of creating a duplicate.
+    const airtableClientId = (body.airtableClientId as string | undefined)?.trim() || null
 
     const { data: account, error: accountErr } = await admin
       .from('accounts')
@@ -393,7 +399,8 @@ Deno.serve(async (req) => {
         owner_user_id: invitedUserId,
         account_type: accountType,
         client_code: clientCode,
-      })
+        ...(airtableClientId ? { airtable_client_id: airtableClientId } : {}),
+      } as Record<string, unknown>)
       .select('id, company_name')
       .single()
 
