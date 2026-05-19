@@ -19,6 +19,7 @@ export type ActivityAction =
   | "client_created"
   | "client_registered"
   | "client_login"
+  | "password_set"
   | "agreement_signed"
   | "dropbox_file_received";
 
@@ -39,6 +40,7 @@ export const ACTION_LABELS: Record<string, string> = {
   client_created: "Client",
   client_registered: "Client",
   client_login: "Client",
+  password_set: "Password",
   agreement_signed: "Agreement",
   dropbox_file_received: "Delivery",
 };

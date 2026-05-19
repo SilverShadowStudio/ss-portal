@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import { logActivity } from "@/lib/activityLog";
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -53,6 +54,7 @@ export default function SetPassword() {
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
+      await logActivity({ action: "password_set", description: "Set initial password" });
       navigate("/sign-agreement");
     } catch (err: any) {
       setError(err.message || "Failed to set password. Please try again.");

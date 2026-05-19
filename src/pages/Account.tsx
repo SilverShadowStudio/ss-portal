@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { TeamManagement } from "@/components/account/TeamManagement";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { cn } from "@/lib/utils";
+import { logActivity } from "@/lib/activityLog";
 
 interface ProfileData {
   firstName: string;
@@ -437,6 +438,7 @@ export default function Account() {
                   }
                   const { error } = await supabase.auth.updateUser({ password: newPassword });
                   if (error) throw error;
+                  await logActivity({ action: "password_set", description: "Changed password" });
                   toast.success("Password updated successfully");
                   setCurrentPassword("");
                   setNewPassword("");
