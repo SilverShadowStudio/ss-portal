@@ -289,19 +289,23 @@ function NoticeBlockView({ notice }: { notice: AgreementDocument["notice"] }) {
 function CoverBlock({ cover }: { cover: AgreementDocument["cover"] }) {
   return (
     <section>
-      <h1
-        style={{
-          fontFamily: "Cinzel, Georgia, serif",
-          fontSize: 28,
-          fontWeight: 400,
-          color: INK,
-          letterSpacing: "0.06em",
-          textAlign: "center",
-          margin: "0 0 48px 0",
-        }}
-      >
-        SILVERSHADOW STUDIO
-      </h1>
+      {/* Match the email / document treatment: discreet centred logo at
+          the top in place of a typeset wordmark. `filter:brightness(0)`
+          renders the white-on-transparent source as solid INK against
+          the cream surface. */}
+      <div style={{ textAlign: "center", margin: "0 0 48px 0" }}>
+        <img
+          src="https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png"
+          alt="Silver Shadow Studio"
+          style={{
+            height: 28,
+            width: "auto",
+            display: "inline-block",
+            filter: "brightness(0)",
+            border: "none",
+          }}
+        />
+      </div>
       <div style={{ marginBottom: 28 }}>
         <EyebrowLabel>Studio</EyebrowLabel>
         <PartyLine block={cover.studio} />
