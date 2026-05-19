@@ -239,36 +239,59 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     onUploaded?.();
   }
 
+  const isDraftRound = roundStatus === "draft";
+
   const adminStatusBar = isAdmin ? (
-    <div className="mb-4 flex items-center gap-2">
-      <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground/70 font-sans mr-1">
-        Status
-      </span>
-      {STATUS_OPTIONS.map((opt) => {
-        const active =
-          currentStatus === opt.value ||
-          (opt.value === "in_production" &&
-            (currentStatus === "in_progress" || currentStatus === "pending"));
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => changeStatus(opt.value)}
-            disabled={savingStatus !== null}
-            className={cn(
-              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-sans tracking-wide transition-all",
-              active
-                ? `${opt.ring} bg-card text-foreground shadow-sm`
-                : "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border",
-              savingStatus !== null && "opacity-70 cursor-wait"
-            )}
-          >
-            <span className={cn("h-1.5 w-1.5 rounded-full", opt.dot)} />
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
+    isDraftRound ? (
+      // Drafts are client-side only — the client hasn't submitted the brief
+      // yet, so the admin has nothing to act on. Render a read-only banner
+      // in place of the status bar so admins don't accidentally promote a
+      // half-written brief into production.
+      <div
+        className="mb-4 px-4 py-3 font-sans"
+        style={{ borderLeft: "2px solid #8A8070", background: "rgba(138,128,112,0.06)" }}
+      >
+        <p
+          className="uppercase mb-1"
+          style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+        >
+          Draft — client only
+        </p>
+        <p className="text-[12px] text-foreground/65 leading-relaxed">
+          The client has saved this round as a draft and has not submitted it for production yet. No action is required from the studio. Nothing has been synced to Airtable or Dropbox.
+        </p>
+      </div>
+    ) : (
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground/70 font-sans mr-1">
+          Status
+        </span>
+        {STATUS_OPTIONS.map((opt) => {
+          const active =
+            currentStatus === opt.value ||
+            (opt.value === "in_production" &&
+              (currentStatus === "in_progress" || currentStatus === "pending"));
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => changeStatus(opt.value)}
+              disabled={savingStatus !== null}
+              className={cn(
+                "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-sans tracking-wide transition-all",
+                active
+                  ? `${opt.ring} bg-card text-foreground shadow-sm`
+                  : "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border",
+                savingStatus !== null && "opacity-70 cursor-wait"
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", opt.dot)} />
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    )
   ) : null;
 
   const briefModal = createPortal(
@@ -405,7 +428,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     document.body
   );
 
-  const dropboxPanel = isAdmin && sceneId && projectId ? (
+  const dropboxPanel = isAdmin && sceneId && projectId && !isDraftRound ? (
     <div className="mt-6 w-full max-w-sm mx-auto">
       <DropboxVisualsPanel
         sceneId={sceneId}

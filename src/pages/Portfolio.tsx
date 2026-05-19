@@ -638,6 +638,35 @@ export default function Portfolio() {
     }
   };
 
+  // Discard a draft — remove the scene_rounds row. Files attached to the
+  // scene (round_uploads) are left alone, since they live at the scene
+  // level, not the round level. The client can remove individual files
+  // from the modal's upload widgets before discarding if they want them
+  // gone too.
+  const handleDiscardDraft = async (draftId: string) => {
+    if (!selectedScene) return;
+    try {
+      const { error } = await supabase
+        .from("scene_rounds")
+        .delete()
+        .eq("id", draftId)
+        .eq("status", "draft");
+      if (error) throw error;
+      setSceneRounds((prev) => {
+        const next = new Map(prev);
+        const list = next.get(selectedScene.id) || [];
+        next.set(selectedScene.id, list.filter((r) => r.id !== draftId));
+        return next;
+      });
+      setIsNewRoundModalOpen(false);
+      setEditingDraft(null);
+      toast.success("Draft discarded");
+    } catch (err: any) {
+      console.error("Discard draft failed:", err);
+      toast.error(err?.message || "Could not discard draft");
+    }
+  };
+
   const handleCreateRound = async (instructions: string, deliveryDate?: Date, startDate?: Date) => {
     if (!selectedProject || !selectedScene) return;
 
@@ -1068,17 +1097,35 @@ export default function Portfolio() {
                 const sceneDot = getPhaseDot(phase);
                 const isAwaitingReview = phase === "Awaiting Review";
                 const isAwaitingBrief = phase === "Awaiting Brief";
-                const isEmpty = rounds.length === 0;
-                const borderClass = isAwaitingReview
+                // Latest round is a draft → the client started a brief but
+                // hasn't submitted. Card flips into a "DRAFT" treatment and
+                // a click reopens the modal rather than drilling down.
+                const latestByNumber = [...rounds].sort((a, b) => b.round_number - a.round_number)[0];
+                const hasDraft = !!latestByNumber && latestByNumber.status === "draft";
+                // If the ONLY rounds on this scene are drafts, render the
+                // empty-state layout (no preview image) so the card doesn't
+                // show a Clock icon for a not-yet-submitted brief.
+                const isEmpty = rounds.length === 0 || rounds.every((r) => r.status === "draft");
+                const borderClass = hasDraft
+                  ? ""
+                  : isAwaitingReview
                   ? "border-l-2 border-gold"
                   : isAwaitingBrief
                   ? "border-l-2 border-foreground/25"
                   : "";
+                const draftBorderStyle = hasDraft
+                  ? { borderLeft: "2px solid #8A8070" }
+                  : {};
                 return (
                   <button
                     key={scene.id}
                     type="button"
                     onClick={() => {
+                      if (hasDraft) {
+                        setSelectedScene(scene);
+                        openRoundModalForScene(scene.id);
+                        return;
+                      }
                       setSelectedScene(scene);
                       const sorted = [...rounds].sort(
                         (a, b) => b.round_number - a.round_number
@@ -1093,18 +1140,27 @@ export default function Portfolio() {
                     className={cn(
                       "group relative block text-left w-full overflow-hidden rounded-sm bg-card transition-smooth",
                       borderClass,
-                      isEmpty && "border border-foreground/[0.15]"
+                      isEmpty && !hasDraft && "border border-foreground/[0.15]"
                     )}
-                    style={{ aspectRatio: "4 / 3" }}
+                    style={{ aspectRatio: "4 / 3", ...draftBorderStyle }}
                   >
                     {isEmpty ? (
                       <div className="absolute inset-0 flex flex-col justify-end p-6">
                         <h3 className="font-serif text-xl text-foreground/80 leading-tight">
                           {scene.name}
                         </h3>
-                        <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 font-sans">
-                          Brief pending
-                        </p>
+                        {hasDraft ? (
+                          <p
+                            className="mt-2 font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Draft
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 font-sans">
+                            Brief pending
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -1123,9 +1179,18 @@ export default function Portfolio() {
                           <h3 className="font-serif text-xl md:text-2xl text-foreground leading-tight">
                             {scene.name}
                           </h3>
-                          <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-sans">
-                            {rounds.length} round{rounds.length !== 1 ? "s" : ""}
-                          </p>
+                          {hasDraft ? (
+                            <p
+                              className="mt-2 font-sans uppercase"
+                              style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                            >
+                              Draft
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-sans">
+                              {rounds.length} round{rounds.length !== 1 ? "s" : ""}
+                            </p>
+                          )}
                         </div>
                       </>
                     )}
@@ -1370,6 +1435,7 @@ export default function Portfolio() {
       onCreate={handleCreateRound}
       onCreateWithDate={handleCreateRound}
       onSaveDraft={handleSaveDraft}
+      onDiscardDraft={handleDiscardDraft}
       sceneName={selectedScene?.name}
       sceneId={selectedScene?.id}
       roundNumber={selectedScene ? (sceneRounds.get(selectedScene.id)?.length || 0) + 1 : 1}

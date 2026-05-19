@@ -813,6 +813,7 @@ export default function AdminProjects() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {rounds.map((round) => {
+                const isDraft = round.status === "draft";
                 const phase = getStatusPhase(round.status);
                 const title = `Round ${round.round_number
                   .toString()
@@ -824,11 +825,22 @@ export default function AdminProjects() {
                     key={round.id}
                     type="button"
                     onClick={() => setSelectedRound(round)}
-                    className="text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors hover:border-primary/40"
+                    className={cn(
+                      "text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors",
+                      isDraft ? "opacity-70 hover:border-border" : "hover:border-primary/40",
+                    )}
+                    style={isDraft ? { borderLeft: "2px solid #8A8070" } : undefined}
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div>
-                        {phase && (
+                        {isDraft ? (
+                          <span
+                            className="mb-1 block font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Draft — client only
+                          </span>
+                        ) : phase && (
                           <span className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1 block font-sans">
                             {phase}
                           </span>
@@ -953,6 +965,8 @@ export default function AdminProjects() {
               const latestRound =
                 deliveredRounds.sort((a, b) => b.round_number - a.round_number)[0] ||
                 [...rounds].sort((a, b) => b.round_number - a.round_number)[0];
+              const latestByNumber = [...rounds].sort((a, b) => b.round_number - a.round_number)[0];
+              const hasDraft = !!latestByNumber && latestByNumber.status === "draft";
               const phase = getSceneEffectivePhase(scene, rounds);
               const sceneDot = getPhaseDot(phase);
               const estimate = `${rounds.length} round${
@@ -980,11 +994,22 @@ export default function AdminProjects() {
                         ) ?? sorted[0] ?? null;
                       setSelectedRound(target);
                     }}
-                    className="text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors hover:border-primary/40"
+                    className={cn(
+                      "text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors",
+                      hasDraft ? "hover:border-border" : "hover:border-primary/40",
+                    )}
+                    style={hasDraft ? { borderLeft: "2px solid #8A8070" } : undefined}
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div>
-                        {phase && (
+                        {hasDraft ? (
+                          <span
+                            className="mb-1 block font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Draft — client only
+                          </span>
+                        ) : phase && (
                           <span className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1 flex items-center gap-2 font-sans">
                             {sceneDot && (
                               <span

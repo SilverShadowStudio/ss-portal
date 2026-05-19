@@ -68,6 +68,11 @@ export function getSceneEffectivePhase(
   if (latest.status === "delivered" || latest.status === "client_review")
     return "Awaiting Review";
   if (latest.status === "approved") return "Approved";
+  // A draft round is client-side only — the brief hasn't been submitted to
+  // production yet, so the scene reads as "Awaiting Brief" for grouping.
+  // (The card itself shows a "Draft" label so the client can tell their
+  // unfinished work apart from a never-started one.)
+  if (latest.status === "draft") return "Awaiting Brief";
   // Anything else (pending_instruction, in_production, pending) means a
   // round is being worked on.
   return "In Production";

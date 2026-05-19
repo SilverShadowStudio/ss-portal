@@ -11,9 +11,18 @@ import { toast as sonnerToast } from "sonner";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 
 interface UploadedFile {
-  file: File;
+  name: string;
+  size?: number;
+  /** Only present for files added in this modal session (new uploads).
+   *  Persisted files restored from `round_uploads` have no File object —
+   *  they live in storage and are identified by storagePath + uploadId. */
+  file?: File;
   uploading: boolean;
   storagePath?: string;
+  /** `round_uploads.id` — present for files already persisted to the DB.
+   *  Used to delete the row + storage object when the client removes a
+   *  previously-uploaded file from a draft. */
+  uploadId?: string;
   error?: string;
 }
 
@@ -38,6 +47,10 @@ interface NewRoundModalProps {
    *  dropbox-save-round-files) early-return on draft so nothing leaks
    *  outside the portal. */
   onSaveDraft?: (instructions: string) => void;
+  /** Discard the existing draft — deletes the scene_rounds row but leaves
+   *  scene-level uploads alone (they're not round-scoped). Only used when
+   *  `existingDraft` is set; the modal closes after success. */
+  onDiscardDraft?: (draftId: string) => Promise<void> | void;
   sceneName?: string;
   sceneId?: string;
   roundNumber?: number;
@@ -183,7 +196,7 @@ function UploadItem({
               <div key={i} className="flex items-center gap-2">
                 <FileIcon size={10} className="shrink-0 text-foreground/25" />
                 <span className="text-[10px] text-foreground/85 truncate flex-1 font-sans">
-                  {f.file.name}
+                  {f.name}
                 </span>
                 {f.uploading && (
                   <BrandLoader size="sm" className="h-2.5 w-2.5" />
@@ -220,6 +233,7 @@ export function NewRoundModal({
   onCreate,
   onCreateWithDate,
   onSaveDraft,
+  onDiscardDraft,
   sceneName,
   sceneId,
   roundNumber = 1,
@@ -271,21 +285,45 @@ export function NewRoundModal({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen) {
-      // Restore instructions from an existing draft if the parent passed
-      // one. Files uploaded during the prior draft session are already
-      // in storage and linked to the scene via `round_uploads`; the
-      // modal's `filesByCategory` lives only for new uploads in this
-      // session and starts empty.
-      setInstructions(existingDraft?.instructions ?? "");
-      setFilesByCategory({
-        floor_plan: [], elevations: [], rcp: [],
-        furniture_schedule: [], finishes_schedule: [], lighting_plan: [],
-        lighting_mood_reference: [], models_3d: [], cgi_package: [],
-      });
-      setBriefReview(null);
+    if (!isOpen) return;
+    setInstructions(existingDraft?.instructions ?? "");
+    setBriefReview(null);
+    // Start with empty widgets; if reopening a draft, hydrate from
+    // `round_uploads` so files the client uploaded before saving the
+    // draft are visible (and removable) on this session.
+    setFilesByCategory({
+      floor_plan: [], elevations: [], rcp: [],
+      furniture_schedule: [], finishes_schedule: [], lighting_plan: [],
+      lighting_mood_reference: [], models_3d: [], cgi_package: [],
+    });
+    if (existingDraft && sceneId) {
+      (async () => {
+        const { data, error } = await supabase
+          .from("round_uploads")
+          .select("id, category, file_name, storage_path, file_size")
+          .eq("scene_id", sceneId)
+          .order("created_at", { ascending: true });
+        if (error || !data) return;
+        const grouped: Record<Category, UploadedFile[]> = {
+          floor_plan: [], elevations: [], rcp: [],
+          furniture_schedule: [], finishes_schedule: [], lighting_plan: [],
+          lighting_mood_reference: [], models_3d: [], cgi_package: [],
+        };
+        for (const row of data) {
+          const cat = row.category as Category;
+          if (!grouped[cat]) continue;
+          grouped[cat].push({
+            name: row.file_name,
+            size: row.file_size ?? undefined,
+            uploading: false,
+            storagePath: row.storage_path,
+            uploadId: row.id,
+          });
+        }
+        setFilesByCategory(grouped);
+      })();
     }
-  }, [isOpen, existingDraft?.id, existingDraft?.instructions]);
+  }, [isOpen, existingDraft?.id, existingDraft?.instructions, sceneId]);
 
   // ── Dictation ────────────────────────────────────────────
   // After speech-to-text completes, send the raw transcript to the
@@ -384,12 +422,36 @@ export function NewRoundModal({
 
   // ── File handling ─────────────────────────────────────────
   const handleFilesAdded = (category: Category, fileList: FileList) => {
-    const newFiles: UploadedFile[] = Array.from(fileList).map((file) => ({ file, uploading: false }));
+    const newFiles: UploadedFile[] = Array.from(fileList).map((file) => ({
+      name: file.name, size: file.size, file, uploading: false,
+    }));
     setFilesByCategory((prev) => ({ ...prev, [category]: [...prev[category], ...newFiles] }));
   };
 
   const handleRemoveFile = (category: Category, index: number) => {
-    setFilesByCategory((prev) => ({ ...prev, [category]: prev[category].filter((_, i) => i !== index) }));
+    const target = filesByCategory[category][index];
+    // Optimistic UI removal first — both new and persisted entries.
+    setFilesByCategory((prev) => ({
+      ...prev,
+      [category]: prev[category].filter((_, i) => i !== index),
+    }));
+    // Persisted files (already in storage + round_uploads) must be cleaned
+    // up so the client doesn't end up paying for orphans or having ghost
+    // files show up next time they reopen the draft.
+    if (target?.uploadId || target?.storagePath) {
+      (async () => {
+        try {
+          if (target.storagePath) {
+            await supabase.storage.from("round-uploads").remove([target.storagePath]);
+          }
+          if (target.uploadId) {
+            await supabase.from("round_uploads").delete().eq("id", target.uploadId);
+          }
+        } catch (err) {
+          console.warn("[NewRoundModal] failed to delete persisted upload:", err);
+        }
+      })();
+    }
   };
 
   const uploadAllFiles = async (): Promise<boolean> => {
@@ -399,7 +461,7 @@ export function NewRoundModal({
       const catFiles = filesByCategory[category];
       for (let idx = 0; idx < catFiles.length; idx++) {
         const uploadedFile = catFiles[idx];
-        if (uploadedFile.storagePath) continue;
+        if (uploadedFile.storagePath || !uploadedFile.file) continue;
         const path = `${user.id}/${sceneId}/${category}/${Date.now()}-${uploadedFile.file.name}`;
         setFilesByCategory((prev) => ({
           ...prev,
@@ -413,13 +475,15 @@ export function NewRoundModal({
           }));
           return false;
         }
-        await supabase.from("round_uploads").insert({
+        const { data: insertRow } = await supabase.from("round_uploads").insert({
           scene_id: sceneId, user_id: user.id, category,
           file_name: uploadedFile.file.name, storage_path: path, file_size: uploadedFile.file.size,
-        });
+        }).select("id").single();
         setFilesByCategory((prev) => ({
           ...prev,
-          [category]: prev[category].map((f, i) => i === idx ? { ...f, uploading: false, storagePath: path } : f),
+          [category]: prev[category].map((f, i) => i === idx ? {
+            ...f, uploading: false, storagePath: path, uploadId: insertRow?.id,
+          } : f),
         }));
       }
     }
@@ -437,6 +501,27 @@ export function NewRoundModal({
     hours > 0 ? `${hours} ${hours === 1 ? "hour" : "hours"}` : null,
     `${mins} ${mins === 1 ? "minute" : "minutes"}`,
   ].filter(Boolean).join(", ");
+
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
+
+  useEffect(() => {
+    // Reset the confirm prompt every time the modal opens so it never
+    // lingers across sessions.
+    if (!isOpen) setConfirmDiscard(false);
+  }, [isOpen]);
+
+  const handleDiscardDraft = async () => {
+    if (!onDiscardDraft || !existingDraft) return;
+    if (!confirmDiscard) { setConfirmDiscard(true); return; }
+    setIsDiscarding(true);
+    try {
+      await onDiscardDraft(existingDraft.id);
+    } finally {
+      setIsDiscarding(false);
+      setConfirmDiscard(false);
+    }
+  };
 
   const handleSaveDraft = async () => {
     if (!onSaveDraft) return;
@@ -695,7 +780,7 @@ export function NewRoundModal({
               </div>
 
               {/* ── Footer ── */}
-              <div className="px-12 pb-12 flex gap-3">
+              <div className="px-12 pb-12 flex gap-3 items-center">
                 <button
                   type="button"
                   onClick={onClose}
@@ -704,6 +789,21 @@ export function NewRoundModal({
                 >
                   Cancel
                 </button>
+                {onDiscardDraft && existingDraft && (
+                  <button
+                    type="button"
+                    onClick={handleDiscardDraft}
+                    disabled={isDiscarding || isSubmitting}
+                    className="h-12 px-4 text-[10px] font-sans uppercase tracking-[0.24em] text-foreground/35 hover:text-rose-300/85 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    {isDiscarding
+                      ? "Discarding…"
+                      : confirmDiscard
+                      ? "Confirm discard"
+                      : "Discard draft"}
+                  </button>
+                )}
                 {onSaveDraft && (
                   <button
                     type="button"
