@@ -127,6 +127,16 @@ Honest caveats to revisit before building:
 
 No code changes from this entry — captured for future implementation. Build order: after all four Maybourne features ship.
 
+### Portal → Airtable sync architecture (decided 19 May 2026)
+
+One-way push from portal to Airtable for entities the portal owns: **Clients** (`accounts`), **Users** (`account_members` + `auth.users`), **Projects**.
+
+Airtable owns production entities: **Tasks**, **Scene Manager Day Logs**, **Modeller Invoices**, **Scene Manager Invoices**, **Cost/Budget table**, **Team Holiday Tracker**. Portal does not read or write these.
+
+Bidirectional sync explicitly rejected. Reasons: conflict resolution complexity, schema drift, data type translation. Portal defines the canonical schema for shared entities; Kieran can add Airtable-only columns for his operational use without the portal touching them.
+
+Field mapping is declarative via `app_settings.airtable_contact_field_config` and `app_settings.airtable_project_field_config`. Adding a new portal field surfaced to Airtable: (1) Kieran adds the column to the Airtable table, (2) admin adds the field config key in `app_settings`, (3) sync code maps the portal column to the Airtable column. No schema sync, no auto-column creation.
+
 ## Decisions made
 
 - **Quotation v2.0 — new tables, not in-place migration.** Brief proposed refactoring `quotation_documents` OR a successor table; chose successor (`quotation_orders` + `quotation_order_line_items`). Additive, preserves all signed historical quotations under the legacy code path, no destructive DDL. Awaiting Fred's confirmation on the specific name.

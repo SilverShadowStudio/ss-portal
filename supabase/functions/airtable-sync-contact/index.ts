@@ -25,13 +25,18 @@ interface ContactConfig {
   clients_table_id: string;     // Clients table (tblWDmSeRB4P88ALw)
   field_company_name: string;   // "Company name" in Clients table
   field_client_representative: string; // "Client Representative" in Clients table
-  // Optional Clients-table columns. Only patched when the config key is
-  // set to a non-empty Airtable column name. If a key is absent the
-  // function silently skips that field — Fred can add columns to Kieran's
-  // base and then enable them by updating app_settings.
-  field_client_address?: string;
-  field_client_registration_number?: string;
+  // Optional Clients-table columns — one per portal address component
+  // plus registration number. Only patched when the config key is set to
+  // a non-empty Airtable column name AND the portal value is non-empty.
+  // Adding a new portal-side field surfaced to Airtable: (1) Kieran adds
+  // the column to the Clients table, (2) admin adds the key here, (3)
+  // the mapping below picks it up automatically.
+  field_client_building_number?: string;
+  field_client_street_name?: string;
+  field_client_city?: string;
+  field_client_postcode?: string;
   field_client_country?: string;
+  field_client_registration_number?: string;
 }
 
 interface AccountProfile {
@@ -58,20 +63,6 @@ function mapAccountType(accountType: string | null): string[] {
   if (accountType === "partnership") return ["Subscription"];
   if (accountType === "project") return ["Contract"];
   return [];
-}
-
-// Compose a single-line address from the portal account fields. Empty
-// pieces are dropped; if nothing survives the function returns null so
-// the caller can skip the field rather than push an empty string.
-function composeAddress(account: AccountProfile): string | null {
-  const line1 = [account.building_number, account.street_name]
-    .map((p) => p?.trim())
-    .filter((p): p is string => !!p)
-    .join(" ");
-  const parts = [line1, account.city?.trim(), account.postcode?.trim(), account.country?.trim()]
-    .filter((p): p is string => !!p);
-  if (parts.length === 0) return null;
-  return parts.join(", ");
 }
 
 // Verify an Airtable Clients record id still exists. Returns true on 200,
@@ -182,10 +173,11 @@ async function resolveAndStoreCompanyRecordId(
   return resolved.id;
 }
 
-// Patch the Clients row with the portal-side company profile. Only
-// fields whose config key is configured AND whose portal value is
-// non-empty are sent. Field-level failures are logged but never break
-// the user-sync flow.
+// Patch the Clients row with the portal-side company profile. Each
+// portal column maps to its own Airtable column; both the config key
+// and the portal value must be non-empty for a write to fire. Empty
+// portal values never overwrite Airtable — sync is additive only.
+// Field-level failures are logged but never break the user-sync flow.
 async function patchClientProfileFields(
   baseId: string,
   clientsTableId: string,
@@ -195,22 +187,21 @@ async function patchClientProfileFields(
   headers: Record<string, string>,
 ): Promise<void> {
   const fields: Record<string, unknown> = {};
+  const setIf = (airtableField: string | undefined, portalValue: string | null) => {
+    if (!airtableField) return;
+    const v = portalValue?.trim();
+    if (!v) return;
+    fields[airtableField] = v;
+  };
 
   // Company name — always re-asserted in case it changed in the portal.
-  if (cfg.field_company_name && account.company_name) {
-    fields[cfg.field_company_name] = account.company_name;
-  }
-
-  if (cfg.field_client_address) {
-    const composed = composeAddress(account);
-    if (composed) fields[cfg.field_client_address] = composed;
-  }
-  if (cfg.field_client_registration_number && account.registration_number) {
-    fields[cfg.field_client_registration_number] = account.registration_number;
-  }
-  if (cfg.field_client_country && account.country) {
-    fields[cfg.field_client_country] = account.country;
-  }
+  setIf(cfg.field_company_name, account.company_name);
+  setIf(cfg.field_client_building_number, account.building_number);
+  setIf(cfg.field_client_street_name, account.street_name);
+  setIf(cfg.field_client_city, account.city);
+  setIf(cfg.field_client_postcode, account.postcode);
+  setIf(cfg.field_client_country, account.country);
+  setIf(cfg.field_client_registration_number, account.registration_number);
 
   if (Object.keys(fields).length === 0) return;
 
