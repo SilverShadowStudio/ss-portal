@@ -19,50 +19,63 @@ const LOGO_URL =
 const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
 const PORTAL_DOCS_URL = "https://portal.silvershadowstudio.com/documents";
 
-function fmtMoney(amount: number, currency = "GBP") {
-  return `${currency} ${new Intl.NumberFormat("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)}`;
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-function fmtDate(d: string | null | undefined) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+function extractItemNames(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((it) => {
+      if (!it || typeof it !== "object") return "";
+      const r = it as Record<string, unknown>;
+      const name = (r.description ?? r.name ?? r.title ?? "") as string;
+      return typeof name === "string" ? name.trim() : "";
+    })
+    .filter((s) => s.length > 0);
 }
 
 function buildInvoiceEmailHtml(
   invoiceNumber: string,
-  amount: number,
-  currency: string,
-  dueDate: string | null | undefined,
-  invoiceType: string | null | undefined,
-  companyName: string | null | undefined,
+  projectName: string | null,
+  greetingName: string | null,
+  lineItemNames: string[],
   backgroundColor: string,
 ): string {
-  const typeLabel =
-    invoiceType === "deposit"
-      ? "Deposit Invoice"
-      : invoiceType === "balance"
-      ? "Balance Invoice"
-      : "Invoice";
-
-  const intro = companyName
-    ? `Silver Shadow Studio has issued a new invoice for ${companyName}.`
-    : `Silver Shadow Studio has issued a new invoice for your review.`;
-
-  const formattedAmount = fmtMoney(amount, currency);
-  const formattedDue = fmtDate(dueDate);
-
-  const dueLine = formattedDue
-    ? `<p style="font-family:Georgia,'Times New Roman',serif;font-size:13px;color:#6B6358;line-height:1.5;text-align:center;margin:0 auto 4px;max-width:360px;letter-spacing:0.03em;">Due ${formattedDue}</p>`
+  // Mirror the quotation email: project name is the primary identifier,
+  // the invoice number sits quietly below as a reference.
+  const heading = projectName || invoiceNumber;
+  const subhead = projectName ? invoiceNumber : "";
+  const subheadLine = subhead
+    ? `<p style="font-family:Georgia,'Times New Roman',serif;font-size:13px;color:#1A1814;opacity:0.55;line-height:1.5;text-align:center;margin:8px auto 0;max-width:360px;letter-spacing:0.03em;">${escapeHtml(subhead)}</p>`
     : "";
 
-  const amountLine = `<p style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:400;color:#1A1814;text-align:center;margin:0 auto 4px;letter-spacing:0.03em;">${formattedAmount}</p>`;
+  const greetingLine = greetingName
+    ? `<p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;margin:0 auto 18px;max-width:360px;">${escapeHtml(greetingName)},</p>`
+    : "";
+
+  const itemsHtml = lineItemNames
+    .map(
+      (name) =>
+        `<p style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:14px;color:#1A1814;line-height:1.7;text-align:center;margin:0 auto 8px;max-width:360px;">${escapeHtml(name)}</p>`,
+    )
+    .join("");
+
+  // Only render the "Your invoice covers:" intro + items block if we have
+  // line items to show. For standalone invoices with no items the body
+  // collapses to heading → CTA.
+  const itemsBlock = lineItemNames.length > 0
+    ? `${greetingLine}
+              <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.7;text-align:center;margin:0 auto 18px;max-width:360px;">
+                Your invoice covers:
+              </p>
+              ${itemsHtml}`
+    : greetingLine;
 
   return `<!DOCTYPE html>
 <html>
@@ -82,33 +95,18 @@ function buildInvoiceEmailHtml(
                 <img src="${LOGO_URL}" alt="Silver Shadow Studio" style="height:28px;width:auto;filter:brightness(0);border:none;">
               </div>
 
-              <p style="font-family:Georgia,'Times New Roman',serif;font-size:11px;font-weight:400;color:#6B6358;line-height:1.5;text-align:center;margin:0 auto 8px;letter-spacing:0.18em;text-transform:uppercase;">
-                ${typeLabel}
+              <p style="font-family:Georgia,'Times New Roman',serif;font-size:32px;font-weight:400;color:#1A1814;line-height:1.15;text-align:center;margin:0 auto;letter-spacing:0.01em;">
+                ${escapeHtml(heading)}
               </p>
-              <p style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:400;color:#1A1814;line-height:1.15;text-align:center;margin:0 auto 10px;letter-spacing:0.02em;">
-                ${invoiceNumber}
-              </p>
+              ${subheadLine}
 
-              <div style="width:36px;height:1px;background:#C8C0B0;margin:20px auto 18px;"></div>
+              <div style="width:36px;height:1px;background:#B89A6A;margin:22px auto 32px;"></div>
 
-              ${amountLine}
-              ${dueLine}
+              ${itemsBlock}
 
-              <div style="width:36px;height:1px;background:#C8C0B0;margin:22px auto 26px;"></div>
-
-              <p style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#1A1814;line-height:1.75;text-align:center;max-width:360px;margin:0 auto 32px;">
-                ${intro} Please log in to your Silver Shadow Studio portal to view the full invoice and proceed with payment.
-              </p>
-
-              <p style="text-align:center;margin:0 0 44px;">
-                <a href="${PORTAL_DOCS_URL}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1A1814;text-decoration:underline;display:block;">
+              <p style="text-align:center;margin:32px 0;">
+                <a href="${PORTAL_DOCS_URL}" style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814;text-decoration:none;display:inline-block;padding-bottom:6px;border-bottom:1px solid #B89A6A;">
                   Pay Invoice
-                </a>
-              </p>
-
-              <p style="font-family:Arial,sans-serif;font-size:11px;text-align:center;margin:0;">
-                <a href="https://www.silvershadowstudio.com" style="color:#8A8070;text-decoration:none;">
-                  silvershadowstudio.com
                 </a>
               </p>
 
@@ -139,10 +137,31 @@ Deno.serve(async (req) => {
     // Fetch invoice
     const { data: invoice, error: invErr } = await supabase
       .from("invoices")
-      .select("invoice_number, reference_number, amount, currency, due_date, type, account_id")
+      .select("invoice_number, reference_number, account_id, quotation_id, line_items")
       .eq("id", invoiceId)
       .single();
     if (invErr || !invoice) throw new Error(`Invoice not found: ${invErr?.message}`);
+
+    // Fetch the parent quotation when this invoice is linked to one.
+    // Deposit/balance invoices always have a quotation_id; standalone
+    // invoices may not.
+    let quotationProjectName: string | null = null;
+    let quotationNumber: string | null = null;
+    let quotationLineItems: unknown[] = [];
+    if (invoice.quotation_id) {
+      const { data: quotation } = await supabase
+        .from("quotation_documents")
+        .select("quotation_number, reference_number, project_name, line_items")
+        .eq("id", invoice.quotation_id)
+        .maybeSingle();
+      if (quotation) {
+        quotationProjectName = quotation.project_name ?? null;
+        quotationNumber = quotation.quotation_number || quotation.reference_number || null;
+        if (Array.isArray(quotation.line_items)) {
+          quotationLineItems = quotation.line_items;
+        }
+      }
+    }
 
     // Fetch account
     const { data: account, error: accErr } = await supabase
@@ -158,16 +177,38 @@ Deno.serve(async (req) => {
     );
     if (uErr || !user?.email) throw new Error(`User not found: ${uErr?.message}`);
 
+    // Pull a greeting first name from the owner's profile if available.
+    let greetingName: string | null = null;
+    {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("first_name")
+        .eq("user_id", account.owner_user_id)
+        .maybeSingle();
+      const fn = (profile?.first_name as string | null)?.trim();
+      if (fn) greetingName = fn;
+    }
+
     const invoiceNumber = invoice.invoice_number || invoice.reference_number || "—";
-    const subject = `Invoice ${invoiceNumber} from Silver Shadow Studio`;
+    // Line items come from the linked quotation when available; for
+    // standalone invoices we fall back to the invoice's own line items.
+    const lineItemNames = quotationLineItems.length > 0
+      ? extractItemNames(quotationLineItems)
+      : extractItemNames(invoice.line_items);
+
+    // Subject: "[Project Name] / Invoice / [Quotation Number]". Falls back
+    // gracefully if either piece is missing.
+    const subjectRef = quotationNumber || invoiceNumber;
+    const subject = quotationProjectName
+      ? `${quotationProjectName} / Invoice / ${subjectRef}`
+      : `Invoice / ${subjectRef}`;
+
     const brand = await loadBrand(supabase);
     const html = buildInvoiceEmailHtml(
       invoiceNumber,
-      Number(invoice.amount),
-      invoice.currency || "GBP",
-      invoice.due_date,
-      invoice.type,
-      account.company_name,
+      quotationProjectName,
+      greetingName,
+      lineItemNames,
       brand.background_color,
     );
 
