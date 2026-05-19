@@ -16,7 +16,10 @@ export function AccordionHeader({ label, count, isOpen, onToggle, action }: {
   action?: { label: string; onClick: () => void };
 }) {
   const showCount = typeof count === "number";
-  const countLabel = count === 0 ? "None" : String(count);
+  // Per Documents page brief: numerals only, no "None" word. An empty
+  // section reads as e.g. "INVOICES · 0" with the body itself carrying
+  // the empty-state copy.
+  const countLabel = String(count ?? 0);
   return (
     <div
       role="button"

@@ -96,35 +96,44 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-const QUOTATION_STATUS_LABELS: Record<string, string> = {
-  sent: "Sent",
-  signed: "Signed",
-};
+// Documents page status vocabulary (per the status-treatment brief).
+//
+// The client-facing list uses exactly two words per section: an action
+// word in gold (the client still has something to do) and a rest word
+// in warm grey (resolved). No other colours, ever.
+//
+//   Quotations: PENDING (gold)     · SIGNED (warm grey)
+//   Invoices:   OUTSTANDING (gold) · PAID   (warm grey)
+//
+// Any DB status outside that small set is filtered out of the list
+// (drafts, expired, withdrawn quotations; drafts, voided, credited
+// invoices). Those documents remain in the DB and accessible by direct
+// URL — they just don't appear in the at-a-glance list.
 
-const INVOICE_STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  sent: "Sent",
-  paid: "Paid",
-  overdue: "Overdue",
-  pending: "Pending",
-  cancelled: "Cancelled",
-};
-
-function quotationStatusClass(status: string) {
-  switch (status) {
-    case "signed": return "text-emerald-600 dark:text-emerald-400";
-    case "sent":   return "text-blue-600 dark:text-blue-400";
-    default:       return "text-foreground/40";
-  }
+function quotationStatusDisplay(status: string): { label: string; tone: "action" | "rest" } | null {
+  if (status === "sent") return { label: "Pending", tone: "action" };
+  if (status === "signed" || status === "accepted") return { label: "Signed", tone: "rest" };
+  return null;
 }
 
-function invoiceStatusClass(status: string) {
-  switch (status) {
-    case "paid":    return "text-emerald-600 dark:text-emerald-400";
-    case "sent":    return "text-blue-600 dark:text-blue-400";
-    case "overdue": return "text-rose-600 dark:text-rose-400";
-    default:        return "text-foreground/40";
+function invoiceStatusDisplay(status: string): { label: string; tone: "action" | "rest" } | null {
+  if (status === "sent" || status === "partially_paid") {
+    return { label: "Outstanding", tone: "action" };
   }
+  if (status === "paid") return { label: "Paid", tone: "rest" };
+  return null;
+}
+
+// Days overdue rounding: if today is past the due date, return the
+// integer days. Same-day or earlier returns 0.
+function daysOverdue(dueDate: string | null | undefined): number {
+  if (!dueDate) return 0;
+  const due = new Date(dueDate);
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const diffMs = today.getTime() - due.getTime();
+  return diffMs > 0 ? Math.floor(diffMs / 86_400_000) : 0;
 }
 
 // Empty-state caption — italic serif at reduced opacity, reads as state.
@@ -281,9 +290,13 @@ export default function Documents() {
           .select("id, quotation_number, reference_number, issued_at, created_at, currency, net_total, gross_total, vat_rate, vat_amount, notes, line_items, status, account_id, project_id, deposit_percentage, deposit_amount")
           .in("status", ["sent", "signed"])
           .order("created_at", { ascending: false }),
+        // Client-facing invoice list excludes drafts, voided, and credited
+        // rows — those stay in the DB for audit but are reachable only by
+        // direct URL. The visible vocabulary is "Outstanding" / "Paid".
         supabase
           .from("invoices")
           .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url")
+          .in("status", ["sent", "partially_paid", "paid"])
           .order("created_at", { ascending: false }),
         supabase
           .from("orders")
@@ -389,7 +402,7 @@ export default function Documents() {
           Documents
         </h1>
         <p className="mt-3 font-sans uppercase text-foreground/45" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
-          Your agreements, orders, and invoices
+          Your agreement, quotations, and invoices
         </p>
       </div>
 
@@ -527,6 +540,11 @@ export default function Documents() {
             ) : (
               <div>
                 {quotations.map((q) => {
+                  // Drafts, expired, and withdrawn quotations are hidden
+                  // from the client-facing list per the documents brief.
+                  // They remain accessible by direct URL.
+                  const display = quotationStatusDisplay(q.status);
+                  if (!display) return null;
                   const num = q.quotation_number || q.reference_number || "—";
                   const total = q.gross_total ?? q.net_total;
                   return (
@@ -540,10 +558,16 @@ export default function Documents() {
                       className="group w-full flex items-center gap-5 py-4 border-t border-border/30 text-left hover:border-border/60 transition-all"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="font-serif text-foreground group-hover:text-gold transition-colors" style={{ fontSize: 13 }}>
+                        <p
+                          className="font-serif text-foreground group-hover:text-gold transition-colors"
+                          style={{ fontSize: 13, margin: 0, paddingLeft: 0 }}
+                        >
                           {num}
                         </p>
-                        <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                        <p
+                          className="font-sans uppercase text-foreground/40 mt-1"
+                          style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0 }}
+                        >
                           {formatDateShort(q.issued_at || q.created_at)}
                         </p>
                       </div>
@@ -552,8 +576,11 @@ export default function Documents() {
                           {formatCurrency(total, q.currency || "GBP")}
                         </p>
                       )}
-                      <p className={`shrink-0 font-sans uppercase ${quotationStatusClass(q.status)}`} style={{ fontSize: 9, letterSpacing: "0.16em" }}>
-                        {QUOTATION_STATUS_LABELS[q.status] || q.status}
+                      <p
+                        className={`shrink-0 font-sans uppercase ${display.tone === "action" ? "text-gold" : "text-foreground/40"}`}
+                        style={{ fontSize: 9, letterSpacing: "0.24em" }}
+                      >
+                        {display.label}
                       </p>
                     </button>
                   );
@@ -577,14 +604,24 @@ export default function Documents() {
             ) : (
               <div>
                 {invoices.map((inv) => {
+                  const display = invoiceStatusDisplay(inv.status);
+                  if (!display) return null;
                   const num = inv.invoice_number || inv.reference_number || "—";
-                  const canPay = inv.status !== "paid" && inv.status !== "draft";
+                  const canPay = inv.status !== "paid";
                   const isPaying = payingInvoiceId === inv.id;
+                  // Overdue is signalled by italic reference + italic date
+                  // and a second eyebrow line "[N] DAYS OVERDUE" beside the
+                  // status word. No new colour is introduced.
+                  const overdueDays = inv.status === "sent" ? daysOverdue(inv.due_date) : 0;
+                  const isOverdue = overdueDays > 0;
                   return (
                     <div key={inv.id} className="flex items-center gap-5 py-4 border-t border-border/30">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2">
-                          <p className="font-serif text-foreground" style={{ fontSize: 13 }}>
+                        <div className="flex items-baseline gap-2" style={{ paddingLeft: 0 }}>
+                          <p
+                            className="font-serif text-foreground"
+                            style={{ fontSize: 13, margin: 0, paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
+                          >
                             {num}
                           </p>
                           {inv.type !== "standalone" && (
@@ -593,7 +630,10 @@ export default function Documents() {
                             </span>
                           )}
                         </div>
-                        <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                        <p
+                          className="font-sans uppercase text-foreground/40 mt-1"
+                          style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
+                        >
                           {inv.due_date
                             ? `Due ${formatDateShort(inv.due_date)}`
                             : formatDateShort(inv.issued_at || inv.created_at)}
@@ -602,12 +642,22 @@ export default function Documents() {
                       <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
                         {formatCurrency(inv.amount, inv.currency || "GBP")}
                       </p>
-                      <p
-                        className={`shrink-0 font-sans uppercase ${invoiceStatusClass(inv.status)}`}
-                        style={{ fontSize: 9, letterSpacing: "0.16em", minWidth: 40 }}
-                      >
-                        {INVOICE_STATUS_LABELS[inv.status] || inv.status}
-                      </p>
+                      <div className="shrink-0 flex flex-col items-end" style={{ minWidth: 96 }}>
+                        <p
+                          className={`font-sans uppercase ${display.tone === "action" ? "text-gold" : "text-foreground/40"}`}
+                          style={{ fontSize: 9, letterSpacing: "0.24em" }}
+                        >
+                          {display.label}
+                        </p>
+                        {isOverdue && (
+                          <p
+                            className="font-sans uppercase text-foreground/40"
+                            style={{ fontSize: 9, letterSpacing: "0.24em", marginTop: 4 }}
+                          >
+                            {overdueDays} {overdueDays === 1 ? "Day" : "Days"} Overdue
+                          </p>
+                        )}
+                      </div>
                       {canPay && (
                         <button
                           type="button"
