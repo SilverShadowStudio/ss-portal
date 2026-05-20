@@ -1,6 +1,10 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
+    {
+      "source": "/auth/verify",
+      "destination": "https://oodhsoiwnqxcimzmzick.supabase.co/auth/v1/verify"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

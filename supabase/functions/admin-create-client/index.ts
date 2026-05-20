@@ -21,6 +21,28 @@ const APP_BASE_URL =
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * Compose the invite link on the portal domain rather than the raw
+ * supabase.co host that `properties.action_link` returns. The portal
+ * proxies `/auth/verify` to `https://<ref>.supabase.co/auth/v1/verify`
+ * via a vercel.json rewrite, so spam scanners see a sender-aligned host
+ * in the email body. Falls back to `action_link` when generateLink
+ * didn't return the token components — keeps the email functional even
+ * if the API shape changes.
+ */
+function buildPortalVerifyUrl(
+  properties: Record<string, unknown> | undefined,
+  fallback: string,
+): string {
+  const token = (properties?.hashed_token as string | undefined) ?? ''
+  const type = (properties?.verification_type as string | undefined) ?? ''
+  const redirectTo = (properties?.redirect_to as string | undefined) ?? ''
+  if (!token || !type) return fallback
+  const params = new URLSearchParams({ token, type })
+  if (redirectTo) params.set('redirect_to', redirectTo)
+  return `${APP_BASE_URL}/auth/verify?${params.toString()}`
+}
+
 // Structured error responses for already-registered users. Each category
 // (client or team) gets its own message so the admin can give the right
 // next step in the toast.
@@ -141,7 +163,8 @@ Deno.serve(async (req) => {
       return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
     }
 
-    const inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+    const props = linkData.properties as Record<string, unknown>
+    const inviteUrl = buildPortalVerifyUrl(props, props.action_link as string)
 
     try {
       await admin.from('account_user_audit').insert({
@@ -360,7 +383,8 @@ Deno.serve(async (req) => {
         return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
       }
       invitedUserId = existingUserId
-      inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+      const props = linkData.properties as Record<string, unknown>
+      inviteUrl = buildPortalVerifyUrl(props, props.action_link as string)
     } else {
       const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
         type: 'invite',
@@ -375,7 +399,8 @@ Deno.serve(async (req) => {
         return json({ error: linkErr?.message || 'Failed to generate invitation link' }, 400)
       }
       invitedUserId = linkData.user.id
-      inviteUrl = (linkData.properties as Record<string, unknown>).action_link as string
+      const props = linkData.properties as Record<string, unknown>
+      inviteUrl = buildPortalVerifyUrl(props, props.action_link as string)
     }
 
     const clientCode = body.clientCode?.trim().toUpperCase() || null

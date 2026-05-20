@@ -15,7 +15,7 @@ const corsHeaders = {
 };
 
 const LOGO_URL =
-  "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/SilvershadowStudio.png";
+  "https://portal.silvershadowstudio.com/email-assets/silvershadow-wordmark.png";
 const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
 const PORTAL_DOCS_URL = "https://portal.silvershadowstudio.com/documents";
 
