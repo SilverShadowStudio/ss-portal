@@ -137,6 +137,21 @@ Bidirectional sync explicitly rejected. Reasons: conflict resolution complexity,
 
 Field mapping is declarative via `app_settings.airtable_contact_field_config` and `app_settings.airtable_project_field_config`. Adding a new portal field surfaced to Airtable: (1) Kieran adds the column to the Airtable table, (2) admin adds the field config key in `app_settings`, (3) sync code maps the portal column to the Airtable column. No schema sync, no auto-column creation.
 
+### Email deliverability — Katharine Pooley invite bounce (20 May 2026)
+
+Invitation email to `emilyg@katharinepooley.com` sent at 18:24 BST on 19 May 2026 (Resend id `e5b8dccf-383a-4ebf-b06e-a7af8dcadb2b`, from `portal@silvershadowstudio.com`, subject "Your portal is ready", tag `category: invite`) hard-bounced. Resend's REST API returns only `last_event: "bounced"` for this message — the SMTP response code, bounce category (hard/soft/policy/transient), and DNS/auth detail are not exposed via `GET /emails/{id}` or `GET /events?email_id=…` (the latter returns an empty list for this account). Probed `/emails/{id}/events`, `/emails/{id}/bounce`, `/bounces`, `/suppressions` — all 405 Method Not Allowed. That detail only ships via webhook (`email.bounced` payload with `bounce.type`, `bounce.message`), and no webhook is configured today, so `email_send_log` has zero rows for this message.
+
+All other portal invites sent the same evening (`fred+demo2@`, `lpetak@maybourne.com`, `fred+testteam@`) delivered cleanly, so this is not a domain-wide SPF/DKIM/DMARC failure on `silvershadowstudio.com`. Most likely recipient-side: mailbox no longer exists, mailbox over quota, or corporate mail filter blocking the `portal@` sender. Without Resend's webhook payload there's no programmatic way to distinguish. The Resend dashboard at `https://resend.com/emails/e5b8dccf-383a-4ebf-b06e-a7af8dcadb2b` shows the SMTP reason in the web UI for manual triage.
+
+A second invite to the same address was queued at 2026-05-20 14:36:25 UTC (id `c0601bba-670b-4b57-90b1-52af69978212`) — likely an admin retry; not investigated further.
+
+The `resend-find-email` edge function deployed this session (admin-gated + service-role bearer for shell triage) is the tool for this kind of lookup. Two modes — list-by-recipient-with-time-window, and Resend-endpoint probe.
+
+### Pending — Resend webhook ingestion + deliverability admin UI
+
+- **Resend webhook ingestion to `email_send_log`.** Add a `resend-webhook` edge function (signature-verified via Resend webhook secret) that receives `email.sent`, `email.delivered`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked` events and writes rows to `email_send_log` with the full bounce sub-object (`bounce.type`, `bounce.message`, SMTP response code, recipient diagnostics). Register the endpoint in the Resend dashboard. After this lands, future bounce triage is a SQL query rather than a Resend dashboard manual lookup.
+- **Admin UI: bounce status on client profile + retry/override.** On `/admin/clients/<accountId>`, surface per-recipient deliverability: latest `last_event` per email, bounce reason inline, "Resend invitation" button (already exists for unsigned agreements), and an "Override to known-good email" button that updates `auth.users.email` via `supabase.auth.admin.updateUserById` then re-invites. Hooks into the new `email_send_log` rows added by the webhook above — both items should ship together so the UI has data to render.
+
 ## Decisions made
 
 - **Quotation v2.0 — new tables, not in-place migration.** Brief proposed refactoring `quotation_documents` OR a successor table; chose successor (`quotation_orders` + `quotation_order_line_items`). Additive, preserves all signed historical quotations under the legacy code path, no destructive DDL. Awaiting Fred's confirmation on the specific name.
