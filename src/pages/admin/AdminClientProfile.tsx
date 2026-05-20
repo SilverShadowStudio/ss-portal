@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { ManualInviteModal } from "@/components/admin/ManualInviteModal";
 import { useToast } from "@/hooks/use-toast";
 
 interface EmailListRow {
@@ -111,6 +112,7 @@ export default function AdminClientProfile() {
   const [hasSigned, setHasSigned] = useState<boolean | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  const [manualInviteOpen, setManualInviteOpen] = useState(false);
 
   const [emailsLoading, setEmailsLoading] = useState(false);
   const [emails, setEmails] = useState<EmailListRow[]>([]);
@@ -429,7 +431,7 @@ export default function AdminClientProfile() {
             </div>
 
             {hasSigned === false && ownerUserId && (
-              <div className="mt-5">
+              <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-2">
                 {resendSent ? (
                   <span
                     className="text-[11px] uppercase tracking-[0.15em]"
@@ -447,6 +449,12 @@ export default function AdminClientProfile() {
                     {resendLoading ? "SENDING…" : "RESEND INVITATION →"}
                   </button>
                 )}
+                <button
+                  onClick={() => setManualInviteOpen(true)}
+                  className="text-[11px] uppercase tracking-[0.15em] bg-transparent border-0 p-0 cursor-pointer text-foreground/60 hover:text-foreground transition-colors"
+                >
+                  SEND MANUALLY →
+                </button>
               </div>
             )}
 
@@ -581,6 +589,16 @@ export default function AdminClientProfile() {
           </div>
         </DialogContent>
       </Dialog>
+      <ManualInviteModal
+        isOpen={manualInviteOpen}
+        onClose={() => setManualInviteOpen(false)}
+        accountId={accountId ?? null}
+        clientLabel={
+          [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(" ") ||
+          form.companyName.trim() ||
+          "client"
+        }
+      />
     </AdminLayout>
   );
 }
