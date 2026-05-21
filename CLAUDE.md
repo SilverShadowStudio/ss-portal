@@ -18,6 +18,7 @@ Two commercial models:
 - **Never delete, rename, or restructure existing code unless the task explicitly requires it. Additions are always preferred over modifications. Modifications are always preferred over deletions.**
 - **When multiple approaches exist, always pick the one with the smallest blast radius — the one that is easiest to revert and least likely to break something else.**
 - **Never touch files unrelated to the task at hand, even if they look wrong.**
+- **Always deploy edge functions from the project root and verify the deploy with `npx supabase functions download <name>` + grep before trusting it.** A `functions deploy` run in the background or without an explicit CWD has twice silently shipped stale source while returning exit 0 and a success message.
 
 ## Architecture decisions
 
@@ -34,6 +35,19 @@ Supabase (Postgres) and Airtable coexist by design and serve different purposes:
 - **Airtable** — Kieran's production team workflow (task assignment, modeller tracking, scene status, deadlines). Kieran owns this entirely.
 
 Automatic outbound sync is in place: Supabase DB triggers on `scene_rounds` fire `net.http_post` calls to the `airtable-auto-sync` edge function whenever a round is created, a status changes, or instructions are submitted. The sync is one-way (portal → Airtable) for these events. Inbound sync (Airtable → portal) uses the existing manual `pull-status` action in `airtable-sync` and the Dropbox webhook for file arrivals.
+
+## Email deliverability
+
+Invitation, agreement, quotation, and invoice emails all go through the edge-function + Resend pipeline. Three rules keep them aligned with the sender domain and out of corporate filters:
+
+- **Verify links must be on the portal domain, never `*.supabase.co`.** A `/auth/verify` rewrite in `vercel.json` proxies server-side to `https://oodhsoiwnqxcimzmzick.supabase.co/auth/v1/verify`, so the visible link aligns with the `silvershadowstudio.com` sender (DMARC). `buildPortalVerifyUrl(properties, fallback)` in `admin-create-client` composes these from the `generateLink()` response for all three modes (`resend` / `magiclink` / `invite`); it falls back to `action_link` when the token components are missing. The proxy does not cover Supabase's own auth emails (password reset etc.) — those still live on `supabase.co`.
+- **Email images are portal-hosted under `public/email-assets/`, never S3 or base64.** `silvershadow-wordmark.png` and `portal-invite-illustration.png` are served from `https://portal.silvershadowstudio.com/email-assets/*` — aligned with the sender domain, edge-cached, Outlook-compatible. `amazonaws.com` hosts get down-ranked by some filters, and `data:` URIs don't render in Outlook desktop `<img>`. The canonical `LOGO_URL` / `illustrationUrl` live in `_shared/emailTemplates.ts`, but four edge functions carry their own `LOGO_URL` copies (`accept-agreement`, `send-quotation-email`, `send-delivery-notification`, `send-invoice-email`) — change all of them together.
+- **Sender is `portal@silvershadowstudio.com`.** Known watch item: the Katharine Pooley corporate filter soft-bounces it even after the verify-link + image-host fix. Don't change sender strategy until the Resend webhook is ingesting bounce reasons — otherwise it's guesswork.
+
+## Auth + activity logging
+
+- **Phantom-login guard.** The `SIGNED_IN` handler in `AuthContext.tsx` only inserts a `client_login` row when `auth.users.last_sign_in_at > lastLog.created_at + 10s` (10s skew tolerance). The comparison is against the server-side `last_sign_in_at`, not a local ref, so it also de-dupes synthetic `SIGNED_IN` events across tabs/devices (token refresh, cross-tab storage sync, focus regain). Without it, one continuous tab session logged six phantom logins.
+- **`session_end` idempotence.** `useClientActivityTracker.ts` guards `session_end` with a `sessionEndedRef` boolean so it fires at most once per session lifetime — both the `pagehide` and `visibilitychange` beacon paths share the guard. Reset on each new `session_start`.
 
 ## Kieran — critical context
 
@@ -109,6 +123,8 @@ git config user.email "fred@silvershadowstudio.com"
 ```
 
 Without this, direct URL navigation (e.g. `/admin/clients`) returns 404.
+
+The `/auth/verify` rewrite (added for email deliverability) must be listed **before** this SPA catch-all — Vercel evaluates rewrites in order and the catch-all would otherwise swallow `/auth/verify`. See the Email deliverability section.
 
 ## Project structure
 
@@ -228,11 +244,22 @@ supabase/
     airtable-auto-sync/         # Automatic outbound sync — called by DB triggers
                                 # Also sends Resend email to fred@ + kieran@ on each event
     airtable-list-models/       # Lists all rows from the Models table (cached 5 min, admin-only)
+    airtable-sync-contact/      # Syncs client contact + six address fields into the Airtable Clients
+                                # table (stored-id-first via resolveAndStoreCompanyRecordId; additive)
+    airtable-sync-project/      # Syncs project into Airtable; reads accounts.airtable_client_id
+                                # alongside company_name / account_type
+    airtable-find-matching-clients/ # Admin-gated pre-flight duplicate match for Add Client
+                                # (suffix-stripping bidirectional name match, returns up to 5)
     accept-agreement/           # Sign client agreement, generate PDF (.catch() fix applied)
     admin-create-client/        # Create client account + send invite or provision or resend
                                 # Modes: invite (new user), provision (existing), resend (magiclink)
                                 # Accepts clientCode (stored on account), uses emailConfig.subject
     admin-impersonate-client/   # Ghost mode token
+    admin-delete-account/       # Admin-gated cascade delete — deletes the account row first (so
+                                # account_members cascades), then orphan auth.users; preserves
+                                # fred@silvershadowstudio.com; returns deleted/preserved/failed
+    admin-generate-manual-invite/ # Admin-gated — builds verify URL + byte-identical invite HTML for
+                                # a blocked recipient. No send; returns verify_url + email_html
     download-invoice-pdf/       # Generate invoice PDF
     parse-signature/            # Admin-only — calls Anthropic claude-sonnet-4-20250514 to extract
                                 # contact fields from a pasted email signature. Returns JSON with
@@ -256,6 +283,8 @@ supabase/
     update-email-config/        # GET returns email_invite_config from app_settings;
                                 # POST saves it. Config now includes subject field.
     slack-notify/               # Slack notifications (new)
+    resend-find-email/          # Admin-gated diagnostic — Resend lookup by recipient + time window,
+                                # plus endpoint probe. Deployed --no-verify-jwt
     send-transactional-email/   # Legacy — uses LOVABLE_API_KEY (no longer valid); do not use
 
     _shared/
@@ -329,11 +358,11 @@ Key values: `SB.widthExpanded = "w-64"`, nav label `fontSize: 11, letterSpacing:
 
 | Table | Purpose |
 |-------|---------|
-| `accounts` | Client accounts — now includes `client_code TEXT UNIQUE` (3-letter code for quotation numbering) |
+| `accounts` | Client accounts — includes `client_code TEXT UNIQUE` (3-letter code for quotation numbering) and `airtable_client_id TEXT` (canonical hard link to the Airtable Clients record; name lookup is fallback-only) |
 | `account_members` | User ↔ account links |
 | `projects` | Projects (`project_code`, `project_slug`) |
 | `scenes` | Scenes (`scene_code`, `scene_slug`, `airtable_record_id`) |
-| `scene_rounds` | Rounds per scene — `instructions`, status, `delivery_due_at` |
+| `scene_rounds` | Rounds per scene — `instructions`, status, `delivery_due_at`, `buffer_weeks INTEGER DEFAULT 1` (idle gap between delivery and next round start; default 1 = pre-buffer cadence) |
 | `round_assets` | Render files per round (Supabase storage or Dropbox path) |
 | `round_uploads` | Client briefing files |
 | `activity_log` | Immutable production-critical actions |
@@ -365,6 +394,8 @@ All up to and including:
 - `20260513000002_quotation_enhancements.sql` — adds deposit_percentage, signed_by_name, signed_by_position, net_total, gross_total, deposit_amount to quotation_documents
 - `20260513000003_invoice_enhancements.sql` — adds quotation_id, type (deposit/balance/standalone), stripe_payment_intent_id, stripe_checkout_url to invoices
 - `20260513000004_document_design_config.sql` — seeds default document_design_config in app_settings
+- `20260519000003_accounts_airtable_client_id.sql` — adds `airtable_client_id TEXT` + `idx_accounts_airtable_client_id` to accounts
+- `20260519000004_round_buffer.sql` — adds `buffer_weeks INTEGER DEFAULT 1` to scene_rounds
 
 ## Client codes
 
@@ -449,6 +480,14 @@ In the Add Client dialog, admins can paste an email signature into a textarea an
 ## Resend invitation
 
 On the admin client profile page (`AdminClientProfile.tsx`), a "RESEND INVITATION →" button appears when the client has not yet signed the agreement (checked against the `agreements` table). Clicking it calls `admin-create-client` with `mode: 'resend'`, which generates a new `magiclink` (not `invite` — that fails with `email_exists` for existing users) and sends the branded invitation email. After success, shows "Invitation sent." at 45% opacity. The button disappears once the client signs.
+
+## Manual invite + clipboard rules
+
+For recipients blocked by corporate mail filters (the system send soft-bounces), the admin can hand-deliver an invite. `AdminClientProfile.tsx` exposes the flow via `ManualInviteModal` + the `admin-generate-manual-invite` edge function.
+
+- **`magiclink`, not `invite`.** Mirrors `admin-create-client`'s resend mode — `invite` 400s for already-registered users, while `magiclink` works for any existing user (it confirms and signs them in on click).
+- **HTML is byte-identical to system mail.** `admin-generate-manual-invite` renders with `buildInviteEmailHtml` + `app_settings.email_invite_config` + `loadBrand()` and returns `verify_url` + `email_html` — it does not send (neither Supabase native nor Resend). The admin copies and forwards manually.
+- **Clipboard rule (Safari-safe).** Copy-email uses `navigator.clipboard.write([ClipboardItem])` with both `text/html` and `text/plain` blobs **pre-built via `useMemo`**, so the click handler has zero awaits before `.write()` — Safari only accepts the call inside a synchronous user gesture. Fall back to `clipboard.writeText(text)` when `ClipboardItem` is undefined.
 
 ## /set-password error handling
 
@@ -553,6 +592,14 @@ Confirmed via AdminSettings → Airtable Field Mapping panel. Mapping is stored 
 
 No migration is required by this schema documentation.
 
+### Client + project outbound sync (Clients table)
+
+Separate from the read-only Tasks sync above. The portal writes client and project records into Airtable's Clients table via `airtable-sync-contact` and `airtable-sync-project`.
+
+- **Canonical link is `accounts.airtable_client_id`.** `resolveAndStoreCompanyRecordId` resolves stored-id-first (with a 404 re-check), falling back to a `company_name` lookup only on the first-ever sync, then writes the resolved id back. This replaced name-equality re-resolution, which forked the link — and silently created duplicate Clients rows — whenever a name diverged between systems.
+- **Address syncs as six separate fields, additively.** `Building number`, `Street name`, `City`, `Postcode`, `Country`, `Registration number` each map to their own configured Airtable column via `app_settings.airtable_contact_field_config`. `patchClientProfileFields` uses a `setIf(airtableField, portalValue)` helper — one PATCH per non-empty field. Empty portal values never overwrite Airtable. Kieran owns column creation in his base; admin then updates the config keys. (The old single-line `composeAddress` helper was removed.)
+- **Pre-flight duplicate match on Add Client.** `airtable-find-matching-clients` (admin-gated) strips `Limited` / `Ltd` / `Inc` / `LLC` / `Studio(s)` suffixes from both sides and runs a bidirectional subset match, returning up to 5 candidates with representative + project count. `admin-create-client` accepts an optional `airtableClientId` to link the new account to the chosen row instead of creating a duplicate.
+
 ## Activity log
 
 All production-critical actions are recorded in the `activity_log` table. The full log is at `/admin/activity` (badge filters + date range). A preview appears on the admin dashboard via `ActivityLogPreview`.
@@ -574,6 +621,9 @@ All production-critical actions are recorded in the `activity_log` table. The fu
 | `client_login` | AuthContext — subsequent logins | client |
 | `agreement_signed` | accept-agreement edge function | client |
 | `dropbox_file_received` | dropbox-webhook — new file synced | system |
+| `round_rescheduled` | Portfolio.tsx | client |
+| `password_set` | SetPassword.tsx (initial), Account.tsx (change) | client / admin |
+| `manual_invite_generated` | ManualInviteModal | admin |
 
 ### Actor role reliability
 
@@ -590,6 +640,11 @@ The `GhostModeBanner` is fixed-position at the top. The client sidebar and layou
 ## Client Agreement
 
 Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replaces all previous agreement versions. Signed agreements stored in `agreements` table, PDF generated via `accept-agreement` edge function.
+
+## Local tooling
+
+- **`scripts/` is gitignored — local-only.** Shell diagnostics and one-off jobs live in named scripts there, not inline `cd ... && cmd` chains. Established scripts: `scripts/sql.sh` (SQL via the Supabase Management API), `scripts/delete-auth-users.sh` (orphan auth-user cleanup). Build new named scripts as needed and reuse them within a session.
+- **PDF generation with non-ASCII names.** jsPDF's built-in fonts are WinAnsi-only and mangle Latin Extended-A characters (`Srđan`, `Bogdanović`). The `scripts/generate-subcontractor-letter.ts` pattern reads `/System/Library/Fonts/Supplemental/Georgia*.ttf` (regular + bold + italic) at runtime and registers them via `addFileToVFS` + `addFont` for clean coverage. Reuse this approach for any PDF containing non-ASCII names.
 
 ## Pending
 
