@@ -30,6 +30,8 @@ const DEFAULT_SCOPE =
 
 const CURRENCIES = ["EUR", "GBP", "USD"] as const;
 
+const orNull = (s: string) => (s.trim() ? s.trim() : null);
+
 interface FormState {
   entityType: EntityType;
   // individual
@@ -178,6 +180,49 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
     return data?.contract?.id ?? null;
   }
 
+  // Subsequent saves UPDATE the existing draft directly (admin RLS permits it),
+  // so iterating doesn't create duplicate rows. The INSERT-only edge function
+  // is unchanged.
+  async function updateDraft(id: string, fee: number): Promise<boolean> {
+    const { error } = await supabase
+      .from("team_contracts")
+      .update({
+        entity_type: f.entityType,
+        recipient_email: f.recipientEmail.trim(),
+        individual_full_name: orNull(f.individualFullName),
+        individual_address: orNull(f.individualAddress),
+        individual_nationality: orNull(f.individualNationality),
+        individual_ni_number: orNull(f.individualNiNumber),
+        company_name: orNull(f.companyName),
+        company_registered_office: orNull(f.companyRegisteredOffice),
+        company_jurisdiction: orNull(f.companyJurisdiction),
+        company_registration_number: orNull(f.companyRegistrationNumber),
+        company_vat_number: orNull(f.companyVatNumber),
+        company_director_name: orNull(f.companyDirectorName),
+        company_director_title: orNull(f.companyDirectorTitle) ?? "Director",
+        subject_line: f.subjectLine.trim(),
+        scope_description: f.scopeDescription.trim(),
+        project_reference: orNull(f.projectReference),
+        delivery_window_start: f.deliveryWindowStart || null,
+        delivery_window_end: f.deliveryWindowEnd || null,
+        round_1_deadline: f.round1Deadline || null,
+        round_2_deadline: f.round2Deadline || null,
+        fee_amount: fee,
+        fee_currency: f.feeCurrency,
+        fee_scope_description: orNull(f.feeScopeDescription),
+        payment_milestone_1_pct: f.milestone1,
+        payment_milestone_2_pct: f.milestone2,
+        payment_milestone_3_pct: f.milestone3,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (error) {
+      toast({ title: "Could not update draft", description: error.message, variant: "destructive" });
+      return false;
+    }
+    return true;
+  }
+
   async function downloadContractPdf(contractId: string) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("No session");
@@ -205,8 +250,10 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
     URL.revokeObjectURL(url);
   }
 
-  // Saves the draft (re-using the id on retry so a failed download doesn't
-  // spawn duplicate drafts), then downloads the generated PDF.
+  // First click INSERTs the draft (via the edge function); subsequent clicks
+  // UPDATE the same row so the admin can iterate. The dialog stays open with
+  // all fields preserved until explicit Cancel / Close / X — only then is the
+  // form (and the saved id) reset.
   async function handleGenerateAndDownload() {
     const fee = validate();
     if (fee === null) return;
@@ -217,11 +264,12 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
         id = await createDraft(fee);
         if (!id) return;
         setLastCreatedId(id);
+      } else {
+        const ok = await updateDraft(id, fee);
+        if (!ok) return;
       }
       await downloadContractPdf(id);
-      toast({ title: "Draft created and PDF downloaded" });
-      reset();
-      onOpenChange(false);
+      toast({ title: "Contract PDF downloaded — draft saved" });
       onCreated?.();
     } catch (err: any) {
       toast({ title: "Could not generate PDF", description: err?.message || "Unknown error", variant: "destructive" });
