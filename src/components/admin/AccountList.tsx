@@ -33,6 +33,11 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import {
+  aggregateSessions,
+  formatSessionDuration,
+  type SessionSummary,
+} from "@/lib/clientActivity";
 
 interface AccountUserRow {
   account_id: string;
@@ -165,6 +170,10 @@ export function AccountList({
 
   const [accountUsers, setAccountUsers] = useState<AccountUserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Per-user reconstructed login sessions (newest first) for the
+  // last-connection summary + expandable history. Computed at render time.
+  const [sessionsByUser, setSessionsByUser] = useState<Map<string, SessionSummary[]>>(new Map());
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
@@ -278,6 +287,36 @@ export function AccountList({
       setLoading(false);
     }
   }
+
+  // Fetch + reconstruct recent sessions per user once the user list loads.
+  // Admins can read client_activity directly (same as /admin/client-activity).
+  useEffect(() => {
+    const userIds = Array.from(new Set(accountUsers.map((u) => u.user_id)));
+    if (userIds.length === 0) {
+      setSessionsByUser(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("client_activity")
+        .select("user_id, kind, session_id, started_at, ended_at, duration_ms")
+        .in("user_id", userIds)
+        .order("started_at", { ascending: false })
+        .limit(8000);
+      if (cancelled) return;
+      const byUser = new Map<string, SessionSummary[]>();
+      for (const s of aggregateSessions((data ?? []) as never)) {
+        const arr = byUser.get(s.userId) ?? [];
+        arr.push(s);
+        byUser.set(s.userId, arr);
+      }
+      setSessionsByUser(byUser);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountUsers]);
 
   const accountGroups = useMemo<AccountGroup[]>(() => {
     const byId = new Map<string, AccountGroup>();
@@ -954,9 +993,13 @@ export function AccountList({
                   <div className="divide-y divide-border/30">
                     {group.users.map((u) => {
                       const displayName = fullNameOf(u);
+                      const userSessions = sessionsByUser.get(u.user_id) ?? [];
+                      const lastSession = userSessions[0];
+                      const hasSessions = userSessions.length > 0;
+                      const isExpanded = expandedUserId === u.user_id;
                       return (
+                        <div key={u.user_id}>
                         <div
-                          key={u.user_id}
                           className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
                         >
                           <TooltipProvider delayDuration={150}>
@@ -1002,7 +1045,32 @@ export function AccountList({
                           </div>
 
                           <div className="text-right shrink-0 min-w-[120px]">
-                            {u.last_login_at ? (
+                            {!u.last_login_at ? (
+                              <p
+                                className="font-sans uppercase text-foreground/30"
+                                style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                              >
+                                Never signed in
+                              </p>
+                            ) : hasSessions ? (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedUserId(isExpanded ? null : u.user_id)}
+                                className="group/ls text-right"
+                                aria-expanded={isExpanded}
+                              >
+                                <p className="text-xs text-foreground/65">
+                                  {timeAgo(u.last_login_at)}
+                                  {lastSession ? ` · ${formatSessionDuration(lastSession.durationMs)} session` : ""}
+                                </p>
+                                <p
+                                  className="font-sans uppercase text-foreground/30 mt-0.5 group-hover/ls:text-foreground/55 transition-colors"
+                                  style={{ fontSize: 9, letterSpacing: "0.18em" }}
+                                >
+                                  Last seen · {isExpanded ? "Hide" : "History"}
+                                </p>
+                              </button>
+                            ) : (
                               <>
                                 <p className="text-xs text-foreground/65">{timeAgo(u.last_login_at)}</p>
                                 <p
@@ -1012,15 +1080,43 @@ export function AccountList({
                                   Last seen
                                 </p>
                               </>
-                            ) : (
-                              <p
-                                className="font-sans uppercase text-foreground/30"
-                                style={{ fontSize: 9, letterSpacing: "0.18em" }}
-                              >
-                                Never signed in
-                              </p>
                             )}
                           </div>
+                        </div>
+                        {isExpanded && hasSessions && (
+                          <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
+                            <p
+                              className="font-sans uppercase text-foreground/35 mb-2"
+                              style={{ fontSize: 9, letterSpacing: "0.2em" }}
+                            >
+                              Recent sessions
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
+                              {userSessions.slice(0, 10).map((s) => (
+                                <div
+                                  key={s.sessionId}
+                                  className="flex items-center justify-between gap-3 py-0.5"
+                                >
+                                  <span
+                                    className="font-sans uppercase text-foreground/55"
+                                    style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                  >
+                                    {new Date(s.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                    {" · "}
+                                    {new Date(s.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                  <span
+                                    className="font-sans uppercase text-foreground/35 tabular-nums"
+                                    style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                  >
+                                    {formatSessionDuration(s.durationMs)}
+                                    {s.pageViews ? ` · ${s.pageViews} page${s.pageViews === 1 ? "" : "s"}` : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         </div>
                       );
                     })}

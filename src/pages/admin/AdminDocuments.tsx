@@ -11,6 +11,7 @@ import {
 import { supabase, SUPABASE_URL } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
+import { formatSessionDuration } from "@/lib/clientActivity";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,8 +217,50 @@ function AgreementsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [previewing, setPreviewing] = useState<AgreementViewerData | null>(null);
+  // Per-user password_set timestamps (ms, ascending) → time-to-sign metric.
+  const [pwSetByUser, setPwSetByUser] = useState<Map<string, number[]>>(new Map());
 
   useEffect(() => { void fetchAgreements(); }, []);
+
+  // Load password_set activity events for the signers, to compute how long
+  // after setting their password each client signed. Admin-only metric.
+  useEffect(() => {
+    const userIds = Array.from(new Set(agreements.map((a) => a.user_id).filter(Boolean)));
+    if (userIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("activity_log")
+        .select("actor_user_id, created_at")
+        .eq("action", "password_set")
+        .in("actor_user_id", userIds);
+      if (cancelled || !data) return;
+      const byUser = new Map<string, number[]>();
+      for (const row of data as { actor_user_id: string | null; created_at: string }[]) {
+        if (!row.actor_user_id) continue;
+        const arr = byUser.get(row.actor_user_id) ?? [];
+        arr.push(new Date(row.created_at).getTime());
+        byUser.set(row.actor_user_id, arr);
+      }
+      for (const arr of byUser.values()) arr.sort((x, y) => x - y);
+      setPwSetByUser(byUser);
+    })();
+    return () => { cancelled = true; };
+  }, [agreements]);
+
+  // "Signed Xh Ym after password set" — most recent password_set at or before
+  // the signing time. Null when no usable anchor (e.g. pre-feature signings).
+  const timeToSignLabel = (a: AgreementRow): string | null => {
+    const signedIso = a.accepted_at || a.signed_at;
+    if (!signedIso) return null;
+    const signedTs = new Date(signedIso).getTime();
+    const stamps = pwSetByUser.get(a.user_id);
+    if (!stamps || stamps.length === 0) return null;
+    let anchor: number | null = null;
+    for (const t of stamps) if (t <= signedTs && (anchor === null || t > anchor)) anchor = t;
+    if (anchor === null) return null;
+    return `Signed ${formatSessionDuration(signedTs - anchor)} after password set`;
+  };
 
   const handleDelete = async (a: AgreementRow) => {
     if (!window.confirm(`Delete the signed agreement for "${a.company_name}"? This cannot be undone.`)) return;
@@ -348,6 +391,11 @@ function AgreementsTab() {
                 <div className="text-xs text-muted-foreground">
                   {formatDate(a.accepted_at || a.signed_at)}
                   {a.ip_address && <span className="block text-[10px] text-muted-foreground/60 mt-0.5">IP {a.ip_address}</span>}
+                  {timeToSignLabel(a) && (
+                    <span className="block mt-0.5 font-sans text-foreground" style={{ fontSize: 11, opacity: 0.5 }}>
+                      {timeToSignLabel(a)}
+                    </span>
+                  )}
                 </div>
                 <div className="md:text-right">
                   <div className="inline-flex items-center gap-3">

@@ -6,10 +6,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ACTION_LABELS } from "@/lib/activityLog";
+import { aggregateSessions, loginDurationSuffix, type SessionSummary } from "@/lib/clientActivity";
 
 interface ActivityRow {
   id: string;
   created_at: string;
+  actor_user_id: string | null;
   actor_name: string | null;
   actor_role: string | null;
   action: string;
@@ -28,6 +30,7 @@ export function ActivityLogPreview() {
   const { user } = useAuth();
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,7 +42,7 @@ export function ActivityLogPreview() {
         supabase
           .from("activity_log")
           .select(
-            "id, created_at, actor_name, actor_role, action, description, project_name, scene_name, round_number",
+            "id, created_at, actor_user_id, actor_name, actor_role, action, description, project_name, scene_name, round_number",
           )
           .order("created_at", { ascending: false })
           .limit(200),
@@ -49,9 +52,28 @@ export function ActivityLogPreview() {
           .eq("user_id", user.id),
       ]);
       if (cancelled) return;
-      setRows((logs ?? []) as ActivityRow[]);
+      const logList = (logs ?? []) as ActivityRow[];
+      setRows(logList);
       setDismissed(new Set((dismissals ?? []).map((d: any) => d.activity_id)));
       setLoading(false);
+
+      // Reconstruct sessions for the client_login rows (render-time duration).
+      const logins = logList.filter((r) => r.action === "client_login" && r.actor_user_id);
+      const userIds = Array.from(new Set(logins.map((r) => r.actor_user_id as string)));
+      if (userIds.length === 0) return;
+      const earliest = logins.reduce(
+        (min, r) => Math.min(min, new Date(r.created_at).getTime()),
+        Date.now(),
+      );
+      const { data: acts } = await supabase
+        .from("client_activity")
+        .select("user_id, kind, session_id, started_at, ended_at, duration_ms")
+        .in("user_id", userIds)
+        .gte("started_at", new Date(earliest - 60_000).toISOString())
+        .order("started_at", { ascending: false })
+        .limit(8000);
+      if (cancelled) return;
+      setSessions(aggregateSessions((acts ?? []) as never));
     }
     load();
     return () => {
@@ -121,7 +143,13 @@ export function ActivityLogPreview() {
                   {ACTION_LABELS[row.action] ?? row.action}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground truncate">{row.description}</p>
+                  <p className="text-sm text-foreground truncate">
+                    {row.description}
+                    {row.action === "client_login" && (() => {
+                      const suffix = loginDurationSuffix(sessions, row.actor_user_id ?? "", row.created_at);
+                      return suffix ? <span className="text-muted-foreground"> — {suffix}</span> : null;
+                    })()}
+                  </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                     {row.actor_name ?? "Unknown"}
                     {row.project_name ? ` · ${row.project_name}` : ""}

@@ -4,11 +4,13 @@ import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { ACTION_LABELS } from "@/lib/activityLog";
+import { aggregateSessions, loginDurationSuffix, type SessionSummary } from "@/lib/clientActivity";
 import { cn } from "@/lib/utils";
 
 interface ActivityRow {
   id: string;
   created_at: string;
+  actor_user_id: string | null;
   actor_name: string | null;
   actor_role: string | null;
   action: string;
@@ -40,6 +42,7 @@ const inputCls =
 export default function AdminActivity() {
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeLabels, setActiveLabels] = useState<Set<string>>(new Set());
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -49,12 +52,31 @@ export default function AdminActivity() {
       const { data } = await supabase
         .from("activity_log")
         .select(
-          "id, created_at, actor_name, actor_role, action, description, project_name, scene_name, round_number",
+          "id, created_at, actor_user_id, actor_name, actor_role, action, description, project_name, scene_name, round_number",
         )
         .order("created_at", { ascending: false })
         .limit(2000);
-      setRows((data ?? []) as ActivityRow[]);
+      const logs = (data ?? []) as ActivityRow[];
+      setRows(logs);
       setLoading(false);
+
+      // Reconstruct sessions for the client_login rows so each can show its
+      // duration suffix at render time (no writes to activity_log).
+      const logins = logs.filter((r) => r.action === "client_login" && r.actor_user_id);
+      const userIds = Array.from(new Set(logins.map((r) => r.actor_user_id as string)));
+      if (userIds.length === 0) return;
+      const earliest = logins.reduce(
+        (min, r) => Math.min(min, new Date(r.created_at).getTime()),
+        Date.now(),
+      );
+      const { data: acts } = await supabase
+        .from("client_activity")
+        .select("user_id, kind, session_id, started_at, ended_at, duration_ms")
+        .in("user_id", userIds)
+        .gte("started_at", new Date(earliest - 60_000).toISOString())
+        .order("started_at", { ascending: false })
+        .limit(8000);
+      setSessions(aggregateSessions((acts ?? []) as never));
     }
     load();
   }, []);
@@ -196,7 +218,13 @@ export default function AdminActivity() {
                   {ACTION_LABELS[row.action] ?? row.action}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">{row.description}</p>
+                  <p className="text-sm text-foreground">
+                    {row.description}
+                    {row.action === "client_login" && (() => {
+                      const suffix = loginDurationSuffix(sessions, row.actor_user_id ?? "", row.created_at);
+                      return suffix ? <span className="text-muted-foreground"> — {suffix}</span> : null;
+                    })()}
+                  </p>
                   <p className="text-[11px] text-muted-foreground mt-1 truncate">
                     {row.actor_name ?? "Unknown"}
                     {row.actor_role ? ` · ${row.actor_role}` : ""}
