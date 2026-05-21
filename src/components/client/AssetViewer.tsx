@@ -942,6 +942,35 @@ export function Lightbox({
   // re-trigger the fade.
   const [fullResLoaded, setFullResLoaded] = useState(false);
   useEffect(() => { setFullResLoaded(false); }, [src]);
+
+  // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
+  // High-end CGI review wants the image on the whole monitor, not just the
+  // browser viewport. Request fullscreen on the lightbox container as it
+  // mounts — the click that opened the lightbox is the user gesture, still
+  // active when this effect runs. Desktop only (mobile browsers are already
+  // ~fullscreen). Falls back silently to the in-app fixed overlay if the
+  // request is denied or unsupported. Exiting fullscreen (Escape / OS
+  // gesture) also closes the lightbox, matching the existing Escape UX.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const el = containerRef.current;
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
+    if (!el || isMobile || typeof el.requestFullscreen !== "function") return;
+
+    let entered = false;
+    el.requestFullscreen().then(() => { entered = true; }).catch(() => { /* keep app-fullscreen */ });
+
+    const onFsChange = () => {
+      if (entered && !document.fullscreenElement) onCloseRef.current();
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      // Closing via the X / backdrop while still in fullscreen: leave it.
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
   const didPan = useRef(false);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
     null
