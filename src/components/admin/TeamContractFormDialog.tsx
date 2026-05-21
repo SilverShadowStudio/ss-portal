@@ -4,7 +4,7 @@
 // The freelancer profile + team account + invite are created later by the
 // "Send to portal for signature" flow (Commit 5), when the auth user exists.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -15,11 +15,45 @@ import { useToast } from "@/hooks/use-toast";
 
 type EntityType = "individual" | "company";
 
+/** A team_contracts row, as fetched when re-opening a draft to edit. */
+export interface TeamContractRow {
+  id: string;
+  entity_type: EntityType;
+  individual_full_name: string | null;
+  individual_address: string | null;
+  individual_nationality: string | null;
+  individual_ni_number: string | null;
+  company_name: string | null;
+  company_registered_office: string | null;
+  company_jurisdiction: string | null;
+  company_registration_number: string | null;
+  company_vat_number: string | null;
+  company_director_name: string | null;
+  company_director_title: string | null;
+  recipient_email: string | null;
+  subject_line: string | null;
+  scope_description: string | null;
+  project_reference: string | null;
+  delivery_window_start: string | null;
+  delivery_window_end: string | null;
+  round_1_deadline: string | null;
+  round_2_deadline: string | null;
+  fee_amount: number | string | null;
+  fee_currency: string | null;
+  fee_scope_description: string | null;
+  payment_milestone_1_pct: number | null;
+  payment_milestone_2_pct: number | null;
+  payment_milestone_3_pct: number | null;
+}
+
 interface TeamContractFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called after a draft is created so the caller can refresh its list. */
-  onCreated?: () => void;
+  /** Called after a draft is created/updated so the caller can refresh its list. */
+  onSaved?: () => void;
+  /** When set, the dialog opens pre-filled to edit this existing draft; every
+   *  action then UPDATEs the row rather than INSERTing a new one. */
+  existingContract?: TeamContractRow | null;
 }
 
 const DEFAULT_SCOPE =
@@ -78,19 +112,63 @@ const initialState: FormState = {
   milestone1: 10, milestone2: 40, milestone3: 50,
 };
 
+function rowToFormState(r: TeamContractRow): FormState {
+  return {
+    entityType: r.entity_type,
+    individualFullName: r.individual_full_name ?? "",
+    individualAddress: r.individual_address ?? "",
+    individualNationality: r.individual_nationality ?? "",
+    individualNiNumber: r.individual_ni_number ?? "",
+    companyName: r.company_name ?? "",
+    companyRegisteredOffice: r.company_registered_office ?? "",
+    companyJurisdiction: r.company_jurisdiction ?? "",
+    companyRegistrationNumber: r.company_registration_number ?? "",
+    companyVatNumber: r.company_vat_number ?? "",
+    companyDirectorName: r.company_director_name ?? "",
+    companyDirectorTitle: r.company_director_title ?? "Director",
+    recipientEmail: r.recipient_email ?? "",
+    subjectLine: r.subject_line ?? "",
+    scopeDescription: r.scope_description ?? "",
+    projectReference: r.project_reference ?? "",
+    deliveryWindowStart: r.delivery_window_start ?? "",
+    deliveryWindowEnd: r.delivery_window_end ?? "",
+    round1Deadline: r.round_1_deadline ?? "",
+    round2Deadline: r.round_2_deadline ?? "",
+    feeAmount: r.fee_amount != null ? String(r.fee_amount) : "",
+    feeCurrency: r.fee_currency ?? "EUR",
+    feeScopeDescription: r.fee_scope_description ?? "",
+    milestone1: r.payment_milestone_1_pct ?? 10,
+    milestone2: r.payment_milestone_2_pct ?? 40,
+    milestone3: r.payment_milestone_3_pct ?? 50,
+  };
+}
+
 const Label = ({ children, required }: { children: React.ReactNode; required?: boolean }) => (
   <label className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
     {children}{required && " *"}
   </label>
 );
 
-export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamContractFormDialogProps) {
+export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingContract }: TeamContractFormDialogProps) {
   const { toast } = useToast();
   const [f, setF] = useState<FormState>(initialState);
-  const [submitting, setSubmitting] = useState(false);
-  // Re-used if a draft was created but the PDF download then failed, so a
-  // retry doesn't spawn duplicate drafts.
+  const [busy, setBusy] = useState<null | "generate" | "save">(null);
+  // The saved draft id. Set when editing an existing draft, or after the first
+  // create — so every later action UPDATEs the same row rather than INSERTing.
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
+
+  // Pre-fill from an existing draft (edit) or reset to a blank form (new) each
+  // time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    if (existingContract) {
+      setF(rowToFormState(existingContract));
+      setLastCreatedId(existingContract.id);
+    } else {
+      setF(initialState);
+      setLastCreatedId(null);
+    }
+  }, [open, existingContract?.id]);
 
   const up = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -257,7 +335,7 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
   async function handleGenerateAndDownload() {
     const fee = validate();
     if (fee === null) return;
-    setSubmitting(true);
+    setBusy("generate");
     try {
       let id = lastCreatedId;
       if (!id) {
@@ -270,11 +348,37 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
       }
       await downloadContractPdf(id);
       toast({ title: "Contract PDF downloaded — draft saved" });
-      onCreated?.();
+      onSaved?.();
     } catch (err: any) {
       toast({ title: "Could not generate PDF", description: err?.message || "Unknown error", variant: "destructive" });
     } finally {
-      setSubmitting(false);
+      setBusy(null);
+    }
+  }
+
+  // "Save for later": persist what's typed (INSERT new, or UPDATE the existing
+  // draft) and close. No PDF generated.
+  async function handleSaveForLater() {
+    const fee = validate();
+    if (fee === null) return;
+    setBusy("save");
+    try {
+      let id = lastCreatedId;
+      if (!id) {
+        id = await createDraft(fee);
+        if (!id) return;
+      } else {
+        const ok = await updateDraft(id, fee);
+        if (!ok) return;
+      }
+      toast({ title: "Draft saved" });
+      reset();
+      onOpenChange(false);
+      onSaved?.();
+    } catch (err: any) {
+      toast({ title: "Could not save draft", description: err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -284,10 +388,10 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New engagement contract</DialogTitle>
+          <DialogTitle>{existingContract ? "Edit engagement contract" : "New engagement contract"}</DialogTitle>
         </DialogHeader>
         <p className="text-xs text-muted-foreground -mt-1">
-          Creates a draft. The contractor's profile, account and invite are created later when you send it for signature.
+          Saved as a draft. The contractor's profile, account and invite are created later when you send it for signature.
         </p>
 
         <div className="space-y-6 pt-2">
@@ -452,14 +556,20 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
           </div>
 
           <div className="space-y-2 pt-2">
+            {/* Top row: Cancel + primary "Generate and download PDF" */}
             <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => close(false)} disabled={submitting} className="text-muted-foreground">
+              <Button variant="ghost" onClick={() => close(false)} disabled={busy !== null} className="text-muted-foreground">
                 Cancel
               </Button>
-              <Button onClick={handleGenerateAndDownload} disabled={submitting} className="flex-1">
-                {submitting ? "Generating…" : "Generate and download PDF"}
+              <Button onClick={handleGenerateAndDownload} disabled={busy !== null} className="flex-1">
+                {busy === "generate" ? "Generating…" : "Generate and download PDF"}
               </Button>
             </div>
+            {/* Middle row: tertiary "park this" action — neutral, not gold */}
+            <Button variant="secondary" onClick={handleSaveForLater} disabled={busy !== null} className="w-full">
+              {busy === "save" ? "Saving…" : "Save for later"}
+            </Button>
+            {/* Bottom row: second primary, enabled in Commit 5 */}
             <div>
               <Button disabled variant="outline" className="w-full">
                 Send to portal for signature

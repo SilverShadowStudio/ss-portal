@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { TeamContractFormDialog, type TeamContractRow } from "@/components/admin/TeamContractFormDialog";
 
 interface FreelancerDoc {
   id: string;
@@ -66,6 +67,8 @@ export default function AdminTeamContracts() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [contracts, setContracts] = useState<EngagementContract[]>([]);
   const [deletingContractId, setDeletingContractId] = useState<string | null>(null);
+  const [editingContract, setEditingContract] = useState<TeamContractRow | null>(null);
+  const [contractDialogOpen, setContractDialogOpen] = useState(false);
 
   // Accordion — single section open at a time. Default-picked once after
   // the first data load: member with the most recent signed agreement.
@@ -99,6 +102,21 @@ export default function AdminTeamContracts() {
       .select("id, entity_type, individual_full_name, company_name, subject_line, status, created_at, sent_at, signed_at")
       .order("created_at", { ascending: false });
     if (!error) setContracts((data || []) as EngagementContract[]);
+  }
+
+  // Fetch the full row and open the form pre-filled to edit a draft.
+  async function openForEdit(id: string) {
+    const { data, error } = await supabase
+      .from("team_contracts")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (error || !data) {
+      toast({ title: "Could not open contract", description: error?.message || "Not found", variant: "destructive" });
+      return;
+    }
+    setEditingContract(data as unknown as TeamContractRow);
+    setContractDialogOpen(true);
   }
 
   async function handleDeleteContract(c: EngagementContract) {
@@ -225,7 +243,13 @@ export default function AdminTeamContracts() {
               const party = c.entity_type === "company" ? (c.company_name || "—") : (c.individual_full_name || "—");
               const st = CONTRACT_STATUS[c.status] ?? { label: c.status, cls: "text-foreground/45" };
               return (
-                <div key={c.id} className="flex items-center gap-4 py-3.5 border-b border-border/30">
+                <div
+                  key={c.id}
+                  className={`flex items-center gap-4 py-3.5 border-b border-border/30 ${c.status === "draft" ? "cursor-pointer hover:bg-muted/20 -mx-2 px-2 rounded-sm transition-colors" : ""}`}
+                  onClick={c.status === "draft" ? () => openForEdit(c.id) : undefined}
+                  role={c.status === "draft" ? "button" : undefined}
+                  title={c.status === "draft" ? "Edit draft" : undefined}
+                >
                   <FileText className="shrink-0 text-gold" style={{ width: 13, height: 13 }} strokeWidth={1.5} />
                   <div className="flex-1 min-w-0">
                     <p className="font-serif text-foreground text-sm truncate">{party}</p>
@@ -241,7 +265,7 @@ export default function AdminTeamContracts() {
                   </span>
                   {c.status === "draft" && (
                     <button
-                      onClick={() => handleDeleteContract(c)}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteContract(c); }}
                       disabled={deletingContractId === c.id}
                       className="shrink-0 text-foreground/30 hover:text-rose-400 transition-colors disabled:opacity-40"
                       title="Delete draft"
@@ -342,6 +366,13 @@ export default function AdminTeamContracts() {
           })}
         </div>
       )}
+
+      <TeamContractFormDialog
+        open={contractDialogOpen}
+        onOpenChange={(o) => { setContractDialogOpen(o); if (!o) setEditingContract(null); }}
+        existingContract={editingContract}
+        onSaved={fetchContracts}
+      />
     </AdminLayout>
   );
 }
