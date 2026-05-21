@@ -118,10 +118,10 @@ function buildClauses(c: TeamContractData): Array<{ title: string; body: string[
       `Each instalment is payable within 30 days of receipt of the Contractor's valid invoice. The Studio may withhold any instalment relating to deliverables not yet accepted.`,
     ] },
     { title: "Late Delivery", body: [
-      `If the Contractor fails to deliver by an agreed deadline, the Studio may, without prejudice to its other rights, withhold the affected instalment until delivery, require remedial work at no additional cost, or terminate under clause 12. Repeated or material delay constitutes a material breach.`,
+      `If the Contractor fails to deliver by an agreed deadline, the Studio may, without prejudice to its other rights, withhold the affected instalment until delivery, require remedial work at no additional cost, or terminate under clause 13. Repeated or material delay constitutes a material breach.`,
     ] },
     { title: "Intellectual Property Assignment", body: [
-      `The Contractor assigns to the Studio, by present assignment of present and future rights and with full title guarantee, all Intellectual Property Rights in the deliverables, including all renewals, reversions, extensions and revivals and the right to bring proceedings for past infringement. The Contractor unconditionally and irrevocably waives all moral rights in the deliverables.`,
+      `The Contractor assigns to the Studio, by present assignment of present and future rights and with full title guarantee, all Intellectual Property Rights in the deliverables and in all working files, drafts, source materials, models, textures, renders, and derivatives generated in connection with the Services, including all renewals, reversions, extensions and revivals and the right to bring proceedings for past infringement. The Contractor unconditionally and irrevocably waives all moral rights in the foregoing. The Contractor shall execute any further documents the Studio reasonably requires to perfect this assignment.`,
     ] },
     { title: "Absolute Prohibition on Use, Retention and Disclosure", body: [
       `The Contractor shall not use, reproduce, adapt, retain, publish or disclose the deliverables, any Studio materials, or any element of the Studio's proprietary systems, tools or processes for any purpose other than performing the Services, whether during or after the engagement. This includes an absolute prohibition on the use of the deliverables or Studio materials for the training of artificial intelligence systems.`,
@@ -133,6 +133,9 @@ function buildClauses(c: TeamContractData): Array<{ title: string; body: string[
     { title: "Non-Solicitation", body: [
       `For a period of 24 months following completion or termination, the Contractor shall not, directly or indirectly, solicit or accept work from any client of the Studio, or any freelance contributor introduced by the Studio, without the Studio's prior written consent.`,
     ] },
+    { title: "Non-Disparagement", body: [
+      `The Contractor shall not make or publish any disparaging, defamatory, or negative statements about the Studio, its directors, employees, services, or clients, whether during or after the term of this agreement. This obligation survives termination indefinitely.`,
+    ] },
     { title: "Warranties", body: [
       `The Contractor warrants that the deliverables are original and do not infringe the rights of any third party; that the Contractor is free to enter into this agreement; and that the Services will be performed to a professional standard. The Contractor shall indemnify the Studio against any losses arising from a breach of these warranties.`,
     ] },
@@ -141,7 +144,7 @@ function buildClauses(c: TeamContractData): Array<{ title: string; body: string[
     ] },
     { title: "Termination", body: [
       `Either party may terminate this agreement on 7 days' written notice. The Studio may terminate immediately if the Contractor breaches confidentiality or the prohibitions in clause 7, fails to perform the Services to a reasonable standard, or acts in a manner that brings the Studio into disrepute.`,
-      `On termination, the Contractor is entitled to payment for approved work completed up to the termination date. Clauses 6 to 10 survive termination.`,
+      `On termination, the Contractor is entitled to payment for approved work completed up to the termination date. Clauses 6 to 11 survive termination.`,
     ] },
     { title: "Governing Law", body: [
       `This agreement is governed by the laws of England and Wales, and the parties submit to the exclusive jurisdiction of the courts of England and Wales.`,
