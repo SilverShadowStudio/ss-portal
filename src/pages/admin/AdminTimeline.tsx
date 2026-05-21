@@ -348,6 +348,9 @@ export default function AdminTimeline() {
         .from("scene_rounds")
         .select("id, scene_id, round_number, status, start_date, end_date, instructions, kind")
         .in("scene_id", sceneIds)
+        // Held drafts live only on the scene detail — keep them off the
+        // production Timeline (Isabelle button).
+        .neq("status", "draft")
         .not("start_date", "is", null)
         .not("end_date", "is", null);
 
@@ -845,6 +848,12 @@ export default function AdminTimeline() {
                                   fillPx = Math.max(0, Math.min(barWidthPx, nowOffsetWithinLanes - barLeftPx));
                                 }
                                 const isReview = round.kind === "review";
+                                // Future-booked slot (pending, > 1 week out):
+                                // labelled "Booked" to distinguish from active
+                                // production (Isabelle button).
+                                const isBooked =
+                                  round.status === "pending" && !!round.start_date &&
+                                  new Date(round.start_date).getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000;
                                 // Status-driven colors apply at full opacity
                                 // for ALL rounds (past/current/future) so every
                                 // round stays visible:
@@ -919,7 +928,7 @@ export default function AdminTimeline() {
                                       <p className={`text-[10px] truncate tracking-[0.05em] font-medium ${
                                         temporal === "past" ? "text-muted-foreground/60" : temporal === "current" ? "text-foreground/80" : "text-muted-foreground"
                                       }`}>
-                                        Round {round.round_number.toString().padStart(2, "0")} · {isReview ? "Review" : statusLabel(round.status)}
+                                        Round {round.round_number.toString().padStart(2, "0")} · {isReview ? "Review" : isBooked ? "Booked" : statusLabel(round.status)}
                                       </p>
                                       {round.instructions && (
                                         <FileText size={9} className="absolute bottom-2 right-2.5 text-muted-foreground/40" />

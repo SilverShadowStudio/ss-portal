@@ -68,6 +68,24 @@ interface SceneRound {
   preview_url?: string | null;
 }
 
+// ── Future-booking predicates (Isabelle button) ──
+// A "booked" round is a pending round whose production start is more than a
+// week out — a slot held for the future rather than work starting now. No
+// new status or column: it's derived from status='pending' + start_date.
+const ROUND_BOOKING_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
+function isFutureBookedRound(round: { status: string; start_date: string | null }): boolean {
+  if (round.status !== "pending" || !round.start_date) return false;
+  return new Date(round.start_date).getTime() > Date.now() + ROUND_BOOKING_LEAD_MS;
+}
+/** A booked round stays editable until the Friday-noon cutoff before its start. */
+function isBookedEditableRound(round: { status: string; start_date: string | null }): boolean {
+  if (!isFutureBookedRound(round) || !round.start_date) return false;
+  const cutoff = new Date(round.start_date);
+  cutoff.setDate(cutoff.getDate() - 3); // Monday → previous Friday
+  cutoff.setHours(12, 0, 0, 0);
+  return Date.now() < cutoff.getTime();
+}
+
 interface Project {
   id: string;
   name: string;
@@ -86,7 +104,7 @@ export default function Portfolio() {
   // draft, we pre-load it here so the modal updates that row on save
   // (one-draft-per-scene rule, enforced at DB level by the partial unique
   // index added in migration 20260519000001).
-  const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null; buffer_weeks: number | null } | null>(null);
+  const [editingDraft, setEditingDraft] = useState<{ id: string; instructions: string | null; buffer_weeks: number | null; status?: string | null; start_date?: string | null } | null>(null);
   // Reschedule modal — the round being rescheduled is the currently
   // selected one (only ever surfaced from the in-production view).
   const [rescheduleTarget, setRescheduleTarget] = useState<SceneRound | null>(null);
@@ -572,17 +590,26 @@ export default function Portfolio() {
   // out of draft state.
   const openRoundModalForScene = async (sceneId: string) => {
     try {
+      // Prefer an in-progress draft; otherwise a future-booked pending round
+      // that is still before its cutoff is editable too (Isabelle button).
       const { data } = await supabase
         .from("scene_rounds")
-        .select("id, instructions, buffer_weeks")
+        .select("id, instructions, buffer_weeks, status, start_date")
         .eq("scene_id", sceneId)
-        .eq("status", "draft")
-        .maybeSingle();
-      if (data) {
+        .in("status", ["draft", "pending"])
+        .order("round_number", { ascending: false });
+      const editable = (data ?? []).find(
+        (r) =>
+          r.status === "draft" ||
+          isBookedEditableRound(r as { status: string; start_date: string | null }),
+      );
+      if (editable) {
         setEditingDraft({
-          id: data.id,
-          instructions: data.instructions,
-          buffer_weeks: (data as { buffer_weeks?: number | null }).buffer_weeks ?? null,
+          id: editable.id,
+          instructions: editable.instructions,
+          buffer_weeks: (editable as { buffer_weeks?: number | null }).buffer_weeks ?? null,
+          status: editable.status,
+          start_date: (editable as { start_date?: string | null }).start_date ?? null,
         });
       } else {
         setEditingDraft(null);
@@ -639,6 +666,20 @@ export default function Portfolio() {
           const list = next.get(selectedScene.id) || [];
           next.set(selectedScene.id, [...list, newDraft]);
           return next;
+        });
+        // Fires only on first draft creation, never on subsequent updates.
+        await logActivity({
+          action: "round_drafted",
+          actorRole: "client",
+          description: `Round ${String(newDraft.round_number).padStart(2, "0")} saved as draft`,
+          entityType: "scene_round",
+          entityId: newDraft.id,
+          sceneId: selectedScene.id,
+          sceneName: selectedScene.name,
+          projectId: selectedProject?.id ?? null,
+          projectName: selectedProject?.name ?? null,
+          roundId: newDraft.id,
+          roundNumber: newDraft.round_number,
         });
         toast.success("Draft saved");
       }
@@ -749,6 +790,12 @@ export default function Portfolio() {
     try {
       const startIso = (startDate ?? new Date()).toISOString();
       const buffer = bufferWeeks ?? 1;
+      // A future-dated start (> 1 week out) means this is a booked slot
+      // (Isabelle button) rather than an immediate "next available" request.
+      const effectiveStart = startDate ?? new Date();
+      const isBooked = effectiveStart.getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const bookedDescription = (roundNumber: number) =>
+        `Round ${String(roundNumber).padStart(2, "0")} booked — production starts ${effectiveStart.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`;
 
       // Submit-from-draft path: a draft row already exists for this scene.
       // Transition it from 'draft' → 'pending' and fill in the schedule.
@@ -789,6 +836,25 @@ export default function Portfolio() {
         // into the round detail — there's nothing to look at yet, and the
         // scenes overview is the more useful place to land after the
         // brief has been submitted.
+        if (isBooked) {
+          await logActivity({
+            action: "round_booked",
+            actorRole: "client",
+            description: bookedDescription(updatedRound.round_number),
+            entityType: "scene_round",
+            entityId: updatedRound.id,
+            sceneId: selectedScene.id,
+            sceneName: selectedScene.name,
+            projectId: selectedProject.id,
+            projectName: selectedProject.name,
+            roundId: updatedRound.id,
+            roundNumber: updatedRound.round_number,
+            metadata: {
+              start_date: effectiveStart.toISOString(),
+              delivery_date: deliveryDate?.toISOString() ?? null,
+            },
+          });
+        }
         if (updatedRound.round_number === 1) {
           setSelectedRound(null);
           setSelectedScene(null);
@@ -797,7 +863,7 @@ export default function Portfolio() {
         }
         setIsNewRoundModalOpen(false);
         setEditingDraft(null);
-        toast.success("Round submitted — production will begin shortly");
+        toast.success(isBooked ? "Production slot booked" : "Round submitted — production will begin shortly");
         return;
       }
 
@@ -830,6 +896,26 @@ export default function Portfolio() {
         return updated;
       });
 
+      if (isBooked) {
+        await logActivity({
+          action: "round_booked",
+          actorRole: "client",
+          description: bookedDescription(newRound.round_number),
+          entityType: "scene_round",
+          entityId: newRound.id,
+          sceneId: selectedScene.id,
+          sceneName: selectedScene.name,
+          projectId: selectedProject.id,
+          projectName: selectedProject.name,
+          roundId: newRound.id,
+          roundNumber: newRound.round_number,
+          metadata: {
+            start_date: effectiveStart.toISOString(),
+            delivery_date: deliveryDate?.toISOString() ?? null,
+          },
+        });
+      }
+
       // Round 01: return to the scenes view rather than drilling down
       // into the round detail — there's nothing to look at yet. For
       // subsequent rounds we keep the existing auto-drilldown behaviour.
@@ -843,7 +929,7 @@ export default function Portfolio() {
       // Close modal
       setIsNewRoundModalOpen(false);
 
-      toast.success("Round created — production will begin shortly");
+      toast.success(isBooked ? "Production slot booked" : "Round created — production will begin shortly");
     } catch (error: any) {
       console.error("Error creating round:", error);
       toast.error(error.message || "Failed to create round");
@@ -1223,6 +1309,10 @@ export default function Portfolio() {
                 // a click reopens the modal rather than drilling down.
                 const latestByNumber = [...rounds].sort((a, b) => b.round_number - a.round_number)[0];
                 const hasDraft = !!latestByNumber && latestByNumber.status === "draft";
+                // A future-booked round (pending, > 1 week out, before cutoff)
+                // stays editable — clicking the card re-opens the modal, the
+                // same affordance as a draft re-open.
+                const hasEditableBooked = !!latestByNumber && isBookedEditableRound(latestByNumber);
                 // If the ONLY rounds on this scene are drafts, render the
                 // empty-state layout (no preview image) so the card doesn't
                 // show a Clock icon for a not-yet-submitted brief.
@@ -1242,7 +1332,7 @@ export default function Portfolio() {
                     key={scene.id}
                     type="button"
                     onClick={() => {
-                      if (hasDraft) {
+                      if (hasDraft || hasEditableBooked) {
                         setSelectedScene(scene);
                         openRoundModalForScene(scene.id);
                         return;
@@ -1277,6 +1367,13 @@ export default function Portfolio() {
                           >
                             Draft
                           </p>
+                        ) : hasEditableBooked ? (
+                          <p
+                            className="mt-2 font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Booked
+                          </p>
                         ) : (
                           <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 font-sans">
                             Brief pending
@@ -1306,6 +1403,13 @@ export default function Portfolio() {
                               style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
                             >
                               Draft
+                            </p>
+                          ) : hasEditableBooked ? (
+                            <p
+                              className="mt-2 font-sans uppercase"
+                              style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                            >
+                              Booked
                             </p>
                           ) : (
                             <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-sans">

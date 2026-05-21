@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
 import { X, FileIcon } from "lucide-react";
@@ -9,6 +9,35 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
+
+// ── Future-Monday booking helpers (Isabelle button) ──
+function startOfBookingDay(d: Date): Date {
+  const c = new Date(d);
+  c.setHours(0, 0, 0, 0);
+  return c;
+}
+/** First Monday on or after the given date. */
+function nextMondayOnOrAfter(d: Date): Date {
+  const c = startOfBookingDay(d);
+  const day = c.getDay(); // 0=Sun .. 1=Mon .. 6=Sat
+  const shift = day === 1 ? 0 : (8 - day) % 7;
+  c.setDate(c.getDate() + shift);
+  return c;
+}
+function sameBookingDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+/** Production cutoff for a Monday start: the prior Friday at 12:00. */
+function cutoffForStart(monday: Date): Date {
+  const c = new Date(monday);
+  c.setDate(c.getDate() - 3); // Monday → previous Friday
+  c.setHours(12, 0, 0, 0);
+  return c;
+}
 
 interface UploadedFile {
   name: string;
@@ -62,7 +91,16 @@ interface NewRoundModalProps {
   /** If the scene already has a draft round, the parent passes its id,
    *  instructions and buffer setting here so the modal opens pre-populated
    *  and Save Draft updates that row instead of inserting a new one. */
-  existingDraft?: { id: string; instructions: string | null; buffer_weeks?: number | null } | null;
+  existingDraft?: {
+    id: string;
+    instructions: string | null;
+    buffer_weeks?: number | null;
+    /** Present when re-opening a row that already exists. 'draft' enables
+     *  the Discard affordance; 'pending' means a booked slot being edited
+     *  before its cutoff, in which case start_date pre-selects the date. */
+    status?: string | null;
+    start_date?: string | null;
+  } | null;
 }
 
 function UploadItem({
@@ -246,6 +284,10 @@ export function NewRoundModal({
 }: NewRoundModalProps) {
   const [instructions, setInstructions] = useState("");
   const [bufferWeeks, setBufferWeeks] = useState<number>(1);
+  // Delivery scheduling: "next" preserves the legacy immediate-request flow;
+  // "choose" is the Isabelle button — pick a future production Monday.
+  const [deliveryMode, setDeliveryMode] = useState<"next" | "choose">("next");
+  const [selectedMonday, setSelectedMonday] = useState<Date | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [filesByCategory, setFilesByCategory] = useState<Record<Category, UploadedFile[]>>({
     floor_plan: [],
@@ -294,6 +336,17 @@ export function NewRoundModal({
     if (!isOpen) return;
     setInstructions(existingDraft?.instructions ?? "");
     setBufferWeeks(existingDraft?.buffer_weeks ?? 1);
+    // Re-opening a booked (pending) slot before cutoff: default to the
+    // chosen-date picker with its existing start Monday pre-selected so the
+    // booking is preserved unless the client changes it. Everything else
+    // (new round, draft re-open) starts on the legacy "Next available" path.
+    if (existingDraft?.status === "pending" && existingDraft?.start_date) {
+      setDeliveryMode("choose");
+      setSelectedMonday(new Date(existingDraft.start_date));
+    } else {
+      setDeliveryMode("next");
+      setSelectedMonday(null);
+    }
     setBriefReview(null);
     // Start with empty widgets; if reopening a draft, hydrate from
     // `round_uploads` so files the client uploaded before saving the
@@ -509,6 +562,30 @@ export function NewRoundModal({
     `${mins} ${mins === 1 ? "minute" : "minutes"}`,
   ].filter(Boolean).join(", ");
 
+  // ── Future-Monday booking (Isabelle button) ──
+  // Grid of the next 12 Mondays from (today + 7 days, rounded forward to the
+  // next Monday) — same anchor as RescheduleRoundModal.
+  const bookingMondays = useMemo(() => {
+    const minBase = startOfBookingDay(new Date());
+    minBase.setDate(minBase.getDate() + 7);
+    const first = nextMondayOnOrAfter(minBase);
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(first);
+      d.setDate(first.getDate() + i * 7);
+      return d;
+    });
+  }, [isOpen]);
+
+  const bookedStart = deliveryMode === "choose" ? selectedMonday : null;
+  const bookedDelivery = bookedStart
+    ? (() => { const d = new Date(bookedStart); d.setDate(d.getDate() + 7); return d; })()
+    : null;
+  const cutoff = bookedStart ? cutoffForStart(bookedStart) : null;
+  const cutoffSecs = cutoff ? Math.max(0, differenceInSeconds(cutoff, currentTime)) : 0;
+  const cutoffDays = Math.floor(cutoffSecs / (24 * 3600));
+  const cutoffHours = Math.floor((cutoffSecs % (24 * 3600)) / 3600);
+  const cutoffCountdown = `${cutoffDays} ${cutoffDays === 1 ? "day" : "days"}, ${cutoffHours} ${cutoffHours === 1 ? "hour" : "hours"} remaining`;
+
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
@@ -558,8 +635,15 @@ export function NewRoundModal({
         toast({ title: "Upload failed", description: "Some files could not be uploaded. Please try again.", variant: "destructive" });
         return;
       }
+      const useBooked = deliveryMode === "choose" && bookedStart && bookedDelivery;
       if (onCreateWithDate) {
-        onCreateWithDate(instructions.trim(), deliveryDate, startDate, bufferWeeks);
+        if (useBooked) {
+          // Book Production Slot: picked Monday is the production start,
+          // delivery is start + 7 days.
+          onCreateWithDate(instructions.trim(), bookedDelivery!, bookedStart!, bufferWeeks);
+        } else {
+          onCreateWithDate(instructions.trim(), deliveryDate, startDate, bufferWeeks);
+        }
       } else {
         onCreate(instructions.trim(), bufferWeeks);
       }
@@ -826,17 +910,90 @@ export function NewRoundModal({
                 </p>
               </div>
 
-              {/* ── Delivery timing — outside space-y to allow 24px top margin ── */}
+              {/* ── Delivery date — picker + summary ── */}
               <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
-                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                  Delivery — {deliveryDateStr}
+                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                  Delivery date
                 </p>
-                <p
-                  className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                  style={{ fontVariantNumeric: "tabular-nums" }}
-                >
-                  Order within {deadlineLabel}
-                </p>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => { setDeliveryMode("next"); setSelectedMonday(null); }}
+                    className={`h-10 px-4 text-[10px] font-sans uppercase tracking-[0.18em] border transition-colors ${
+                      deliveryMode === "next"
+                        ? "border-[var(--brand-gold)] text-gold"
+                        : "border-border/40 text-foreground/55 hover:text-foreground hover:border-foreground/40"
+                    }`}
+                    style={{ borderRadius: 2 }}
+                  >
+                    Next available
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMode("choose")}
+                    className={`h-10 px-4 text-[10px] font-sans uppercase tracking-[0.18em] border transition-colors ${
+                      deliveryMode === "choose"
+                        ? "border-[var(--brand-gold)] text-gold"
+                        : "border-border/40 text-foreground/55 hover:text-foreground hover:border-foreground/40"
+                    }`}
+                    style={{ borderRadius: 2 }}
+                  >
+                    Choose a date
+                  </button>
+                </div>
+
+                {deliveryMode === "next" ? (
+                  <>
+                    <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
+                      Delivery — {deliveryDateStr}
+                    </p>
+                    <p
+                      className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      Order within {deadlineLabel}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-3">
+                      Pick a production Monday
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {bookingMondays.map((m) => {
+                        const isSel = !!selectedMonday && sameBookingDay(m, selectedMonday);
+                        return (
+                          <button
+                            key={m.toISOString()}
+                            type="button"
+                            onClick={() => setSelectedMonday(m)}
+                            className={`h-11 px-2 text-[11px] font-sans uppercase tracking-[0.14em] border transition-colors ${
+                              isSel
+                                ? "border-[var(--brand-gold)] text-gold"
+                                : "border-border/40 text-foreground/65 hover:text-foreground hover:border-foreground/40"
+                            }`}
+                            style={{ borderRadius: 2 }}
+                          >
+                            {format(m, "d MMM")}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {bookedStart && bookedDelivery && cutoff && (
+                      <div className="mt-5">
+                        <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
+                          Production starts {format(bookedStart, "EEEE d MMMM")} — delivery {format(bookedDelivery, "EEEE d MMMM")}
+                        </p>
+                        <p
+                          className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
+                          style={{ fontVariantNumeric: "tabular-nums" }}
+                        >
+                          Cutoff: {format(cutoff, "EEEE d MMMM")} at 12:00 — {cutoffCountdown}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* ── Footer ── */}
@@ -849,7 +1006,7 @@ export function NewRoundModal({
                 >
                   Cancel
                 </button>
-                {onDiscardDraft && existingDraft && (
+                {onDiscardDraft && existingDraft && existingDraft.status === "draft" && (
                   <button
                     type="button"
                     onClick={handleDiscardDraft}
@@ -877,11 +1034,15 @@ export function NewRoundModal({
                 )}
                 <button
                   type="submit"
-                  disabled={!instructions.trim() || isSubmitting}
+                  disabled={!instructions.trim() || isSubmitting || (deliveryMode === "choose" && !selectedMonday)}
                   className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
-                  {isSubmitting ? "Uploading…" : "Submit for Production"}
+                  {isSubmitting
+                    ? "Uploading…"
+                    : deliveryMode === "choose"
+                    ? "Book Production Slot"
+                    : "Submit for Production"}
                 </button>
               </div>
 

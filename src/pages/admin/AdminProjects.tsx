@@ -814,6 +814,11 @@ export default function AdminProjects() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {rounds.map((round) => {
                 const isDraft = round.status === "draft";
+                // A booked slot is a pending round whose production start is
+                // more than a week out — held for the future, distinct from
+                // work currently in production (Isabelle button).
+                const isBooked = round.status === "pending" && !!round.start_date &&
+                  new Date(round.start_date).getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000;
                 const phase = getStatusPhase(round.status);
                 const title = `Round ${round.round_number
                   .toString()
@@ -829,7 +834,7 @@ export default function AdminProjects() {
                       "text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors",
                       isDraft ? "opacity-70 hover:border-border" : "hover:border-primary/40",
                     )}
-                    style={isDraft ? { borderLeft: "2px solid #8A8070" } : undefined}
+                    style={isDraft || isBooked ? { borderLeft: "2px solid #8A8070" } : undefined}
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div>
@@ -839,6 +844,13 @@ export default function AdminProjects() {
                             style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
                           >
                             Draft — client only
+                          </span>
+                        ) : isBooked ? (
+                          <span
+                            className="mb-1 block font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Booked
                           </span>
                         ) : phase && (
                           <span className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1 block font-sans">
