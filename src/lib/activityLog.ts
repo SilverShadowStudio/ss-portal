@@ -24,6 +24,9 @@ export type ActivityAction =
   | "password_set"
   | "manual_invite_generated"
   | "agreement_signed"
+  | "team_contract_sent"
+  | "team_contract_signed"
+  | "team_contract_declined"
   | "dropbox_file_received";
 
 /** Shared badge labels used by both the dashboard preview and the full log page. */
@@ -48,6 +51,9 @@ export const ACTION_LABELS: Record<string, string> = {
   password_set: "Password",
   manual_invite_generated: "Manual",
   agreement_signed: "Agreement",
+  team_contract_sent: "Contract",
+  team_contract_signed: "Contract",
+  team_contract_declined: "Contract",
   dropbox_file_received: "Delivery",
 };
 

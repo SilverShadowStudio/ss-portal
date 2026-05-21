@@ -152,7 +152,9 @@ const Label = ({ children, required }: { children: React.ReactNode; required?: b
 export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingContract }: TeamContractFormDialogProps) {
   const { toast } = useToast();
   const [f, setF] = useState<FormState>(initialState);
-  const [busy, setBusy] = useState<null | "generate" | "save">(null);
+  const [busy, setBusy] = useState<null | "generate" | "save" | "send">(null);
+  // True once this contract has been sent for signature — locks the actions.
+  const [sent, setSent] = useState(false);
   // The saved draft id. Set when editing an existing draft, or after the first
   // create — so every later action UPDATEs the same row rather than INSERTing.
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingCo
 
   const milestoneSum = f.milestone1 + f.milestone2 + f.milestone3;
 
-  const reset = () => { setF(initialState); setLastCreatedId(null); };
+  const reset = () => { setF(initialState); setLastCreatedId(null); setSent(false); };
 
   const close = (next: boolean) => {
     if (!next) reset();
@@ -382,6 +384,34 @@ export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingCo
     }
   }
 
+  // "Send to portal for signature": save the draft, then provision + invite.
+  async function handleSend() {
+    const fee = validate();
+    if (fee === null) return;
+    setBusy("send");
+    try {
+      let id = lastCreatedId;
+      if (!id) { id = await createDraft(fee); if (!id) return; setLastCreatedId(id); }
+      else { const ok = await updateDraft(id, fee); if (!ok) return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/team-contract-send`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ contract_id: id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+      toast({ title: `Sent to ${data?.recipient_email || f.recipientEmail.trim()}` });
+      setSent(true);
+      onSaved?.();
+    } catch (e: any) {
+      toast({ title: "Could not send", description: e?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const inputCls = "h-9";
 
   return (
@@ -556,26 +586,23 @@ export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingCo
           </div>
 
           <div className="space-y-2 pt-2">
-            {/* Top row: Cancel + primary "Generate and download PDF" */}
+            {/* Top row: Cancel/Close + primary "Generate and download PDF" */}
             <div className="flex gap-3">
               <Button variant="ghost" onClick={() => close(false)} disabled={busy !== null} className="text-muted-foreground">
-                Cancel
+                {sent ? "Close" : "Cancel"}
               </Button>
-              <Button onClick={handleGenerateAndDownload} disabled={busy !== null} className="flex-1">
+              <Button onClick={handleGenerateAndDownload} disabled={busy !== null || sent} className="flex-1">
                 {busy === "generate" ? "Generating…" : "Generate and download PDF"}
               </Button>
             </div>
             {/* Middle row: tertiary "park this" action — neutral, not gold */}
-            <Button variant="secondary" onClick={handleSaveForLater} disabled={busy !== null} className="w-full">
+            <Button variant="secondary" onClick={handleSaveForLater} disabled={busy !== null || sent} className="w-full">
               {busy === "save" ? "Saving…" : "Save for later"}
             </Button>
-            {/* Bottom row: second primary, enabled in Commit 5 */}
-            <div>
-              <Button disabled variant="outline" className="w-full">
-                Send to portal for signature
-              </Button>
-              <p className="text-[11px] text-muted-foreground/60 text-center mt-1">Coming next</p>
-            </div>
+            {/* Bottom row: second primary — provision + invite */}
+            <Button onClick={handleSend} disabled={busy !== null || sent} variant="outline" className="w-full">
+              {sent ? "Sent ✓" : busy === "send" ? "Sending…" : "Send to portal for signature"}
+            </Button>
           </div>
         </div>
       </DialogContent>

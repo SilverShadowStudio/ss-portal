@@ -43,9 +43,6 @@ Deno.serve(async (req) => {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: roleRow } = await admin
-    .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
-  if (!roleRow) return errJson("Forbidden", 403);
 
   const body = await req.json().catch(() => ({}));
   const contractId = typeof body?.contract_id === "string" ? body.contract_id : null;
@@ -58,6 +55,20 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (cErr) return errJson(cErr.message, 500);
   if (!contract) return errJson("Contract not found", 404);
+
+  // Authorize: admin, the signer, or the linked freelancer-profile owner —
+  // mirrors the team_contracts SELECT RLS so the recipient can preview their
+  // own contract on the acceptance gate.
+  const { data: roleRow } = await admin
+    .from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
+  let authorized = !!roleRow || contract.signed_by_user_id === user.id;
+  if (!authorized && contract.profile_id) {
+    const { data: prof } = await admin
+      .from("freelancer_profiles").select("id")
+      .eq("id", contract.profile_id).eq("user_id", user.id).maybeSingle();
+    authorized = !!prof;
+  }
+  if (!authorized) return errJson("Forbidden", 403);
 
   const design = await loadDesignConfig(admin);
 

@@ -25,6 +25,7 @@ import ResetPassword from "./pages/ResetPassword";
 import SetPassword from "./pages/SetPassword";
 import Onboarding from "./pages/Onboarding";
 import Contract from "./pages/Contract";
+import SignTeamContract from "./pages/SignTeamContract";
 import NotFound from "./pages/NotFound";
 import AcceptInvite from "./pages/AcceptInvite";
 import Unsubscribe from "./pages/Unsubscribe";
@@ -89,6 +90,9 @@ const App = () => (
             <Route path="/forgot-password" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/set-password" element={<SetPassword />} />
+            {/* Team engagement-contract acceptance gate — standalone (own auth
+                check + RLS), so the recipient isn't routed through client gates. */}
+            <Route path="/sign-team-contract/:contract_id" element={<SignTeamContract />} />
             {/* /sign-agreement is the canonical URL for the v3 acceptance
                 gate. The legacy `SignAgreement` page is left on disk but
                 no longer routed; the v3 `Contract` component renders here. */}
