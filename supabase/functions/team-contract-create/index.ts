@@ -25,6 +25,7 @@ type EntityType = "individual" | "company";
 
 interface CreateBody {
   entity_type: EntityType;
+  recipient_email?: string | null;
 
   individual_full_name?: string | null;
   individual_address?: string | null;
@@ -92,6 +93,12 @@ Deno.serve(async (req) => {
     if (!subjectLine) return json({ error: "subject_line is required" }, 400);
     if (!scopeDescription) return json({ error: "scope_description is required" }, 400);
 
+    const recipientEmail = str(body.recipient_email);
+    if (!recipientEmail) return json({ error: "Recipient email is required" }, 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      return json({ error: "Recipient email is not a valid email address" }, 400);
+    }
+
     const feeAmount = typeof body.fee_amount === "number" && !Number.isNaN(body.fee_amount)
       ? body.fee_amount : null;
     if (feeAmount === null || feeAmount < 0) return json({ error: "fee_amount is required" }, 400);
@@ -125,6 +132,7 @@ Deno.serve(async (req) => {
       .insert({
         account_id: null,
         profile_id: null,
+        recipient_email: recipientEmail,
         entity_type: entityType,
 
         individual_full_name: str(body.individual_full_name),

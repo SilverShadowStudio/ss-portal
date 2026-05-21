@@ -45,6 +45,8 @@ interface FormState {
   companyVatNumber: string;
   companyDirectorName: string;
   companyDirectorTitle: string;
+  // contact (persisted on draft; used to create the auth user at Send-to-portal)
+  recipientEmail: string;
   // shared
   subjectLine: string;
   scopeDescription: string;
@@ -67,6 +69,7 @@ const initialState: FormState = {
   individualFullName: "", individualAddress: "", individualNationality: "", individualNiNumber: "",
   companyName: "", companyRegisteredOffice: "", companyJurisdiction: "",
   companyRegistrationNumber: "", companyVatNumber: "", companyDirectorName: "", companyDirectorTitle: "Director",
+  recipientEmail: "",
   subjectLine: "", scopeDescription: DEFAULT_SCOPE, projectReference: "",
   deliveryWindowStart: "", deliveryWindowEnd: "", round1Deadline: "", round2Deadline: "",
   feeAmount: "", feeCurrency: "EUR", feeScopeDescription: "",
@@ -83,27 +86,26 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
   const { toast } = useToast();
   const [f, setF] = useState<FormState>(initialState);
   const [submitting, setSubmitting] = useState(false);
+  // Re-used if a draft was created but the PDF download then failed, so a
+  // retry doesn't spawn duplicate drafts.
+  const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
 
   const up = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const milestoneSum = f.milestone1 + f.milestone2 + f.milestone3;
 
-  const reset = () => setF(initialState);
+  const reset = () => { setF(initialState); setLastCreatedId(null); };
 
   const close = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
   };
 
-  async function handleSubmit() {
-    // Client-side validation mirrors the edge function.
-    if (!f.subjectLine.trim()) return toast({ title: "Subject line is required", variant: "destructive" });
-    if (!f.scopeDescription.trim()) return toast({ title: "Scope description is required", variant: "destructive" });
-    const fee = parseFloat(f.feeAmount);
-    if (Number.isNaN(fee) || fee < 0) return toast({ title: "A valid fee amount is required", variant: "destructive" });
+  // Validate the form; returns the parsed fee on success, or null (with a toast).
+  function validate(): number | null {
     if (f.entityType === "individual") {
-      if (!f.individualFullName.trim()) return toast({ title: "Full name is required", variant: "destructive" });
-      if (!f.individualAddress.trim()) return toast({ title: "Address is required", variant: "destructive" });
+      if (!f.individualFullName.trim()) { toast({ title: "Full name is required", variant: "destructive" }); return null; }
+      if (!f.individualAddress.trim()) { toast({ title: "Address is required", variant: "destructive" }); return null; }
     } else {
       const reqd: Array<[keyof FormState, string]> = [
         ["companyName", "Company name"], ["companyRegisteredOffice", "Registered office"],
@@ -111,62 +113,118 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
         ["companyDirectorName", "Director name"],
       ];
       for (const [k, label] of reqd) {
-        if (!String(f[k]).trim()) return toast({ title: `${label} is required`, variant: "destructive" });
+        if (!String(f[k]).trim()) { toast({ title: `${label} is required`, variant: "destructive" }); return null; }
       }
     }
-    if (milestoneSum !== 100) {
-      return toast({ title: "Payment milestones must sum to 100%", description: `Currently ${milestoneSum}%`, variant: "destructive" });
+    if (!f.recipientEmail.trim()) { toast({ title: "Recipient email is required", variant: "destructive" }); return null; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.recipientEmail.trim())) {
+      toast({ title: "Recipient email is not a valid email address", variant: "destructive" }); return null;
     }
+    if (!f.subjectLine.trim()) { toast({ title: "Subject line is required", variant: "destructive" }); return null; }
+    if (!f.scopeDescription.trim()) { toast({ title: "Scope description is required", variant: "destructive" }); return null; }
+    const fee = parseFloat(f.feeAmount);
+    if (Number.isNaN(fee) || fee < 0) { toast({ title: "A valid fee amount is required", variant: "destructive" }); return null; }
+    if (milestoneSum !== 100) {
+      toast({ title: "Payment milestones must sum to 100%", description: `Currently ${milestoneSum}%`, variant: "destructive" }); return null;
+    }
+    return fee;
+  }
 
+  // Create the draft contract; returns the new id, or null on failure (toasts).
+  async function createDraft(fee: number): Promise<string | null> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { toast({ title: "No session", variant: "destructive" }); return null; }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/team-contract-create`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        entity_type: f.entityType,
+        recipient_email: f.recipientEmail.trim(),
+        individual_full_name: f.individualFullName,
+        individual_address: f.individualAddress,
+        individual_nationality: f.individualNationality,
+        individual_ni_number: f.individualNiNumber,
+        company_name: f.companyName,
+        company_registered_office: f.companyRegisteredOffice,
+        company_jurisdiction: f.companyJurisdiction,
+        company_registration_number: f.companyRegistrationNumber,
+        company_vat_number: f.companyVatNumber,
+        company_director_name: f.companyDirectorName,
+        company_director_title: f.companyDirectorTitle,
+        subject_line: f.subjectLine,
+        scope_description: f.scopeDescription,
+        project_reference: f.projectReference,
+        delivery_window_start: f.deliveryWindowStart || null,
+        delivery_window_end: f.deliveryWindowEnd || null,
+        round_1_deadline: f.round1Deadline || null,
+        round_2_deadline: f.round2Deadline || null,
+        fee_amount: fee,
+        fee_currency: f.feeCurrency,
+        fee_scope_description: f.feeScopeDescription,
+        payment_milestone_1_pct: f.milestone1,
+        payment_milestone_2_pct: f.milestone2,
+        payment_milestone_3_pct: f.milestone3,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast({ title: "Could not create contract", description: data?.error || `Request failed (${res.status})`, variant: "destructive" });
+      return null;
+    }
+    return data?.contract?.id ?? null;
+  }
+
+  async function downloadContractPdf(contractId: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("No session");
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/preview-team-contract-pdf`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ contract_id: contractId }),
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e?.error || `PDF generation failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Silvershadow_Engagement_Contract.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Saves the draft (re-using the id on retry so a failed download doesn't
+  // spawn duplicate drafts), then downloads the generated PDF.
+  async function handleGenerateAndDownload() {
+    const fee = validate();
+    if (fee === null) return;
     setSubmitting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("No session");
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/team-contract-create`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: SUPABASE_PUBLISHABLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          entity_type: f.entityType,
-          individual_full_name: f.individualFullName,
-          individual_address: f.individualAddress,
-          individual_nationality: f.individualNationality,
-          individual_ni_number: f.individualNiNumber,
-          company_name: f.companyName,
-          company_registered_office: f.companyRegisteredOffice,
-          company_jurisdiction: f.companyJurisdiction,
-          company_registration_number: f.companyRegistrationNumber,
-          company_vat_number: f.companyVatNumber,
-          company_director_name: f.companyDirectorName,
-          company_director_title: f.companyDirectorTitle,
-          subject_line: f.subjectLine,
-          scope_description: f.scopeDescription,
-          project_reference: f.projectReference,
-          delivery_window_start: f.deliveryWindowStart || null,
-          delivery_window_end: f.deliveryWindowEnd || null,
-          round_1_deadline: f.round1Deadline || null,
-          round_2_deadline: f.round2Deadline || null,
-          fee_amount: fee,
-          fee_currency: f.feeCurrency,
-          fee_scope_description: f.feeScopeDescription,
-          payment_milestone_1_pct: f.milestone1,
-          payment_milestone_2_pct: f.milestone2,
-          payment_milestone_3_pct: f.milestone3,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
-
-      const who = f.entityType === "individual" ? f.individualFullName.trim() : f.companyName.trim();
-      toast({ title: "Draft contract created", description: who });
+      let id = lastCreatedId;
+      if (!id) {
+        id = await createDraft(fee);
+        if (!id) return;
+        setLastCreatedId(id);
+      }
+      await downloadContractPdf(id);
+      toast({ title: "Draft created and PDF downloaded" });
       reset();
       onOpenChange(false);
       onCreated?.();
     } catch (err: any) {
-      toast({ title: "Could not create contract", description: err?.message || "Unknown error", variant: "destructive" });
+      toast({ title: "Could not generate PDF", description: err?.message || "Unknown error", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -256,6 +314,13 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
             </div>
           )}
 
+          {/* Recipient email */}
+          <div className="space-y-1 border-t border-border/50 pt-4">
+            <Label required>Recipient email</Label>
+            <Input className={inputCls} type="email" value={f.recipientEmail} onChange={(e) => up("recipientEmail", e.target.value)} placeholder="contact@studio.com" />
+            <p className="text-[11px] text-muted-foreground/60">Used to invite them to sign when you send the contract for signature.</p>
+          </div>
+
           {/* Scope */}
           <div className="space-y-3 border-t border-border/50 pt-4">
             <div className="space-y-1">
@@ -338,13 +403,21 @@ export function TeamContractFormDialog({ open, onOpenChange, onCreated }: TeamCo
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button variant="ghost" onClick={() => close(false)} disabled={submitting} className="text-muted-foreground">
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting} className="flex-1">
-              {submitting ? "Creating…" : "Create draft contract"}
-            </Button>
+          <div className="space-y-2 pt-2">
+            <div className="flex gap-3">
+              <Button variant="ghost" onClick={() => close(false)} disabled={submitting} className="text-muted-foreground">
+                Cancel
+              </Button>
+              <Button onClick={handleGenerateAndDownload} disabled={submitting} className="flex-1">
+                {submitting ? "Generating…" : "Generate and download PDF"}
+              </Button>
+            </div>
+            <div>
+              <Button disabled variant="outline" className="w-full">
+                Send to portal for signature
+              </Button>
+              <p className="text-[11px] text-muted-foreground/60 text-center mt-1">Coming next</p>
+            </div>
           </div>
         </div>
       </DialogContent>
