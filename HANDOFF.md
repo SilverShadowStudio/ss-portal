@@ -89,6 +89,29 @@ Long follow-up session immediately after the Maybourne Hotels demo. Ten commits 
 ### Maybourne demo backlog (1 of 4 shipped; 3 remaining)
 - **Isabelle button — Maybourne 4 of 4.** Future-dated project booking. Client reserves a production slot for a future Monday delivery, keeps editing brief/files/comments until the cutoff (Friday midday before production week), countdown timer visible throughout. Schema impact: probably `scenes.booking_status` or a new `scene_bookings` row, and a way to gate the brief-editable window. When live, notify Sabrina at Maybourne.
 - **Multi-user commenting with coloured pens — Maybourne 2 of 4.** Per-user pin/sticky/pen colour + signature, multi-designer-per-account, designer-level role hiding Documents/Agreements/Quotations/Invoices, quotation+invoice recipients routed to admin + signatory not the requesting designer. Largest of the four — schema (per-user pin colour, `account_members.role` enum), RLS, UI permissions on Documents page, role-based filtering. Opt-in per-account so Kieran's "one point of contact" policy is preserved for everyone else.
+- **Multi-user live collaboration on scenes (expanded scope — Maybourne backlog).** Expansion of the item above. Originally specced as multi-user commenting with coloured pens (feature 4/4). Fred has expanded the ask to include Miro-style real-time collaboration: multiple users from a client team viewing the same scene at the same time, seeing each other's cursors live, and watching each other's comments appear as they're typed.
+  - **Phase 1 — Multi-user foundation (original ask):**
+    - Multiple users per account (lift the `account_members_user_id_key` UNIQUE (`user_id`) constraint — currently 1 user per account).
+    - Per-user pin/pen/sticky colour stored on `account_members`.
+    - Per-user comment attribution on `asset_pins`.
+    - All invited users can comment, draw, upload, request rounds.
+    - Account-level toggle so multi-user mode is opt-in (Maybourne-only initially).
+    - Role-based filtering: designers (non-signatory members) hidden from Documents / Agreements / Quotations / Invoices.
+    - Quotations + invoices route to admin + designated signatory only.
+  - **Phase 2 — Live collaboration (new ask):**
+    - Real-time cursor sync via Supabase Realtime channels (one per scene).
+    - Presence indicator: small avatar/badge of each user currently viewing the scene.
+    - Live comment streaming (see other users' comments appear as they type).
+    - Stable performance at 4K zoom and on mobile.
+  - **Estimated effort:** Phase 1 alone is ~1-2 weeks of proper spec + build. Phase 2 adds another 3-5 focused days. Total: 2-3 weeks. Not a fit for incremental shipping.
+  - **Required before starting:**
+    - Dedicated spec session (Fred + Claude) — sketches, decisions, trade-offs documented.
+    - Schema design: how `account_members` evolves, what's stored on `asset_pins`, RLS plan.
+    - Realtime channel architecture: subscription lifecycle, presence, cursor broadcast rate.
+    - UX decisions: cursor styling, conflict resolution on simultaneous edits, mobile cursor strategy.
+    - Toggle architecture: how account-level multi-user mode is enabled, what defaults look like for non-Maybourne accounts.
+  - **Build order:** Phase 1 first (multi-user foundation without realtime), shipped to Maybourne, used for at least one real round of work. Then Phase 2 (realtime layer) on top.
+  - **Trigger to start:** When Fred has a clear week-long block of focused time AND Maybourne (or another opt-in client) is actively requesting it. Not before — this is the kind of feature that breaks if built in interruptions.
 
 ### Resend webhook ingestion + deliverability admin UI
 Both items together — the UI is useless without the data.
