@@ -29,6 +29,28 @@ const DOC_ORDER: Record<string, number> = { nda: 0, service_agreement: 1 };
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
+// Per-project engagement contracts (team_contracts). Distinct from the fixed
+// onboarding NDA + service agreement above.
+interface EngagementContract {
+  id: string;
+  entity_type: "individual" | "company";
+  individual_full_name: string | null;
+  company_name: string | null;
+  subject_line: string;
+  status: string;
+  created_at: string;
+  sent_at: string | null;
+  signed_at: string | null;
+}
+
+const CONTRACT_STATUS: Record<string, { label: string; cls: string }> = {
+  draft:     { label: "Draft",     cls: "text-foreground/45" },
+  sent:      { label: "Sent",      cls: "text-gold" },
+  signed:    { label: "Signed",    cls: "text-emerald-500" },
+  declined:  { label: "Declined",  cls: "text-rose-400" },
+  cancelled: { label: "Cancelled", cls: "text-foreground/35" },
+};
+
 interface MemberGroup {
   name: string;
   docs: FreelancerDoc[];
@@ -42,6 +64,8 @@ export default function AdminTeamContracts() {
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [contracts, setContracts] = useState<EngagementContract[]>([]);
+  const [deletingContractId, setDeletingContractId] = useState<string | null>(null);
 
   // Accordion — single section open at a time. Default-picked once after
   // the first data load: member with the most recent signed agreement.
@@ -51,7 +75,7 @@ export default function AdminTeamContracts() {
   const toggleSection = (key: string) =>
     setOpenSection((cur) => (cur === key ? null : key));
 
-  useEffect(() => { fetchDocs(); }, []);
+  useEffect(() => { fetchDocs(); fetchContracts(); }, []);
 
   async function fetchDocs() {
     try {
@@ -66,6 +90,30 @@ export default function AdminTeamContracts() {
       toast({ title: "Could not load agreements", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchContracts() {
+    const { data, error } = await supabase
+      .from("team_contracts")
+      .select("id, entity_type, individual_full_name, company_name, subject_line, status, created_at, sent_at, signed_at")
+      .order("created_at", { ascending: false });
+    if (!error) setContracts((data || []) as EngagementContract[]);
+  }
+
+  async function handleDeleteContract(c: EngagementContract) {
+    const who = c.entity_type === "company" ? (c.company_name || "this company") : (c.individual_full_name || "this contractor");
+    if (!window.confirm(`Delete the draft engagement contract for ${who}? This cannot be undone.`)) return;
+    setDeletingContractId(c.id);
+    try {
+      const { error } = await supabase.from("team_contracts").delete().eq("id", c.id);
+      if (error) throw error;
+      toast({ title: "Draft contract deleted" });
+      fetchContracts();
+    } catch (err: any) {
+      toast({ title: "Could not delete contract", description: err?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setDeletingContractId(null);
     }
   }
 
@@ -157,10 +205,61 @@ export default function AdminTeamContracts() {
           Team Agreements
         </h1>
         <p className="mt-2 font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>
-          Signed freelancer agreements
+          Engagement contracts and signed freelancer agreements
         </p>
       </div>
 
+      {/* Engagement contracts (per-project; individual or company) */}
+      <section className="mb-14 animate-fade-in">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="h-px w-6 bg-gold-muted" />
+          <span className="text-label-gold">Engagement Contracts</span>
+        </div>
+        {contracts.length === 0 ? (
+          <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30">
+            No engagement contracts yet. Use "Register them" on the Team page to create one.
+          </p>
+        ) : (
+          <div className="border-t border-border/30">
+            {contracts.map((c) => {
+              const party = c.entity_type === "company" ? (c.company_name || "—") : (c.individual_full_name || "—");
+              const st = CONTRACT_STATUS[c.status] ?? { label: c.status, cls: "text-foreground/45" };
+              return (
+                <div key={c.id} className="flex items-center gap-4 py-3.5 border-b border-border/30">
+                  <FileText className="shrink-0 text-gold" style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-serif text-foreground text-sm truncate">{party}</p>
+                    <p className="font-sans uppercase text-foreground/40 mt-0.5 truncate" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+                      {c.entity_type} · {c.subject_line}
+                    </p>
+                  </div>
+                  <span className="hidden sm:block shrink-0 font-sans uppercase text-foreground/35" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
+                    {c.signed_at ? `Signed ${formatDate(c.signed_at)}` : c.sent_at ? `Sent ${formatDate(c.sent_at)}` : `Created ${formatDate(c.created_at)}`}
+                  </span>
+                  <span className={`shrink-0 font-sans uppercase ${st.cls}`} style={{ fontSize: 10, letterSpacing: "0.16em" }}>
+                    {st.label}
+                  </span>
+                  {c.status === "draft" && (
+                    <button
+                      onClick={() => handleDeleteContract(c)}
+                      disabled={deletingContractId === c.id}
+                      className="shrink-0 text-foreground/30 hover:text-rose-400 transition-colors disabled:opacity-40"
+                      title="Delete draft"
+                    >
+                      <Trash2 style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <div className="mb-5 flex items-center gap-3">
+        <span className="h-px w-6 bg-gold-muted" />
+        <span className="text-label-gold">Signed Agreements</span>
+      </div>
       {loading ? (
         <div className="flex items-center justify-center py-24">
           <BrandLoader size="md" className="h-5 w-5" />

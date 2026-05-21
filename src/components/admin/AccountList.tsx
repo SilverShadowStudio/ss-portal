@@ -38,6 +38,7 @@ import {
   formatSessionDuration,
   type SessionSummary,
 } from "@/lib/clientActivity";
+import { TeamContractFormDialog } from "@/components/admin/TeamContractFormDialog";
 
 interface AccountUserRow {
   account_id: string;
@@ -176,6 +177,10 @@ export function AccountList({
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  // Team Add Member is a two-step popup: choose "Ask them to register" (the
+  // existing email invite) or "Register them" (the engagement contract form).
+  const [teamAddMode, setTeamAddMode] = useState<"choice" | "invite">("choice");
+  const [isContractDialogOpen, setIsContractDialogOpen] = useState(false);
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -628,6 +633,7 @@ export function AccountList({
           open={isAddDialogOpen}
           onOpenChange={(open) => {
             setIsAddDialogOpen(open);
+            setTeamAddMode("choice");
             if (!open) {
               resetForm();
               setInviteEmail("");
@@ -648,34 +654,68 @@ export function AccountList({
             }
           >
             {isTeamOnly ? (
-              <>
-                <DialogHeader>
-                  <DialogTitle>Add team member</DialogTitle>
-                </DialogHeader>
-                <p className="text-xs text-muted-foreground mt-1">
-                  They'll enter their name and details during onboarding.
-                </p>
-                <div className="space-y-4 pt-2">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Email *</label>
-                    <Input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                      autoFocus
-                      placeholder="contact@company.com"
-                    />
+              teamAddMode === "choice" ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Add team member</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Choose how to bring this team member on.
+                  </p>
+                  <div className="space-y-3 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setTeamAddMode("invite")}
+                      className="w-full text-left rounded-md border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-foreground">Ask them to register</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Send an invite. They set a password, enter their details, and sign the NDA + service agreement during onboarding.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsAddDialogOpen(false); setIsContractDialogOpen(true); }}
+                      className="w-full text-left rounded-md border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-foreground">Register them</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Create an engagement contract yourself (individual or company). Saved as a draft you can later download or send for signature.
+                      </p>
+                    </button>
                   </div>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={isCreating}
-                    className="w-full"
-                  >
-                    {isCreating ? "Sending…" : "Send invite"}
-                  </Button>
-                </div>
-              </>
+                </>
+              ) : (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Add team member</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    They'll enter their name and details during onboarding.
+                  </p>
+                  <div className="space-y-4 pt-2">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Email *</label>
+                      <Input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                        autoFocus
+                        placeholder="contact@company.com"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isCreating} className="text-muted-foreground">
+                        Back
+                      </Button>
+                      <Button onClick={handleSubmit} disabled={isCreating} className="flex-1">
+                        {isCreating ? "Sending…" : "Send invite"}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )
             ) : (
               <>
                 <DialogHeader>
@@ -1127,6 +1167,9 @@ export function AccountList({
           </div>
         )}
       </div>
+
+      {/* Register Them — engagement contract draft form */}
+      <TeamContractFormDialog open={isContractDialogOpen} onOpenChange={setIsContractDialogOpen} />
 
       {/* Invitation success overlay */}
       {resultBanner && (
