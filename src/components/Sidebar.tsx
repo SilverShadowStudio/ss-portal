@@ -376,7 +376,7 @@ export function Sidebar({
                         {accountDisplayName}
                       </p>
                       {accountSubLabel && (
-                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[var(--text-label)] mt-1 whitespace-normal break-words">
+                        <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1 whitespace-normal break-words`}>
                           {accountSubLabel}
                         </p>
                       )}
