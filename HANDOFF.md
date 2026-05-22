@@ -8,6 +8,68 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 22 May 2026
+
+Build-out session focused on two large threads plus a UI refinement pass. Thread one: the **Team Contracts** feature (admin-driven engagement contracts for freelancers/subcontractors) shipped end-to-end across Commits 1–5 (`fa724c0` → `ca15da5`), with a clause-strengthening pass (`eebafa1`) and a "Save for later" draft action (`fede602`). Thread two: the **lightbox round-review** experience moved to OS-level monitor fullscreen and then through a multi-step debugging chain (`8324a14` → `d712d47`) to fix zoom-to-fit centring, pan clamping, and a fullscreen-sizing bug rooted in the UA stylesheet. Thread three: a **four-tier text contrast** token system applied to the admin dashboard and shared sidebar (`32fc27d`), with a gold sub-label restoration follow-up (`a1ed729`). Head: `d712d47` on `origin/main`. Working tree clean.
+
+## Completed this session
+
+### 1. Team Contracts feature — Commits 1–5 (`fa724c0`, `a3c4cf5`, `b204c1b`, `66d7473`, `b7580dd`, `ca15da5`)
+- **Commit 1 — centralised PDF design tokens + primitives.** Extracted shared document-design tokens and low-level PDF drawing primitives into `supabase/functions/_shared/documents/` so all server-side document generators share one visual language (cream `#EDE8E0` background, warm charcoal ink, warm grey muted, gold accent, A4 margins). Foundation for the team-contract generator and reusable by future document types.
+- **Commit 2 — `team_contracts` table + RLS (migration `20260520000001`).** New table holding one row per engagement contract: status (`draft` / `pending` / `signed` / `declined`), contract type (individual / company), recipient identity, `profile_id` + `account_id` linkage (nullable until Send-to-portal), signed metadata, storage path. RLS: admins manage all rows; a recipient can `SELECT` their own contract via a join through `freelancer_profiles`. No `is_draft` column — draft vs sent is expressed through `status` (`draft` → `pending`).
+- **Commit 3 — admin form + "Register Them" flow.** Engagement-contract creation integrated into the existing `AdminTeamContracts.tsx` (per decision D3 — no separate page). "Register them" provisions a subcontractor record directly, bypassing the existing client onboarding flow (NDA + FSA stacking not required — see Decisions).
+- **Commit 4 — PDF generator + admin download path + `recipient_email` (migration `20260520000002`).** `supabase/functions/_shared/documents/teamContractPdf.ts` generates the contract PDF server-side with **two variants** (Individual and Company), driven by contract type. **Tinos fonts** (regular/bold/italic) bundled at `supabase/functions/_shared/fonts/` for clean Latin Extended-A diacritic coverage (e.g. `Srđan`, `Bogdanović`) — replaces the macOS-Georgia approach and its licensing concern. Migration `20260520000002` adds `recipient_email TEXT` to `team_contracts`, persisted on the draft. Admin download path renders + returns the PDF via `preview-team-contract-pdf`.
+- **Commit 5 — Send to portal for signature (`ca15da5`).** The big one. `team-contract-send` performs **reuse-aware atomic provisioning**: if `recipient_email` already has an `auth.users` row, reuse it; if the recipient already has a different `account_type`, create a new team-type account; if an existing `freelancer_profile` is individual and the new contract is company, link via `profile_id` to the existing personal profile. `profile_id` + `account_id` linkage is established atomically at Send time (compensating-transaction pattern — supabase-js has no multi-statement transactions). `team-contract-accept` records signature, generates the signed PDF, and stores it. Acceptance is gated. Edge functions: `team-contract-create`, `team-contract-send`, `team-contract-accept`, `preview-team-contract-pdf` (all deployed).
+
+### 2. Strengthened Team Contract clauses (`eebafa1`)
+- `supabase/functions/_shared/documents/teamContractPdf.ts`: extended **Clause 6 (IP)** to explicitly assign working files; inserted new **Clause 10 (Non-Disparagement)**; fixed cross-references (Late Delivery → Clause 13; Termination → "Clauses 6 to 11 survive"). Contract is now 13 clauses.
+
+### 3. Save for later action on Team Contract form (`fede602`)
+- Three-action draft pattern on the form: Save for later / (send) / (download). "Save for later" persists a `draft`-status row; `AdminTeamContracts.tsx` can re-open drafts for editing.
+
+### 4. Lightbox monitor-fullscreen + UX fixes (`8324a14`, `a4b72e0`, `c44cd3e`, `5218dc2`, `d712d47`)
+- **`8324a14`** — `src/components/client/AssetViewer.tsx` `Lightbox`: replaced app-level fullscreen with OS-level monitor fullscreen. On open, `containerRef.current.requestFullscreen()` (mobile skipped via `matchMedia("(max-width: 768px)")`); a `fullscreenchange` listener closes the lightbox on exit; `exitFullscreen()` on unmount.
+- **`a4b72e0`** — zoom-to-fit centring + click-drag pan: clamp `tx`/`ty` to viewport edges in `onPointerMove`; widened image cap from `96vh/96vw` to `100vh/100vw` in fullscreen.
+- **`c44cd3e`** — re-clamp pan offset on wheel-zoom to prevent edge gaps (closed the wheel-zoom edge case left open by `a4b72e0`).
+- **`5218dc2`** — fullscreen surface not filling the screen: added `.lightbox-fullscreen-target:fullscreen { width:100vw; height:100vh; inset:0 }` in `src/index.css` and the class on the lightbox root container. Diagnostic established the React state was correct (`tx=ty=0`, `scale=1`, flex-center parent present, `object-position` center) — root cause was fullscreening a `position:fixed; inset:0` element with no `:fullscreen` sizing rule.
+- **`d712d47`** — the `:fullscreen` rule had no visible effect because the UA stylesheet applies `:fullscreen { width:100% !important; height:100% !important }`, and a normal author declaration loses to a UA `!important`. Added `!important` to all three properties (`width:100vw !important; height:100vh !important; inset:0 !important`) so the author rule outranks the UA rule; `vw`/`vh` sidestep the buggy `position:fixed` containing-block resolution.
+
+### 5. Four-tier text contrast tokens + sidebar (`32fc27d`, `a1ed729`)
+- **`32fc27d`** — introduced a four-tier contrast token system (`strong` / `standard` / `label` / `recessive` + `divider`) in `src/index.css` (`:root` + `.dark`) and `tailwind.config.ts`. Applied to the admin dashboard and the **shared `src/components/Sidebar.tsx`** (option a — both admin and client sidebars get the contrast improvement together). The existing app-wide `.text-label` composite utility was recoloured to `var(--text-label)` rather than removed. Used class name `text-strong` (not the spec's `text-primary`) to avoid collision with the existing gold-accent `.text-primary`.
+- **`a1ed729`** — restored the gold accent on the sidebar sub-label in `Sidebar.tsx` (both modes) after the contrast pass had neutralised it.
+
+## In progress / needs verification
+
+- **Team Contract Send + Accept — browser end-to-end test not yet run.** The mechanical chain is built and deployed, but the full provision → invite → accept → signed-PDF flow has not been exercised in the browser. Deferred from earlier today.
+- **Commit 6 (activity events) was folded into Commit 5.** Verify that `team_contract_sent` / `team_contract_signed` / `team_contract_declined` events render correctly in `/admin/activity` (badge + actor role).
+- **Lightbox fullscreen fix — live verification.** `d712d47` deployed; reopen a delivered round's image and confirm the surface fills the monitor and the image lands dead-centre at 1.0× with pan/zoom unchanged.
+- **Sidebar contrast (client side) — visual QA.** The four-tier pass applies to both admin and client sidebars via the shared component; client-side appearance not yet eyeballed.
+- **Operational instrumentation gaps** — some pieces shipped earlier; verify in browser.
+
+## Pending
+
+- **Multi-user live collaboration (Phase 1 + Phase 2).** Proper spec session still required before any code (carried in the Maybourne backlog alongside multi-user commenting).
+- **Sabrina update email** — drafted (Maybourne 3 of 4 features live), not yet sent.
+- **All carried-forward items from earlier sessions** — Stripe key-mode check, studio-account architectural cleanup, agreements-bucket admin `DELETE` policy, Maybourne backlog 2/4 (multi-user commenting) and 4/4 (Isabelle button), `/onboarding` self-registration path, Katharine Pooley deliverability re-test, Manual Invite live test, quotation number auto-generation, test-invoice cleanup. See prior session blocks for detail.
+
+## Decisions made
+
+- **Reuse design for Team Contracts.** Draft vs sent is expressed via `status` (`draft` / `pending`) — no `is_draft` column. `profile_id` + `account_id` linkage is established atomically at Send-to-portal time, not at draft creation.
+- **Engagement contract is legally self-sufficient.** It does not require NDA + FSA stacking; the subcontractor path bypasses the existing client onboarding flow via "Register them".
+- **Server-side PDF generation** (in `supabase/functions/_shared/documents/`), not client-side jsPDF (decision D1).
+- **Tinos font (Apache 2.0 / OFL) bundled** at `supabase/functions/_shared/fonts/` for Latin Extended-A diacritic support, replacing the Microsoft Georgia approach and its licensing concern. (Licensing note: Tinos is distributed under OFL in `google/fonts`, not Apache — flagged and accepted.)
+- **Storage reuse.** The `freelancer-documents` bucket holds team-contract signed PDFs at `{user_id}/team-contracts/{contract_id}.pdf`, covered by the existing `fd_storage_own` RLS policy (decision D4 — no new bucket).
+- **Lightbox auto-enters OS-level monitor fullscreen on open**, with `!important` CSS to outrank the UA stylesheet's `:fullscreen { width:100% !important }` rule.
+- **Text token naming.** `text-strong` used in code instead of the spec's `text-primary` to avoid collision with the existing gold-accent `.text-primary`. The four-tier system is global via the Tailwind theme.
+
+## Open questions or things to watch
+
+- **Recipient email deliverability.** The portal-domain verify-link + portal-hosted-image fix is verified for general clients, but the **Katharine Pooley corporate filter** behaviour beyond the initial fix is not yet validated (depends on Resend webhook bounce ingestion — still backlog).
+- **The recoloured `.text-label` composite is global.** Sub-perceptible shift, but it changes every `.text-label` usage app-wide, not just the dashboard/sidebar.
+- **Sidebar contrast applies to both admin AND client sidebars** (option a, shared `Sidebar.tsx`). If admin/client need to differ later, that requires a variant prop on the shared component.
+
+---
+
 # Session — 19 May 2026 (post-Maybourne demo)
 
 Long follow-up session immediately after the Maybourne Hotels demo. Ten commits (`db723c0` → `e9d4e72`), plus one local-only artefact (subcontractor letter PDF on Desktop). Six threads: (1) shipping the first piece of the Maybourne feature backlog (Reschedule + Round buffer), (2) Airtable sync architectural cleanup (stable record-id link + separate address fields), (3) phantom-login diagnostic → multi-part fix, (4) Airtable pre-flight match check on Add Client, (5) email deliverability fix after Katharine Pooley bounce (portal-domain verify links + portal-hosted images), (6) Manual Invite admin feature for clients blocked by corporate mail filters. Head: `e9d4e72` on `origin/main`. Working tree clean. `SUPABASE_ACCESS_TOKEN` rotated again mid-session; new token stored in the password manager, not committed.
