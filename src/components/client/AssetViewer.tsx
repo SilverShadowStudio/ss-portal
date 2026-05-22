@@ -1640,16 +1640,33 @@ export function Lightbox({
       // Smooth exponential zoom — feels natural across the full 1×–20× range.
       const zoomFactor = Math.exp(-e.deltaY * 0.0015);
 
+      // Current on-screen image size (= base size × current scale); used to
+      // derive the pan bounds at the new scale.
+      const ir = imgRef.current?.getBoundingClientRect();
+
       setScale((prevScale) => {
         const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prevScale * zoomFactor));
         if (next === prevScale) return prevScale;
+
+        // Pan bounds at the NEW scale — image is centred, so the max translate
+        // per axis is half the overflow (scaled image minus viewport), 0 when
+        // the image is smaller than the viewport on that axis. Re-clamping here
+        // stops a zoom-out (tighter bounds) from leaving an edge gap.
+        let maxTx = Infinity, maxTy = Infinity;
+        if (ir) {
+          const baseW = ir.width / prevScale;
+          const baseH = ir.height / prevScale;
+          maxTx = Math.max(0, (baseW * next - rect.width) / 2);
+          maxTy = Math.max(0, (baseH * next - rect.height) / 2);
+        }
+        const clamp = (v: number, m: number) => Math.min(m, Math.max(-m, v));
 
         // Anchor zoom at the cursor: keep the image point under the cursor fixed.
         // Image-space coord under cursor before zoom: (cx - tx) / prevScale.
         // After zoom we want the same image point at the same screen point, so:
         //   cx = nextTx + imgX * next  →  nextTx = cx - imgX * next.
-        setTx((prevTx) => cx - ((cx - prevTx) / prevScale) * next);
-        setTy((prevTy) => cy - ((cy - prevTy) / prevScale) * next);
+        setTx((prevTx) => clamp(cx - ((cx - prevTx) / prevScale) * next, maxTx));
+        setTy((prevTy) => clamp(cy - ((cy - prevTy) / prevScale) * next, maxTy));
 
         // When fully zoomed out, recenter so the image fits cleanly.
         if (next === MIN_SCALE) {
