@@ -116,9 +116,9 @@ export function Sidebar({
             ? cn("w-full pr-3 py-3", item.indent ? "pl-10" : "pl-5")
             : "h-11 w-12 justify-center mx-auto rounded-lg",
           isActive
-            ? expanded ? "text-[hsl(var(--gold))]" : "text-gold"
+            ? "text-strong"
             : cn(
-                "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                "text-standard hover:text-strong",
                 !expanded && "hover:bg-muted/40",
               ),
         )}
@@ -250,7 +250,7 @@ export function Sidebar({
                   <hr
                     aria-hidden
                     className="mx-6 my-4 border-0"
-                    style={{ borderTop: "1px solid #2A2820" }}
+                    style={{ borderTop: "1px solid var(--divider)" }}
                   />
                 )}
                 {expanded && section.title && (
@@ -287,9 +287,9 @@ export function Sidebar({
                 const buttonClass = cn(
                   "relative pointer-events-auto transition-all duration-standard whitespace-nowrap",
                   it.active
-                    ? "translate-y-0 opacity-100 text-[hsl(var(--gold))]"
+                    ? "translate-y-0 opacity-100 text-strong"
                     : cn(
-                        "text-sidebar-foreground/50 hover:text-sidebar-foreground/80",
+                        "text-standard hover:text-strong",
                         menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
                       ),
                   expanded
@@ -372,11 +372,11 @@ export function Sidebar({
                 >
                   {expanded ? (
                     <div className="text-left min-w-0">
-                      <p className={SB.accountNameClass} style={SB.accountNameStyle}>
+                      <p className={SB.accountNameClass} style={{ ...SB.accountNameStyle, color: "var(--text-standard)" }}>
                         {accountDisplayName}
                       </p>
                       {accountSubLabel && (
-                        <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1 whitespace-normal break-words`}>
+                        <p className="text-[8.5px] uppercase tracking-[0.24em] text-[var(--text-label)] mt-1 whitespace-normal break-words">
                           {accountSubLabel}
                         </p>
                       )}

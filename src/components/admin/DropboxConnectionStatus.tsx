@@ -137,21 +137,21 @@ export function DropboxConnectionStatus() {
 
   if (status.loading) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
         <BrandLoader size="sm" />
-        <span className="text-sm text-muted-foreground">Checking connection...</span>
+        <span className="text-sm text-[var(--text-label)]">Checking connection...</span>
       </div>
     );
   }
 
   if (status.connected) {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
+      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
         <div className="flex items-center gap-3">
           <DropboxIcon className="h-5 w-5 text-primary" />
           <div>
-            <p className="text-sm font-medium text-foreground">Dropbox Connected</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm font-medium text-standard">Dropbox Connected</p>
+            <p className="text-xs text-[var(--text-label)]">
               {lastAssetAt === undefined
                 ? null
                 : lastAssetAt
@@ -184,12 +184,12 @@ export function DropboxConnectionStatus() {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-[#181613] p-4">
+    <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-[#181613] px-4 py-3">
       <div className="flex items-center gap-3">
         <DropboxIcon className="h-5 w-5 text-gold" />
         <div>
-          <p className="text-sm font-medium text-foreground">Dropbox Not Connected</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm font-medium text-standard">Dropbox Not Connected</p>
+          <p className="text-xs text-[var(--text-label)]">
             Connect your Dropbox to sync project assets
           </p>
         </div>

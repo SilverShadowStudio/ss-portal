@@ -139,24 +139,24 @@ export function ActivityLogPreview() {
                 )}
                 title="Click to dismiss from your preview"
               >
-                <span className="mt-1 inline-flex h-5 min-w-[60px] items-center justify-center rounded bg-muted/60 px-2 text-[9px] font-bold tracking-[0.18em] uppercase text-muted-foreground">
+                <span className="mt-1 inline-flex h-5 min-w-[60px] items-center justify-center rounded bg-muted/60 px-2 text-[8px] font-bold tracking-[0.18em] uppercase text-[var(--text-label)]">
                   {ACTION_LABELS[row.action] ?? row.action}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground truncate">
+                  <p className="text-sm text-standard truncate">
                     {row.description}
                     {row.action === "client_login" && (() => {
                       const suffix = loginDurationSuffix(sessions, row.actor_user_id ?? "", row.created_at);
-                      return suffix ? <span className="text-muted-foreground"> — {suffix}</span> : null;
+                      return suffix ? <span className="text-[var(--text-label)]"> — {suffix}</span> : null;
                     })()}
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  <p className="text-[11px] text-[var(--text-label)] mt-0.5 truncate">
                     {row.actor_name ?? "Unknown"}
                     {row.project_name ? ` · ${row.project_name}` : ""}
                     {row.scene_name ? ` · ${row.scene_name}` : ""}
                   </p>
                 </div>
-                <span className="shrink-0 text-[10px] tracking-[0.15em] uppercase text-muted-foreground">
+                <span className="shrink-0 text-[10px] tracking-[0.15em] uppercase text-[var(--text-label)]">
                   {format(new Date(row.created_at), "d MMM HH:mm")}
                 </span>
                 <X className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground/30 group-hover:text-foreground transition-colors" />

@@ -78,21 +78,21 @@ export function AirtableConnectionStatus() {
 
   if (status.state === "loading") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
         <BrandLoader size="sm" />
-        <span className="text-sm text-muted-foreground">Checking Airtable connection...</span>
+        <span className="text-sm text-[var(--text-label)]">Checking Airtable connection...</span>
       </div>
     );
   }
 
   if (status.state === "connected") {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-4">
+      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
         <div className="flex items-center gap-3">
           <AirtableIcon className="h-5 w-5 text-primary" />
           <div>
-            <p className="text-sm font-medium text-foreground">Airtable Connected</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm font-medium text-standard">Airtable Connected</p>
+            <p className="text-xs text-[var(--text-label)]">
               {status.recordCount} record{status.recordCount !== 1 ? "s" : ""} · cached{" "}
               {timeAgo(status.cachedAt)}
               <span className="opacity-50 ml-1">
@@ -111,11 +111,11 @@ export function AirtableConnectionStatus() {
 
   if (status.state === "misconfigured") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-gold/20 bg-[#181613] p-4">
+      <div className="flex items-center gap-3 rounded-lg border border-gold/20 bg-[#181613] px-4 py-3">
         <AirtableIcon className="h-5 w-5 shrink-0 text-gold" />
         <div>
-          <p className="text-sm font-medium text-foreground">Airtable Not Configured</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm font-medium text-standard">Airtable Not Configured</p>
+          <p className="text-xs text-[var(--text-label)]">
             Set AIRTABLE_PAT, AIRTABLE_BASE_ID, and AIRTABLE_TABLE_ID in Supabase edge function secrets.
           </p>
         </div>
@@ -124,12 +124,12 @@ export function AirtableConnectionStatus() {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-rose-500/20 bg-rose-500/5 p-4">
+    <div className="flex items-center justify-between rounded-lg border border-rose-500/20 bg-rose-500/5 px-4 py-3">
       <div className="flex items-center gap-3">
         <AlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
         <div>
-          <p className="text-sm font-medium text-foreground">Airtable Error</p>
-          <p className="text-xs text-muted-foreground">{status.message}</p>
+          <p className="text-sm font-medium text-standard">Airtable Error</p>
+          <p className="text-xs text-[var(--text-label)]">{status.message}</p>
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={() => check(true)} disabled={refreshing}>

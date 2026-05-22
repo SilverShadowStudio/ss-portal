@@ -23,6 +23,15 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Four-tier text contrast tokens (role-based) — defined in index.css
+        // :root/.dark. Usable as text-strong / text-standard / text-recessive
+        // and border-divider / bg-divider. The spec's "primary" tier is named
+        // `strong` to avoid colliding with the gold `primary` colour; the
+        // `label` tier stays the existing .text-label composite (recoloured).
+        strong: "var(--text-strong)",
+        standard: "var(--text-standard)",
+        recessive: "var(--text-recessive)",
+        divider: "var(--divider)",
         // Brand surfaces, read directly from the hex-form CSS variables
         // set at runtime by BrandProvider. Usable as bg-brand, bg-brand-dark, etc.
         brand: {

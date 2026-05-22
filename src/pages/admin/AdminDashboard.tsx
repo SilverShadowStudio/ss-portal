@@ -79,18 +79,15 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      {/* Header */}
-      <div className="mb-10 animate-fade-in">
-        <div className="mb-4 flex items-center gap-3">
+      {/* Header — breadcrumb only. The H1 + subtitle were removed (the metrics
+          are self-evident); the breadcrumb is now the visible page label and
+          the browser tab <title> remains the document-level label. Spacing
+          tightened so the metric row sits where the H1 used to. */}
+      <div className="mb-6 animate-fade-in">
+        <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold">Studio Overview</span>
         </div>
-        <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4">
-          STUDIO OVERVIEW
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Live snapshot of clients, projects and production activity.
-        </p>
       </div>
 
       {/* Status Overview — column metrics */}
@@ -99,18 +96,12 @@ export default function AdminDashboard() {
           {statCards.map((stat) => (
             <Link key={stat.label} to={stat.link} className="border-l border-border/80 pl-6 transition-smooth hover:border-gold">
               <p className="text-label mb-3">{stat.label}</p>
-              <span className={`font-serif text-4xl ${stat.value > 0 ? 'text-foreground' : 'text-muted-foreground/40'}`}>
+              <span className="font-serif text-4xl font-medium text-strong">
                 {loading ? "..." : stat.value.toString().padStart(2, '0')}
               </span>
             </Link>
           ))}
         </div>
-      </div>
-
-      {/* Integration Status */}
-      <div className="mb-10 flex flex-col gap-3 animate-fade-in" style={{ animationDelay: "0.15s" }}>
-        <DropboxConnectionStatus />
-        <AirtableConnectionStatus />
       </div>
 
       {/* Activity Log Preview — click a line to dismiss; title to open full log */}
@@ -157,6 +148,13 @@ export default function AdminDashboard() {
             <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
+      </div>
+
+      {/* Integration Status — moved to the bottom of the page (below the
+          activity log + quick actions) so the connection panels recede. */}
+      <div className="mb-4 flex flex-col gap-3 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+        <DropboxConnectionStatus />
+        <AirtableConnectionStatus />
       </div>
     </AdminLayout>
   );
