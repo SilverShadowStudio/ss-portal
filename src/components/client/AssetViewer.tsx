@@ -1804,7 +1804,7 @@ export function Lightbox({
       onPointerCancel={endPan}
       onPointerLeave={() => setCursorPos(null)}
       onDoubleClick={reset}
-      className="fixed inset-0 z-[100] overflow-hidden bg-black/95 animate-fade-in select-none"
+      className="lightbox-fullscreen-target fixed inset-0 z-[100] overflow-hidden bg-black/95 animate-fade-in select-none"
       role="dialog"
       aria-modal="true"
       aria-label="Full size image"

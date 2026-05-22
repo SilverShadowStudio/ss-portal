@@ -249,6 +249,17 @@
     @apply text-xs font-medium tracking-[0.2em] uppercase text-gold;
   }
 
+  /* Force the fullscreen lightbox surface to fill the screen. A position:fixed
+     element fullscreened directly keeps its pre-fullscreen viewport width, so
+     the flex-centred image lands off to one side with black filling the rest.
+     Sizing the :fullscreen element to the screen lets the existing flex-center
+     + tx=0 land the image dead centre. */
+  .lightbox-fullscreen-target:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    inset: 0;
+  }
+
   .card-elevated {
     @apply bg-card border border-border rounded-sm;
     box-shadow: var(--shadow-card);
