@@ -255,9 +255,9 @@
      Sizing the :fullscreen element to the screen lets the existing flex-center
      + tx=0 land the image dead centre. */
   .lightbox-fullscreen-target:fullscreen {
-    width: 100vw;
-    height: 100vh;
-    inset: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    inset: 0 !important;
   }
 
   .card-elevated {
