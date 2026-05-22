@@ -1687,8 +1687,26 @@ export function Lightbox({
       const dx = e.clientX - panStart.current.x;
       const dy = e.clientY - panStart.current.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) didPan.current = true;
-      setTx(panStart.current.tx + dx);
-      setTy(panStart.current.ty + dy);
+      let nextTx = panStart.current.tx + dx;
+      let nextTy = panStart.current.ty + dy;
+      // Clamp so the zoomed image always covers the viewport — never reveal the
+      // black backdrop at an edge. The image is centred, so the maximum
+      // translate per axis is half the overflow (scaled image minus viewport);
+      // when the image is smaller than the viewport on an axis it stays centred
+      // (max 0). getBoundingClientRect on the image gives the on-screen scaled
+      // size, matching the rect the pin/draw logic already relies on.
+      const img = imgRef.current;
+      const cont = containerRef.current;
+      if (img && cont) {
+        const ir = img.getBoundingClientRect();
+        const cr = cont.getBoundingClientRect();
+        const maxTx = Math.max(0, (ir.width - cr.width) / 2);
+        const maxTy = Math.max(0, (ir.height - cr.height) / 2);
+        nextTx = Math.min(maxTx, Math.max(-maxTx, nextTx));
+        nextTy = Math.min(maxTy, Math.max(-maxTy, nextTy));
+      }
+      setTx(nextTx);
+      setTy(nextTy);
     },
     [isPanning]
   );
@@ -2437,7 +2455,7 @@ export function Lightbox({
               alt=""
               aria-hidden
               draggable={false}
-              className="block max-h-[96vh] max-w-[96vw] object-contain"
+              className="block max-h-[100vh] max-w-[100vw] object-contain"
             />
           )}
           <img
@@ -2499,7 +2517,7 @@ export function Lightbox({
               }
             }}
             className={cn(
-              "max-h-[96vh] max-w-[96vw] object-contain transition-opacity duration-300",
+              "max-h-[100vh] max-w-[100vw] object-contain transition-opacity duration-300",
               placeholderSrc
                 ? cn("absolute inset-0 m-auto", fullResLoaded ? "opacity-100" : "opacity-0")
                 : "block",
