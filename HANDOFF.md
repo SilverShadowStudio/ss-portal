@@ -8,6 +8,48 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 25 May 2026
+
+Single-thread session: added **Progressive Web App (PWA) support** so clients can install the portal to their home screen (mobile) or as a chromeless desktop window. Strictly additive — no existing routes, components, auth flow, business logic, or styling were changed. One commit (`2a71aed`), three existing files touched (additively) plus five new files. No schema changes, no migrations, no edge functions, no new committed dependencies. Head: `2a71aed` on `origin/main`. Working tree clean; `git diff origin/main..HEAD` empty.
+
+## Completed this session
+
+### 1. PWA support — manifest, service worker, install prompt (`2a71aed`)
+- **`public/manifest.json`** (new) — `name` "Silvershadow Studio", `short_name` "Silvershadow", `display: standalone`, `background_color: #EDE8E0` (cream), `theme_color: #1A1814` (warm charcoal), `orientation: any`, two icons (192 + 512) with `purpose: "any maskable"`.
+- **`public/service-worker.js`** (new) — minimal worker for install eligibility only. `install` → `skipWaiting()`; `activate` → `clients.claim()`; empty `fetch` handler (no caching). **Online-only by design** — the fetch listener exists purely because browsers require a registered SW with a fetch handler before offering an install prompt.
+- **`public/icons/icon-192.png` + `icon-512.png`** (new, committed) — white Silvershadow wing mark composited onto solid `#1A1814` at 14% inset (maskable-safe; edge-to-edge opaque background). Generated from `src/assets/ss-icon.png` (2307×2102, white-on-transparent) via the local gitignored `scripts/generate-pwa-icons.mjs`.
+- **`src/components/PWAInstallPrompt.tsx`** (new) — branded bottom banner. Captures `beforeinstallprompt` (preventDefault + store deferred event), shows only after `useAuth().user` is signed in **and** a 30s dwell timer elapses **and** the browser signalled eligibility. Gold `Install` button calls `deferredPrompt.prompt()` then awaits `userChoice`; `Not now` sets sticky `localStorage["pwa-prompt-dismissed"]="1"`; hides on `appinstalled`; never shows when already running standalone (`display-mode: standalone` / iOS `navigator.standalone`). iOS Safari (no `beforeinstallprompt`) gets a separate "tap share → Add to Home Screen" variant. Styled with existing tokens (`glass-pill`, `text-gold`, `bg-gold`, cream surface) + a Framer Motion slide-up; bottom-centred mobile (safe-area aware), bottom-right desktop.
+- **`index.html`** (modified, +3 lines in `<head>`) — `<link rel="manifest">`, `<meta name="theme-color" content="#1A1814">`, `<link rel="apple-touch-icon" href="/icons/icon-192.png">`.
+- **`src/main.tsx`** (modified, +SW registration) — feature-guarded `navigator.serviceWorker.register("/service-worker.js")` on `window` `load`, `.catch()`-logged.
+- **`src/App.tsx`** (modified, +2 lines) — imports and mounts `<PWAInstallPrompt />` once, inside `BrowserRouter` and the auth/brand providers, beside `<ActivityTrackerMount />`.
+
+## In progress / needs verification
+
+- **Chrome DevTools / Lighthouse PWA audit — not run (manual browser step).** All programmatic prerequisites are met; confirm on desktop Chrome at `portal.silvershadowstudio.com`: Application → Manifest (fields + icons load), Application → Service Workers (registered/active), Lighthouse → PWA "Installable" green check.
+- **Install prompt — not visually QA'd in a browser.** Timing (30s dwell after sign-in), `beforeinstallprompt` capture, and gold styling in both light and dark themes verified only by code review + build, not by eye.
+- **iOS Safari "Add to Home Screen" variant — not tested on a device.** The heuristic (UA contains iPhone/iPad, not standalone) and the instruction copy are unexercised on real iOS.
+
+## Pending
+
+- All carried-forward items from earlier sessions are unchanged by this session — Team Contract Send+Accept browser test, lightbox fullscreen live verification, sidebar contrast client-side QA, Stripe key-mode check, studio-account cleanup, agreements-bucket DELETE policy, Maybourne backlog 2/4 + 4/4, `/onboarding` self-registration, Katharine Pooley deliverability re-test, Manual Invite live test, quotation number auto-generation, test-invoice cleanup. See prior session blocks for detail.
+
+## Decisions made
+
+- **Online-only PWA, no offline support.** The service worker registers a fetch handler solely to satisfy install eligibility; it intentionally does no caching. (If caching is ever added, a versioning/update story is needed; `skipWaiting` + `clients.claim` are already in place.)
+- **Icons bake the charcoal background in** (not transparent) so maskable cropping on Android/iOS renders a clean solid-backed mark rather than a transparent cut-out. 14% inset keeps the glyph inside the circular/squircle safe zone.
+- **No new committed dependency.** `sharp` was installed transiently (`npm install sharp --no-save --legacy-peer-deps`) only to generate the icons; `package.json` / `package-lock.json` are untouched. The generator and the deploy-verify scripts live in gitignored `scripts/` (`generate-pwa-icons.mjs`, `verify-pwa-deploy.sh`). Only the output PNGs are committed.
+- **No `vite-plugin-pwa`, no `vercel.json` change.** Stock Vite `public/` serving copies all four assets to the `dist/` root; Vercel serves real static files from the filesystem *before* applying the SPA catch-all rewrite, so `/manifest.json`, `/service-worker.js`, and `/icons/*.png` are not swallowed. Confirmed live via `scripts/verify-pwa-deploy.sh`: manifest → `application/json`, SW → `application/javascript`, icons → `image/png`, all HTTP 200.
+- **Install prompt is gated and non-nagging** — signed-in + 30s dwell + sticky `localStorage` dismissal. Strictly additive: no existing route/component/auth/styling changed.
+
+## Open questions or things to watch
+
+- **`localStorage["pwa-prompt-dismissed"]` is permanent once set** — there is no re-surface path. If we ever want to re-prompt (e.g. after a long interval or a new feature), the key needs to be versioned or cleared.
+- **Splash screen will be cream.** `manifest.background_color` is `#EDE8E0` (light) while `theme_color` is `#1A1814` (charcoal) — the launch/splash background is the cream value. Confirm that reads correctly against the charcoal status bar on install.
+- **14% icon inset on aggressive circular masks** — eyeball the installed icon on a real Android home screen to confirm the wing mark isn't clipped or too small.
+- **Local-only reproducibility.** Regenerating the icons on another machine requires re-running the transient `sharp` install + `scripts/generate-pwa-icons.mjs` (script is gitignored). The committed PNGs are the source of truth in-repo.
+
+---
+
 # Session — 22 May 2026
 
 Build-out session focused on two large threads plus a UI refinement pass. Thread one: the **Team Contracts** feature (admin-driven engagement contracts for freelancers/subcontractors) shipped end-to-end across Commits 1–5 (`fa724c0` → `ca15da5`), with a clause-strengthening pass (`eebafa1`) and a "Save for later" draft action (`fede602`). Thread two: the **lightbox round-review** experience moved to OS-level monitor fullscreen and then through a multi-step debugging chain (`8324a14` → `d712d47`) to fix zoom-to-fit centring, pan clamping, and a fullscreen-sizing bug rooted in the UA stylesheet. Thread three: a **four-tier text contrast** token system applied to the admin dashboard and shared sidebar (`32fc27d`), with a gold sub-label restoration follow-up (`a1ed729`). Head: `d712d47` on `origin/main`. Working tree clean.
