@@ -55,6 +55,7 @@ import AdminExpenses from "./pages/admin/AdminExpenses";
 import AdminPnL from "./pages/admin/AdminPnL";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import { useAuth } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient();
@@ -84,6 +85,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <ActivityTrackerMount />
+          <PWAInstallPrompt />
           <GhostModeShell>
           <Routes>
             <Route path="/auth" element={<Auth />} />
