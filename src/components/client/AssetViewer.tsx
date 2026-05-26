@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { createPortal } from "react-dom";
 import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import ssIcon from "@/assets/ss-icon.png";
 import { preloadImages } from "@/components/ui/SmartImage";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -941,7 +942,61 @@ export function Lightbox({
   // is visible underneath. Reset on src change so round-to-round swaps
   // re-trigger the fade.
   const [fullResLoaded, setFullResLoaded] = useState(false);
+  // Real-byte progress for the high-res load (fetch + stream reader, below).
+  // totalBytes null = server omitted Content-Length → indeterminate bar.
+  // fetchFailed = CORS/network error → fall back to loading `src` directly.
+  const [loadedBytes, setLoadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState<number | null>(null);
+  const [streamedUrl, setStreamedUrl] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
   useEffect(() => { setFullResLoaded(false); }, [src]);
+
+  // Stream the full-res image so we can report actual bytes received vs total.
+  // On success the <img> is handed a blob: URL (instant decode — bytes are
+  // already in memory). Any fetch/CORS/network failure flips `fetchFailed`,
+  // and the <img> falls back to loading `src` directly (the original
+  // mechanism) so the lightbox never breaks. The blob URL is revoked on src
+  // change / unmount to avoid leaks.
+  useEffect(() => {
+    setLoadedBytes(0);
+    setTotalBytes(null);
+    setFetchFailed(false);
+    setStreamedUrl(null);
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(src, { signal: controller.signal });
+        if (!res.ok || !res.body) throw new Error(`status ${res.status}`);
+        const len = res.headers.get("Content-Length");
+        const total = len ? parseInt(len, 10) : NaN;
+        if (!cancelled) setTotalBytes(Number.isFinite(total) && total > 0 ? total : null);
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            if (!cancelled) setLoadedBytes(received);
+          }
+        }
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(new Blob(chunks));
+        setStreamedUrl(objectUrl);
+      } catch {
+        if (!cancelled) setFetchFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
 
   // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
   // High-end CGI review wants the image on the whole monitor, not just the
@@ -2454,6 +2509,48 @@ export function Lightbox({
         />
       )}
 
+      {/* High-res loading overlay: glowing Silvershadow logo + real-byte
+          progress. Fades out once the full-res image decodes (the image then
+          fades in). Indeterminate (pulsing, no numbers) when the server omits
+          Content-Length or the fetch fell back to a direct load. */}
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 transition-opacity duration-300",
+          fullResLoaded ? "opacity-0" : "opacity-100",
+        )}
+      >
+        <img
+          src={ssIcon}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="h-12 w-12 select-none animate-brand-pulse"
+        />
+        <div className="flex flex-col items-center gap-2.5">
+          <div className="h-[3px] w-[60vw] max-w-[240px] overflow-hidden rounded-full bg-white/15">
+            {totalBytes && !fetchFailed ? (
+              <div
+                className="h-full rounded-full transition-[width] duration-150 ease-out"
+                style={{
+                  width: `${Math.min(100, Math.round((loadedBytes / (totalBytes || 1)) * 100))}%`,
+                  backgroundColor: "hsl(var(--gold))",
+                }}
+              />
+            ) : (
+              <div
+                className="h-full w-1/3 rounded-full animate-pulse"
+                style={{ backgroundColor: "hsl(var(--gold))" }}
+              />
+            )}
+          </div>
+          {totalBytes && !fetchFailed && (
+            <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-white/55 tabular-nums">
+              {(loadedBytes / 1048576).toFixed(1)} / {(totalBytes / 1048576).toFixed(1)} MB
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* Centered, transformed image */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div
@@ -2477,7 +2574,7 @@ export function Lightbox({
           )}
           <img
             ref={imgRef}
-            src={src}
+            src={fetchFailed ? src : (streamedUrl ?? undefined)}
             alt={alt}
             draggable={false}
             onLoad={() => setFullResLoaded(true)}
@@ -2537,7 +2634,7 @@ export function Lightbox({
               "max-h-[100vh] max-w-[100vw] object-contain transition-opacity duration-300",
               placeholderSrc
                 ? cn("absolute inset-0 m-auto", fullResLoaded ? "opacity-100" : "opacity-0")
-                : "block",
+                : cn("block", fullResLoaded ? "opacity-100" : "opacity-0"),
             )}
           />
 
