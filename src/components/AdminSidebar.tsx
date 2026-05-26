@@ -12,7 +12,7 @@ import {
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
 // Admin sidebar — grouped by audience.
-//   Group 1: Dashboard + Timeline (overview).
+//   Group 1: Overview + Timeline (overview).
 //   Group 2: Clients (clickable top-level) + their indented sub-routes.
 //   Group 3: Team (clickable top-level) + their indented sub-routes.
 //   Group 4: Finance (non-clickable label) + its indented sub-routes.
@@ -20,7 +20,7 @@ import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./
 const SECTIONS: SidebarNavSection[] = [
   {
     items: [
-      { path: "/admin",          label: "Dashboard", Icon: LayoutDashboard, matchActive: (p) => p === "/admin" },
+      { path: "/admin",          label: "Overview",  Icon: LayoutDashboard, matchActive: (p) => p === "/admin" },
       { path: "/admin/timeline", label: "Timeline",  Icon: CalendarDays    },
     ],
   },
