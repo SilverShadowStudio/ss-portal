@@ -8,6 +8,42 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 26 May 2026
+
+**Multi-user Phase 1** (Maybourne backlog 2/4, scoped to Phase 1: invites, role-based filtering, per-user pin colours/initials — Phase 2 live collaboration is a separate future task). Approach confirmed with Fred: **extend the existing `account_invitations` / `send-team-invitation` / `accept-invitation` / `TeamManagement` system — do not build a parallel one.** Role model: **`owner` stays the Client-Manager role** (UI labels it "Manager"); only `client_invitee` was added to the enum — no role backfill, no `is_account_owner` change.
+
+## Completed this session
+
+### Migrations applied + verified
+- `20260526000001_client_invitee_role_and_pin_colour.sql` — `ALTER TYPE app_role ADD VALUE 'client_invitee'`; `account_members.pin_colour TEXT`; scoped backfill of 4 existing client owners (project/partnership) to gold `#B89A6A` (the 1 freelancer/team owner left NULL).
+- `20260526000002_account_manager_read_gate.sql` — `is_account_manager(uuid)` SECURITY DEFINER (`role <> 'client_invitee'`); 5 `ALTER POLICY` swaps to it: agreements/invoices/quotation_documents SELECT + **orders SELECT + orders UPDATE** (accepting an order is a billing commitment → Manager-only).
+
+### Commit 1 (`5ec82b9`) — invite path
+- New `src/lib/clientMemberColours.ts` + byte-identical `supabase/functions/_shared/clientMemberColours.ts` (8-colour invitee palette + `CLIENT_MANAGER_PIN_COLOUR` gold + `nextInviteeColour`); `_shared/clientMemberInvite.ts` email template.
+- `send-team-invitation`: client-account branch creates a `client_invitee` pending invite, pre-provisions the invitee auth user + profile (names/position), sends a portal-domain magic link via Resend → `/accept-invite?token=`. Freelancer/team path unchanged.
+- `accept-invitation`: assigns next palette `pin_colour` on join + logs `client_member_joined`.
+- 5 `client_member_*` activity events + generated types updated.
+
+### Commit 2 (`86577c1`) — role management + UI
+- Edge fns `client-promote-member` (invitee→owner, gold), `client-demote-member` (owner→invitee, next palette colour; guards last manager), `client-remove-member` (blocks self + last manager; revokes pending invite; auth.users untouched). All manager-gated + deployed + download-verified.
+- `AuthContext` exposes `memberRole` + `isClientManager`. New `/team` page + `ManagerOnlyRoute`. Sidebar shows Team to Managers of project/partnership accounts.
+
+### Sidebar reorder (`62fdee7`)
+- Team moved from main nav into the account menu, **between Documents and Settings** (Portfolio → Documents → Team → Settings). Same Manager-only gating.
+
+### Test data seeded (Test Client Company `5faeeafa…`, Manager `f7ec90ec…`)
+- Project "Madison Residence" (`56658b44…`, code TCC101, status `active`), scenes Kitchen (`066054c5…`, delivered) + Living Room (`2905c5f3…`, pending). Delivered Kitchen round (`b6935c50…`) with 3 pins + 1 comment each ("Can we soften the lighting here" / "Wood grain feels too uniform" / "Love this composition"); pending Living Room round (`332b5fe5…`). Paid invoice INV-TCC-001 £5000 (`e4e7fd29…`), signed quotation TCC-001 (`0faf3ee5…`), round_upload brief (`c7ceb34c…`). Kitchen asset (`36ccca56…`) repointed to the **CP113 Test Bedroom Dropbox render** so the lightbox shows a real image with pins overlaid.
+
+## Pending / in progress
+- **Commit 3 not started** — role-based sidebar filtering (hide Documents/Invoices/Orders from Invitees) + `ManagerOnlyRoute` on `/documents`,`/invoices`,`/orders` + per-user pin colour & initials in `AssetViewer`/`PinChat` + RLS verification report. Awaiting Fred's Manager-side browser verification of the seed before proceeding.
+
+## Decisions / things to watch
+- **Schema has no standalone account-level documents table** (backlog). Client documents are only: `agreements`, `quotation_documents`, `invoices`, and `round_uploads` (the last is scene/round-scoped briefing files). The Documents page is composed of agreements + quotations + invoices only. If clients ever need to upload generic, non-project account documents, that requires a **new `account_documents` table** (+ RLS + Documents-page surface). Not now — backlog.
+- `account_members.user_id` UNIQUE left in place (Phase 1): a user can belong to one account; cross-account invite returns a clean 409. Drop is a future migration if cross-account membership is needed.
+- `scripts/sql.sh` hardcoded fallback token is **stale** (CLI 401s with it); the valid token comes from the env `SUPABASE_ACCESS_TOKEN`. Deploy with the env token, not an inline override.
+
+---
+
 # Session — 25 May 2026
 
 Single-thread session: added **Progressive Web App (PWA) support** so clients can install the portal to their home screen (mobile) or as a chromeless desktop window. Strictly additive — no existing routes, components, auth flow, business logic, or styling were changed. One commit (`2a71aed`), three existing files touched (additively) plus five new files. No schema changes, no migrations, no edge functions, no new committed dependencies. Head: `2a71aed` on `origin/main`. Working tree clean; `git diff origin/main..HEAD` empty.
