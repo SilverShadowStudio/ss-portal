@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { nextInviteeColour } from '../_shared/clientMemberColours.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,11 +95,24 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!existingMember) {
+    // For Client-Invitees, assign the next available pen colour from the
+    // palette (computed from the colours already used in this account).
+    let pinColour: string | null = null
+    if (invite.role === 'client_invitee') {
+      const { data: usedRows } = await admin
+        .from('account_members')
+        .select('pin_colour')
+        .eq('account_id', invite.account_id)
+      pinColour = nextInviteeColour(
+        (usedRows ?? []).map((r: { pin_colour: string | null }) => r.pin_colour),
+      )
+    }
     const { error: insertError } = await admin.from('account_members').insert({
       account_id: invite.account_id,
       user_id: user.id,
       role: invite.role,
       joined_at: new Date().toISOString(),
+      ...(pinColour ? { pin_colour: pinColour } : {}),
     })
     if (insertError) {
       console.error('Failed to add account member', insertError)
@@ -149,6 +163,32 @@ Deno.serve(async (req) => {
     event_type: 'invitation_accepted',
     metadata: { invitation_id: invite.id },
   })
+
+  // Phase 1 multi-user: record the join for Client-Invitees (best-effort).
+  if (invite.role === 'client_invitee') {
+    const { data: prof } = await admin
+      .from('profiles')
+      .select('first_name, last_name, full_name')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const joinerName =
+      prof?.full_name ||
+      [prof?.first_name, prof?.last_name].filter(Boolean).join(' ') ||
+      user.email ||
+      null
+    await admin
+      .from('activity_log')
+      .insert({
+        actor_user_id: user.id,
+        actor_name: joinerName,
+        actor_role: 'client',
+        action: 'client_member_joined',
+        description: 'Joined the team',
+        entity_type: 'account_member',
+        metadata: { account_id: invite.account_id, invitation_id: invite.id },
+      })
+      .then(() => {}, () => {})
+  }
 
   return json({ success: true, accountId: invite.account_id })
 })

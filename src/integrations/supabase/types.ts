@@ -74,6 +74,7 @@ export type Database = {
           joined_at: string
           last_login_at: string | null
           last_login_ip: string | null
+          pin_colour: string | null
           role: Database["public"]["Enums"]["app_role"]
           updated_at: string
           user_id: string
@@ -87,6 +88,7 @@ export type Database = {
           joined_at?: string
           last_login_at?: string | null
           last_login_ip?: string | null
+          pin_colour?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string
           user_id: string
@@ -100,6 +102,7 @@ export type Database = {
           joined_at?: string
           last_login_at?: string | null
           last_login_ip?: string | null
+          pin_colour?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string
           user_id?: string
@@ -2094,7 +2097,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "client" | "owner" | "user"
+      app_role: "admin" | "client" | "owner" | "user" | "team" | "client_invitee"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2222,7 +2225,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "client", "owner", "user"],
+      app_role: ["admin", "client", "owner", "user", "team", "client_invitee"],
     },
   },
 } as const

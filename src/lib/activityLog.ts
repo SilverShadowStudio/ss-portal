@@ -27,6 +27,11 @@ export type ActivityAction =
   | "team_contract_sent"
   | "team_contract_signed"
   | "team_contract_declined"
+  | "client_member_invited"
+  | "client_member_joined"
+  | "client_member_promoted"
+  | "client_member_demoted"
+  | "client_member_removed"
   | "dropbox_file_received";
 
 /** Shared badge labels used by both the dashboard preview and the full log page. */
@@ -54,6 +59,11 @@ export const ACTION_LABELS: Record<string, string> = {
   team_contract_sent: "Contract",
   team_contract_signed: "Contract",
   team_contract_declined: "Contract",
+  client_member_invited: "Member",
+  client_member_joined: "Member",
+  client_member_promoted: "Member",
+  client_member_demoted: "Member",
+  client_member_removed: "Member",
   dropbox_file_received: "Delivery",
 };
 
