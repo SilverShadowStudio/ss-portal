@@ -1137,6 +1137,10 @@ export function Lightbox({
   const [userId, setUserId] = useState<string | null>(null);
   // Map of user_id -> first-name initial, used inside the pin bubble.
   const [pinInitials, setPinInitials] = useState<Record<string, string>>({});
+  // Map of user_id -> assigned pin colour (account_members.pin_colour:
+  // Manager = brand gold, Invitee = palette). Drives per-author pin + stroke
+  // colour. Unresolved authors fall back to gold at render time.
+  const [pinColours, setPinColours] = useState<Record<string, string>>({});
   const [annotateMode, setAnnotateMode] = useState(!isLocked);
   const { toast } = useToast();
   const { isAdmin } = useUserRole();
@@ -1619,6 +1623,41 @@ export function Lightbox({
       cancelled = true;
     };
   }, [pins, pinInitials]);
+
+  // Resolve each pin/stroke author's assigned colour from account_members.
+  // Covers pin authors, stroke authors, and the current user (their in-flight
+  // drawing). Unresolved ids are marked gold so we don't refetch every render.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        [
+          ...pins.map((p) => p.created_by),
+          ...strokes.map((s) => s.created_by),
+          userId,
+        ].filter(Boolean) as string[],
+      ),
+    ).filter((id) => !(id in pinColours));
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("account_members")
+        .select("user_id, pin_colour")
+        .in("user_id", ids);
+      if (cancelled || error) return;
+      setPinColours((prev) => {
+        const next = { ...prev };
+        for (const row of (data ?? []) as { user_id: string; pin_colour: string | null }[]) {
+          if (row.pin_colour) next[row.user_id] = row.pin_colour;
+        }
+        for (const id of ids) if (!(id in next)) next[id] = "#B89A6A";
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pins, strokes, userId, pinColours]);
 
   // Close on Escape — keeps parent component clean.
   useEffect(() => {
@@ -2860,8 +2899,13 @@ export function Lightbox({
                   if (isMine) return showMyDrawings;
                   return showOthersDrawings;
                 })
-                .map((s, i) =>
-                s.points.length === 0 ? null : (
+                .map((s, i) => {
+                  if (s.points.length === 0) return null;
+                  // Stroke colour = author's assigned colour (Manager gold,
+                  // Invitee palette); fall back to the pen colour for
+                  // non-member authors (studio/admin/legacy).
+                  const strokeColour = pinColours[s.created_by ?? ""] ?? PEN_COLOR;
+                  return (
                   <g key={s.id ?? i}>
                     {/* Hover preview — a brighter white halo behind the
                         stroke that's currently under the eraser cursor.
@@ -2881,7 +2925,7 @@ export function Lightbox({
                           strokeLinejoin="round"
                           vectorEffect="non-scaling-stroke"
                           style={{
-                            filter: `drop-shadow(0 0 4px ${PEN_COLOR})`,
+                            filter: `drop-shadow(0 0 4px ${strokeColour})`,
                             pointerEvents: "none",
                             opacity: 0.9,
                           }}
@@ -2891,19 +2935,19 @@ export function Lightbox({
                     <polyline
                       points={s.points.map((p) => `${p.x},${p.y}`).join(" ")}
                       fill="none"
-                      stroke={PEN_COLOR}
+                      stroke={strokeColour}
                       strokeWidth={3}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       vectorEffect="non-scaling-stroke"
                       style={{
-                        filter: `drop-shadow(0 0 2px ${PEN_COLOR})`,
+                        filter: `drop-shadow(0 0 2px ${strokeColour})`,
                         pointerEvents: "none",
                       }}
                     />
                   </g>
-                )
-              )}
+                  );
+                })}
             </svg>
           )}
 
@@ -2950,6 +2994,7 @@ export function Lightbox({
                       active={isOpen}
                       initial={pinInitials[p.created_by] ?? ""}
                       mine={!!userId && p.created_by === userId}
+                      colour={pinColours[p.created_by] ?? "#B89A6A"}
                       canDelete={canDeletePin}
                       onRequestDelete={async (e) => {
                         e.stopPropagation();
@@ -3101,6 +3146,7 @@ function PinMarker({
   active,
   initial,
   mine,
+  colour,
   canDelete,
   onRequestDelete,
 }: {
@@ -3108,6 +3154,8 @@ function PinMarker({
   active: boolean;
   initial: string;
   mine?: boolean;
+  /** Pin author's assigned colour (Manager gold, Invitee palette). */
+  colour?: string;
   canDelete?: boolean;
   onRequestDelete?: (e: React.MouseEvent) => void;
 }) {
@@ -3173,15 +3221,13 @@ function PinMarker({
   const badgeTopPct = (badgeCySvg / SIZE) * 100;
 
   // Color scheme:
-  // - active (open): deep red regardless of ownership
-  // - mine (current user): white bulb with black initial
-  // - others: gold bulb with white initial
-  const fillColor = active
-    ? "#7a1f2b"
-    : mine
-    ? "#ffffff"
-    : "hsl(var(--gold))";
-  const textColor = active ? "#ffffff" : mine ? "#000000" : "#ffffff";
+  // - active (open): deep red regardless of author
+  // - otherwise: the pin author's assigned colour (Manager gold, Invitee
+  //   palette), so pins are identified by colour + initials. `mine` is kept
+  //   for callers but no longer drives the bulb colour.
+  void mine;
+  const fillColor = active ? "#7a1f2b" : (colour || "hsl(var(--gold))");
+  const textColor = "#ffffff";
 
   return (
     <div className="relative cursor-pointer group">

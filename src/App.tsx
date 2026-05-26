@@ -187,7 +187,9 @@ const App = () => (
               path="/documents"
               element={
                 <ProtectedClient>
-                  <Documents />
+                  <ManagerOnlyRoute>
+                    <Documents />
+                  </ManagerOnlyRoute>
                 </ProtectedClient>
               }
             />
@@ -213,7 +215,9 @@ const App = () => (
               path="/invoices"
               element={
                 <ProtectedClient>
-                  <Invoices />
+                  <ManagerOnlyRoute>
+                    <Invoices />
+                  </ManagerOnlyRoute>
                 </ProtectedClient>
               }
             />
@@ -221,7 +225,9 @@ const App = () => (
               path="/orders"
               element={
                 <ProtectedClient>
-                  <Orders />
+                  <ManagerOnlyRoute>
+                    <Orders />
+                  </ManagerOnlyRoute>
                 </ProtectedClient>
               }
             />

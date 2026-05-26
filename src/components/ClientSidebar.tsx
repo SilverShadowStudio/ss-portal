@@ -73,15 +73,20 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         { label: "Log off", onClick: handleSignOut, Icon: LogOut },
       ]
     : [
-        // Overview + Orders only apply to the lane-based partnership model.
-        // Project clients see Documents and Settings, then the system items.
+        // Overview is shown to partnership clients. Orders + Documents are
+        // finance/legal surfaces → Managers only (Invitees are also blocked at
+        // the route + RLS layers). Team is Managers only. Settings stays for all.
         ...(accountType === "project"
           ? []
-          : [
+          : ([
               { label: "Overview", onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard", Icon: LayoutDashboard },
-              { label: "Orders",   onClick: () => navigate("/orders"),    active: location.pathname === "/orders",   separatorAfter: true, Icon: Package },
-            ] as SidebarAccountMenuItem[]),
-        { label: "Documents",  onClick: () => navigate("/documents"),  active: location.pathname === "/documents", Icon: FileText },
+              ...(isClientManager
+                ? [{ label: "Orders", onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true, Icon: Package }]
+                : []),
+            ] as SidebarAccountMenuItem[])),
+        ...(isClientManager
+          ? ([{ label: "Documents", onClick: () => navigate("/documents"), active: location.pathname === "/documents", Icon: FileText }] as SidebarAccountMenuItem[])
+          : []),
         // Team — Managers of project/partnership accounts only (Invitees never see it).
         ...(isClientManager
           ? ([{ label: "Team", onClick: () => navigate("/team"), active: location.pathname === "/team", Icon: Users }] as SidebarAccountMenuItem[])

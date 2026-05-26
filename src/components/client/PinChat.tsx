@@ -60,6 +60,11 @@ export function PinChat({
   canDelete,
 }: PinChatProps) {
   const [messages, setMessages] = useState<PinMessage[]>([]);
+  // Per-author initials + assigned colour (Manager gold, Invitee palette),
+  // matching the pin/stroke colours on the image.
+  const [authorMeta, setAuthorMeta] = useState<
+    Record<string, { initials: string; colour: string }>
+  >({});
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -113,6 +118,41 @@ export function PinChat({
     const el = scrollerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
+
+  // Resolve initials (profiles) + colour (account_members.pin_colour) for each
+  // message author so the thread mirrors the on-image pin/stroke colours.
+  useEffect(() => {
+    const ids = Array.from(new Set(messages.map((m) => m.user_id))).filter(
+      (id) => id && !(id in authorMeta),
+    );
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: profs }, { data: members }] = await Promise.all([
+        supabase.from("profiles").select("user_id, first_name, last_name, full_name").in("user_id", ids),
+        supabase.from("account_members").select("user_id, pin_colour").in("user_id", ids),
+      ]);
+      if (cancelled) return;
+      const colourById: Record<string, string> = {};
+      for (const r of (members ?? []) as { user_id: string; pin_colour: string | null }[]) {
+        if (r.pin_colour) colourById[r.user_id] = r.pin_colour;
+      }
+      setAuthorMeta((prev) => {
+        const next = { ...prev };
+        for (const r of (profs ?? []) as { user_id: string; first_name: string | null; last_name: string | null; full_name: string | null }[]) {
+          const first = r.first_name?.trim() ?? "";
+          const last = r.last_name?.trim() ?? "";
+          let initials = first || last
+            ? `${first[0] ?? ""}${last[0] ?? ""}`
+            : (r.full_name?.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("") ?? "");
+          next[r.user_id] = { initials: (initials || "?").toUpperCase(), colour: colourById[r.user_id] ?? "#B89A6A" };
+        }
+        for (const id of ids) if (!(id in next)) next[id] = { initials: "?", colour: colourById[id] ?? "#B89A6A" };
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [messages, authorMeta]);
 
   async function uploadAttachments(files: File[]): Promise<Attachment[]> {
     if (!currentUserId || files.length === 0) return [];
@@ -263,13 +303,21 @@ export function PinChat({
             <div
               key={m.id}
               className={cn(
-                "flex w-full",
+                "flex w-full items-end gap-1.5",
                 mine ? "justify-end" : "justify-start"
               )}
             >
+              {!mine && (
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-medium font-sans text-white"
+                  style={{ backgroundColor: authorMeta[m.user_id]?.colour ?? "#B89A6A" }}
+                >
+                  {authorMeta[m.user_id]?.initials ?? "?"}
+                </span>
+              )}
               <div
                 className={cn(
-                  "max-w-[88%] rounded-xl px-2.5 py-1.5 text-[12px] leading-snug font-sans shadow-sm",
+                  "max-w-[80%] rounded-xl px-2.5 py-1.5 text-[12px] leading-snug font-sans shadow-sm",
                   mine
                     ? "bg-[#1C1A17] text-gold border border-gold/40 rounded-br-sm"
                     : "bg-white/10 text-white/90 rounded-bl-sm border border-white/10"
@@ -329,6 +377,14 @@ export function PinChat({
                   })}
                 </p>
               </div>
+              {mine && (
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-medium font-sans text-white"
+                  style={{ backgroundColor: authorMeta[m.user_id]?.colour ?? "#B89A6A" }}
+                >
+                  {authorMeta[m.user_id]?.initials ?? "?"}
+                </span>
+              )}
             </div>
           );
         })}
