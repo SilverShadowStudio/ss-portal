@@ -101,6 +101,142 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "files", label: "Brief" },
 ];
 
+/**
+ * Streams an image URL via fetch + a stream reader so callers can report real
+ * bytes received vs total. Returns the URL to feed an <img> — a blob: URL once
+ * fully downloaded, or the original URL as a fallback on any fetch/CORS error
+ * so the image still loads (the lightbox / preview never breaks) — plus the
+ * byte counters. `fetchFailed` (or a missing Content-Length) ⇒ indeterminate
+ * progress (no numbers). Pass null/undefined to disable. The blob URL is
+ * revoked on src change / unmount.
+ */
+function useStreamedImage(url: string | null | undefined) {
+  const [loadedBytes, setLoadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState<number | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
+
+  useEffect(() => {
+    setLoadedBytes(0);
+    setTotalBytes(null);
+    setBlobUrl(null);
+    setFetchFailed(false);
+    if (!url) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok || !res.body) throw new Error(`status ${res.status}`);
+        const len = res.headers.get("Content-Length");
+        const total = len ? parseInt(len, 10) : NaN;
+        if (!cancelled) setTotalBytes(Number.isFinite(total) && total > 0 ? total : null);
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            if (!cancelled) setLoadedBytes(received);
+          }
+        }
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(new Blob(chunks));
+        setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) setFetchFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  const src = url ? (fetchFailed ? url : (blobUrl ?? undefined)) : undefined;
+  return { src, loadedBytes, totalBytes, fetchFailed };
+}
+
+/**
+ * Loading treatment shown over an image while it streams: a glowing (pulsing)
+ * Silvershadow logo, a thin gold progress bar, and a "X.X / Y.Y MB" readout.
+ * Indeterminate (pulsing bar, no numbers) when bytes are unknown. `onDark`
+ * forces the light-on-black palette (the lightbox is always black); otherwise
+ * it adapts to the active theme for the themed preview surface.
+ */
+function ImageLoadOverlay({
+  visible,
+  loadedBytes,
+  totalBytes,
+  indeterminate,
+  onDark = false,
+}: {
+  visible: boolean;
+  loadedBytes: number;
+  totalBytes: number | null;
+  indeterminate: boolean;
+  onDark?: boolean;
+}) {
+  const determinate = totalBytes != null && !indeterminate;
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 transition-opacity duration-300",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+    >
+      <img
+        src={ssIcon}
+        alt=""
+        aria-hidden
+        draggable={false}
+        className={cn(
+          "h-12 w-12 select-none animate-brand-pulse",
+          onDark ? "brightness-0 invert" : "brightness-0 dark:invert",
+        )}
+      />
+      <div className="flex flex-col items-center gap-2.5">
+        <div
+          className={cn(
+            "h-[3px] w-[60vw] max-w-[240px] overflow-hidden rounded-full",
+            onDark ? "bg-white/15" : "bg-foreground/15",
+          )}
+        >
+          {determinate ? (
+            <div
+              className="h-full rounded-full transition-[width] duration-150 ease-out"
+              style={{
+                width: `${Math.min(100, Math.round((loadedBytes / (totalBytes || 1)) * 100))}%`,
+                backgroundColor: "hsl(var(--gold))",
+              }}
+            />
+          ) : (
+            <div
+              className="h-full w-1/3 rounded-full animate-pulse"
+              style={{ backgroundColor: "hsl(var(--gold))" }}
+            />
+          )}
+        </div>
+        {determinate && (
+          <p
+            className={cn(
+              "font-sans text-[10px] uppercase tracking-[0.22em] tabular-nums",
+              onDark ? "text-white/55" : "text-foreground/55",
+            )}
+          >
+            {(loadedBytes / 1048576).toFixed(1)} / {(totalBytes / 1048576).toFixed(1)} MB
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber, onClose, onRequestNextRound, nextRoundNumber, deliveredAt, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: AssetViewerProps) {
   const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -119,6 +255,8 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   // because the grid view already fetched the same path's thumbnail).
   const [lowResUrl, setLowResUrl] = useState<string | null>(null);
   const [fullResLoaded, setFullResLoaded] = useState(false);
+  // Byte-progress stream for the preview's full-res image (shared with the lightbox).
+  const thumbStream = useStreamedImage(thumbnailUrl);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -547,46 +685,50 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             className="group relative block w-full overflow-hidden bg-secondary disabled:cursor-default cursor-zoom-in"
             aria-label="View full size"
           >
-            {thumbnailUrl || lowResUrl ? (
-              <div className="relative block w-full">
-                {/* Low-res placeholder establishes the box dimensions and
-                    shows immediately (browser cache hit from grid view).
-                    Stays visible underneath the full-res image. */}
-                {lowResUrl && (
-                  <img
-                    src={lowResUrl}
-                    alt=""
-                    aria-hidden
-                    className="block w-full h-auto"
-                    draggable={false}
-                  />
-                )}
-                {thumbnailUrl && (
-                  <img
-                    src={thumbnailUrl}
-                    alt={selectedAsset?.filename}
-                    draggable={false}
-                    onLoad={(e) => {
-                      const img = e.currentTarget;
-                      if (img.naturalWidth && img.naturalHeight) {
-                        setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
-                      }
-                      setFullResLoaded(true);
-                    }}
-                    className={cn(
-                      "transition-opacity duration-300",
-                      lowResUrl
-                        ? cn("absolute inset-0 w-full h-full object-contain", fullResLoaded ? "opacity-100" : "opacity-0")
-                        : "block w-full h-auto",
-                    )}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="flex aspect-[16/10] items-center justify-center">
-                <BrandLoader size="md" />
-              </div>
-            )}
+            <div className="relative block w-full">
+              {/* Low-res placeholder establishes the box dimensions and shows
+                  immediately (browser cache hit from grid view); otherwise a
+                  16/10 box holds the loading overlay until the full-res image
+                  decodes. */}
+              {lowResUrl ? (
+                <img
+                  src={lowResUrl}
+                  alt=""
+                  aria-hidden
+                  className="block w-full h-auto"
+                  draggable={false}
+                />
+              ) : (
+                !fullResLoaded && <div className="aspect-[16/10] w-full" aria-hidden />
+              )}
+              {thumbStream.src && (
+                <img
+                  src={thumbStream.src}
+                  alt={selectedAsset?.filename}
+                  draggable={false}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (img.naturalWidth && img.naturalHeight) {
+                      setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+                    }
+                    setFullResLoaded(true);
+                  }}
+                  className={cn(
+                    "transition-opacity duration-300",
+                    lowResUrl
+                      ? cn("absolute inset-0 w-full h-full object-contain", fullResLoaded ? "opacity-100" : "opacity-0")
+                      : cn("w-full h-auto", fullResLoaded ? "block opacity-100" : "absolute inset-0 opacity-0"),
+                  )}
+                />
+              )}
+              {/* Byte-progress overlay: glowing logo + gold bar + MB readout. */}
+              <ImageLoadOverlay
+                visible={!fullResLoaded}
+                loadedBytes={thumbStream.loadedBytes}
+                totalBytes={thumbStream.totalBytes}
+                indeterminate={thumbStream.fetchFailed}
+              />
+            </div>
           </button>
 
           {/* Metadata row — original dimensions, file size and format. */}
@@ -942,61 +1084,12 @@ export function Lightbox({
   // is visible underneath. Reset on src change so round-to-round swaps
   // re-trigger the fade.
   const [fullResLoaded, setFullResLoaded] = useState(false);
-  // Real-byte progress for the high-res load (fetch + stream reader, below).
-  // totalBytes null = server omitted Content-Length → indeterminate bar.
-  // fetchFailed = CORS/network error → fall back to loading `src` directly.
-  const [loadedBytes, setLoadedBytes] = useState(0);
-  const [totalBytes, setTotalBytes] = useState<number | null>(null);
-  const [streamedUrl, setStreamedUrl] = useState<string | null>(null);
-  const [fetchFailed, setFetchFailed] = useState(false);
   useEffect(() => { setFullResLoaded(false); }, [src]);
 
-  // Stream the full-res image so we can report actual bytes received vs total.
-  // On success the <img> is handed a blob: URL (instant decode — bytes are
-  // already in memory). Any fetch/CORS/network failure flips `fetchFailed`,
-  // and the <img> falls back to loading `src` directly (the original
-  // mechanism) so the lightbox never breaks. The blob URL is revoked on src
-  // change / unmount to avoid leaks.
-  useEffect(() => {
-    setLoadedBytes(0);
-    setTotalBytes(null);
-    setFetchFailed(false);
-    setStreamedUrl(null);
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    const controller = new AbortController();
-    (async () => {
-      try {
-        const res = await fetch(src, { signal: controller.signal });
-        if (!res.ok || !res.body) throw new Error(`status ${res.status}`);
-        const len = res.headers.get("Content-Length");
-        const total = len ? parseInt(len, 10) : NaN;
-        if (!cancelled) setTotalBytes(Number.isFinite(total) && total > 0 ? total : null);
-        const reader = res.body.getReader();
-        const chunks: Uint8Array[] = [];
-        let received = 0;
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            received += value.length;
-            if (!cancelled) setLoadedBytes(received);
-          }
-        }
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(new Blob(chunks));
-        setStreamedUrl(objectUrl);
-      } catch {
-        if (!cancelled) setFetchFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [src]);
+  // Byte-progress streaming for the full-res image, shared with the preview
+  // card (see useStreamedImage): blob: URL on success, direct-URL fallback on
+  // any fetch/CORS error so the lightbox never breaks.
+  const fullRes = useStreamedImage(src);
 
   // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
   // High-end CGI review wants the image on the whole monitor, not just the
@@ -2509,47 +2602,16 @@ export function Lightbox({
         />
       )}
 
-      {/* High-res loading overlay: glowing Silvershadow logo + real-byte
-          progress. Fades out once the full-res image decodes (the image then
-          fades in). Indeterminate (pulsing, no numbers) when the server omits
-          Content-Length or the fetch fell back to a direct load. */}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 transition-opacity duration-300",
-          fullResLoaded ? "opacity-0" : "opacity-100",
-        )}
-      >
-        <img
-          src={ssIcon}
-          alt=""
-          aria-hidden
-          draggable={false}
-          className="h-12 w-12 select-none animate-brand-pulse"
-        />
-        <div className="flex flex-col items-center gap-2.5">
-          <div className="h-[3px] w-[60vw] max-w-[240px] overflow-hidden rounded-full bg-white/15">
-            {totalBytes && !fetchFailed ? (
-              <div
-                className="h-full rounded-full transition-[width] duration-150 ease-out"
-                style={{
-                  width: `${Math.min(100, Math.round((loadedBytes / (totalBytes || 1)) * 100))}%`,
-                  backgroundColor: "hsl(var(--gold))",
-                }}
-              />
-            ) : (
-              <div
-                className="h-full w-1/3 rounded-full animate-pulse"
-                style={{ backgroundColor: "hsl(var(--gold))" }}
-              />
-            )}
-          </div>
-          {totalBytes && !fetchFailed && (
-            <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-white/55 tabular-nums">
-              {(loadedBytes / 1048576).toFixed(1)} / {(totalBytes / 1048576).toFixed(1)} MB
-            </p>
-          )}
-        </div>
-      </div>
+      {/* High-res loading overlay: glowing logo + real-byte progress (shared
+          with the preview card). onDark = always light-on-black for the
+          lightbox's fixed black surface. */}
+      <ImageLoadOverlay
+        visible={!fullResLoaded}
+        loadedBytes={fullRes.loadedBytes}
+        totalBytes={fullRes.totalBytes}
+        indeterminate={fullRes.fetchFailed}
+        onDark
+      />
 
       {/* Centered, transformed image */}
       <div className="absolute inset-0 flex items-center justify-center">
@@ -2574,7 +2636,7 @@ export function Lightbox({
           )}
           <img
             ref={imgRef}
-            src={fetchFailed ? src : (streamedUrl ?? undefined)}
+            src={fullRes.src}
             alt={alt}
             draggable={false}
             onLoad={() => setFullResLoaded(true)}
