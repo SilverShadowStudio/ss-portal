@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
 import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
+import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
 
 interface Agreement {
   id: string;
@@ -54,6 +55,14 @@ interface Invoice {
   created_at: string;
   type: string;
   stripe_checkout_url: string | null;
+  account_id: string | null;
+  project_id: string | null;
+  subtotal: number | null;
+  vat_rate: number | null;
+  vat_amount: number | null;
+  notes: string | null;
+  bank_account: string | null;
+  line_items: Array<{ description?: string; quantity?: number; unit_price?: number }>;
 }
 
 interface OrderSummary {
@@ -153,6 +162,12 @@ function toViewerData(q: Quotation): QuotationViewerData {
   } as QuotationViewerData;
 }
 
+function toInvoiceViewerData(inv: Invoice): InvoiceViewerData {
+  // The viewer enriches client company/address/contact from account_id; the
+  // structured fields here drive the rendered A4 document.
+  return { ...inv } as InvoiceViewerData;
+}
+
 interface FreelancerDocument {
   id: string;
   document_type: "nda" | "service_agreement";
@@ -176,6 +191,9 @@ export default function Documents() {
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationViewerData | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const [projectNames, setProjectNames] = useState<Record<string, string>>({});
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceViewerData | null>(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   // Accordion — only one section open at a time. Null until the first data
   // load picks the best initial section based on the priorities below.
@@ -295,7 +313,7 @@ export default function Documents() {
         // direct URL. The visible vocabulary is "Outstanding" / "Paid".
         supabase
           .from("invoices")
-          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url")
+          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url, account_id, project_id, subtotal, vat_rate, vat_amount, notes, bank_account, line_items")
           .in("status", ["sent", "partially_paid", "paid"])
           .order("created_at", { ascending: false }),
         supabase
@@ -307,6 +325,21 @@ export default function Documents() {
       setQuotations((quots || []) as Quotation[]);
       setInvoices((invs || []) as Invoice[]);
       setOrders(ords || []);
+
+      // Resolve project names for quotation + invoice rows (project_id → name).
+      const projectIds = Array.from(new Set([
+        ...((quots || []) as Quotation[]).map((q) => q.project_id),
+        ...((invs || []) as Invoice[]).map((i) => i.project_id),
+      ].filter(Boolean) as string[]));
+      if (projectIds.length > 0) {
+        const { data: projs } = await supabase
+          .from("projects")
+          .select("id, name")
+          .in("id", projectIds);
+        const map: Record<string, string> = {};
+        for (const p of (projs || []) as { id: string; name: string }[]) map[p.id] = p.name;
+        setProjectNames(map);
+      }
     } catch {
       toast({ title: "Could not load documents", variant: "destructive" });
     } finally {
@@ -568,7 +601,9 @@ export default function Documents() {
                           className="font-sans uppercase text-foreground/40 mt-1"
                           style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0 }}
                         >
-                          {formatDateShort(q.issued_at || q.created_at)}
+                          {q.project_id && projectNames[q.project_id]
+                            ? `${projectNames[q.project_id]} · ${formatDateShort(q.issued_at || q.created_at)}`
+                            : formatDateShort(q.issued_at || q.created_at)}
                         </p>
                       </div>
                       {total != null && (
@@ -616,48 +651,58 @@ export default function Documents() {
                   const isOverdue = overdueDays > 0;
                   return (
                     <div key={inv.id} className="flex items-center gap-5 py-4 border-t border-border/30">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2" style={{ paddingLeft: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedInvoice(toInvoiceViewerData(inv)); setInvoiceOpen(true); }}
+                        className="group flex flex-1 items-center gap-5 min-w-0 text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2" style={{ paddingLeft: 0 }}>
+                            <p
+                              className="font-serif text-foreground group-hover:text-gold transition-colors"
+                              style={{ fontSize: 13, margin: 0, paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
+                            >
+                              {num}
+                            </p>
+                            {inv.type !== "standalone" && (
+                              <span className="font-sans uppercase text-foreground/35" style={{ fontSize: 8, letterSpacing: "0.16em" }}>
+                                {inv.type === "deposit" ? "Deposit" : "Balance"}
+                              </span>
+                            )}
+                          </div>
                           <p
-                            className="font-serif text-foreground"
-                            style={{ fontSize: 13, margin: 0, paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
+                            className="font-sans uppercase text-foreground/40 mt-1"
+                            style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
                           >
-                            {num}
+                            {(() => {
+                              const dateStr = inv.due_date
+                                ? `Due ${formatDateShort(inv.due_date)}`
+                                : formatDateShort(inv.issued_at || inv.created_at);
+                              const proj = inv.project_id ? projectNames[inv.project_id] : undefined;
+                              return proj ? `${proj} · ${dateStr}` : dateStr;
+                            })()}
                           </p>
-                          {inv.type !== "standalone" && (
-                            <span className="font-sans uppercase text-foreground/35" style={{ fontSize: 8, letterSpacing: "0.16em" }}>
-                              {inv.type === "deposit" ? "Deposit" : "Balance"}
-                            </span>
+                        </div>
+                        <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
+                          {formatCurrency(inv.amount, inv.currency || "GBP")}
+                        </p>
+                        <div className="shrink-0 flex flex-col items-end" style={{ minWidth: 96 }}>
+                          <p
+                            className={`font-sans uppercase ${display.tone === "action" ? "text-gold" : "text-foreground/40"}`}
+                            style={{ fontSize: 9, letterSpacing: "0.24em" }}
+                          >
+                            {display.label}
+                          </p>
+                          {isOverdue && (
+                            <p
+                              className="font-sans uppercase text-foreground/40"
+                              style={{ fontSize: 9, letterSpacing: "0.24em", marginTop: 4 }}
+                            >
+                              {overdueDays} {overdueDays === 1 ? "Day" : "Days"} Overdue
+                            </p>
                           )}
                         </div>
-                        <p
-                          className="font-sans uppercase text-foreground/40 mt-1"
-                          style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0, fontStyle: isOverdue ? "italic" : "normal" }}
-                        >
-                          {inv.due_date
-                            ? `Due ${formatDateShort(inv.due_date)}`
-                            : formatDateShort(inv.issued_at || inv.created_at)}
-                        </p>
-                      </div>
-                      <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
-                        {formatCurrency(inv.amount, inv.currency || "GBP")}
-                      </p>
-                      <div className="shrink-0 flex flex-col items-end" style={{ minWidth: 96 }}>
-                        <p
-                          className={`font-sans uppercase ${display.tone === "action" ? "text-gold" : "text-foreground/40"}`}
-                          style={{ fontSize: 9, letterSpacing: "0.24em" }}
-                        >
-                          {display.label}
-                        </p>
-                        {isOverdue && (
-                          <p
-                            className="font-sans uppercase text-foreground/40"
-                            style={{ fontSize: 9, letterSpacing: "0.24em", marginTop: 4 }}
-                          >
-                            {overdueDays} {overdueDays === 1 ? "Day" : "Days"} Overdue
-                          </p>
-                        )}
-                      </div>
+                      </button>
                       {canPay && (
                         <button
                           type="button"
@@ -692,6 +737,15 @@ export default function Documents() {
         onOpenChange={(o) => {
           setQuotationOpen(o);
           if (!o) setSelectedQuotation(null);
+        }}
+      />
+
+      <InvoiceViewer
+        invoice={selectedInvoice}
+        open={invoiceOpen}
+        onOpenChange={(o) => {
+          setInvoiceOpen(o);
+          if (!o) setSelectedInvoice(null);
         }}
       />
     </ClientLayout>
