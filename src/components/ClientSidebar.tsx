@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  CalendarDays, Inbox, Images, FileText,
+  CalendarDays, Inbox, Images, FileText, Users,
   LayoutDashboard, Package, Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
@@ -22,6 +22,10 @@ const TEAM_NAV: SidebarNavItem[] = [
   { path: "/documents", label: "Documents",  Icon: FileText },
 ];
 
+// Client-team management — appended to the main nav only for Managers of
+// project/partnership accounts (Invitees never see it).
+const TEAM_ITEM: SidebarNavItem = { path: "/team", label: "Team", Icon: Users };
+
 interface ClientSidebarProps {
   expanded?: boolean;
   onToggleExpand?: () => void;
@@ -31,7 +35,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { user, signOut, accountType } = useAuth();
+  const { user, signOut, accountType, isClientManager } = useAuth();
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
@@ -60,11 +64,15 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     navigate("/auth");
   };
 
-  const navItems = accountType === "team"
+  const baseNav = accountType === "team"
     ? TEAM_NAV
     : accountType === "project"
     ? PROJECT_NAV
     : PARTNERSHIP_NAV;
+  const navItems =
+    (accountType === "project" || accountType === "partnership") && isClientManager
+      ? [...baseNav, TEAM_ITEM]
+      : baseNav;
 
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [

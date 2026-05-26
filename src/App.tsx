@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ProtectedClient } from "@/components/ProtectedClient";
+import { ManagerOnlyRoute } from "@/components/ManagerOnlyRoute";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
 import { RootRedirect } from "@/components/RootRedirect";
 import Index from "./pages/Index";
@@ -18,6 +19,7 @@ import Messages from "./pages/Messages";
 import Total from "./pages/Total";
 import Documents from "./pages/Documents";
 import Account from "./pages/Account";
+import Team from "./pages/Team";
 import Invoices from "./pages/Invoices";
 import InvoicePreview from "./pages/InvoicePreview";
 import Auth from "./pages/Auth";
@@ -194,6 +196,16 @@ const App = () => (
               element={
                 <ProtectedClient>
                   <Account />
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/team"
+              element={
+                <ProtectedClient>
+                  <ManagerOnlyRoute>
+                    <Team />
+                  </ManagerOnlyRoute>
                 </ProtectedClient>
               }
             />
