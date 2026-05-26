@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { InvoiceLineItem } from "@/lib/invoiceUtils";
 import { lineItemsTotal, formatCurrency } from "@/lib/invoiceUtils";
+import { DocumentAutofillDropzone, matchAccountByName, AutoPill } from "@/components/admin/DocumentAutofillDropzone";
 
 interface AccountOption {
   id: string;
@@ -74,6 +75,37 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
     { description: "CGI Still Visuals", quantity: 1, unit_price: 2500 },
   ]);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
+  const clearAuto = (k: string) =>
+    setAutoFilled((s) => { if (!s.has(k)) return s; const n = new Set(s); n.delete(k); return n; });
+
+  // Pre-fill from a Claude-extracted quotation. Every field stays editable.
+  // The studio's auto-generated quotation number is kept (extracted number
+  // ignored — the client-select effect regenerates it). Client is auto-selected
+  // only on a single fuzzy match; each scope group becomes one line-item row.
+  function handleExtracted(d: Record<string, any>) {
+    const next = new Set<string>();
+    const matched = matchAccountByName((d.client_company as string) || (d.client_name as string), accounts);
+    if (matched) { setAccountId(matched.id); next.add("client"); }
+    if (d.project_code) { setProjectName(String(d.project_code)); next.add("project"); }
+    if (typeof d.currency === "string" && ["GBP", "EUR", "USD"].includes(d.currency)) {
+      setCurrency(d.currency); next.add("currency");
+    }
+    if (typeof d.vat_rate === "number") { setVatRate(d.vat_rate); next.add("vatRate"); }
+    if (Array.isArray(d.scope_groups) && d.scope_groups.length > 0) {
+      setItems(d.scope_groups.map((g: any) => ({
+        description: [
+          String(g.label ?? "").trim(),
+          Array.isArray(g.scenes) && g.scenes.length ? g.scenes.join(", ") : "",
+        ].filter(Boolean).join(" — "),
+        quantity: Number(g.unit_count) || 1,
+        unit_price: Number(g.unit_price) || 0,
+      })));
+      next.add("items");
+    }
+    setAutoFilled(next);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -162,6 +194,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
 
   function updateItem(i: number, patch: Partial<InvoiceLineItem>) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+    clearAuto("items");
   }
 
   async function handleSave() {
@@ -275,10 +308,19 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {!quotation && (
+            <DocumentAutofillDropzone
+              documentType="quotation"
+              onExtracted={handleExtracted}
+              onLoadingChange={setExtracting}
+              disabled={saving}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Client</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); setProjectName(""); }} disabled={!!quotation}>
+              <Label>Client{autoFilled.has("client") && <AutoPill />}</Label>
+              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); setProjectName(""); clearAuto("client"); clearAuto("project"); }} disabled={!!quotation}>
                 <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   {accounts.map((a) => (
@@ -288,7 +330,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Project (optional)</Label>
+              <Label>Project (optional){autoFilled.has("project") && <AutoPill />}</Label>
               <Input
                 value={projectName}
                 onChange={(e) => {
@@ -296,6 +338,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
                   setProjectName(val);
                   const match = filteredProjects.find((p) => p.name === val);
                   setProjectId(match ? match.id : "none");
+                  clearAuto("project");
                 }}
                 placeholder={!accountId ? "Select client first" : filteredProjects.length > 0 ? "Type or select a project…" : "Type project name…"}
                 disabled={!accountId}
@@ -333,12 +376,12 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Scenes / line items</Label>
+              <Label>Scenes / line items{autoFilled.has("items") && <AutoPill />}</Label>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }])}
+                onClick={() => { setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]); clearAuto("items"); }}
               >
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add item
               </Button>
@@ -375,7 +418,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
                   size="icon"
                   variant="ghost"
                   className="col-span-1"
-                  onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => { setItems((prev) => prev.filter((_, idx) => idx !== i)); clearAuto("items"); }}
                   disabled={items.length === 1}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -413,8 +456,8 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Currency</Label>
-              <Select value={currency} onValueChange={setCurrency}>
+              <Label>Currency{autoFilled.has("currency") && <AutoPill />}</Label>
+              <Select value={currency} onValueChange={(v) => { setCurrency(v); clearAuto("currency"); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   <SelectItem value="GBP">GBP</SelectItem>
@@ -424,13 +467,13 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>VAT rate (%)</Label>
+              <Label>VAT rate (%){autoFilled.has("vatRate") && <AutoPill />}</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.5"
                 value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value))}
+                onChange={(e) => { setVatRate(Number(e.target.value)); clearAuto("vatRate"); }}
               />
             </div>
             <div className="space-y-2">
@@ -454,7 +497,7 @@ export function QuotationFormDialog({ open, onOpenChange, onSaved, quotation }: 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving || extracting}>
             {saving ? (quotation ? "Saving..." : "Creating...") : (quotation ? "Update quotation" : "Create quotation")}
           </Button>
         </DialogFooter>

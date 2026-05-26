@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { InvoiceLineItem } from "@/lib/invoiceUtils";
 import { lineItemsTotal, formatCurrency } from "@/lib/invoiceUtils";
 import { BANK_ACCOUNTS, DEFAULT_BANK_ACCOUNT_ID } from "@/lib/bankAccounts";
+import { DocumentAutofillDropzone, matchAccountByName, AutoPill } from "@/components/admin/DocumentAutofillDropzone";
 
 interface AccountOption {
   id: string;
@@ -59,6 +60,33 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
     { description: "", quantity: 1, unit_price: 0 },
   ]);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set());
+  const clearAuto = (k: string) =>
+    setAutoFilled((s) => { if (!s.has(k)) return s; const n = new Set(s); n.delete(k); return n; });
+
+  // Pre-fill from a Claude-extracted invoice document. Every field stays
+  // editable. The studio's own invoice number is kept (extracted number
+  // ignored); client is auto-selected only on a single fuzzy match.
+  function handleExtracted(d: Record<string, any>) {
+    const next = new Set<string>();
+    const matched = matchAccountByName((d.client_company as string) || (d.client_name as string), accounts);
+    if (matched) { setAccountId(matched.id); setProjectId("none"); next.add("client"); }
+    if (d.due_date) { setDueDate(String(d.due_date)); next.add("dueDate"); }
+    if (typeof d.currency === "string" && ["GBP", "EUR", "USD"].includes(d.currency)) {
+      setCurrency(d.currency); next.add("currency");
+    }
+    if (typeof d.vat_rate === "number") { setVatRate(d.vat_rate); next.add("vatRate"); }
+    if (Array.isArray(d.line_items) && d.line_items.length > 0) {
+      setItems(d.line_items.map((li: any) => ({
+        description: String(li.description ?? ""),
+        quantity: 1,
+        unit_price: Number(li.amount_net) || 0,
+      })));
+      next.add("items");
+    }
+    setAutoFilled(next);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +132,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
 
   function updateItem(i: number, patch: Partial<InvoiceLineItem>) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+    clearAuto("items");
   }
 
   async function handleSave() {
@@ -194,10 +223,17 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          <DocumentAutofillDropzone
+            documentType="invoice"
+            onExtracted={handleExtracted}
+            onLoadingChange={setExtracting}
+            disabled={saving}
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Client</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); }}>
+              <Label>Client{autoFilled.has("client") && <AutoPill />}</Label>
+              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setProjectId("none"); clearAuto("client"); }}>
                 <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   {accounts.map((a) => (
@@ -239,19 +275,19 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Due date</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <Label>Due date{autoFilled.has("dueDate") && <AutoPill />}</Label>
+              <Input type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); clearAuto("dueDate"); }} />
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Line items</Label>
+              <Label>Line items{autoFilled.has("items") && <AutoPill />}</Label>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }])}
+                onClick={() => { setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]); clearAuto("items"); }}
               >
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add item
               </Button>
@@ -288,7 +324,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
                   size="icon"
                   variant="ghost"
                   className="col-span-1"
-                  onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => { setItems((prev) => prev.filter((_, idx) => idx !== i)); clearAuto("items"); }}
                   disabled={items.length === 1}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -323,8 +359,8 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Currency</Label>
-              <Select value={currency} onValueChange={setCurrency}>
+              <Label>Currency{autoFilled.has("currency") && <AutoPill />}</Label>
+              <Select value={currency} onValueChange={(v) => { setCurrency(v); clearAuto("currency"); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="z-[200]">
                   <SelectItem value="GBP">GBP</SelectItem>
@@ -334,13 +370,13 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>VAT rate (%)</Label>
+              <Label>VAT rate (%){autoFilled.has("vatRate") && <AutoPill />}</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.5"
                 value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value))}
+                onChange={(e) => { setVatRate(Number(e.target.value)); clearAuto("vatRate"); }}
               />
             </div>
           </div>
@@ -360,7 +396,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved }: InvoiceFormDi
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving || extracting}>
             {saving ? "Creating..." : "Create invoice"}
           </Button>
         </DialogFooter>
