@@ -34,8 +34,14 @@ This is the rolling session log. Each session appends a new block at the top. `C
 ### Test data seeded (Test Client Company `5faeeafa…`, Manager `f7ec90ec…`)
 - Project "Madison Residence" (`56658b44…`, code TCC101, status `active`), scenes Kitchen (`066054c5…`, delivered) + Living Room (`2905c5f3…`, pending). Delivered Kitchen round (`b6935c50…`) with 3 pins + 1 comment each ("Can we soften the lighting here" / "Wood grain feels too uniform" / "Love this composition"); pending Living Room round (`332b5fe5…`). Paid invoice INV-TCC-001 £5000 (`e4e7fd29…`), signed quotation TCC-001 (`0faf3ee5…`), round_upload brief (`c7ceb34c…`). Kitchen asset (`36ccca56…`) repointed to the **CP113 Test Bedroom Dropbox render** so the lightbox shows a real image with pins overlaid.
 
+### Commit 3 (`95dbfad`) — role-based filtering + per-user pin colours ✅ (was "not started")
+- Sidebar (`ClientSidebar`): Documents + Orders gated on `isClientManager`; `ManagerOnlyRoute` wraps `/documents`, `/invoices`, `/orders`. Per-user pin + stroke colours in `AssetViewer` (Manager gold `#B89A6A`, Invitee palette) via a `created_by → pin_colour` map; `PinChat` renders per-author colour + initials.
+- **RLS verified (report only):** all four tables (agreements, invoices, quotation_documents, orders) block Invitees — the only non-admin SELECT path on each is `is_account_manager()` (excludes `client_invitee`); admin paths use `is_admin()`.
+- Follow-up (same commit as this note): partnership **Overview** (`/dashboard`) also gated — sidebar item + `ManagerOnlyRoute` — since it surfaces financials/contractual state.
+- Earlier the same day (`9a9cfe8`): round-detail + lightbox **byte-progress loading** via a shared `useStreamedImage` hook + `ImageLoadOverlay`.
+
 ## Pending / in progress
-- **Commit 3 not started** — role-based sidebar filtering (hide Documents/Invoices/Orders from Invitees) + `ManagerOnlyRoute` on `/documents`,`/invoices`,`/orders` + per-user pin colour & initials in `AssetViewer`/`PinChat` + RLS verification report. Awaiting Fred's Manager-side browser verification of the seed before proceeding.
+- **Browser verification of the full Invitee experience** — invite a real Invitee → accept → confirm Team / Documents / Invoices / Orders / Overview are hidden + route-guarded, finance/legal data is RLS-blocked, and their pins/comments render in a distinct palette colour. Multi-user Phase 1 code is complete, deployed, and builds clean.
 
 ## Decisions / things to watch
 - **Real client deliveries are Dropbox-served, not Supabase Storage.** Client image deliveries come from Dropbox temp links (cross-origin, no `Content-Length` header), so the byte-progress numeric readout in the lightbox + round detail page will rarely fire in production — the indeterminate pulse-bar fallback is the actual production UX. Full byte readout works for future Supabase Storage deliveries with proper CORS. (Design decision unchanged — logged only.)

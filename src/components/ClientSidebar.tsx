@@ -73,16 +73,15 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
         { label: "Log off", onClick: handleSignOut, Icon: LogOut },
       ]
     : [
-        // Overview is shown to partnership clients. Orders + Documents are
-        // finance/legal surfaces → Managers only (Invitees are also blocked at
-        // the route + RLS layers). Team is Managers only. Settings stays for all.
-        ...(accountType === "project"
+        // Overview (dashboard — financials/contractual state), Orders, and
+        // Documents are Manager-level surfaces → Managers only (Invitees are
+        // also blocked at the route + RLS layers). Team is Managers only.
+        // Settings stays for all.
+        ...(accountType !== "partnership" || !isClientManager
           ? []
           : ([
               { label: "Overview", onClick: () => navigate("/dashboard"), active: location.pathname === "/dashboard", Icon: LayoutDashboard },
-              ...(isClientManager
-                ? [{ label: "Orders", onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true, Icon: Package }]
-                : []),
+              { label: "Orders", onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true, Icon: Package },
             ] as SidebarAccountMenuItem[])),
         ...(isClientManager
           ? ([{ label: "Documents", onClick: () => navigate("/documents"), active: location.pathname === "/documents", Icon: FileText }] as SidebarAccountMenuItem[])

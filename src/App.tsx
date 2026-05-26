@@ -139,7 +139,9 @@ const App = () => (
               path="/dashboard"
               element={
                 <ProtectedClient>
-                  <Index />
+                  <ManagerOnlyRoute>
+                    <Index />
+                  </ManagerOnlyRoute>
                 </ProtectedClient>
               }
             />
