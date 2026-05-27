@@ -41,6 +41,7 @@ This is the rolling session log. Each session appends a new block at the top. `C
 - Earlier the same day (`9a9cfe8`): round-detail + lightbox **byte-progress loading** via a shared `useStreamedImage` hook + `ImageLoadOverlay`.
 
 ## Pending / in progress
+- **Tech debt — `stripe-webhook` does not verify the Stripe signature.** The existing invoice webhook (`supabase/functions/stripe-webhook`) parses and trusts the payload as-is (no HMAC verification). Pre-existing gap from the earlier invoice-flow build. The new `stripe-booking-webhook` (BA-mode Commit 2) verifies properly; fix the invoice webhook as a separate technical-debt commit before `sk_live_` traffic increases.
 - **Browser verification of the full Invitee experience** — invite a real Invitee → accept → confirm Team / Documents / Invoices / Orders / Overview are hidden + route-guarded, finance/legal data is RLS-blocked, and their pins/comments render in a distinct palette colour. Multi-user Phase 1 code is complete, deployed, and builds clean.
 - **Client Overview page card reorder (Awaiting Comments / In Production / Messages)** — paused mid-task. Original Change 2 of the rename task wasn't applied because the client Overview page doesn't have all three cards in the expected form. Needs re-investigation: either populate the missing cards first, or define what the existing client Overview should look like.
 

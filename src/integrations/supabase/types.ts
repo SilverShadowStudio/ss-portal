@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      booking_payments: {
+        Row: {
+          account_id: string | null
+          amount_charged_gbp: number
+          amount_outstanding_gbp: number | null
+          booking_group_id: string
+          created_at: string | null
+          discount_gbp: number | null
+          id: string
+          metadata: Json | null
+          paid_at: string | null
+          payment_option: string
+          receipt_pdf_path: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
+          subtotal_gbp: number
+          total_gbp: number
+          vat_gbp: number
+        }
+        Insert: {
+          account_id?: string | null
+          amount_charged_gbp: number
+          amount_outstanding_gbp?: number | null
+          booking_group_id: string
+          created_at?: string | null
+          discount_gbp?: number | null
+          id?: string
+          metadata?: Json | null
+          paid_at?: string | null
+          payment_option: string
+          receipt_pdf_path?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          subtotal_gbp: number
+          total_gbp: number
+          vat_gbp: number
+        }
+        Update: {
+          account_id?: string | null
+          amount_charged_gbp?: number
+          amount_outstanding_gbp?: number | null
+          booking_group_id?: string
+          created_at?: string | null
+          discount_gbp?: number | null
+          id?: string
+          metadata?: Json | null
+          paid_at?: string | null
+          payment_option?: string
+          receipt_pdf_path?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          subtotal_gbp?: number
+          total_gbp?: number
+          vat_gbp?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_payments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       account_invitations: {
         Row: {
           accepted_at: string | null

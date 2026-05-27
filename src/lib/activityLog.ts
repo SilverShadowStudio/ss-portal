@@ -33,6 +33,9 @@ export type ActivityAction =
   | "client_member_promoted"
   | "client_member_demoted"
   | "client_member_removed"
+  | "booking_checkout_started"
+  | "booking_paid"
+  | "booking_payment_failed"
   | "dropbox_file_received";
 
 /** Shared badge labels used by both the dashboard preview and the full log page. */
@@ -66,6 +69,9 @@ export const ACTION_LABELS: Record<string, string> = {
   client_member_promoted: "Member",
   client_member_demoted: "Member",
   client_member_removed: "Member",
+  booking_checkout_started: "Payment",
+  booking_paid: "Payment",
+  booking_payment_failed: "Payment",
   dropbox_file_received: "Delivery",
 };
 
