@@ -1,0 +1,346 @@
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Minus, Plus, X, Check } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { logActivity } from "@/lib/activityLog";
+import { formatCurrency } from "@/lib/invoiceUtils";
+import { calculateRoundFee, calculateTotalsForRounds, VAT_RATE } from "@/lib/roundPricing";
+import {
+  getEarliestBookableMonday,
+  getRoundEndDate,
+  getReservationExpiry,
+  isMonday,
+  isSameDay,
+  formatDayMonth,
+} from "@/lib/bookingDates";
+import { RESERVATIONS_CHANGED_EVENT } from "./ReservationBasket";
+
+interface BookingModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  sceneId: string;
+  sceneName: string;
+  projectName?: string;
+  onBooked: () => void;
+}
+
+const MAX_ROUNDS = 6;
+const DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName, onBooked }: BookingModalProps) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  const earliest = useMemo(() => getEarliestBookableMonday(), []);
+  const [startRoundNumber, setStartRoundNumber] = useState(1);
+  const [numRounds, setNumRounds] = useState(1);
+  const [mondays, setMondays] = useState<Date[]>([]);
+  const [activeRound, setActiveRound] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  const roundNumbers = useMemo(
+    () => Array.from({ length: numRounds }, (_, i) => startRoundNumber + i),
+    [numRounds, startRoundNumber],
+  );
+  const totals = useMemo(() => calculateTotalsForRounds(roundNumbers), [roundNumbers]);
+
+  // Derive the next round number from existing non-cancelled rounds on the scene.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("scene_rounds")
+        .select("round_number, status")
+        .eq("scene_id", sceneId);
+      if (cancelled) return;
+      const maxNum = (data || [])
+        .filter((r: { status: string }) => r.status !== "cancelled")
+        .reduce((m: number, r: { round_number: number }) => Math.max(m, r.round_number), 0);
+      setStartRoundNumber(maxNum + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, sceneId]);
+
+  // Default consecutive Mondays whenever the modal opens or round count changes.
+  useEffect(() => {
+    if (!isOpen) return;
+    setMondays((prev) => {
+      const next: Date[] = [];
+      for (let i = 0; i < numRounds; i++) {
+        if (prev[i]) { next[i] = prev[i]; continue; }
+        const start = i === 0 ? new Date(earliest) : getRoundEndDate(next[i - 1]);
+        next[i] = start;
+      }
+      // Normalise: each round starts on/after the previous round's end.
+      for (let i = 1; i < next.length; i++) {
+        const minStart = getRoundEndDate(next[i - 1]);
+        if (next[i] < minStart) next[i] = minStart;
+      }
+      return next;
+    });
+    setActiveRound(0);
+  }, [isOpen, numRounds, earliest]);
+
+  const minMondayFor = useCallback(
+    (idx: number): Date => (idx === 0 ? earliest : getRoundEndDate(mondays[idx - 1])),
+    [earliest, mondays],
+  );
+
+  const pickMonday = useCallback((day: Date) => {
+    setMondays((prev) => {
+      const next = prev.slice();
+      next[activeRound] = day;
+      for (let i = activeRound + 1; i < next.length; i++) {
+        const minStart = getRoundEndDate(next[i - 1]);
+        if (next[i] < minStart) next[i] = minStart;
+      }
+      return next;
+    });
+    setActiveRound((r) => (r + 1 < numRounds ? r + 1 : r));
+  }, [activeRound, numRounds]);
+
+  const valid = mondays.length === numRounds && mondays.every(Boolean) && !!user;
+
+  async function handleConfirm() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      const bookingGroupId = crypto.randomUUID();
+      const firstStart = mondays[0];
+      const expiry = getReservationExpiry(firstStart);
+      const rows = roundNumbers.map((rn, i) => ({
+        scene_id: sceneId,
+        round_number: rn,
+        status: "reserved",
+        start_date: mondays[i].toISOString(),
+        end_date: getRoundEndDate(mondays[i]).toISOString(),
+        round_fee: calculateRoundFee(rn),
+        reservation_expires_at: expiry.toISOString(),
+        booking_group_id: bookingGroupId,
+        instructions: null,
+        created_by: user!.id,
+      }));
+      const { error } = await supabase.from("scene_rounds").insert(rows as never);
+      if (error) throw error;
+
+      await logActivity({
+        action: "round_reserved",
+        description: `Reserved ${numRounds} round${numRounds === 1 ? "" : "s"} on ${sceneName}`,
+        entityType: "scene",
+        entityId: sceneId,
+        sceneName,
+        metadata: { booking_group_id: bookingGroupId, rounds: roundNumbers, gross_total: totals.grossTotal },
+      });
+
+      window.dispatchEvent(new Event(RESERVATIONS_CHANGED_EVENT));
+      toast({
+        title: "Booking reserved",
+        description: `Payment required by ${expiry.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} to confirm production.`,
+      });
+      onBooked();
+      onClose();
+    } catch (err) {
+      console.error("[BookingModal] reservation failed:", err);
+      toast({ title: "Couldn't reserve the booking", description: (err as Error)?.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  const months = [startOfMonth(earliest), addMonths(earliest, 1)];
+
+  const renderMonth = (monthStart: Date) => {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const total = daysInMonth(year, month);
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= total; d++) cells.push(new Date(year, month, d));
+    const minForActive = minMondayFor(activeRound);
+
+    return (
+      <div key={`${year}-${month}`} className="flex-1 min-w-0">
+        <p className="mb-2 text-center font-sans text-[11px] uppercase tracking-[0.2em] text-foreground/60">
+          {monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        </p>
+        <div className="grid grid-cols-7 gap-1">
+          {DAY_HEADERS.map((h, i) => (
+            <div key={i} className="text-center font-sans text-[9px] text-foreground/30">{h}</div>
+          ))}
+          {cells.map((day, i) => {
+            if (!day) return <div key={i} />;
+            const mon = isMonday(day);
+            const selectable = mon && day >= minForActive;
+            // Is this day inside any selected round's week?
+            const roundIdx = mondays.findIndex(
+              (m) => m && day >= m && day < getRoundEndDate(m),
+            );
+            const inWeek = roundIdx >= 0;
+            const isStart = roundIdx >= 0 && isSameDay(day, mondays[roundIdx]);
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={!selectable}
+                onClick={() => selectable && pickMonday(day)}
+                className={[
+                  "aspect-square flex items-center justify-center rounded-sm font-sans text-[11px] tabular-nums transition-colors",
+                  inWeek
+                    ? "bg-gold/15 text-foreground"
+                    : selectable
+                    ? "text-foreground hover:bg-gold/10 cursor-pointer"
+                    : "text-foreground/20 cursor-default",
+                  isStart ? "ring-1 ring-gold font-semibold" : "",
+                ].join(" ")}
+                title={isStart && roundIdx >= 0 ? `Round ${String(roundNumbers[roundIdx]).padStart(2, "0")}` : undefined}
+              >
+                {day.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/55" onClick={() => !submitting && onClose()} />
+      <div className="relative z-10 w-full max-w-[800px] max-h-[90vh] overflow-y-auto border border-border/60 bg-card p-6 shadow-2xl" style={{ borderRadius: 4 }}>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-serif text-strong" style={{ fontSize: 22 }}>Book production rounds</h2>
+            <p className="mt-1 font-sans text-[12px] text-recessive">
+              {projectName ? `${projectName} — ` : ""}{sceneName}
+            </p>
+          </div>
+          <button onClick={() => !submitting && onClose()} aria-label="Close" className="text-label hover:text-strong transition-colors">
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* Section 1 — Rounds */}
+        <section className="mb-8">
+          <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Rounds</p>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setNumRounds((n) => Math.max(1, n - 1))}
+                disabled={numRounds <= 1}
+                className="flex h-8 w-8 items-center justify-center border border-border/60 disabled:opacity-30"
+                style={{ borderRadius: 2 }}
+                aria-label="Fewer rounds"
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-8 text-center font-serif text-strong" style={{ fontSize: 20 }}>{numRounds}</span>
+              <button
+                type="button"
+                onClick={() => setNumRounds((n) => Math.min(MAX_ROUNDS, n + 1))}
+                disabled={numRounds >= MAX_ROUNDS}
+                className="flex h-8 w-8 items-center justify-center border border-border/60 disabled:opacity-30"
+                style={{ borderRadius: 2 }}
+                aria-label="More rounds"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="flex-1 font-sans text-[12px] leading-relaxed text-recessive">
+              Round 01 is the design realisation round. Rounds 02+ are corrections and revisions.
+            </p>
+          </div>
+        </section>
+
+        {/* Section 2 — Production dates */}
+        <section className="mb-8">
+          <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Production dates</p>
+          <div className="flex flex-col gap-6 sm:flex-row">
+            {months.map(renderMonth)}
+          </div>
+
+          {/* Selected rounds */}
+          <div className="mt-5 space-y-1.5">
+            {roundNumbers.map((rn, i) => (
+              <div key={rn} className="flex items-center justify-between border-t border-border/30 py-2">
+                <p className="font-sans text-[12px] text-standard">
+                  <span className="text-strong">Round {String(rn).padStart(2, "0")}</span>
+                  {mondays[i] && (
+                    <span className="text-recessive">{"  ·  "}{formatDayMonth(mondays[i])} — {formatDayMonth(getRoundEndDate(mondays[i]))}</span>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveRound(i)}
+                  className={`font-sans uppercase text-[9px] tracking-[0.22em] transition-colors ${activeRound === i ? "text-gold" : "text-label hover:text-strong"}`}
+                >
+                  {activeRound === i ? "Selecting…" : "Change"}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-4 font-sans text-[11px] leading-relaxed text-label">
+            Round 02+ dates may shift if feedback is delayed. Instructions for each round must be provided by 17:00 on the Friday before the round starts.
+          </p>
+        </section>
+
+        {/* Section 3 — Pricing */}
+        <section className="mb-8">
+          <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Pricing</p>
+          <div className="space-y-1.5">
+            {totals.breakdown.map((b) => (
+              <div key={b.roundNumber} className="flex items-center justify-between font-sans text-[13px]">
+                <span className="text-standard">Round {String(b.roundNumber).padStart(2, "0")}</span>
+                <span className="tabular-nums text-standard">{formatCurrency(b.fee, "GBP")}</span>
+              </div>
+            ))}
+            <div className="mt-2 flex items-center justify-between border-t border-border/30 pt-2 font-sans text-[13px]">
+              <span className="text-recessive">Net total</span>
+              <span className="tabular-nums text-standard">{formatCurrency(totals.netTotal, "GBP")}</span>
+            </div>
+            <div className="flex items-center justify-between font-sans text-[13px]">
+              <span className="text-recessive">VAT ({Math.round(VAT_RATE * 100)}%)</span>
+              <span className="tabular-nums text-standard">{formatCurrency(totals.vatAmount, "GBP")}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-border/30 pt-2 font-sans" style={{ fontSize: 15 }}>
+              <span className="text-strong">Gross total</span>
+              <span className="tabular-nums font-semibold" style={{ color: "hsl(var(--gold))" }}>{formatCurrency(totals.grossTotal, "GBP")}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-3">
+          <button type="button" onClick={() => !submitting && onClose()} className="font-sans uppercase text-[10px] tracking-[0.26em] text-label hover:text-strong transition-colors">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!valid || submitting}
+            onClick={handleConfirm}
+            className="inline-flex items-center gap-2 bg-gold px-5 py-2.5 font-sans uppercase text-[10px] tracking-[0.26em] text-background transition-opacity hover:opacity-80 disabled:opacity-40"
+            style={{ borderRadius: 2 }}
+          >
+            {submitting ? "Reserving…" : <><Check className="h-3.5 w-3.5" /> Confirm booking</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

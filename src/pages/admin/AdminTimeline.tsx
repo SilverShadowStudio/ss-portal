@@ -854,6 +854,8 @@ export default function AdminTimeline() {
                                 const isBooked =
                                   round.status === "pending" && !!round.start_date &&
                                   new Date(round.start_date).getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000;
+                                // Reserved (British Airways-mode hold): hatched warm-grey fill.
+                                const isReserved = round.status === "reserved";
                                 // Status-driven colors apply at full opacity
                                 // for ALL rounds (past/current/future) so every
                                 // round stays visible:
@@ -872,7 +874,9 @@ export default function AdminTimeline() {
                                     : isApprovedLike
                                     ? "bg-emerald-500/20 border-emerald-500/70 shadow-sm"
                                     : null;
-                                const blockClasses = statusOverride
+                                const blockClasses = isReserved
+                                  ? "bg-card/40 border-[#8A8070]/60"
+                                  : statusOverride
                                   ? statusOverride
                                   : temporal === "current"
                                     ? "bg-secondary border-gold/50 shadow-md"
@@ -884,7 +888,13 @@ export default function AdminTimeline() {
                                     onMouseEnter={(e) => handleRoundHover(e, round, scene.name)}
                                     onMouseLeave={() => setPopup(null)}
                                     className={`absolute inset-y-3 rounded-lg z-10 overflow-hidden cursor-pointer hover:border-gold/70 transition-all border ${blockClasses}`}
-                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                    style={{
+                                      left: `${leftPct}%`,
+                                      width: `${widthPct}%`,
+                                      ...(isReserved
+                                        ? { backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(138,128,112,0.22) 5px, rgba(138,128,112,0.22) 10px)" }
+                                        : {}),
+                                    }}
                                   >
                                     {temporal === "current" && (
                                       <>
@@ -928,7 +938,7 @@ export default function AdminTimeline() {
                                       <p className={`text-[10px] truncate tracking-[0.05em] font-medium ${
                                         temporal === "past" ? "text-muted-foreground/60" : temporal === "current" ? "text-foreground/80" : "text-muted-foreground"
                                       }`}>
-                                        Round {round.round_number.toString().padStart(2, "0")} · {isReview ? "Review" : isBooked ? "Booked" : statusLabel(round.status)}
+                                        Round {round.round_number.toString().padStart(2, "0")} · {isReview ? "Review" : isReserved ? "Reserved" : isBooked ? "Booked" : statusLabel(round.status)}
                                       </p>
                                       {round.instructions && (
                                         <FileText size={9} className="absolute bottom-2 right-2.5 text-muted-foreground/40" />

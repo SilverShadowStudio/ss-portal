@@ -336,17 +336,11 @@ export function NewRoundModal({
     if (!isOpen) return;
     setInstructions(existingDraft?.instructions ?? "");
     setBufferWeeks(existingDraft?.buffer_weeks ?? 1);
-    // Re-opening a booked (pending) slot before cutoff: default to the
-    // chosen-date picker with its existing start Monday pre-selected so the
-    // booking is preserved unless the client changes it. Everything else
-    // (new round, draft re-open) starts on the legacy "Next available" path.
-    if (existingDraft?.status === "pending" && existingDraft?.start_date) {
-      setDeliveryMode("choose");
-      setSelectedMonday(new Date(existingDraft.start_date));
-    } else {
-      setDeliveryMode("next");
-      setSelectedMonday(null);
-    }
+    // Booking a future production slot now lives in BookingModal (reserved
+    // rounds). This modal only handles the immediate "next available" brief
+    // flow — the old "choose a date" (Isabelle) picker has been removed.
+    setDeliveryMode("next");
+    setSelectedMonday(null);
     setBriefReview(null);
     // Start with empty widgets; if reopening a draft, hydrate from
     // `round_uploads` so files the client uploaded before saving the
@@ -915,85 +909,15 @@ export function NewRoundModal({
                 <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
                   Delivery date
                 </p>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  <button
-                    type="button"
-                    onClick={() => { setDeliveryMode("next"); setSelectedMonday(null); }}
-                    className={`h-10 px-4 text-[10px] font-sans uppercase tracking-[0.18em] border transition-colors ${
-                      deliveryMode === "next"
-                        ? "border-[var(--brand-gold)] text-gold"
-                        : "border-border/40 text-foreground/55 hover:text-foreground hover:border-foreground/40"
-                    }`}
-                    style={{ borderRadius: 2 }}
-                  >
-                    Next available
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryMode("choose")}
-                    className={`h-10 px-4 text-[10px] font-sans uppercase tracking-[0.18em] border transition-colors ${
-                      deliveryMode === "choose"
-                        ? "border-[var(--brand-gold)] text-gold"
-                        : "border-border/40 text-foreground/55 hover:text-foreground hover:border-foreground/40"
-                    }`}
-                    style={{ borderRadius: 2 }}
-                  >
-                    Choose a date
-                  </button>
-                </div>
-
-                {deliveryMode === "next" ? (
-                  <>
-                    <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                      Delivery — {deliveryDateStr}
-                    </p>
-                    <p
-                      className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
-                      Order within {deadlineLabel}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-3">
-                      Pick a production Monday
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                      {bookingMondays.map((m) => {
-                        const isSel = !!selectedMonday && sameBookingDay(m, selectedMonday);
-                        return (
-                          <button
-                            key={m.toISOString()}
-                            type="button"
-                            onClick={() => setSelectedMonday(m)}
-                            className={`h-11 px-2 text-[11px] font-sans uppercase tracking-[0.14em] border transition-colors ${
-                              isSel
-                                ? "border-[var(--brand-gold)] text-gold"
-                                : "border-border/40 text-foreground/65 hover:text-foreground hover:border-foreground/40"
-                            }`}
-                            style={{ borderRadius: 2 }}
-                          >
-                            {format(m, "d MMM")}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {bookedStart && bookedDelivery && cutoff && (
-                      <div className="mt-5">
-                        <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                          Production starts {format(bookedStart, "EEEE d MMMM")} — delivery {format(bookedDelivery, "EEEE d MMMM")}
-                        </p>
-                        <p
-                          className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                          style={{ fontVariantNumeric: "tabular-nums" }}
-                        >
-                          Cutoff: {format(cutoff, "EEEE d MMMM")} at 12:00 — {cutoffCountdown}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
+                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
+                  Delivery — {deliveryDateStr}
+                </p>
+                <p
+                  className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  Order within {deadlineLabel}
+                </p>
               </div>
 
               {/* ── Footer ── */}

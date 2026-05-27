@@ -1,6 +1,8 @@
 import { ReactNode, useState, useEffect } from "react";
 import { ClientSidebar } from "./ClientSidebar";
 import { NotificationBell } from "./NotificationBell";
+import { ReservationBasket } from "./client/ReservationBasket";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 interface ClientLayoutProps {
@@ -18,10 +20,16 @@ export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps)
     localStorage.setItem("ss-sidebar-expanded", String(expanded));
   }, [expanded]);
 
+  // Best-effort reservation-expiry sweep on portal load (non-blocking).
+  useEffect(() => {
+    supabase.functions.invoke("expire-reservations").catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <ClientSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
       <NotificationBell />
+      <ReservationBasket />
 
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         <div

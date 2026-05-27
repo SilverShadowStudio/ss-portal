@@ -32,6 +32,7 @@ import { NewProjectModal } from "@/components/client/NewProjectModal";
 import { NewSceneModal } from "@/components/client/NewSceneModal";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
 import { RescheduleRoundModal } from "@/components/client/RescheduleRoundModal";
+import { BookingModal } from "@/components/client/BookingModal";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { logActivity } from "@/lib/activityLog";
@@ -100,6 +101,7 @@ export default function Portfolio() {
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [isNewSceneModalOpen, setIsNewSceneModalOpen] = useState(false);
   const [isNewRoundModalOpen, setIsNewRoundModalOpen] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
   // When the user opens the Round modal on a scene that already has a
   // draft, we pre-load it here so the modal updates that row on save
   // (one-draft-per-scene rule, enforced at DB level by the partial unique
@@ -1116,18 +1118,10 @@ export default function Portfolio() {
             canReschedule ? () => setRescheduleTarget(selectedRound) : undefined
           }
           onRequestNextRound={
-            canRequestNext
-              ? () => {
-                  // Round 1 still needs the full brief modal. Round 2+ infers
-                  // the brief from the previous round's annotations and creates
-                  // the new round directly.
-                  if (selectedRound.round_number > 1) {
-                    handleRequestNextRoundDirect();
-                  } else if (selectedScene) {
-                    openRoundModalForScene(selectedScene.id);
-                  }
-                }
-              : undefined
+            // British Airways-mode: the round-request affordance now opens the
+            // BookingModal (reserve slots). The old NewRoundModal brief flow +
+            // handleRequestNextRoundDirect are kept for now (Commit 1, Option b).
+            canRequestNext ? () => setIsBookingOpen(true) : undefined
           }
           nextRoundNumber={canRequestNext ? nextRoundNumber : undefined}
           isLocked={!isLatestRound}
@@ -1153,13 +1147,21 @@ export default function Portfolio() {
       // can land here is when the scene has zero rounds yet.
       return (
         <div>
-          <div className="flex items-center justify-center min-h-[50vh] animate-fade-in">
+          <div className="flex flex-col items-center justify-center gap-6 min-h-[50vh] animate-fade-in">
             <p
               className="font-serif italic text-center text-foreground"
               style={{ fontSize: 15, opacity: 0.15 }}
             >
               No rounds yet.
             </p>
+            <button
+              type="button"
+              onClick={() => setIsBookingOpen(true)}
+              className="inline-flex items-center gap-2 border border-gold bg-transparent px-6 py-3 font-sans uppercase text-[10px] tracking-[0.24em] text-gold transition-colors hover:bg-gold/10"
+              style={{ borderRadius: 2 }}
+            >
+              Book rounds
+            </button>
           </div>
         </div>
       );
@@ -1674,6 +1676,16 @@ export default function Portfolio() {
       roundNumber={rescheduleTarget?.round_number || 1}
       currentEndDate={rescheduleTarget?.end_date || null}
     />
+    {selectedScene && (
+      <BookingModal
+        isOpen={isBookingOpen}
+        onClose={() => setIsBookingOpen(false)}
+        sceneId={selectedScene.id}
+        sceneName={selectedScene.name}
+        projectName={selectedProject?.name}
+        onBooked={fetchProjects}
+      />
+    )}
     </>
   );
 }

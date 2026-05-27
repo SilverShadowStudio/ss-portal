@@ -819,6 +819,9 @@ export default function AdminProjects() {
                 // work currently in production (Isabelle button).
                 const isBooked = round.status === "pending" && !!round.start_date &&
                   new Date(round.start_date).getTime() > Date.now() + 7 * 24 * 60 * 60 * 1000;
+                // Reserved (British Airways-mode hold): hatched warm-grey card.
+                const isReserved = round.status === "reserved";
+                const reservedExpiry = (round as { reservation_expires_at?: string | null }).reservation_expires_at;
                 const phase = getStatusPhase(round.status);
                 const title = `Round ${round.round_number
                   .toString()
@@ -834,7 +837,13 @@ export default function AdminProjects() {
                       "text-left relative min-w-[320px] bg-card border border-border rounded-2xl p-6 cursor-pointer group transition-colors",
                       isDraft ? "opacity-70 hover:border-border" : "hover:border-primary/40",
                     )}
-                    style={isDraft || isBooked ? { borderLeft: "2px solid #8A8070" } : undefined}
+                    style={
+                      isReserved
+                        ? { borderLeft: "2px solid #8A8070", backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(138,128,112,0.14) 6px, rgba(138,128,112,0.14) 12px)" }
+                        : isDraft || isBooked
+                        ? { borderLeft: "2px solid #8A8070" }
+                        : undefined
+                    }
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div>
@@ -851,6 +860,13 @@ export default function AdminProjects() {
                             style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
                           >
                             Booked
+                          </span>
+                        ) : isReserved ? (
+                          <span
+                            className="mb-1 block font-sans uppercase"
+                            style={{ fontSize: 10, letterSpacing: "0.15em", color: "#8A8070" }}
+                          >
+                            Reserved{reservedExpiry ? ` · until ${formatDate(reservedExpiry)}` : ""}
                           </span>
                         ) : phase && (
                           <span className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1 block font-sans">

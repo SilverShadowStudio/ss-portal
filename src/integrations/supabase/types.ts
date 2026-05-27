@@ -1815,6 +1815,10 @@ export type Database = {
       scene_rounds: {
         Row: {
           approved_at: string | null
+          booking_group_id: string | null
+          created_by: string | null
+          reservation_expires_at: string | null
+          round_fee: number | null
           created_at: string
           delivered_at: string | null
           delivery_due_at: string | null
@@ -1831,6 +1835,10 @@ export type Database = {
         }
         Insert: {
           approved_at?: string | null
+          booking_group_id?: string | null
+          created_by?: string | null
+          reservation_expires_at?: string | null
+          round_fee?: number | null
           created_at?: string
           delivered_at?: string | null
           delivery_due_at?: string | null
@@ -1847,6 +1855,10 @@ export type Database = {
         }
         Update: {
           approved_at?: string | null
+          booking_group_id?: string | null
+          created_by?: string | null
+          reservation_expires_at?: string | null
+          round_fee?: number | null
           created_at?: string
           delivered_at?: string | null
           delivery_due_at?: string | null

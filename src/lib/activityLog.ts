@@ -12,6 +12,7 @@ export type ActivityAction =
   | "round_rescheduled"
   | "round_drafted"
   | "round_booked"
+  | "round_reserved"
   | "round_delivered"
   | "asset_uploaded"
   | "asset_deleted"
@@ -44,6 +45,7 @@ export const ACTION_LABELS: Record<string, string> = {
   round_rescheduled: "Reschedule",
   round_drafted: "Draft",
   round_booked: "Booked",
+  round_reserved: "Booking",
   round_delivered: "Delivery",
   asset_uploaded: "Upload",
   asset_deleted: "Removed",

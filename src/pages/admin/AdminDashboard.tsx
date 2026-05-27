@@ -68,6 +68,8 @@ export default function AdminDashboard() {
     }
 
     fetchDashboardData();
+    // Best-effort reservation-expiry sweep on admin dashboard load (non-blocking).
+    supabase.functions.invoke("expire-reservations").catch(() => {});
   }, []);
 
   const statCards = [
