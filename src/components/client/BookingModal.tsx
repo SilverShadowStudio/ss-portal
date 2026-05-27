@@ -45,7 +45,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const earliest = useMemo(() => getEarliestBookableMonday(), []);
   const [startRoundNumber, setStartRoundNumber] = useState(1);
   const [numRounds, setNumRounds] = useState(1);
-  const [mondays, setMondays] = useState<Date[]>([]);
+  const [mondays, setMondays] = useState<(Date | null)[]>([]);
   const [activeRound, setActiveRound] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
@@ -73,59 +73,60 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     return () => { cancelled = true; };
   }, [isOpen, sceneId]);
 
-  // Default consecutive Mondays whenever the modal opens or round count changes.
+  // Pills start empty — the client picks a pill, then points at a Monday
+  // (airline seat selection). Reset to a single empty pill on each open.
   useEffect(() => {
     if (!isOpen) return;
-    setMondays((prev) => {
-      const next: Date[] = [];
-      for (let i = 0; i < numRounds; i++) {
-        if (prev[i]) { next[i] = prev[i]; continue; }
-        const start = i === 0 ? new Date(earliest) : getRoundEndDate(next[i - 1]);
-        next[i] = start;
-      }
-      // Normalise: each round starts on/after the previous round's end.
-      for (let i = 1; i < next.length; i++) {
-        const minStart = getRoundEndDate(next[i - 1]);
-        if (next[i] < minStart) next[i] = minStart;
-      }
-      return next;
-    });
+    setNumRounds(1);
+    setMondays([null]);
     setActiveRound(0);
-  }, [isOpen, numRounds, earliest]);
+  }, [isOpen]);
+
+  // Pad/truncate the placed-dates array as the stepper changes (preserve picks).
+  useEffect(() => {
+    setMondays((prev) => Array.from({ length: numRounds }, (_, i) => prev[i] ?? null));
+  }, [numRounds]);
 
   const minMondayFor = useCallback(
-    (idx: number): Date => (idx === 0 ? earliest : getRoundEndDate(mondays[idx - 1])),
+    (idx: number): Date => {
+      if (idx === 0) return earliest;
+      const prev = mondays[idx - 1];
+      return prev ? getRoundEndDate(prev) : earliest;
+    },
     [earliest, mondays],
   );
 
   const pickMonday = useCallback((day: Date) => {
-    setMondays((prev) => {
-      const next = prev.slice();
-      next[activeRound] = day;
-      for (let i = activeRound + 1; i < next.length; i++) {
-        const minStart = getRoundEndDate(next[i - 1]);
-        if (next[i] < minStart) next[i] = minStart;
-      }
-      return next;
-    });
-    setActiveRound((r) => (r + 1 < numRounds ? r + 1 : r));
-  }, [activeRound, numRounds]);
+    const next = mondays.slice();
+    next[activeRound] = day;
+    // Push any later PLACED rounds forward so they stay sequential.
+    for (let i = activeRound + 1; i < next.length; i++) {
+      const prev = next[i - 1];
+      if (next[i] == null || prev == null) continue;
+      const minStart = getRoundEndDate(prev);
+      if (next[i]! < minStart) next[i] = minStart;
+    }
+    setMondays(next);
+    // Auto-advance to the first still-empty pill (sequential seat-picking).
+    const firstEmpty = next.findIndex((m) => m == null);
+    setActiveRound(firstEmpty >= 0 ? firstEmpty : activeRound);
+  }, [mondays, activeRound]);
 
-  const valid = mondays.length === numRounds && mondays.every(Boolean) && !!user;
+  const valid = mondays.length === numRounds && mondays.every((m) => m != null) && !!user;
 
   async function handleConfirm() {
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
       const bookingGroupId = crypto.randomUUID();
-      const firstStart = mondays[0];
+      const firstStart = mondays[0]!;
       const expiry = getReservationExpiry(firstStart);
       const rows = roundNumbers.map((rn, i) => ({
         scene_id: sceneId,
         round_number: rn,
         status: "reserved",
-        start_date: mondays[i].toISOString(),
-        end_date: getRoundEndDate(mondays[i]).toISOString(),
+        start_date: mondays[i]!.toISOString(),
+        end_date: getRoundEndDate(mondays[i]!).toISOString(),
         round_fee: calculateRoundFee(rn),
         reservation_expires_at: expiry.toISOString(),
         booking_group_id: bookingGroupId,
@@ -191,7 +192,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               (m) => m && day >= m && day < getRoundEndDate(m),
             );
             const inWeek = roundIdx >= 0;
-            const isStart = roundIdx >= 0 && isSameDay(day, mondays[roundIdx]);
+            const isStart = roundIdx >= 0 && isSameDay(day, mondays[roundIdx]!);
             return (
               <button
                 key={i}
@@ -225,7 +226,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="font-serif text-strong" style={{ fontSize: 22 }}>Book production rounds</h2>
-            <p className="mt-1 font-sans text-[12px] text-recessive">
+            <p className="mt-1 font-sans text-[12px] text-gold">
               {projectName ? `${projectName} — ` : ""}{sceneName}
             </p>
           </div>
@@ -265,6 +266,41 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               Round 01 is the design realisation round. Rounds 02+ are corrections and revisions.
             </p>
           </div>
+
+          {/* Round pills — pick a pill, then point at a Monday on the calendar
+              (airline seat selection). The pill is the change affordance. */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {roundNumbers.map((rn, i) => {
+              const placed = mondays[i] != null;
+              const active = activeRound === i;
+              return (
+                <button
+                  key={rn}
+                  type="button"
+                  onClick={() => setActiveRound(i)}
+                  aria-pressed={active}
+                  className={[
+                    "flex min-w-[88px] flex-col items-start gap-0.5 border px-3 py-2 text-left transition-colors",
+                    active
+                      ? "border-gold bg-gold/10 text-gold"
+                      : placed
+                      ? "border-gold/40 text-standard"
+                      : "border-border/50 text-recessive hover:border-foreground/40",
+                  ].join(" ")}
+                  style={{ borderRadius: 2, ...(placed && !active ? { borderLeftWidth: 3, borderLeftColor: "hsl(var(--gold))" } : {}) }}
+                >
+                  <span className="font-sans uppercase text-[10px] tracking-[0.16em]">
+                    Round {String(rn).padStart(2, "0")}
+                  </span>
+                  {placed && (
+                    <span className="font-sans text-[11px] tabular-nums opacity-80">
+                      {formatDayMonth(mondays[i]!)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         {/* Section 2 — Production dates */}
@@ -272,27 +308,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Production dates</p>
           <div className="flex flex-col gap-6 sm:flex-row">
             {months.map(renderMonth)}
-          </div>
-
-          {/* Selected rounds */}
-          <div className="mt-5 space-y-1.5">
-            {roundNumbers.map((rn, i) => (
-              <div key={rn} className="flex items-center justify-between border-t border-border/30 py-2">
-                <p className="font-sans text-[12px] text-standard">
-                  <span className="text-strong">Round {String(rn).padStart(2, "0")}</span>
-                  {mondays[i] && (
-                    <span className="text-recessive">{"  ·  "}{formatDayMonth(mondays[i])} — {formatDayMonth(getRoundEndDate(mondays[i]))}</span>
-                  )}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveRound(i)}
-                  className={`font-sans uppercase text-[9px] tracking-[0.22em] transition-colors ${activeRound === i ? "text-gold" : "text-label hover:text-strong"}`}
-                >
-                  {activeRound === i ? "Selecting…" : "Change"}
-                </button>
-              </div>
-            ))}
           </div>
 
           <p className="mt-4 font-sans text-[11px] leading-relaxed text-label">

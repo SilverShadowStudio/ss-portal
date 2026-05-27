@@ -3,7 +3,7 @@
 // Round 01 = design realisation (full modelling/rendering).
 // Round 02+ = correction/revision rounds.
 
-export const ROUND_01_FEE_GBP = 2000;
+export const ROUND_01_FEE_GBP = 2500;
 export const ROUND_02_PLUS_FEE_GBP = 500;
 export const VAT_RATE = 0.20;
 
