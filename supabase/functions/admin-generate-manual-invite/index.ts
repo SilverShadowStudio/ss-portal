@@ -153,6 +153,16 @@ Deno.serve(async (req) => {
   const ctaLabel = emailConfig.ctaLabel ?? EMAIL_INVITE_DEFAULTS.ctaLabel
   const text = `${greetingPlain}${bodyCopyPlain}\n\n${ctaLabel}: ${verifyUrl}`
 
+  try {
+    await admin.from('activity_log').insert({
+      actor_user_id: userData.user.id,
+      actor_role: 'admin',
+      action: 'invite_sent',
+      description: `Manual invite generated for ${recipientEmail}`,
+      metadata: { company_name: account.company_name, mode: 'manual' },
+    })
+  } catch (e) { console.warn('activity log (invite_sent / manual) failed', e) }
+
   return json({
     verify_url: verifyUrl,
     recipient_email: recipientEmail,

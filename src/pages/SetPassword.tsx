@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
@@ -22,6 +22,8 @@ export default function SetPassword() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  // Strict-mode-safe single-fire guard for the invite_opened activity event.
+  const inviteOpenedLoggedRef = useRef(false);
 
   // Detect Supabase error params embedded in the URL hash (e.g. expired magic link).
   // Supabase appends these before the JS loads, so reading window.location.hash is safe.
@@ -38,6 +40,36 @@ export default function SetPassword() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Log invite_opened once per mount, after a session is established by the
+  // magic-link verify. Best-effort — never blocks the form.
+  useEffect(() => {
+    if (!sessionReady || inviteOpenedLoggedRef.current) return;
+    inviteOpenedLoggedRef.current = true;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("first_name, last_name, full_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const name =
+          [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+          profile?.full_name ||
+          user.email ||
+          "Client";
+        await logActivity({
+          action: "invite_opened",
+          actorRole: "client",
+          description: `${name} opened invitation link`,
+        });
+      } catch {
+        // best-effort
+      }
+    })();
+  }, [sessionReady]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

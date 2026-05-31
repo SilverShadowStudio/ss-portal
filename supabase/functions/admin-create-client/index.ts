@@ -223,6 +223,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (emailSent) {
+      try {
+        await admin.from('activity_log').insert({
+          actor_user_id: callerUserId,
+          actor_role: 'admin',
+          action: 'invite_sent',
+          description: `Invite email sent to ${email}`,
+          metadata: { company_name: acct.company_name, mode: 'resend' },
+        })
+      } catch (e) { console.warn('activity log (invite_sent / resend) failed', e) }
+    }
+
     return json({
       success: true,
       mode,
@@ -530,6 +542,18 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error('Resend exception:', e)
       }
+    }
+
+    if (emailSent) {
+      try {
+        await admin.from('activity_log').insert({
+          actor_user_id: callerUserId,
+          actor_role: 'admin',
+          action: 'invite_sent',
+          description: `Invite email sent to ${email}`,
+          metadata: { company_name: companyName, account_type: accountType, mode: 'invite' },
+        })
+      } catch (e) { console.warn('activity log (invite_sent / invite) failed', e) }
     }
 
     admin.functions.invoke('airtable-sync-contact', {

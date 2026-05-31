@@ -24,6 +24,8 @@ export type ActivityAction =
   | "client_login"
   | "password_set"
   | "manual_invite_generated"
+  | "invite_sent"
+  | "invite_opened"
   | "agreement_signed"
   | "team_contract_sent"
   | "team_contract_signed"
@@ -60,6 +62,8 @@ export const ACTION_LABELS: Record<string, string> = {
   client_login: "Client",
   password_set: "Password",
   manual_invite_generated: "Manual",
+  invite_sent: "Invite",
+  invite_opened: "Invite",
   agreement_signed: "Agreement",
   team_contract_sent: "Contract",
   team_contract_signed: "Contract",
