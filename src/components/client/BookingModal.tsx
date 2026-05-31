@@ -53,20 +53,25 @@ function earliestStartAfter(prevStart: Date): Date {
   return addWeeks(getRoundEndDate(prevStart), 1);
 }
 
-// The six production days between a round's start Monday and its delivery
-// Monday (Tue → Sun). The connecting underline sits beneath these.
-function productionDays(start: Date): Date[] {
-  return Array.from({ length: 6 }, (_, k) => {
+// The seven days of a round's production week (Mon → Sun), which occupy exactly
+// one Monday-first calendar row. The round rectangle encloses these.
+function roundWeekDays(start: Date): Date[] {
+  return Array.from({ length: 7 }, (_, k) => {
     const d = new Date(start);
-    d.setDate(d.getDate() + k + 1);
+    d.setDate(d.getDate() + k);
     return d;
   });
 }
+function roundEndDay(start: Date): Date {
+  const d = new Date(start);
+  d.setDate(d.getDate() + 6); // Sunday — last production day
+  return d;
+}
 
-// Locate a contiguous run of days within one displayed month. Production days
-// (Tue→Sun) and single delivery cells always sit on one Monday-first grid row,
-// so this returns the row + column span, or null when none fall in this month.
-// When a run straddles the month divide each month resolves its own segment.
+// Locate a contiguous run of days within one displayed month. A round week sits
+// on one Monday-first grid row, so this returns the row + column span, or null
+// when none fall in this month. When the week straddles the month divide each
+// month resolves its own segment.
 function daySpanSegment(days: Date[], year: number, month: number, lead: number) {
   let colStart = Infinity;
   let colEnd = -Infinity;
@@ -312,7 +317,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </div>
   );
 
-  // ── One month grid (hotel-stay round pills) ────────────────────────────────
+  // ── One month grid (rectangle round pills) ─────────────────────────────────
   const renderMonthGrid = (monthStart: Date, roundIdx: number, min: Date, activeStart: Date | undefined, lockedStarts: Date[]) => {
     const year = monthStart.getFullYear();
     const month = monthStart.getMonth();
@@ -320,21 +325,17 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
     const numRows = Math.ceil((lead + total) / 7);
 
-    const activeDelivery = activeStart ? getRoundEndDate(activeStart) : undefined;
-    const activeProdSeg = activeStart ? daySpanSegment(productionDays(activeStart), year, month, lead) : null;
-    const activeDelivSeg = activeDelivery ? daySpanSegment([activeDelivery], year, month, lead) : null;
+    const activeEnd = activeStart ? roundEndDay(activeStart) : undefined;
+    const activeSeg = activeStart ? daySpanSegment(roundWeekDays(activeStart), year, month, lead) : null;
 
-    const locked = lockedStarts.map((s) => {
-      const delivery = getRoundEndDate(s);
-      return {
-        start: s,
-        delivery,
-        prodSeg: daySpanSegment(productionDays(s), year, month, lead),
-        delivSeg: daySpanSegment([delivery], year, month, lead),
-      };
-    });
+    const locked = lockedStarts.map((s) => ({
+      start: s,
+      end: roundEndDay(s),
+      seg: daySpanSegment(roundWeekDays(s), year, month, lead),
+    }));
 
     const pct = (col: number) => `${(col / 7) * 100}%`;
+    const CELL = 32;
 
     return (
       <div className="w-[224px]">
@@ -347,7 +348,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           ))}
         </div>
         {Array.from({ length: numRows }).map((_, r) => (
-          <div key={r} className="relative" style={{ paddingBottom: 18 }}>
+          <div key={r} className="relative pb-1">
             <div className="grid grid-cols-7">
               {Array.from({ length: 7 }).map((__, c) => {
                 const cellIndex = r * 7 + c;
@@ -357,25 +358,26 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
                 const t = day.getTime();
 
                 const isActiveStart = activeStart != null && isSameDay(day, activeStart);
-                const isActiveDelivery = activeDelivery != null && isSameDay(day, activeDelivery);
-                const isActiveProd = activeStart != null && activeDelivery != null && t > activeStart.getTime() && t < activeDelivery.getTime();
-                const inActive = isActiveStart || isActiveProd || isActiveDelivery;
+                const isActiveEnd = activeEnd != null && isSameDay(day, activeEnd);
+                const inActive = activeStart != null && activeEnd != null && t >= activeStart.getTime() && t <= activeEnd.getTime();
 
-                let isLockedDelivery = false;
+                let isLockedEnd = false;
                 let inLocked = false;
                 for (const li of locked) {
-                  if (isSameDay(day, li.delivery)) { isLockedDelivery = true; inLocked = true; }
-                  else if (isSameDay(day, li.start) || (t > li.start.getTime() && t < li.delivery.getTime())) inLocked = true;
+                  if (isSameDay(day, li.end)) { isLockedEnd = true; inLocked = true; }
+                  else if (t >= li.start.getTime() && t <= li.end.getTime()) inLocked = true;
                 }
 
-                const selectable = isMonday(day) && t >= min.getTime() && !inLocked && !isActiveDelivery;
+                const selectable = isMonday(day) && t >= min.getTime() && !inLocked;
+                const isEnd = isActiveEnd || isLockedEnd;
 
-                const borderClass =
-                  isActiveStart || isActiveDelivery ? "border-gold"
-                  : isLockedDelivery ? "border-gold-muted"
-                  : selectable ? "border-transparent hover:border-gold"
-                  : "border-transparent";
-                const textClass = inLocked ? "text-label" : (inActive || selectable) ? "text-strong" : "text-recessive";
+                const bgClass = isActiveEnd ? "bg-gold" : isLockedEnd ? "bg-gold-muted" : "";
+                const textClass = isEnd
+                  ? "text-brand-dark"
+                  : inLocked ? "text-label"
+                  : (inActive || selectable) ? "text-strong"
+                  : "text-recessive";
+                const borderClass = selectable && !inActive ? "border-transparent hover:border-gold" : "border-transparent";
 
                 return (
                   <button
@@ -385,8 +387,9 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
                     onClick={() => selectable && selectDate(roundIdx, day)}
                     className={[
                       "flex h-8 w-8 items-center justify-center border font-serif text-[14px] tabular-nums transition-colors",
-                      borderClass,
+                      bgClass,
                       textClass,
+                      borderClass,
                       selectable ? "cursor-pointer" : "cursor-default",
                     ].join(" ")}
                     style={{ borderRadius: 2 }}
@@ -397,24 +400,19 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               })}
             </div>
 
-            {/* Production-day underlines (Tue → Sun) */}
-            {activeProdSeg && activeProdSeg.rowIndex === r && (
-              <div className="absolute h-px bg-gold" style={{ top: 33, left: pct(activeProdSeg.colStart), width: pct(activeProdSeg.colEnd - activeProdSeg.colStart + 1) }} />
+            {/* Round rectangle — encloses the seven production-week cells */}
+            {activeSeg && activeSeg.rowIndex === r && (
+              <div
+                className="pointer-events-none absolute border border-gold"
+                style={{ top: 0, height: CELL, left: pct(activeSeg.colStart), width: pct(activeSeg.colEnd - activeSeg.colStart + 1) }}
+              />
             )}
-            {locked.map((li, i) => li.prodSeg && li.prodSeg.rowIndex === r && (
-              <div key={`lp-${i}`} className="absolute h-px bg-gold-muted opacity-70" style={{ top: 33, left: pct(li.prodSeg.colStart), width: pct(li.prodSeg.colEnd - li.prodSeg.colStart + 1) }} />
-            ))}
-
-            {/* Delivery labels */}
-            {activeDelivSeg && activeDelivSeg.rowIndex === r && (
-              <div className="absolute text-center font-sans uppercase text-[9px] tracking-[0.14em] text-gold whitespace-nowrap" style={{ top: 36, left: pct(activeDelivSeg.colStart), width: pct(1) }}>
-                Delivery
-              </div>
-            )}
-            {locked.map((li, i) => li.delivSeg && li.delivSeg.rowIndex === r && (
-              <div key={`ld-${i}`} className="absolute text-center font-sans uppercase text-[9px] tracking-[0.14em] text-label whitespace-nowrap" style={{ top: 36, left: pct(li.delivSeg.colStart), width: pct(1) }}>
-                Delivery
-              </div>
+            {locked.map((li, i) => li.seg && li.seg.rowIndex === r && (
+              <div
+                key={`lr-${i}`}
+                className="pointer-events-none absolute border border-gold-muted"
+                style={{ top: 0, height: CELL, left: pct(li.seg.colStart), width: pct(li.seg.colEnd - li.seg.colStart + 1) }}
+              />
             ))}
           </div>
         ))}
