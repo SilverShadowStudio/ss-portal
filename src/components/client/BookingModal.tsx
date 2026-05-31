@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
 import { Minus, Plus, X, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -186,13 +186,22 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           {cells.map((day, i) => {
             if (!day) return <div key={i} />;
             const mon = isMonday(day);
-            const selectable = mon && day >= minForActive;
             // Is this day inside any selected round's week?
             const roundIdx = mondays.findIndex(
               (m) => m && day >= m && day < getRoundEndDate(m),
             );
             const inWeek = roundIdx >= 0;
             const isStart = roundIdx >= 0 && isSameDay(day, mondays[roundIdx]!);
+            // Is this day inside a feedback gap between two consecutive placed
+            // rounds? (delivery Monday of round i → start Monday of round i+1).
+            const inFeedbackWeek =
+              !inWeek &&
+              mondays.some((m, idx) => {
+                const next = mondays[idx + 1];
+                return m != null && next != null && day >= getRoundEndDate(m) && day < next;
+              });
+            // Feedback-gap Mondays are not bookable.
+            const selectable = mon && day >= minForActive && !inFeedbackWeek;
             return (
               <button
                 key={i}
@@ -203,6 +212,8 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
                   "aspect-square flex items-center justify-center rounded-sm font-sans text-[11px] tabular-nums transition-colors",
                   inWeek
                     ? "bg-gold/15 text-foreground"
+                    : inFeedbackWeek
+                    ? "bg-muted/20 text-foreground/40 cursor-default"
                     : selectable
                     ? "text-foreground hover:bg-gold/10 cursor-pointer"
                     : "text-foreground/20 cursor-default",
@@ -271,33 +282,58 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               (airline seat selection). The pill is the change affordance. */}
           <div className="mt-4 flex flex-wrap gap-2">
             {roundNumbers.map((rn, i) => {
-              const placed = mondays[i] != null;
+              const start = mondays[i];
+              const placed = start != null;
               const active = activeRound === i;
+              const nextStart = mondays[i + 1];
+              // A feedback period sits between this round and the next when both
+              // have dates placed and there's a real gap (next start strictly
+              // after this round's delivery Monday).
+              const showFeedback =
+                placed &&
+                i + 1 < roundNumbers.length &&
+                nextStart != null &&
+                nextStart > getRoundEndDate(start);
               return (
-                <button
-                  key={rn}
-                  type="button"
-                  onClick={() => setActiveRound(i)}
-                  aria-pressed={active}
-                  className={[
-                    "flex min-w-[88px] flex-col items-start gap-0.5 border px-3 py-2 text-left transition-colors",
-                    active
-                      ? "border-gold bg-gold/10 text-gold"
-                      : placed
-                      ? "border-gold/40 text-standard"
-                      : "border-border/50 text-recessive hover:border-foreground/40",
-                  ].join(" ")}
-                  style={{ borderRadius: 2, ...(placed && !active ? { borderLeftWidth: 3, borderLeftColor: "hsl(var(--gold))" } : {}) }}
-                >
-                  <span className="font-sans uppercase text-[10px] tracking-[0.16em]">
-                    Round {String(rn).padStart(2, "0")}
-                  </span>
-                  {placed && (
-                    <span className="font-sans text-[11px] tabular-nums opacity-80">
-                      {formatDayMonth(mondays[i]!)}
+                <Fragment key={rn}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRound(i)}
+                    aria-pressed={active}
+                    className={[
+                      "flex min-w-[88px] flex-col items-start gap-0.5 border px-3 py-2 text-left transition-colors",
+                      active
+                        ? "border-gold bg-gold/10 text-gold"
+                        : placed
+                        ? "border-gold/40 text-standard"
+                        : "border-border/50 text-recessive hover:border-foreground/40",
+                    ].join(" ")}
+                    style={{ borderRadius: 2, ...(placed && !active ? { borderLeftWidth: 3, borderLeftColor: "hsl(var(--gold))" } : {}) }}
+                  >
+                    <span className="font-sans uppercase text-[10px] tracking-[0.16em]">
+                      Round {String(rn).padStart(2, "0")}
                     </span>
+                    {placed && (
+                      <span className="font-sans uppercase text-[11px] tabular-nums opacity-80">
+                        {formatDayMonth(start).toUpperCase()} → {formatDayMonth(getRoundEndDate(start)).toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+                  {showFeedback && (
+                    <div
+                      aria-hidden
+                      className="flex min-w-[88px] flex-col items-start gap-0.5 border border-border/30 bg-muted/20 px-3 py-2 text-left text-foreground/55"
+                      style={{ borderRadius: 2 }}
+                    >
+                      <span className="font-sans uppercase text-[10px] tracking-[0.16em]">
+                        Client feedback
+                      </span>
+                      <span className="font-sans uppercase text-[11px] tabular-nums opacity-80">
+                        {formatDayMonth(getRoundEndDate(start)).toUpperCase()} → {formatDayMonth(nextStart).toUpperCase()}
+                      </span>
+                    </div>
                   )}
-                </button>
+                </Fragment>
               );
             })}
           </div>
