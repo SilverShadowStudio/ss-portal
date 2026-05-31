@@ -10,6 +10,8 @@ import {
   getRoundEndDate,
   getReservationExpiry,
   formatDayMonth,
+  isMonday,
+  isSameDay,
 } from "@/lib/bookingDates";
 import { RESERVATIONS_CHANGED_EVENT } from "./ReservationBasket";
 
@@ -24,13 +26,31 @@ interface BookingModalProps {
 
 const MIN_ROUNDS = 1;
 const MAX_ROUNDS = 5;
+const DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_MS = 86400000;
 
-// One week between a round's delivery and the next round's start (default
-// cadence; matches scene_rounds.buffer_weeks default of 1).
+// One week between a round's delivery and the next round's earliest start
+// (default cadence; matches scene_rounds.buffer_weeks default of 1).
 function addWeeks(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n * 7);
   return r;
+}
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+// Round N's earliest start = previous round's delivery + one week. Because the
+// delivery Monday is excluded (min = delivery + 1 day), the earliest selectable
+// Monday is delivery + 7 days — which is also the default. Single source.
+function earliestStartAfter(prevStart: Date): Date {
+  return addWeeks(getRoundEndDate(prevStart), 1);
 }
 
 export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName, onBooked }: BookingModalProps) {
@@ -41,6 +61,8 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const [startRoundNumber, setStartRoundNumber] = useState(1);
   const [numRounds, setNumRounds] = useState(1);
   const [currentStep, setCurrentStep] = useState(0);
+  const [mondays, setMondays] = useState<Date[]>([earliest]);
+  const [displayMonth, setDisplayMonth] = useState<Date>(startOfMonth(earliest));
   const [submitting, setSubmitting] = useState(false);
 
   const roundNumbers = useMemo(
@@ -48,18 +70,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     [numRounds, startRoundNumber],
   );
   const totals = useMemo(() => calculateTotalsForRounds(roundNumbers), [roundNumbers]);
-
-  // Pass 1: round start dates are auto-computed (Round 1 = earliest bookable
-  // Monday; each later round = previous delivery + one week). User-selectable
-  // dates land in Pass 2. The wizard steps still render one screen per round.
-  const startDates = useMemo(() => {
-    const dates: Date[] = [];
-    for (let i = 0; i < numRounds; i++) {
-      if (i === 0) dates.push(earliest);
-      else dates.push(addWeeks(getRoundEndDate(dates[i - 1]), 1));
-    }
-    return dates;
-  }, [earliest, numRounds]);
 
   // Total steps = ROUNDS (1) + one per round + REVIEW (1).
   const totalSteps = 2 + numRounds;
@@ -74,6 +84,11 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     labels.push("REVIEW");
     return labels;
   }, [numRounds, startRoundNumber]);
+
+  const minMondayFor = useCallback(
+    (idx: number): Date => (idx === 0 ? earliest : earliestStartAfter(mondays[idx - 1])),
+    [earliest, mondays],
+  );
 
   // Derive the next round number from existing non-cancelled rounds on the scene.
   useEffect(() => {
@@ -93,17 +108,39 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     return () => { cancelled = true; };
   }, [isOpen, sceneId]);
 
-  // Reset to the first step on each open.
+  // Reset to the first step and default dates on each open.
   useEffect(() => {
     if (!isOpen) return;
     setNumRounds(1);
     setCurrentStep(0);
-  }, [isOpen]);
+    setMondays([earliest]);
+    setDisplayMonth(startOfMonth(earliest));
+  }, [isOpen, earliest]);
+
+  // Pad/truncate the dates array as the round count changes. Existing picks are
+  // preserved; new rounds default to one week after the previous delivery.
+  useEffect(() => {
+    setMondays((prev) => {
+      const next = prev.slice(0, numRounds);
+      for (let i = next.length; i < numRounds; i++) {
+        next.push(i === 0 ? earliest : earliestStartAfter(next[i - 1]));
+      }
+      return next;
+    });
+  }, [numRounds, earliest]);
 
   // If numRounds shrinks while on a now-out-of-range step, clamp.
   useEffect(() => {
     setCurrentStep((s) => Math.min(s, 2 + numRounds - 1));
   }, [numRounds]);
+
+  // When entering a date step, snap the calendar to the selected round's month.
+  useEffect(() => {
+    if (currentStep >= 1 && currentStep <= numRounds) {
+      const sel = mondays[currentStep - 1];
+      if (sel) setDisplayMonth(startOfMonth(sel));
+    }
+  }, [currentStep, numRounds, mondays]);
 
   const nextStep = useCallback(() => {
     setCurrentStep((s) => Math.min(s + 1, 2 + numRounds - 1));
@@ -117,21 +154,43 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     setCurrentStep((s) => (n < s ? n : s));
   }, []);
 
-  const valid = !!user;
+  // Pick a Monday for round `idx`. Subsequent rounds shift by the same delta to
+  // preserve the chosen feedback gaps; any that fall out of range reset to their
+  // default (previous delivery + one week) and later rounds shift from there.
+  const selectDate = useCallback((idx: number, day: Date) => {
+    setMondays((prev) => {
+      const next = prev.slice();
+      const old = next[idx];
+      const deltaDays = old ? Math.round((day.getTime() - old.getTime()) / DAY_MS) : 0;
+      next[idx] = day;
+      for (let i = idx + 1; i < next.length; i++) {
+        if (deltaDays !== 0 && next[i]) {
+          next[i] = new Date(next[i].getTime() + deltaDays * DAY_MS);
+        }
+        const min = earliestStartAfter(next[i - 1]);
+        if (!next[i] || next[i] < min || !isMonday(next[i])) {
+          next[i] = min;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const valid = !!user && mondays.length === numRounds && mondays.every(Boolean);
 
   async function handleConfirm() {
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
       const bookingGroupId = crypto.randomUUID();
-      const firstStart = startDates[0];
+      const firstStart = mondays[0];
       const expiry = getReservationExpiry(firstStart);
       const rows = roundNumbers.map((rn, i) => ({
         scene_id: sceneId,
         round_number: rn,
         status: "reserved",
-        start_date: startDates[i].toISOString(),
-        end_date: getRoundEndDate(startDates[i]).toISOString(),
+        start_date: mondays[i].toISOString(),
+        end_date: getRoundEndDate(mondays[i]).toISOString(),
         round_fee: calculateRoundFee(rn),
         reservation_expires_at: expiry.toISOString(),
         booking_group_id: bookingGroupId,
@@ -195,7 +254,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
       <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
         Round 01 is the design realisation round. Further rounds are corrections and revisions to your feedback.
       </p>
-      <p className="mt-3 max-w-[440px] font-sans italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
+      <p className="mt-3 max-w-[440px] font-sans italic normal-case text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
         Additional rounds may be booked at any time after your final delivery.
       </p>
       <div className="mt-10 flex items-center gap-8">
@@ -224,17 +283,104 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </div>
   );
 
-  // ── Steps 1…N: per-round date (Pass 1 placeholder) ─────────────────────────
+  // ── Inline one-month calendar for a date step ──────────────────────────────
+  const renderCalendar = (idx: number) => {
+    const min = minMondayFor(idx);
+    const selected = mondays[idx];
+    const year = displayMonth.getFullYear();
+    const month = displayMonth.getMonth();
+    const total = daysInMonth(year, month);
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < lead; i++) cells.push(null);
+    for (let d = 1; d <= total; d++) cells.push(new Date(year, month, d));
+    const canGoPrev = displayMonth.getTime() > startOfMonth(min).getTime();
+
+    return (
+      <div className="mt-8 w-[280px]">
+        <div className="mb-4 flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={() => canGoPrev && setDisplayMonth((m) => addMonths(m, -1))}
+            disabled={!canGoPrev}
+            className="font-serif text-label transition-colors hover:text-strong disabled:opacity-30 disabled:hover:text-label"
+            style={{ fontSize: 18 }}
+            aria-label="Previous month"
+          >
+            ‹
+          </button>
+          <span className="font-sans uppercase text-[11px] tracking-[0.2em] text-label">
+            {displayMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setDisplayMonth((m) => addMonths(m, 1))}
+            className="font-serif text-label transition-colors hover:text-strong"
+            style={{ fontSize: 18 }}
+            aria-label="Next month"
+          >
+            ›
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {DAY_HEADERS.map((h, i) => (
+            <div key={i} className="text-center font-sans uppercase text-[10px] tracking-[0.12em] text-recessive">{h}</div>
+          ))}
+          {cells.map((day, i) => {
+            if (!day) return <div key={i} />;
+            const selectable = isMonday(day) && day.getTime() >= min.getTime();
+            const isSel = selected != null && isSameDay(day, selected);
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={!selectable}
+                onClick={() => selectable && selectDate(idx, day)}
+                className={[
+                  "flex h-10 w-10 items-center justify-center border font-serif text-[15px] tabular-nums transition-colors",
+                  isSel
+                    ? "border-gold text-strong"
+                    : selectable
+                    ? "border-transparent text-strong cursor-pointer hover:border-gold"
+                    : "border-transparent text-recessive cursor-default",
+                ].join(" ")}
+                style={{ borderRadius: 2 }}
+              >
+                {day.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Steps 1…N: per-round date selection ────────────────────────────────────
   const renderDateStep = (roundIdx: number) => {
     const rn = startRoundNumber + roundIdx;
+    const prevRn = rn - 1;
+    let body: string;
+    if (roundIdx === 0) {
+      body = `Choose the Monday when production starts. Round ${String(rn).padStart(2, "0")} takes one week.`;
+    } else {
+      const prevDelivery = getRoundEndDate(mondays[roundIdx - 1]);
+      const deliveryLabel = prevDelivery.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      body = `Round ${String(prevRn).padStart(2, "0")} delivers on Monday ${deliveryLabel}. Choose when Round ${String(rn).padStart(2, "0")} should start. The gap between these dates is your feedback period.`;
+    }
     return (
       <div className="flex flex-col items-center text-center">
         <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>
           When should Round {String(rn).padStart(2, "0")} begin?
         </h3>
         <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
-          [Date selector lands in Pass 2]
+          {body}
         </p>
+        {renderCalendar(roundIdx)}
+        {roundIdx >= 1 && (
+          <p className="mt-4 font-sans italic normal-case text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
+            Default: one week after Round {String(prevRn).padStart(2, "0")} delivery.
+          </p>
+        )}
       </div>
     );
   };
@@ -252,12 +398,12 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               Round {String(rn).padStart(2, "0")}
             </span>
             <span className="font-serif tabular-nums text-standard" style={{ fontSize: 14 }}>
-              {formatDayMonth(startDates[i])} → {formatDayMonth(getRoundEndDate(startDates[i]))}
+              {formatDayMonth(mondays[i])} → {formatDayMonth(getRoundEndDate(mondays[i]))}
             </span>
           </div>
         ))}
       </div>
-      <p className="mt-3 font-sans italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
+      <p className="mt-3 font-sans italic normal-case text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
         Round dates may shift if feedback is delayed. Briefs must arrive by Friday 12:00 for the round starting the following Monday.
       </p>
 
