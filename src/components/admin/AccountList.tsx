@@ -188,8 +188,8 @@ function CircleButton({
             className={
               "flex h-9 w-9 items-center justify-center rounded-full border transition-all shrink-0 " +
               (active
-                ? "bg-gold/5 border-gold/40 opacity-90"
-                : "bg-secondary border-transparent opacity-25 hover:opacity-70 hover:bg-[#1C1A17] hover:border-gold/40")
+                ? "bg-gold/10 border-gold/50 opacity-100"
+                : "bg-secondary border-transparent opacity-60 hover:opacity-100 hover:bg-gold/5 hover:border-gold/40")
             }
           >
             <Icon className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
@@ -1238,31 +1238,6 @@ export function AccountList({
                         <div
                           className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
                         >
-                          <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={async () => {
-                                    const { error } = await enterGhostMode({
-                                      userId: u.user_id,
-                                      name: displayName,
-                                    });
-                                    if (error) {
-                                      toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
-                                      return;
-                                    }
-                                    navigate(postGhostPath);
-                                  }}
-                                  className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary hover:bg-[#1C1A17] border border-transparent hover:border-gold/40 transition-all shrink-0 opacity-25 hover:opacity-70"
-                                  aria-label={`Ghost as ${displayName}`}
-                                >
-                                  <Ghost className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="right">View as {displayName}</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-
                           <div className="min-w-0 flex-1">
                             <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
                             {(u.position || u.member_role) && (
@@ -1278,27 +1253,6 @@ export function AccountList({
                           <div className="hidden md:flex items-center gap-2 min-w-0 max-w-[240px]">
                             <Mail className="h-3 w-3 text-foreground/30 shrink-0" />
                             <span className="text-xs text-muted-foreground truncate">{u.email ?? "—"}</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <CircleButton
-                              icon={FileText}
-                              label="Documents"
-                              active={isDocsOpen}
-                              onClick={() => togglePanel(u.user_id, "docs", accountId)}
-                            />
-                            <CircleButton
-                              icon={Activity}
-                              label="Activity"
-                              active={isActivityOpen}
-                              onClick={() => togglePanel(u.user_id, "activity", accountId)}
-                            />
-                            <CircleButton
-                              icon={Clock}
-                              label="Recent sessions"
-                              active={isHistoryOpen}
-                              onClick={() => togglePanel(u.user_id, "history", accountId)}
-                            />
                           </div>
 
                           <div className="text-right shrink-0 min-w-[120px]">
@@ -1338,6 +1292,43 @@ export function AccountList({
                                 </p>
                               </>
                             )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 self-start flex-wrap justify-end">
+                            <CircleButton
+                              icon={Ghost}
+                              label={`View as ${displayName}`}
+                              active={false}
+                              onClick={async () => {
+                                const { error } = await enterGhostMode({
+                                  userId: u.user_id,
+                                  name: displayName,
+                                });
+                                if (error) {
+                                  toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
+                                  return;
+                                }
+                                navigate(postGhostPath);
+                              }}
+                            />
+                            <CircleButton
+                              icon={FileText}
+                              label="Documents"
+                              active={isDocsOpen}
+                              onClick={() => togglePanel(u.user_id, "docs", accountId)}
+                            />
+                            <CircleButton
+                              icon={Activity}
+                              label="Activity"
+                              active={isActivityOpen}
+                              onClick={() => togglePanel(u.user_id, "activity", accountId)}
+                            />
+                            <CircleButton
+                              icon={Clock}
+                              label="Recent sessions"
+                              active={isHistoryOpen}
+                              onClick={() => togglePanel(u.user_id, "history", accountId)}
+                            />
                           </div>
                         </div>
                         {isHistoryOpen && (
