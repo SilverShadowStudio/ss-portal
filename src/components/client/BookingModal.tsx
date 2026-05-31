@@ -53,6 +53,28 @@ function earliestStartAfter(prevStart: Date): Date {
   return addWeeks(getRoundEndDate(prevStart), 1);
 }
 
+// A round occupies a Monday→Sunday week, which is exactly one Monday-first grid
+// row. Within a given month a round shows as a single contiguous column run on
+// one row (a full row when wholly inside the month, a partial run when the week
+// straddles the month boundary). Returns the row + column span, or null if the
+// round has no days in this month.
+function pillSegment(start: Date, year: number, month: number, lead: number) {
+  let colStart = Infinity;
+  let colEnd = -Infinity;
+  let rowIndex = -1;
+  for (let k = 0; k < 7; k++) {
+    const day = new Date(start);
+    day.setDate(day.getDate() + k);
+    if (day.getFullYear() === year && day.getMonth() === month) {
+      const cellIndex = lead + day.getDate() - 1;
+      colStart = Math.min(colStart, cellIndex % 7);
+      colEnd = Math.max(colEnd, cellIndex % 7);
+      rowIndex = Math.floor(cellIndex / 7);
+    }
+  }
+  return rowIndex === -1 ? null : { rowIndex, colStart, colEnd };
+}
+
 export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName, onBooked }: BookingModalProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -283,74 +305,111 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </div>
   );
 
-  // ── Inline one-month calendar for a date step ──────────────────────────────
-  const renderCalendar = (idx: number) => {
-    const min = minMondayFor(idx);
-    const selected = mondays[idx];
-    const year = displayMonth.getFullYear();
-    const month = displayMonth.getMonth();
+  // ── One month grid (cells + round-pill underlines) ─────────────────────────
+  const renderMonthGrid = (monthStart: Date, roundIdx: number, min: Date, activeStart: Date | undefined, lockedStarts: Date[]) => {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
     const total = daysInMonth(year, month);
     const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
-    const cells: (Date | null)[] = [];
-    for (let i = 0; i < lead; i++) cells.push(null);
-    for (let d = 1; d <= total; d++) cells.push(new Date(year, month, d));
-    const canGoPrev = displayMonth.getTime() > startOfMonth(min).getTime();
+    const numRows = Math.ceil((lead + total) / 7);
+
+    const activeSeg = activeStart ? pillSegment(activeStart, year, month, lead) : null;
+    const lockedSegs = lockedStarts
+      .map((s) => pillSegment(s, year, month, lead))
+      .filter((s): s is { rowIndex: number; colStart: number; colEnd: number } => s !== null);
 
     return (
-      <div className="mt-8 w-[280px]">
-        <div className="mb-4 flex items-center justify-center gap-4">
-          <button
-            type="button"
-            onClick={() => canGoPrev && setDisplayMonth((m) => addMonths(m, -1))}
-            disabled={!canGoPrev}
-            className="font-serif text-label transition-colors hover:text-strong disabled:opacity-30 disabled:hover:text-label"
-            style={{ fontSize: 18 }}
-            aria-label="Previous month"
-          >
-            ‹
-          </button>
-          <span className="font-sans uppercase text-[11px] tracking-[0.2em] text-label">
-            {displayMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
-          </span>
-          <button
-            type="button"
-            onClick={() => setDisplayMonth((m) => addMonths(m, 1))}
-            className="font-serif text-label transition-colors hover:text-strong"
-            style={{ fontSize: 18 }}
-            aria-label="Next month"
-          >
-            ›
-          </button>
-        </div>
-        <div className="grid grid-cols-7 gap-1">
+      <div className="w-[224px]">
+        <p className="mb-3 text-center font-sans uppercase text-[11px] tracking-[0.2em] text-label">
+          {monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        </p>
+        <div className="grid grid-cols-7">
           {DAY_HEADERS.map((h, i) => (
-            <div key={i} className="text-center font-sans uppercase text-[10px] tracking-[0.12em] text-recessive">{h}</div>
+            <div key={i} className="flex h-6 items-center justify-center font-sans uppercase text-[10px] tracking-[0.12em] text-recessive">{h}</div>
           ))}
-          {cells.map((day, i) => {
-            if (!day) return <div key={i} />;
-            const selectable = isMonday(day) && day.getTime() >= min.getTime();
-            const isSel = selected != null && isSameDay(day, selected);
-            return (
-              <button
-                key={i}
-                type="button"
-                disabled={!selectable}
-                onClick={() => selectable && selectDate(idx, day)}
-                className={[
-                  "flex h-10 w-10 items-center justify-center border font-serif text-[15px] tabular-nums transition-colors",
-                  isSel
-                    ? "border-gold text-strong"
-                    : selectable
-                    ? "border-transparent text-strong cursor-pointer hover:border-gold"
-                    : "border-transparent text-recessive cursor-default",
-                ].join(" ")}
-                style={{ borderRadius: 2 }}
-              >
-                {day.getDate()}
-              </button>
-            );
-          })}
         </div>
+        {Array.from({ length: numRows }).map((_, r) => (
+          <div key={r} className="relative pb-2">
+            <div className="grid grid-cols-7">
+              {Array.from({ length: 7 }).map((__, c) => {
+                const cellIndex = r * 7 + c;
+                const dayNum = cellIndex - lead + 1;
+                if (dayNum < 1 || dayNum > total) return <div key={c} className="h-8 w-8" />;
+                const day = new Date(year, month, dayNum);
+                const t = day.getTime();
+                const inActive = activeStart != null && t >= activeStart.getTime() && t < activeStart.getTime() + 7 * DAY_MS;
+                const inLocked = lockedStarts.some((s) => t >= s.getTime() && t < s.getTime() + 7 * DAY_MS);
+                const isSel = activeStart != null && isSameDay(day, activeStart);
+                const selectable = isMonday(day) && t >= min.getTime() && !inLocked;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={!selectable}
+                    onClick={() => selectable && selectDate(roundIdx, day)}
+                    className={[
+                      "flex h-8 w-8 items-center justify-center border font-serif text-[14px] tabular-nums transition-colors",
+                      isSel ? "border-gold" : selectable ? "border-transparent hover:border-gold" : "border-transparent",
+                      inLocked ? "text-label" : (inActive || selectable) ? "text-strong" : "text-recessive",
+                      selectable ? "cursor-pointer" : "cursor-default",
+                    ].join(" ")}
+                    style={{ borderRadius: 2 }}
+                  >
+                    {dayNum}
+                  </button>
+                );
+              })}
+            </div>
+            {activeSeg && activeSeg.rowIndex === r && (
+              <div
+                className="absolute bottom-0.5 h-px bg-gold"
+                style={{ left: `${(activeSeg.colStart / 7) * 100}%`, width: `${((activeSeg.colEnd - activeSeg.colStart + 1) / 7) * 100}%` }}
+              />
+            )}
+            {lockedSegs.filter((s) => s.rowIndex === r).map((s, i) => (
+              <div
+                key={i}
+                className="absolute bottom-0.5 h-px bg-gold-muted opacity-70"
+                style={{ left: `${(s.colStart / 7) * 100}%`, width: `${((s.colEnd - s.colStart + 1) / 7) * 100}%` }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // ── Two-month calendar for a date step ─────────────────────────────────────
+  const renderCalendar = (idx: number) => {
+    const min = minMondayFor(idx);
+    const activeStart = mondays[idx];
+    const lockedStarts = mondays.slice(0, idx);
+    const canGoPrev = displayMonth.getTime() > startOfMonth(min).getTime();
+    return (
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => canGoPrev && setDisplayMonth((m) => addMonths(m, -1))}
+          disabled={!canGoPrev}
+          className="font-serif text-label transition-colors hover:text-strong disabled:opacity-30 disabled:hover:text-label"
+          style={{ fontSize: 18 }}
+          aria-label="Previous months"
+        >
+          ‹
+        </button>
+        <div className="flex gap-6">
+          {renderMonthGrid(displayMonth, idx, min, activeStart, lockedStarts)}
+          {renderMonthGrid(addMonths(displayMonth, 1), idx, min, activeStart, lockedStarts)}
+        </div>
+        <button
+          type="button"
+          onClick={() => setDisplayMonth((m) => addMonths(m, 1))}
+          className="font-serif text-label transition-colors hover:text-strong"
+          style={{ fontSize: 18 }}
+          aria-label="Next months"
+        >
+          ›
+        </button>
       </div>
     );
   };
@@ -361,7 +420,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     const prevRn = rn - 1;
     let body: string;
     if (roundIdx === 0) {
-      body = `Choose the Monday when production starts. Round ${String(rn).padStart(2, "0")} takes one week.`;
+      body = "Choose the Monday when production starts. Each round takes one week.";
     } else {
       const prevDelivery = getRoundEndDate(mondays[roundIdx - 1]);
       const deliveryLabel = prevDelivery.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
