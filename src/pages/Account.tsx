@@ -11,6 +11,7 @@ import { TeamManagement } from "@/components/account/TeamManagement";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { cn } from "@/lib/utils";
 import { logActivity } from "@/lib/activityLog";
+import { usePWAInstall } from "@/components/PWAInstallPrompt";
 
 interface ProfileData {
   firstName: string;
@@ -29,6 +30,7 @@ interface NotificationPrefs {
 
 export default function Account() {
   const { user, accountType } = useAuth();
+  const { canInstall, isInstalled, promptInstall } = usePWAInstall();
   const [loading, setLoading] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -37,7 +39,7 @@ export default function Account() {
 
   // Accordion — only one section open at a time. Null until the first data
   // load picks the default section based on the priorities below.
-  type SectionKey = "profile" | "notifications" | "team" | "password";
+  type SectionKey = "profile" | "notifications" | "team" | "password" | "install";
   const [openSection, setOpenSection] = useState<SectionKey | null>(null);
   const [defaultPicked, setDefaultPicked] = useState(false);
 
@@ -353,6 +355,50 @@ export default function Account() {
             </AccordionPanel>
           </section>
         )}
+
+        {/* Installation Section */}
+        <section className={cn(openSection === "install" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Installation"
+            isOpen={openSection === "install"}
+            onToggle={() => toggleSection("install")}
+          />
+          <AccordionPanel isOpen={openSection === "install"}>
+            <div className="card-elevated p-6 space-y-5">
+              {isInstalled ? (
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  This portal is installed on your device.
+                </p>
+              ) : canInstall ? (
+                <>
+                  <p className="font-serif text-foreground" style={{ fontSize: 15, lineHeight: 1.7 }}>
+                    This portal can be installed as an application on your device
+                    for direct access without a browser.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { void promptInstall(); }}
+                    className="font-sans uppercase text-foreground"
+                    style={{
+                      fontSize: 11,
+                      letterSpacing: "0.22em",
+                      paddingBottom: 4,
+                      borderBottom: "1px solid #B89A6A",
+                    }}
+                  >
+                    Install Application
+                  </button>
+                </>
+              ) : (
+                <p className="font-serif text-muted-foreground" style={{ fontSize: 15, lineHeight: 1.7 }}>
+                  This portal can be installed on your device for direct access.
+                  On iPhone or iPad, use the Share menu in Safari and select Add
+                  to Home Screen.
+                </p>
+              )}
+            </div>
+          </AccordionPanel>
+        </section>
 
         {/* Change Password Section */}
         <section className={cn(openSection === "password" ? "mb-12" : "mb-6", "last:mb-0")}>

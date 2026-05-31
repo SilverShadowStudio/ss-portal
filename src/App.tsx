@@ -57,7 +57,8 @@ import AdminExpenses from "./pages/admin/AdminExpenses";
 import AdminPnL from "./pages/admin/AdminPnL";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
-import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
+import { PWAInstallProvider } from "@/components/PWAInstallPrompt";
+import { ClientInstallOnboarding } from "@/components/ClientInstallOnboarding";
 import { useAuth } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient();
@@ -83,11 +84,12 @@ const App = () => (
       <TooltipProvider>
         <BrandProvider>
         <AuthProvider>
+        <PWAInstallProvider>
           <Toaster />
         <Sonner />
         <BrowserRouter>
           <ActivityTrackerMount />
-          <PWAInstallPrompt />
+          <ClientInstallOnboarding />
           <GhostModeShell>
           <Routes>
             <Route path="/auth" element={<Auth />} />
@@ -427,6 +429,7 @@ const App = () => (
           </Routes>
           </GhostModeShell>
           </BrowserRouter>
+        </PWAInstallProvider>
         </AuthProvider>
         </BrandProvider>
       </TooltipProvider>
