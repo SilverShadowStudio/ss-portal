@@ -84,7 +84,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
               { label: "Orders", onClick: () => navigate("/orders"), active: location.pathname === "/orders", separatorAfter: true, Icon: Package },
             ] as SidebarAccountMenuItem[])),
         ...(isClientManager
-          ? ([{ label: "Documents", onClick: () => navigate("/documents"), active: location.pathname === "/documents", Icon: FileText }] as SidebarAccountMenuItem[])
+          ? ([{ label: "Documents", onClick: () => navigate("/documents"), active: location.pathname === "/documents", separatorAfter: true, Icon: FileText }] as SidebarAccountMenuItem[])
           : []),
         // Team — Managers of project/partnership accounts only (Invitees never see it).
         ...(isClientManager

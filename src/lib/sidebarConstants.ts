@@ -34,7 +34,7 @@ export const SB = {
   // Separator between hover-menu groups
   separatorStyle: {
     height: 1,
-    margin: "2px 20px",
+    margin: "8px 20px",
     background: "hsl(var(--border) / 0.4)",
   },
 } as const;
