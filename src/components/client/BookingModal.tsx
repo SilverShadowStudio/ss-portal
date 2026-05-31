@@ -192,10 +192,10 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const renderRoundsStep = () => (
     <div className="flex flex-col items-center text-center">
       <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>How many rounds?</h3>
-      <p className="mt-4 max-w-[440px] font-serif text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
+      <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
         Round 01 is the design realisation round. Further rounds are corrections and revisions to your feedback.
       </p>
-      <p className="mt-3 max-w-[440px] font-serif italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
+      <p className="mt-3 max-w-[440px] font-sans italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
         Additional rounds may be booked at any time after your final delivery.
       </p>
       <div className="mt-10 flex items-center gap-8">
@@ -232,7 +232,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
         <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>
           When should Round {String(rn).padStart(2, "0")} begin?
         </h3>
-        <p className="mt-4 max-w-[440px] font-serif text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
+        <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
           [Date selector lands in Pass 2]
         </p>
       </div>
@@ -257,7 +257,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           </div>
         ))}
       </div>
-      <p className="mt-3 font-serif italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
+      <p className="mt-3 font-sans italic text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
         Round dates may shift if feedback is delayed. Briefs must arrive by Friday 12:00 for the round starting the following Monday.
       </p>
 
