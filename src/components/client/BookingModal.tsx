@@ -311,7 +311,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           </div>
 
           <p className="mt-4 font-sans text-[11px] leading-relaxed text-label">
-            Round 02+ dates may shift if feedback is delayed. Instructions for each round must be provided by 17:00 on the Friday before the round starts.
+            Round 02+ dates may shift if feedback is delayed. Instructions for each round must be provided by 12:00 on the Friday before the round starts.
           </p>
         </section>
 
