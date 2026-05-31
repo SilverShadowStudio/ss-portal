@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
-  Copy, Check, Trash2, Ghost, Pencil,
+  Copy, Check, Trash2, Ghost, Pencil, FileText, Activity, Clock,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -38,6 +38,8 @@ import {
   formatSessionDuration,
   type SessionSummary,
 } from "@/lib/clientActivity";
+import { formatCurrency } from "@/lib/invoiceUtils";
+import { ACTION_LABELS } from "@/lib/activityLog";
 import { TeamContractFormDialog } from "@/components/admin/TeamContractFormDialog";
 
 interface AccountUserRow {
@@ -65,6 +67,28 @@ interface AccountGroup {
   account_created_at: string | null;
   users: AccountUserRow[];
 }
+
+interface DocumentRow {
+  type: "agreement" | "quotation" | "invoice";
+  id: string;
+  identifier: string;
+  project_name?: string;
+  status: string;
+  amount?: number;
+  currency?: string;
+  created_at: string;
+}
+
+interface ActivityRow {
+  id: string;
+  action: string;
+  description: string;
+  created_at: string;
+}
+
+// Which accordion is open, scoped to one user row at a time. Only ever one
+// panel open across the whole page.
+type ExpandedPanel = { userId: string; panel: "history" | "docs" | "activity" };
 
 export interface AccountListProps {
   /** Page title — rendered uppercase via CSS (e.g. "Clients" → "CLIENTS"). */
@@ -140,6 +164,48 @@ function suggestClientCodes(name: string): string[] {
   return [...codes].filter((c) => c.length === 3).slice(0, 8);
 }
 
+// Small ghost-circle button matching the existing avatar/ghost circle on the
+// user row. Inactive = neutral grey at low opacity; active = gold tint.
+function CircleButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof FileText;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            className={
+              "flex h-9 w-9 items-center justify-center rounded-full border transition-all shrink-0 " +
+              (active
+                ? "bg-gold/5 border-gold/40 opacity-90"
+                : "bg-secondary border-transparent opacity-25 hover:opacity-70 hover:bg-[#1C1A17] hover:border-gold/40")
+            }
+          >
+            <Icon className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Status pill shared by the Documents accordion rows.
+function statusPillLabel(s: string): string {
+  return s.replace(/_/g, " ").toUpperCase();
+}
+
 export function AccountList({
   title,
   eyebrow,
@@ -174,7 +240,14 @@ export function AccountList({
   // Per-user reconstructed login sessions (newest first) for the
   // last-connection summary + expandable history. Computed at render time.
   const [sessionsByUser, setSessionsByUser] = useState<Map<string, SessionSummary[]>>(new Map());
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel | null>(null);
+  // Lazy-fetched, per-account caches for the Documents + Activity accordions.
+  // Fetched on first open of that circle for any user in the account; reused
+  // for the session afterwards.
+  const [documentsByAccount, setDocumentsByAccount] = useState<Map<string, DocumentRow[]>>(new Map());
+  const [activityByAccount, setActivityByAccount] = useState<Map<string, ActivityRow[]>>(new Map());
+  const [docsLoading, setDocsLoading] = useState<Set<string>>(new Set());
+  const [activityLoading, setActivityLoading] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   // Team Add Member is a two-step popup: choose "Ask them to register" (the
@@ -322,6 +395,124 @@ export function AccountList({
       cancelled = true;
     };
   }, [accountUsers]);
+
+  // Toggle a circle: same circle + same row → close; anything else → switch.
+  // Triggers the lazy fetch for docs/activity when opening.
+  function togglePanel(userId: string, panel: ExpandedPanel["panel"], accountId: string) {
+    setExpandedPanel((prev) => {
+      if (prev && prev.userId === userId && prev.panel === panel) return null;
+      return { userId, panel };
+    });
+    if (panel === "docs") fetchDocuments(accountId);
+    if (panel === "activity") fetchActivity(accountId);
+  }
+
+  // Lazy-fetch all documents (agreements + quotations + invoices) for an
+  // account, merged into one created_at-descending timeline. Cached per
+  // account for the session.
+  async function fetchDocuments(accountId: string) {
+    if (documentsByAccount.has(accountId) || docsLoading.has(accountId)) return;
+    setDocsLoading((s) => new Set(s).add(accountId));
+    try {
+      const [agreementsRes, quotationsRes, invoicesRes] = await Promise.all([
+        supabase
+          .from("agreements")
+          .select("id, agreement_version, created_at")
+          .eq("account_id", accountId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("quotation_documents")
+          .select("id, quotation_number, project_name, status, gross_total, currency, created_at")
+          .eq("account_id", accountId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("invoices")
+          .select("id, invoice_number, status, amount, currency, created_at")
+          .eq("account_id", accountId)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      const rows: DocumentRow[] = [];
+      for (const a of agreementsRes.data ?? []) {
+        rows.push({
+          type: "agreement",
+          id: a.id,
+          identifier: a.agreement_version ?? "Agreement",
+          status: "signed",
+          created_at: a.created_at,
+        });
+      }
+      for (const q of quotationsRes.data ?? []) {
+        rows.push({
+          type: "quotation",
+          id: q.id,
+          identifier: q.quotation_number ?? "Quotation",
+          project_name: q.project_name ?? undefined,
+          status: q.status ?? "draft",
+          amount: q.gross_total ?? undefined,
+          currency: q.currency ?? undefined,
+          created_at: q.created_at,
+        });
+      }
+      for (const inv of invoicesRes.data ?? []) {
+        rows.push({
+          type: "invoice",
+          id: inv.id,
+          identifier: inv.invoice_number ?? "Invoice",
+          status: inv.status ?? "draft",
+          amount: inv.amount ?? undefined,
+          currency: inv.currency ?? undefined,
+          created_at: inv.created_at,
+        });
+      }
+      rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      setDocumentsByAccount((m) => new Map(m).set(accountId, rows));
+    } catch (e) {
+      console.error("Failed to load documents:", e);
+      setDocumentsByAccount((m) => new Map(m).set(accountId, []));
+    } finally {
+      setDocsLoading((s) => {
+        const next = new Set(s);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  }
+
+  // Lazy-fetch the activity log for an account. activity_log has no account_id
+  // column, so resolve the account's member user_ids first, then filter by
+  // actor_user_id. Cached per account for the session.
+  async function fetchActivity(accountId: string) {
+    if (activityByAccount.has(accountId) || activityLoading.has(accountId)) return;
+    setActivityLoading((s) => new Set(s).add(accountId));
+    try {
+      const { data: members } = await supabase
+        .from("account_members")
+        .select("user_id")
+        .eq("account_id", accountId);
+      const userIds = (members ?? []).map((m) => m.user_id);
+      if (userIds.length === 0) {
+        setActivityByAccount((m) => new Map(m).set(accountId, []));
+        return;
+      }
+      const { data: activities } = await supabase
+        .from("activity_log")
+        .select("id, action, description, created_at")
+        .in("actor_user_id", userIds)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      setActivityByAccount((m) => new Map(m).set(accountId, (activities ?? []) as ActivityRow[]));
+    } catch (e) {
+      console.error("Failed to load activity:", e);
+      setActivityByAccount((m) => new Map(m).set(accountId, []));
+    } finally {
+      setActivityLoading((s) => {
+        const next = new Set(s);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  }
 
   const accountGroups = useMemo<AccountGroup[]>(() => {
     const byId = new Map<string, AccountGroup>();
@@ -1036,7 +1227,12 @@ export function AccountList({
                       const userSessions = sessionsByUser.get(u.user_id) ?? [];
                       const lastSession = userSessions[0];
                       const hasSessions = userSessions.length > 0;
-                      const isExpanded = expandedUserId === u.user_id;
+                      const openPanel =
+                        expandedPanel?.userId === u.user_id ? expandedPanel.panel : null;
+                      const isHistoryOpen = openPanel === "history";
+                      const isDocsOpen = openPanel === "docs";
+                      const isActivityOpen = openPanel === "activity";
+                      const accountId = group.account_id;
                       return (
                         <div key={u.user_id}>
                         <div
@@ -1084,6 +1280,27 @@ export function AccountList({
                             <span className="text-xs text-muted-foreground truncate">{u.email ?? "—"}</span>
                           </div>
 
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <CircleButton
+                              icon={FileText}
+                              label="Documents"
+                              active={isDocsOpen}
+                              onClick={() => togglePanel(u.user_id, "docs", accountId)}
+                            />
+                            <CircleButton
+                              icon={Activity}
+                              label="Activity"
+                              active={isActivityOpen}
+                              onClick={() => togglePanel(u.user_id, "activity", accountId)}
+                            />
+                            <CircleButton
+                              icon={Clock}
+                              label="Recent sessions"
+                              active={isHistoryOpen}
+                              onClick={() => togglePanel(u.user_id, "history", accountId)}
+                            />
+                          </div>
+
                           <div className="text-right shrink-0 min-w-[120px]">
                             {!u.last_login_at ? (
                               <p
@@ -1095,9 +1312,9 @@ export function AccountList({
                             ) : hasSessions ? (
                               <button
                                 type="button"
-                                onClick={() => setExpandedUserId(isExpanded ? null : u.user_id)}
+                                onClick={() => togglePanel(u.user_id, "history", accountId)}
                                 className="group/ls text-right"
-                                aria-expanded={isExpanded}
+                                aria-expanded={isHistoryOpen}
                               >
                                 <p className="text-xs text-foreground/65">
                                   {timeAgo(u.last_login_at)}
@@ -1107,7 +1324,7 @@ export function AccountList({
                                   className="font-sans uppercase text-foreground/30 mt-0.5 group-hover/ls:text-foreground/55 transition-colors"
                                   style={{ fontSize: 9, letterSpacing: "0.18em" }}
                                 >
-                                  Last seen · {isExpanded ? "Hide" : "History"}
+                                  Last seen · {isHistoryOpen ? "Hide" : "History"}
                                 </p>
                               </button>
                             ) : (
@@ -1123,7 +1340,7 @@ export function AccountList({
                             )}
                           </div>
                         </div>
-                        {isExpanded && hasSessions && (
+                        {isHistoryOpen && (
                           <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
                             <p
                               className="font-sans uppercase text-foreground/35 mb-2"
@@ -1131,30 +1348,146 @@ export function AccountList({
                             >
                               Recent sessions
                             </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
-                              {userSessions.slice(0, 10).map((s) => (
-                                <div
-                                  key={s.sessionId}
-                                  className="flex items-center justify-between gap-3 py-0.5"
-                                >
-                                  <span
-                                    className="font-sans uppercase text-foreground/55"
-                                    style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                            {hasSessions ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
+                                {userSessions.slice(0, 10).map((s) => (
+                                  <div
+                                    key={s.sessionId}
+                                    className="flex items-center justify-between gap-3 py-0.5"
                                   >
-                                    {new Date(s.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                                    {" · "}
-                                    {new Date(s.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                  </span>
-                                  <span
-                                    className="font-sans uppercase text-foreground/35 tabular-nums"
-                                    style={{ fontSize: 10, letterSpacing: "0.12em" }}
-                                  >
-                                    {formatSessionDuration(s.durationMs)}
-                                    {s.pageViews ? ` · ${s.pageViews} page${s.pageViews === 1 ? "" : "s"}` : ""}
-                                  </span>
+                                    <span
+                                      className="font-sans uppercase text-foreground/55"
+                                      style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                    >
+                                      {new Date(s.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                      {" · "}
+                                      {new Date(s.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                    <span
+                                      className="font-sans uppercase text-foreground/35 tabular-nums"
+                                      style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                    >
+                                      {formatSessionDuration(s.durationMs)}
+                                      {s.pageViews ? ` · ${s.pageViews} page${s.pageViews === 1 ? "" : "s"}` : ""}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-foreground/35">No sessions recorded yet.</p>
+                            )}
+                          </div>
+                        )}
+
+                        {isDocsOpen && (
+                          <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
+                            <p
+                              className="font-sans uppercase text-foreground/35 mb-2"
+                              style={{ fontSize: 9, letterSpacing: "0.2em" }}
+                            >
+                              Recent documents
+                            </p>
+                            {docsLoading.has(accountId) ? (
+                              <p className="text-xs text-foreground/35 animate-pulse">Loading documents…</p>
+                            ) : (() => {
+                              const docs = documentsByAccount.get(accountId) ?? [];
+                              if (docs.length === 0) {
+                                return <p className="text-xs text-foreground/35">No documents yet.</p>;
+                              }
+                              const shown = docs.slice(0, 20);
+                              return (
+                                <>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
+                                    {shown.map((d) => {
+                                      const route =
+                                        d.type === "agreement"
+                                          ? "/admin/documents"
+                                          : d.type === "quotation"
+                                          ? "/admin/quotes"
+                                          : "/admin/invoices";
+                                      return (
+                                        <button
+                                          key={`${d.type}-${d.id}`}
+                                          type="button"
+                                          onClick={() => navigate(`${route}?doc=${d.id}`)}
+                                          className="flex items-center justify-between gap-3 py-0.5 text-left hover:bg-muted/20 -mx-1 px-1 rounded-sm transition-colors"
+                                        >
+                                          <span
+                                            className="font-sans uppercase text-foreground/55 truncate"
+                                            style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                          >
+                                            {new Date(d.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                            {" · "}
+                                            {d.identifier}
+                                            {d.project_name ? ` · ${d.project_name}` : ""}
+                                          </span>
+                                          <span
+                                            className="font-sans uppercase text-foreground/35 tabular-nums shrink-0"
+                                            style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                          >
+                                            {typeof d.amount === "number"
+                                              ? `${formatCurrency(d.amount, d.currency ?? "GBP")} · `
+                                              : ""}
+                                            {statusPillLabel(d.status)}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {docs.length > 20 && (
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-foreground/30 mt-2">
+                                      Showing 20 most recent
+                                    </p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+
+                        {isActivityOpen && (
+                          <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
+                            <p
+                              className="font-sans uppercase text-foreground/35 mb-2"
+                              style={{ fontSize: 9, letterSpacing: "0.2em" }}
+                            >
+                              Recent activity
+                            </p>
+                            {activityLoading.has(accountId) ? (
+                              <p className="text-xs text-foreground/35 animate-pulse">Loading activity…</p>
+                            ) : (() => {
+                              const events = activityByAccount.get(accountId) ?? [];
+                              if (events.length === 0) {
+                                return <p className="text-xs text-foreground/35">No activity yet.</p>;
+                              }
+                              return (
+                                <div className="grid grid-cols-1 gap-y-1">
+                                  {events.map((ev) => (
+                                    <div key={ev.id} className="flex items-start gap-3 py-0.5">
+                                      <span
+                                        className="font-sans uppercase text-foreground/55 tabular-nums shrink-0"
+                                        style={{ fontSize: 10, letterSpacing: "0.12em" }}
+                                      >
+                                        {new Date(ev.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                        {" · "}
+                                        {new Date(ev.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                      </span>
+                                      <span className="text-xs text-foreground/65 min-w-0">
+                                        {ACTION_LABELS[ev.action] && (
+                                          <span
+                                            className="font-sans uppercase text-foreground/35 mr-2"
+                                            style={{ fontSize: 9, letterSpacing: "0.14em" }}
+                                          >
+                                            {ACTION_LABELS[ev.action]}
+                                          </span>
+                                        )}
+                                        {ev.description}
+                                      </span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
+                              );
+                            })()}
                           </div>
                         )}
                         </div>
