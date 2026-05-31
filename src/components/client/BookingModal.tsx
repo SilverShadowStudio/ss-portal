@@ -98,6 +98,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const [mondays, setMondays] = useState<Date[]>([earliest]);
   const [displayMonth, setDisplayMonth] = useState<Date>(startOfMonth(earliest));
   const [submitting, setSubmitting] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const roundNumbers = useMemo(
     () => Array.from({ length: numRounds }, (_, i) => startRoundNumber + i),
@@ -149,6 +150,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     setCurrentStep(0);
     setMondays([earliest]);
     setDisplayMonth(startOfMonth(earliest));
+    setShowDiscardConfirm(false);
   }, [isOpen, earliest]);
 
   // Pad/truncate the dates array as the round count changes. Existing picks are
@@ -257,6 +259,15 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
       setSubmitting(false);
     }
   }
+
+  // Step 0 with the default single round is pristine — nothing to lose, close
+  // straight away. Any other step or an adjusted round count prompts to confirm.
+  const isPristine = currentStep === 0 && numRounds === 1;
+  const requestClose = () => {
+    if (submitting) return;
+    if (isPristine) onClose();
+    else setShowDiscardConfirm(true);
+  };
 
   if (!isOpen) return null;
 
@@ -532,7 +543,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/55" onClick={() => !submitting && onClose()} />
+      <div className="absolute inset-0 bg-black/55" onClick={requestClose} />
       <div className="relative z-10 flex w-full max-w-[640px] flex-col border border-border/60 bg-card p-8 shadow-2xl" style={{ borderRadius: 4, minHeight: 560, maxHeight: "90vh" }}>
         {/* Header — constant across steps */}
         <div className="flex items-start justify-between gap-4">
@@ -544,7 +555,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           </div>
           <button
             type="button"
-            onClick={() => !submitting && onClose()}
+            onClick={requestClose}
             className="font-sans uppercase text-[10px] tracking-[0.26em] text-label hover:text-strong transition-colors"
           >
             Close
@@ -606,6 +617,36 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           </div>
         </div>
       </div>
+
+      {/* Discard confirmation — layered over the dimmed wizard */}
+      {showDiscardConfirm && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowDiscardConfirm(false)} />
+          <div className="relative z-10 w-[360px] border border-border/60 bg-surface-elevated p-6 shadow-2xl" style={{ borderRadius: 0 }}>
+            <h3 className="font-serif text-strong" style={{ fontSize: 20 }}>Discard this booking?</h3>
+            <p className="mt-3 font-sans text-standard" style={{ fontSize: 14, lineHeight: 1.6 }}>
+              Your selections will not be saved.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-5">
+              <button
+                type="button"
+                onClick={() => setShowDiscardConfirm(false)}
+                className="font-sans uppercase text-[10px] tracking-[0.26em] text-label hover:text-strong transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowDiscardConfirm(false); onClose(); }}
+                className="inline-flex h-10 items-center border border-gold bg-transparent px-6 font-sans uppercase text-[10px] tracking-[0.26em] text-strong transition-opacity hover:opacity-80"
+                style={{ borderRadius: 2 }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
