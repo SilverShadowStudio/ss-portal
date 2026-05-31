@@ -325,12 +325,14 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
     const numRows = Math.ceil((lead + total) / 7);
 
-    const activeEnd = activeStart ? roundEndDay(activeStart) : undefined;
+    const activeEnd = activeStart ? roundEndDay(activeStart) : undefined; // Sunday X+6 (rectangle end)
+    const activeDelivery = activeStart ? getRoundEndDate(activeStart) : undefined; // Monday X+7 (filled delivery cell)
     const activeSeg = activeStart ? daySpanSegment(roundWeekDays(activeStart), year, month, lead) : null;
 
     const locked = lockedStarts.map((s) => ({
       start: s,
       end: roundEndDay(s),
+      delivery: getRoundEndDate(s),
       seg: daySpanSegment(roundWeekDays(s), year, month, lead),
     }));
 
@@ -358,21 +360,21 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
                 const t = day.getTime();
 
                 const isActiveStart = activeStart != null && isSameDay(day, activeStart);
-                const isActiveEnd = activeEnd != null && isSameDay(day, activeEnd);
+                const isActiveDelivery = activeDelivery != null && isSameDay(day, activeDelivery);
                 const inActive = activeStart != null && activeEnd != null && t >= activeStart.getTime() && t <= activeEnd.getTime();
 
-                let isLockedEnd = false;
+                let isLockedDelivery = false;
                 let inLocked = false;
                 for (const li of locked) {
-                  if (isSameDay(day, li.end)) { isLockedEnd = true; inLocked = true; }
-                  else if (t >= li.start.getTime() && t <= li.end.getTime()) inLocked = true;
+                  if (isSameDay(day, li.delivery)) isLockedDelivery = true;
+                  if (t >= li.start.getTime() && t <= li.end.getTime()) inLocked = true;
                 }
 
                 const selectable = isMonday(day) && t >= min.getTime() && !inLocked;
-                const isEnd = isActiveEnd || isLockedEnd;
+                const isFilled = isActiveDelivery || isLockedDelivery;
 
-                const bgClass = isActiveEnd ? "bg-gold" : isLockedEnd ? "bg-gold-muted" : "";
-                const textClass = isEnd
+                const bgClass = isActiveDelivery ? "bg-gold" : isLockedDelivery ? "bg-gold-muted" : "";
+                const textClass = isFilled
                   ? "text-brand-dark"
                   : inLocked ? "text-label"
                   : (inActive || selectable) ? "text-strong"
