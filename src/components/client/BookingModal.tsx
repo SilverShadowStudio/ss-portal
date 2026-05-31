@@ -55,6 +55,10 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   );
   const totals = useMemo(() => calculateTotalsForRounds(roundNumbers), [roundNumbers]);
 
+  // Progressive section reveal — guide the eye top-to-bottom as dates are placed.
+  const hasAnyDatePlaced = mondays.some((m) => m !== null);
+  const allDatesPlaced = mondays.length === numRounds && mondays.every((m) => m !== null);
+
   // Derive the next round number from existing non-cancelled rounds on the scene.
   useEffect(() => {
     if (!isOpen) return;
@@ -340,8 +344,13 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
         </section>
 
         {/* Section 2 — Production dates */}
-        <section className="mb-8">
+        <section className={"mb-8 transition-opacity duration-300 " + (hasAnyDatePlaced ? "opacity-100" : "opacity-50")}>
           <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Production dates</p>
+          {!hasAnyDatePlaced && (
+            <p className="mb-3 -mt-1 font-sans text-[11px] leading-relaxed text-gold/70">
+              Click a round pill above, then select a Monday below
+            </p>
+          )}
           <div className="flex flex-col gap-6 sm:flex-row">
             {months.map(renderMonth)}
           </div>
@@ -352,8 +361,13 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
         </section>
 
         {/* Section 3 — Pricing */}
-        <section className="mb-8">
+        <section className={"mb-8 transition-opacity duration-300 " + (allDatesPlaced ? "opacity-100" : "opacity-30")}>
           <p className="mb-3 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Pricing</p>
+          {!allDatesPlaced && (
+            <p className="mb-3 -mt-1 font-sans text-[11px] leading-relaxed text-gold/70">
+              Place all round dates to see total
+            </p>
+          )}
           <div className="space-y-1.5">
             {totals.breakdown.map((b) => (
               <div key={b.roundNumber} className="flex items-center justify-between font-sans text-[13px]">
