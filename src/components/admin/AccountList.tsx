@@ -186,13 +186,19 @@ function CircleButton({
             onClick={onClick}
             aria-pressed={active}
             className={
-              "flex h-9 w-9 items-center justify-center rounded-full border transition-all shrink-0 " +
+              "group flex h-9 w-9 items-center justify-center rounded-full border transition-all shrink-0 " +
               (active
                 ? "bg-gold/10 border-gold/50 opacity-100"
-                : "bg-secondary border-transparent opacity-60 hover:opacity-100 hover:bg-gold/5 hover:border-gold/40")
+                : "bg-secondary border-transparent opacity-80 hover:opacity-100 hover:bg-gold/5 hover:border-gold/40")
             }
           >
-            <Icon className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
+            <Icon
+              className={
+                "h-3.5 w-3.5 transition-colors " +
+                (active ? "text-gold" : "text-gold/80 group-hover:text-gold")
+              }
+              strokeWidth={1.5}
+            />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top">{label}</TooltipContent>
@@ -1388,7 +1394,7 @@ export function AccountList({
                               const shown = docs.slice(0, 20);
                               return (
                                 <>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
+                                  <div className="flex flex-col gap-y-1">
                                     {shown.map((d) => {
                                       const route =
                                         d.type === "agreement"
