@@ -3,6 +3,8 @@ import { ImageIcon, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { SmartImage } from "@/components/ui/SmartImage";
+import { useAuth } from "@/contexts/AuthContext";
+import { CreateManualRoundsModal } from "@/components/admin/CreateManualRoundsModal";
 
 interface SceneRound {
   id: string;
@@ -29,10 +31,12 @@ interface SceneCardProps {
 }
 
 export function SceneCard({ scene, index, onFolderMappingClick, onDeleted }: SceneCardProps) {
+  const { accountType } = useAuth();
   const [rounds, setRounds] = useState<SceneRound[]>([]);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [deadlineProgress, setDeadlineProgress] = useState<number>(100);
+  const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
     fetchRoundsAndThumbnail();
@@ -263,6 +267,16 @@ export function SceneCard({ scene, index, onFolderMappingClick, onDeleted }: Sce
                 </button>
               ))}
             </div>
+
+            {/* Manual round creation — admin only, scenes with no rounds */}
+            {accountType === null && rounds.length === 0 && (
+              <button
+                onClick={() => setShowManual(true)}
+                className="mt-4 px-4 py-2 text-[10px] font-medium tracking-wider border border-gold/50 text-gold transition-smooth hover:bg-gold hover:text-[#1C1A17]"
+              >
+                CREATE ROUNDS MANUALLY
+              </button>
+            )}
           </div>
 
           {/* Phase & Progress */}
@@ -358,6 +372,15 @@ export function SceneCard({ scene, index, onFolderMappingClick, onDeleted }: Sce
           </div>
         </div>
       </div>
+
+      <CreateManualRoundsModal
+        isOpen={showManual}
+        onClose={() => setShowManual(false)}
+        sceneId={scene.id}
+        sceneName={scene.name}
+        projectName={scene.projectName}
+        onCreated={fetchRoundsAndThumbnail}
+      />
     </div>
   );
 }

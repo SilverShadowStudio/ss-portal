@@ -1895,6 +1895,7 @@ export type Database = {
           image_url: string | null
           instructions: string | null
           kind: string
+          payment_method: string
           round_number: number
           scene_id: string
           start_date: string | null
@@ -1915,6 +1916,7 @@ export type Database = {
           image_url?: string | null
           instructions?: string | null
           kind?: string
+          payment_method?: string
           round_number: number
           scene_id: string
           start_date?: string | null
@@ -1935,6 +1937,7 @@ export type Database = {
           image_url?: string | null
           instructions?: string | null
           kind?: string
+          payment_method?: string
           round_number?: number
           scene_id?: string
           start_date?: string | null
