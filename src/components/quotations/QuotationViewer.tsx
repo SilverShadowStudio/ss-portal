@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { generateInvoicePdf } from "@/lib/invoiceUtils";
 import { useToast } from "@/hooks/use-toast";
 import { QuotationDocument, type QuotationDocumentData } from "./QuotationDocument";
 import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
@@ -34,6 +33,7 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
   const [signPosition, setSignPosition] = useState("");
   const [sigEmpty, setSigEmpty] = useState(true);
   const [signing, setSigning] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -106,6 +106,34 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
   const safeNumber = String(number).replace(/[^a-zA-Z0-9._-]+/g, "-");
   const fileName = `quotation-${safeNumber}.pdf`;
 
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("download-quotation-pdf", {
+        body: { quotation_id: quotation.id },
+      });
+      if (error) throw error;
+      const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      toast({
+        title: "Download failed",
+        description: (err as Error)?.message || "Could not generate the quotation PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleSign = async () => {
     if (!signName.trim()) return;
     if (sigEmpty) {
@@ -167,19 +195,15 @@ export function QuotationViewer({ quotation, open, onOpenChange }: Props) {
                   Signed
                 </span>
               )}
-              <a
-                href="#"
-                download={fileName}
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (!docRef.current) return;
-                  void generateInvoicePdf(docRef.current, fileName);
-                }}
-                className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg border border-gold bg-transparent text-gold hover:bg-[#1C1A17]"
+              <button
+                type="button"
+                onClick={() => void handleDownload()}
+                disabled={downloading}
+                className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium shadow-lg border border-gold bg-transparent text-gold hover:bg-[#1C1A17] disabled:opacity-50"
               >
                 <Download className="mr-1.5 h-4 w-4" />
-                Download
-              </a>
+                {downloading ? "Preparing…" : "Download"}
+              </button>
             </div>
           </div>
 

@@ -75,6 +75,14 @@ export function lineItemsTotal(items: InvoiceLineItem[]) {
   return items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
 }
 
+/**
+ * @deprecated Client-side html2canvas rasteriser — produces a single
+ * image-based page with no pagination (content past one A4 page is clipped)
+ * and non-selectable text. Quotations now use the server-side
+ * `download-quotation-pdf` edge function (native jsPDF text + real
+ * pagination). Still used by InvoiceViewer; migrate invoices to a server-side
+ * generator before removing this.
+ */
 export async function generateInvoicePdf(sourceElement: HTMLElement, fileName?: string) {
   if (document.fonts?.ready) {
     await document.fonts.ready;
