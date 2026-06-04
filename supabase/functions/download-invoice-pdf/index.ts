@@ -1,6 +1,27 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { jsPDF } from "npm:jspdf@2.5.1";
 import { SILVERSHADOW_LOGO_DATA_URL } from "../_shared/brandLogo.ts";
+import { pngBytesToDataUrl } from "../_shared/imageUtils.ts";
+
+// Architectural illustration (cornice detail) shared with the invitation email
+// and agreement documents — the consistent brand thread across documents.
+const ILLUSTRATION_URL =
+  "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png";
+
+// Bump when the invoice template design changes so cached PDFs are regenerated.
+const TEMPLATE_VERSION = "tmpl-v3";
+
+async function fetchIllustrationDataUrl(): Promise<string | undefined> {
+  try {
+    const res = await fetch(ILLUSTRATION_URL);
+    if (!res.ok) return undefined;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return pngBytesToDataUrl(bytes);
+  } catch (e) {
+    console.error("[illustration] fetch failed:", e);
+    return undefined;
+  }
+}
 
 type BankAccountDetails = {
   id: string;
@@ -108,51 +129,90 @@ function generateInvoicePdf(invoice: {
   vat_rate?: number | null;
   vat_amount?: number | null;
   bank_account?: string | null;
-}) {
+}, illustrationDataUrl?: string) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 80; // luxury letterhead margin
   const currency = invoice.currency || "GBP";
 
-  // Color palette
-  const charcoal: [number, number, number] = [38, 38, 40]; // deep charcoal, not pure black
+  // Color palette — aligned to the Silvershadow document design system.
+  const charcoal: [number, number, number] = [26, 24, 20]; // #1A1814 body text dark
   const muted: [number, number, number] = [120, 118, 112]; // greige muted text
   const hairline: [number, number, number] = [224, 224, 224]; // #E0E0E0 separators
-  const bgCream: [number, number, number] = [247, 247, 245]; // #F7F7F5 background
-  const terracotta: [number, number, number] = [176, 92, 74]; // muted coral / deep terracotta accent
+  const bgCream: [number, number, number] = [237, 232, 224]; // #EDE8E0 warm greige ground
+  const gold: [number, number, number] = [184, 154, 106]; // #B89A6A brand gold — Paid + key highlights
+  const goldMuted: [number, number, number] = [138, 128, 112]; // #8A8070 muted gold — Draft / passive states
+  const burntSienna: [number, number, number] = [138, 74, 42]; // #8A4A2A burnt sienna — Overdue
 
-  // Page background — warm off-white / greige letterhead
+  // Status accent colour. The four approved states are Draft (muted gold),
+  // Issued (body dark), Paid (full gold), Overdue (burnt sienna). The codebase
+  // also has sent / pending / cancelled, mapped within the same palette here
+  // (see diff summary): sent ≡ "Issued" (body dark), pending ≡ passive (muted
+  // gold), cancelled ≡ void (de-emphasised greige).
+  const statusColor = (status: string): [number, number, number] => {
+    switch (status) {
+      case "draft": return goldMuted;
+      case "sent": return charcoal;
+      case "paid": return gold;
+      case "overdue": return burntSienna;
+      case "pending": return goldMuted;
+      case "cancelled": return muted;
+      default: return charcoal;
+    }
+  };
+
+  // Page background — warm greige document ground (#EDE8E0)
   doc.setFillColor(bgCream[0], bgCream[1], bgCream[2]);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
 
-  // ---- Header: 'INVOICE' eyebrow + Studio wordmark ----
+  // ---- Architectural illustration — top-right corner, page 1 only ----
+  // Square (306×306) cornice detail. Sits in the top-right whitespace beside
+  // the centred wordmark; the meta strip below is offset down to clear it.
+  if (illustrationDataUrl) {
+    const illoSize = 140;
+    try {
+      doc.addImage(illustrationDataUrl, "PNG", pageWidth - 36 - illoSize, 30, illoSize, illoSize);
+    } catch (e) {
+      console.error("[illustration] addImage failed:", e);
+    }
+  }
+
+  // ---- Header: centred 'INVOICE' qualifier above the centred wordmark ----
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
   doc.setCharSpace(2.4); // simulate 0.2em wide tracking
-  doc.text("INVOICE", margin, margin);
+  doc.text("INVOICE", pageWidth / 2, margin, { align: "center" });
   doc.setCharSpace(0);
 
-  // Studio brand logo — 600×91 px source, rendered ~45mm wide
+  // Studio wordmark — 600×91 px source, centred below the qualifier.
   {
-    const logoWidthPt = 127.6;
-    const logoHeightPt = logoWidthPt * (91 / 600);
+    const logoWidthPt = 168;
+    const logoHeightPt = logoWidthPt * (91 / 600); // ~25.5pt high
     try {
-      doc.addImage(SILVERSHADOW_LOGO_DATA_URL, "PNG", margin, margin + 30 - logoHeightPt, logoWidthPt, logoHeightPt);
+      doc.addImage(
+        SILVERSHADOW_LOGO_DATA_URL,
+        "PNG",
+        (pageWidth - logoWidthPt) / 2,
+        margin + 12,
+        logoWidthPt,
+        logoHeightPt,
+      );
     } catch (e) {
       console.error("[brandLogo] addImage failed:", e);
       // Fallback to text if image fails
       doc.setFont("times", "normal");
       doc.setFontSize(28);
       doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
-      doc.text("Silver Shadow Studio", margin, margin + 30);
+      doc.text("Silvershadow Studio", pageWidth / 2, margin + 30, { align: "center" });
     }
   }
 
   // ---- Meta strip (Invoice No. / Date Issued / Status) ----
   const number = invoice.invoice_number || invoice.reference_number || "—";
-  const metaY = margin + 60;
+  // Offset down to clear the centred wordmark and the top-right illustration.
+  const metaY = margin + 110;
   const colWidth = (pageWidth - margin * 2) / 3;
 
   const metaLabel = (label: string, x: number) => {
@@ -177,8 +237,7 @@ function generateInvoicePdf(invoice: {
   metaValue(formatDate(invoice.issued_at || invoice.created_at), margin + colWidth);
 
   metaLabel("Status", margin + colWidth * 2);
-  const isAccent = ["overdue", "draft"].includes(invoice.status);
-  metaValue(statusLabel(invoice.status), margin + colWidth * 2, isAccent ? terracotta : charcoal);
+  metaValue(statusLabel(invoice.status), margin + colWidth * 2, statusColor(invoice.status));
 
   // ---- From (Silvershadow) + Billed To (Client) two-column block ----
   const billY = metaY + 60;
@@ -289,11 +348,14 @@ function generateInvoicePdf(invoice: {
     doc.setFont("times", "normal");
     doc.setFontSize(12);
     const descLines = doc.splitTextToSize(it.description || "—", pageWidth - margin * 2 - 200);
-    const hasSub = qty !== 0 || unit !== 0;
+    // Zero-amount lines read as "INCLUDED" rather than a price; the qty × unit
+    // sub-line is suppressed for them.
+    const included = lineTotal === 0;
+    const hasSub = !included && (qty !== 0 || unit !== 0);
     const blockHeight = descLines.length * descLineHeight + (hasSub ? subLineHeight : 0);
     // Pad so the row keeps its luxury rhythm even for short content.
     const height = Math.max(rowMinHeight, blockHeight + 32);
-    return { qty, unit, lineTotal, descLines, hasSub, height };
+    return { qty, unit, lineTotal, descLines, hasSub, included, height };
   });
 
   // Totals block measured height (so we can keep it together with the last row).
@@ -381,12 +443,21 @@ function generateInvoicePdf(invoice: {
       doc.text(`${row.qty} x ${formatCurrencyPdf(row.unit, currency)}`, margin, subY);
     }
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
-    doc.text(formatCurrencyPdf(row.lineTotal, currency), pageWidth - margin, rowTop + row.height / 2 + 4, {
-      align: "right",
-    });
+    if (row.included) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(muted[0], muted[1], muted[2]);
+      doc.setCharSpace(1.6);
+      doc.text("INCLUDED", pageWidth - margin, rowTop + row.height / 2 + 4, { align: "right" });
+      doc.setCharSpace(0);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+      doc.text(formatCurrencyPdf(row.lineTotal, currency), pageWidth - margin, rowTop + row.height / 2 + 4, {
+        align: "right",
+      });
+    }
 
     rowTop += row.height;
 
@@ -426,8 +497,9 @@ function generateInvoicePdf(invoice: {
   doc.text(formatCurrencyPdf(vatAmount, currency), valueX, ty, { align: "right" });
 
   ty += 14;
-  doc.setDrawColor(hairline[0], hairline[1], hairline[2]);
-  doc.setLineWidth(0.5);
+  // Gold accent rule beneath the breakdown — draws the eye to the total due.
+  doc.setDrawColor(gold[0], gold[1], gold[2]);
+  doc.setLineWidth(0.6);
   doc.line(labelX - 40, ty, valueX, ty);
 
   ty += 26;
@@ -440,8 +512,8 @@ function generateInvoicePdf(invoice: {
 
   ty += 30;
   doc.setFont("times", "normal");
-  doc.setFontSize(24);
-  doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+  doc.setFontSize(28);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
   doc.text(formatCurrencyPdf(grand, currency), valueX, ty, { align: "right" });
 
   // ---- Notes (may also flow to a new page) ----
@@ -538,17 +610,26 @@ function generateInvoicePdf(invoice: {
     doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
     doc.text("Thank you.", pageWidth / 2, footerY - 10, { align: "center" });
 
-    doc.setFontSize(8);
+    // 6.5pt confidentiality line — fine print across the foot of every page.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
     doc.setTextColor(muted[0], muted[1], muted[2]);
-    doc.setCharSpace(1.2);
-    doc.text("SILVERSHADOWSTUDIO.COM", pageWidth / 2, footerY + 6, { align: "center" });
+    doc.setCharSpace(0.8);
+    doc.text(
+      "Confidential — intended solely for the named recipient.   ·   Silvershadow Studio Limited   ·   silvershadowstudio.com",
+      pageWidth / 2,
+      footerY + 6,
+      { align: "center" },
+    );
     doc.setCharSpace(0);
 
     if (totalPages > 1) {
+      // On the "Thank you." baseline (narrow, centred) so it never overlaps the
+      // full-width confidentiality line below.
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(muted[0], muted[1], muted[2]);
-      doc.text(`${p} / ${totalPages}`, pageWidth - margin, footerY + 6, { align: "right" });
+      doc.text(`${p} / ${totalPages}`, pageWidth - margin, footerY - 10, { align: "right" });
     }
   }
 
@@ -668,7 +749,7 @@ Deno.serve(async (req) => {
 
     // Cache check — only regenerate if the invoice has changed since last generation.
     // Fingerprint is: updated_at (or created_at) + amount + status concatenated.
-    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}`;
+    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}|${TEMPLATE_VERSION}`;
     let needsRegeneration = true;
 
     try {
@@ -687,6 +768,7 @@ Deno.serve(async (req) => {
     }
 
     if (needsRegeneration) {
+      const illustrationDataUrl = await fetchIllustrationDataUrl();
       const pdfBytes = generateInvoicePdf({
         invoice_number: invoice.invoice_number,
         reference_number: invoice.reference_number,
@@ -709,7 +791,7 @@ Deno.serve(async (req) => {
         vat_rate: invoice.vat_rate,
         vat_amount: invoice.vat_amount,
         bank_account: (invoice as any).bank_account,
-      });
+      }, illustrationDataUrl);
 
       const { error: uploadError } = await admin.storage.from("agreements").upload(storagePath, pdfBytes, {
         contentType: "application/pdf",
