@@ -116,7 +116,10 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
   const ctx: PdfContext = {
     pdf,
     pageWidth,
-    pageHeight,
+    // Reserve extra space at the foot of every page so body content never
+    // crowds the registered-details footer (ensureSpace cuts off content at
+    // ctx.pageHeight - PDF_MARGIN.bottom; the footer below uses the real height).
+    pageHeight: pageHeight - 6,
     contentWidth,
     ink,
     muted,
@@ -198,7 +201,7 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
     !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(projectName) &&
     !/^[A-Z0-9_-]{2,10}$/i.test(projectName);
   if (showProject) {
-    y = writeMetaLabel(ctx, y, "Project", { afterGap: 4 });
+    y = writeMetaLabel(ctx, y, "Project", { afterGap: 9 });
     y = writeDisplay(y, projectName as string, 22);
     y += 4;
   }
@@ -253,9 +256,9 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
   y += 2;
   y = writeMetaLabel(ctx, y, "Fee", { afterGap: 4 });
   const colTotalR = PDF_MARGIN.x + contentWidth;
-  const colUnitR = colTotalR - 32;
-  const colQtyR = colUnitR - 24;
-  const descW = colQtyR - 12 - PDF_MARGIN.x;
+  const colUnitR = colTotalR - 34;
+  const colQtyR = colUnitR - 28;
+  const descW = colQtyR - 14 - PDF_MARGIN.x;
 
   // Header row
   y = ensureSpace(ctx, y, 8);
@@ -279,7 +282,7 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
     pdf.setTextColor(ink[0], ink[1], ink[2]);
     const descLines: string[] = pdf.splitTextToSize(it.description || "—", descW);
     const rowH = Math.max(descLines.length, 1) * 5.4;
-    y = ensureSpace(ctx, y, rowH + 4);
+    y = ensureSpace(ctx, y, rowH + 8);
     descLines.forEach((line, i) => {
       pdf.text(line, PDF_MARGIN.x, y + i * 5.4);
     });
@@ -287,13 +290,17 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
     pdf.text(fmtMoney(unit, currency), colUnitR, y, { align: "right" });
     pdf.text(fmtMoney(total, currency), colTotalR, y, { align: "right" });
     y += rowH + 3;
-    drawHairline(ctx, y - 1.5, ruleLight, 0.15);
+    drawHairline(ctx, y, ruleLight, 0.15);
+    y += 5;
   }
 
   // ── 7. Totals ─────────────────────────────────────────────────────────────
+  // One page-break guard up front so Net Total + VAT + divider + the large
+  // Gross Total never split across a page boundary (per-row ensureSpace used to
+  // let the block fracture mid-way).
   y += 3;
+  y = ensureSpace(ctx, y, 42);
   const totalRow = (cursor: number, label: string, value: string, small: boolean): number => {
-    cursor = ensureSpace(ctx, cursor, 6);
     pdf.setFont("Tinos", "normal");
     pdf.setFontSize(small ? 9 : PDF_SIZE.body);
     pdf.setTextColor(muted[0], muted[1], muted[2]);
@@ -305,16 +312,17 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
   y = totalRow(y, `VAT ${vatRate}%`, fmtMoney(vatAmount, currency), true);
   y += 2;
   drawHairline(ctx, y, ink, 0.3);
-  y += 7;
-  // Gross Total — large display
-  y = ensureSpace(ctx, y, 16);
+  y += 8;
+  // Gross Total — large display (covered by the block guard above; no
+  // per-element ensureSpace so it stays with Net + VAT). The 8mm gap below the
+  // divider clears the 24pt ascent so the value never crosses the rule.
   pdf.setFont("Tinos", "normal");
   pdf.setFontSize(PDF_SIZE.metaLabel);
   pdf.setTextColor(ink[0], ink[1], ink[2]);
   pdf.text(trackedUpper("Gross Total"), PDF_MARGIN.x, y);
   pdf.setFontSize(24);
   pdf.text(fmtMoney(grand, currency), colTotalR, y, { align: "right" });
-  y += 4;
+  y += 5;
   drawHairline(ctx, y, ink, 0.3);
   y += 8;
 
@@ -523,13 +531,13 @@ export function generateQuotationPdf(input: QuotationPdfInput): Uint8Array {
     pdf.setFont("Tinos", "normal");
     pdf.setFontSize(6.5);
     pdf.setTextColor(muted[0], muted[1], muted[2]);
-    let fy = pageHeight - 16 - (footerLines.length - 1) * 3.2;
+    let fy = pageHeight - 12 - (footerLines.length - 1) * 3.2;
     for (const line of footerLines) {
       pdf.text(line, pageWidth / 2, fy, { align: "center" });
       fy += 3.2;
     }
     pdf.setFontSize(6.5);
-    pdf.text(`Page ${p} of ${totalPages}`, pageWidth - PDF_MARGIN.x, pageHeight - 8, { align: "right" });
+    pdf.text(`Page ${p} of ${totalPages}`, pageWidth - PDF_MARGIN.x, pageHeight - 6, { align: "right" });
   }
 
   const out = pdf.output("arraybuffer");
