@@ -9,7 +9,7 @@ const ILLUSTRATION_URL =
   "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png";
 
 // Bump when the invoice template design changes so cached PDFs are regenerated.
-const TEMPLATE_VERSION = "tmpl-v2";
+const TEMPLATE_VERSION = "tmpl-v3";
 
 async function fetchIllustrationDataUrl(): Promise<string | undefined> {
   try {
@@ -141,7 +141,26 @@ function generateInvoicePdf(invoice: {
   const muted: [number, number, number] = [120, 118, 112]; // greige muted text
   const hairline: [number, number, number] = [224, 224, 224]; // #E0E0E0 separators
   const bgCream: [number, number, number] = [237, 232, 224]; // #EDE8E0 warm greige ground
-  const terracotta: [number, number, number] = [176, 92, 74]; // muted coral / deep terracotta accent
+  const gold: [number, number, number] = [184, 154, 106]; // #B89A6A brand gold — Paid + key highlights
+  const goldMuted: [number, number, number] = [138, 128, 112]; // #8A8070 muted gold — Draft / passive states
+  const burntSienna: [number, number, number] = [138, 74, 42]; // #8A4A2A burnt sienna — Overdue
+
+  // Status accent colour. The four approved states are Draft (muted gold),
+  // Issued (body dark), Paid (full gold), Overdue (burnt sienna). The codebase
+  // also has sent / pending / cancelled, mapped within the same palette here
+  // (see diff summary): sent ≡ "Issued" (body dark), pending ≡ passive (muted
+  // gold), cancelled ≡ void (de-emphasised greige).
+  const statusColor = (status: string): [number, number, number] => {
+    switch (status) {
+      case "draft": return goldMuted;
+      case "sent": return charcoal;
+      case "paid": return gold;
+      case "overdue": return burntSienna;
+      case "pending": return goldMuted;
+      case "cancelled": return muted;
+      default: return charcoal;
+    }
+  };
 
   // Page background — warm greige document ground (#EDE8E0)
   doc.setFillColor(bgCream[0], bgCream[1], bgCream[2]);
@@ -218,8 +237,7 @@ function generateInvoicePdf(invoice: {
   metaValue(formatDate(invoice.issued_at || invoice.created_at), margin + colWidth);
 
   metaLabel("Status", margin + colWidth * 2);
-  const isAccent = ["overdue", "draft"].includes(invoice.status);
-  metaValue(statusLabel(invoice.status), margin + colWidth * 2, isAccent ? terracotta : charcoal);
+  metaValue(statusLabel(invoice.status), margin + colWidth * 2, statusColor(invoice.status));
 
   // ---- From (Silvershadow) + Billed To (Client) two-column block ----
   const billY = metaY + 60;
@@ -330,11 +348,14 @@ function generateInvoicePdf(invoice: {
     doc.setFont("times", "normal");
     doc.setFontSize(12);
     const descLines = doc.splitTextToSize(it.description || "—", pageWidth - margin * 2 - 200);
-    const hasSub = qty !== 0 || unit !== 0;
+    // Zero-amount lines read as "INCLUDED" rather than a price; the qty × unit
+    // sub-line is suppressed for them.
+    const included = lineTotal === 0;
+    const hasSub = !included && (qty !== 0 || unit !== 0);
     const blockHeight = descLines.length * descLineHeight + (hasSub ? subLineHeight : 0);
     // Pad so the row keeps its luxury rhythm even for short content.
     const height = Math.max(rowMinHeight, blockHeight + 32);
-    return { qty, unit, lineTotal, descLines, hasSub, height };
+    return { qty, unit, lineTotal, descLines, hasSub, included, height };
   });
 
   // Totals block measured height (so we can keep it together with the last row).
@@ -422,12 +443,21 @@ function generateInvoicePdf(invoice: {
       doc.text(`${row.qty} x ${formatCurrencyPdf(row.unit, currency)}`, margin, subY);
     }
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
-    doc.text(formatCurrencyPdf(row.lineTotal, currency), pageWidth - margin, rowTop + row.height / 2 + 4, {
-      align: "right",
-    });
+    if (row.included) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(muted[0], muted[1], muted[2]);
+      doc.setCharSpace(1.6);
+      doc.text("INCLUDED", pageWidth - margin, rowTop + row.height / 2 + 4, { align: "right" });
+      doc.setCharSpace(0);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+      doc.text(formatCurrencyPdf(row.lineTotal, currency), pageWidth - margin, rowTop + row.height / 2 + 4, {
+        align: "right",
+      });
+    }
 
     rowTop += row.height;
 
@@ -467,8 +497,9 @@ function generateInvoicePdf(invoice: {
   doc.text(formatCurrencyPdf(vatAmount, currency), valueX, ty, { align: "right" });
 
   ty += 14;
-  doc.setDrawColor(hairline[0], hairline[1], hairline[2]);
-  doc.setLineWidth(0.5);
+  // Gold accent rule beneath the breakdown — draws the eye to the total due.
+  doc.setDrawColor(gold[0], gold[1], gold[2]);
+  doc.setLineWidth(0.6);
   doc.line(labelX - 40, ty, valueX, ty);
 
   ty += 26;
@@ -481,8 +512,8 @@ function generateInvoicePdf(invoice: {
 
   ty += 30;
   doc.setFont("times", "normal");
-  doc.setFontSize(24);
-  doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+  doc.setFontSize(28);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
   doc.text(formatCurrencyPdf(grand, currency), valueX, ty, { align: "right" });
 
   // ---- Notes (may also flow to a new page) ----
@@ -579,17 +610,26 @@ function generateInvoicePdf(invoice: {
     doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
     doc.text("Thank you.", pageWidth / 2, footerY - 10, { align: "center" });
 
-    doc.setFontSize(8);
+    // 6.5pt confidentiality line — fine print across the foot of every page.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
     doc.setTextColor(muted[0], muted[1], muted[2]);
-    doc.setCharSpace(1.2);
-    doc.text("SILVERSHADOWSTUDIO.COM", pageWidth / 2, footerY + 6, { align: "center" });
+    doc.setCharSpace(0.8);
+    doc.text(
+      "Confidential — intended solely for the named recipient.   ·   Silvershadow Studio Limited   ·   silvershadowstudio.com",
+      pageWidth / 2,
+      footerY + 6,
+      { align: "center" },
+    );
     doc.setCharSpace(0);
 
     if (totalPages > 1) {
+      // On the "Thank you." baseline (narrow, centred) so it never overlaps the
+      // full-width confidentiality line below.
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(muted[0], muted[1], muted[2]);
-      doc.text(`${p} / ${totalPages}`, pageWidth - margin, footerY + 6, { align: "right" });
+      doc.text(`${p} / ${totalPages}`, pageWidth - margin, footerY - 10, { align: "right" });
     }
   }
 
