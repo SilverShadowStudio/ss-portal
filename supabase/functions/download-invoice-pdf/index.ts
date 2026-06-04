@@ -1,6 +1,27 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { jsPDF } from "npm:jspdf@2.5.1";
 import { SILVERSHADOW_LOGO_DATA_URL } from "../_shared/brandLogo.ts";
+import { pngBytesToDataUrl } from "../_shared/imageUtils.ts";
+
+// Architectural illustration (cornice detail) shared with the invitation email
+// and agreement documents — the consistent brand thread across documents.
+const ILLUSTRATION_URL =
+  "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png";
+
+// Bump when the invoice template design changes so cached PDFs are regenerated.
+const TEMPLATE_VERSION = "tmpl-v2";
+
+async function fetchIllustrationDataUrl(): Promise<string | undefined> {
+  try {
+    const res = await fetch(ILLUSTRATION_URL);
+    if (!res.ok) return undefined;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return pngBytesToDataUrl(bytes);
+  } catch (e) {
+    console.error("[illustration] fetch failed:", e);
+    return undefined;
+  }
+}
 
 type BankAccountDetails = {
   id: string;
@@ -108,51 +129,71 @@ function generateInvoicePdf(invoice: {
   vat_rate?: number | null;
   vat_amount?: number | null;
   bank_account?: string | null;
-}) {
+}, illustrationDataUrl?: string) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 80; // luxury letterhead margin
   const currency = invoice.currency || "GBP";
 
-  // Color palette
-  const charcoal: [number, number, number] = [38, 38, 40]; // deep charcoal, not pure black
+  // Color palette — aligned to the Silvershadow document design system.
+  const charcoal: [number, number, number] = [26, 24, 20]; // #1A1814 body text dark
   const muted: [number, number, number] = [120, 118, 112]; // greige muted text
   const hairline: [number, number, number] = [224, 224, 224]; // #E0E0E0 separators
-  const bgCream: [number, number, number] = [247, 247, 245]; // #F7F7F5 background
+  const bgCream: [number, number, number] = [237, 232, 224]; // #EDE8E0 warm greige ground
   const terracotta: [number, number, number] = [176, 92, 74]; // muted coral / deep terracotta accent
 
-  // Page background — warm off-white / greige letterhead
+  // Page background — warm greige document ground (#EDE8E0)
   doc.setFillColor(bgCream[0], bgCream[1], bgCream[2]);
   doc.rect(0, 0, pageWidth, pageHeight, "F");
 
-  // ---- Header: 'INVOICE' eyebrow + Studio wordmark ----
+  // ---- Architectural illustration — top-right corner, page 1 only ----
+  // Square (306×306) cornice detail. Sits in the top-right whitespace beside
+  // the centred wordmark; the meta strip below is offset down to clear it.
+  if (illustrationDataUrl) {
+    const illoSize = 140;
+    try {
+      doc.addImage(illustrationDataUrl, "PNG", pageWidth - 36 - illoSize, 30, illoSize, illoSize);
+    } catch (e) {
+      console.error("[illustration] addImage failed:", e);
+    }
+  }
+
+  // ---- Header: centred 'INVOICE' qualifier above the centred wordmark ----
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
   doc.setCharSpace(2.4); // simulate 0.2em wide tracking
-  doc.text("INVOICE", margin, margin);
+  doc.text("INVOICE", pageWidth / 2, margin, { align: "center" });
   doc.setCharSpace(0);
 
-  // Studio brand logo — 600×91 px source, rendered ~45mm wide
+  // Studio wordmark — 600×91 px source, centred below the qualifier.
   {
-    const logoWidthPt = 127.6;
-    const logoHeightPt = logoWidthPt * (91 / 600);
+    const logoWidthPt = 168;
+    const logoHeightPt = logoWidthPt * (91 / 600); // ~25.5pt high
     try {
-      doc.addImage(SILVERSHADOW_LOGO_DATA_URL, "PNG", margin, margin + 30 - logoHeightPt, logoWidthPt, logoHeightPt);
+      doc.addImage(
+        SILVERSHADOW_LOGO_DATA_URL,
+        "PNG",
+        (pageWidth - logoWidthPt) / 2,
+        margin + 12,
+        logoWidthPt,
+        logoHeightPt,
+      );
     } catch (e) {
       console.error("[brandLogo] addImage failed:", e);
       // Fallback to text if image fails
       doc.setFont("times", "normal");
       doc.setFontSize(28);
       doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
-      doc.text("Silver Shadow Studio", margin, margin + 30);
+      doc.text("Silvershadow Studio", pageWidth / 2, margin + 30, { align: "center" });
     }
   }
 
   // ---- Meta strip (Invoice No. / Date Issued / Status) ----
   const number = invoice.invoice_number || invoice.reference_number || "—";
-  const metaY = margin + 60;
+  // Offset down to clear the centred wordmark and the top-right illustration.
+  const metaY = margin + 110;
   const colWidth = (pageWidth - margin * 2) / 3;
 
   const metaLabel = (label: string, x: number) => {
@@ -668,7 +709,7 @@ Deno.serve(async (req) => {
 
     // Cache check — only regenerate if the invoice has changed since last generation.
     // Fingerprint is: updated_at (or created_at) + amount + status concatenated.
-    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}`;
+    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}|${TEMPLATE_VERSION}`;
     let needsRegeneration = true;
 
     try {
@@ -687,6 +728,7 @@ Deno.serve(async (req) => {
     }
 
     if (needsRegeneration) {
+      const illustrationDataUrl = await fetchIllustrationDataUrl();
       const pdfBytes = generateInvoicePdf({
         invoice_number: invoice.invoice_number,
         reference_number: invoice.reference_number,
@@ -709,7 +751,7 @@ Deno.serve(async (req) => {
         vat_rate: invoice.vat_rate,
         vat_amount: invoice.vat_amount,
         bank_account: (invoice as any).bank_account,
-      });
+      }, illustrationDataUrl);
 
       const { error: uploadError } = await admin.storage.from("agreements").upload(storagePath, pdfBytes, {
         contentType: "application/pdf",
