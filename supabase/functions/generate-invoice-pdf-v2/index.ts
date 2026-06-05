@@ -1,6 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  fetchIllustrationDataUrl,
   generateInvoicePdfV2,
   type InvoicePdfInput,
 } from "../_shared/documents/invoicePdf.ts";
@@ -52,8 +51,7 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== "object") return jsonError("Invalid JSON body", 400);
     if (!Array.isArray(body.line_items)) body.line_items = [];
 
-    const illustrationDataUrl = await fetchIllustrationDataUrl();
-    const pdfBytes = generateInvoicePdfV2(body, illustrationDataUrl);
+    const pdfBytes = generateInvoicePdfV2(body);
 
     const safeNumber = String(body.invoice_number || body.reference_number || "invoice").replace(
       /[^a-zA-Z0-9._-]+/g,

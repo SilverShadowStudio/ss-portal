@@ -4,37 +4,18 @@
 // ./pdfPrimitives.ts) and the embedded Tinos font (./tinosFonts.ts) for full
 // Unicode coverage of UK/EU client names and addresses.
 //
-// Intentionally a different visual language from the quotation: this preserves
-// the approved Pass-1/Pass-2 invoice visuals — warm greige ground, top-right
-// architectural illustration, centred INVOICE eyebrow + wordmark, status colour
-// pill, gold display TOTAL DUE, INCLUDED treatment for zero-amount lines,
-// "Thank you." + confidentiality footer, and the minimal continuation header.
-// Only the engine (mm units, Tinos, shared primitives) is shared.
+// Intentionally a different visual language from the quotation: warm greige
+// ground, centred wordmark, gold display TOTAL DUE, INCLUDED treatment for
+// zero-amount lines, and a single centred confidentiality footer line. Only the
+// engine (mm units, Tinos, shared primitives) is shared.
 
 // @ts-ignore - npm specifier resolved by Deno
 import { jsPDF } from "npm:jspdf@2.5.1";
 import { SILVERSHADOW_LOGO_DATA_URL } from "../brandLogo.ts";
-import { pngBytesToDataUrl } from "../imageUtils.ts";
 import { paintPageBackground } from "../brand.ts";
 import { PDF_MARGIN } from "./designTokens.ts";
 import { drawHairline, type PdfContext } from "./pdfPrimitives.ts";
 import { TINOS_BOLD_B64, TINOS_ITALIC_B64, TINOS_REGULAR_B64 } from "./tinosFonts.ts";
-
-// Architectural illustration (cornice detail) shared with the invitation email
-// and agreement documents — the consistent brand thread across documents.
-const ILLUSTRATION_URL =
-  "https://silvershadowstudio.s3.eu-central-1.amazonaws.com/Silvershadow/APP+Files/portal-invite-illustration.png";
-
-export async function fetchIllustrationDataUrl(): Promise<string | undefined> {
-  try {
-    const res = await fetch(ILLUSTRATION_URL);
-    if (!res.ok) return undefined;
-    return pngBytesToDataUrl(new Uint8Array(await res.arrayBuffer()));
-  } catch (e) {
-    console.error("[illustration] fetch failed:", e);
-    return undefined;
-  }
-}
 
 export type BankAccountDetails = {
   id?: string;
@@ -106,18 +87,6 @@ function formatDate(value: string | null | undefined): string {
   });
 }
 
-function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    draft: "Draft",
-    sent: "Sent",
-    paid: "Paid",
-    overdue: "Overdue",
-    pending: "Pending",
-    cancelled: "Cancelled",
-  };
-  return map[status] || status;
-}
-
 function currencySymbolAscii(currency: string): string {
   switch (currency) {
     case "GBP":
@@ -146,7 +115,7 @@ function lineItemsTotal(items: InvoiceLineItem[]): number {
 // pt → mm for char-spacing values (jsPDF char space is in the current unit).
 const cs = (pt: number): number => pt * 0.352778;
 
-export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataUrl?: string): Uint8Array {
+export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
 
   // Register Tinos (normal/bold/italic) for Unicode-capable client names.
@@ -169,30 +138,6 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
   const hairline: [number, number, number] = [224, 224, 224]; // #E0E0E0 separators
   const bgCream = "#EDE8E0"; // warm greige ground
   const gold: [number, number, number] = [184, 154, 106]; // #B89A6A brand gold
-  const goldMuted: [number, number, number] = [138, 128, 112]; // #8A8070 muted gold
-  const burntSienna: [number, number, number] = [138, 74, 42]; // #8A4A2A overdue
-
-  // Status accent colour — Draft (muted gold), Issued/Sent (body dark),
-  // Paid (full gold), Overdue (burnt sienna); pending/cancelled mapped within
-  // the same palette.
-  const statusColor = (status: string): [number, number, number] => {
-    switch (status) {
-      case "draft":
-        return goldMuted;
-      case "sent":
-        return charcoal;
-      case "paid":
-        return gold;
-      case "overdue":
-        return burntSienna;
-      case "pending":
-        return goldMuted;
-      case "cancelled":
-        return muted;
-      default:
-        return charcoal;
-    }
-  };
 
   // ensureSpace (shared) cuts content off at ctx.pageHeight - PDF_MARGIN.bottom;
   // reserving 6mm keeps body content clear of the registered footer below.
@@ -217,22 +162,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
 
   paintPageBackground(pdf, bgCream);
 
-  // ---- Architectural illustration — top-right corner, page 1 only ----
-  if (illustrationDataUrl) {
-    const illoSize = 38;
-    try {
-      pdf.addImage(illustrationDataUrl, "PNG", pageWidth - 12 - illoSize, 10, illoSize, illoSize);
-    } catch (e) {
-      console.error("[illustration] addImage failed:", e);
-    }
-  }
-
-  // ---- Header: centred INVOICE eyebrow above the centred wordmark ----
-  setT(8, muted);
-  pdf.setCharSpace(cs(2.4));
-  pdf.text("INVOICE", pageWidth / 2, 24, { align: "center" });
-  pdf.setCharSpace(0);
-
+  // ---- Header: centred wordmark ----
   {
     const logoW = 50;
     const logoH = logoW * (91 / 600);
@@ -245,7 +175,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
     }
   }
 
-  // ---- Meta strip (Invoice No. / Date Issued / Status) ----
+  // ---- Meta strip (Invoice No. / Date Issued / Due Date) ----
   const number = invoice.invoice_number || invoice.reference_number || "—";
   const metaY = 62;
   const colW = contentWidth / 3;
@@ -265,8 +195,8 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
   metaValue(String(number), margin);
   metaLabel("Date Issued", margin + colW);
   metaValue(formatDate(invoice.issued_at || invoice.created_at), margin + colW);
-  metaLabel("Status", margin + colW * 2);
-  metaValue(statusLabel(invoice.status), margin + colW * 2, statusColor(invoice.status));
+  metaLabel("Due Date", margin + colW * 2);
+  metaValue(formatDate(invoice.due_date), margin + colW * 2);
 
   // ---- From (Silvershadow) + Billed To (Client) two-column block ----
   const billY = metaY + 21;
@@ -320,16 +250,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
     by += 4.2;
   });
 
-  // Due date below the two-column block, right-aligned
   const blockBottom = Math.max(fy, by);
-  if (invoice.due_date) {
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text("DUE", pageWidth - margin, blockBottom + 5, { align: "right" });
-    pdf.setCharSpace(0);
-    setT(11, charcoal);
-    pdf.text(formatDate(invoice.due_date), pageWidth - margin, blockBottom + 10.6, { align: "right" });
-  }
   by = blockBottom;
 
   // ---- Items table (paginated) ----
@@ -360,13 +281,9 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
   const TOTALS_HEIGHT = 48;
   const NOTES_TOP_GAP = 12.7;
 
-  // Continuation-page header: minimal INVOICE eyebrow + small logo + "No. … continued".
+  // Continuation-page header: small logo + "No. … continued".
   const drawContinuationHeader = (): number => {
     paintPageBackground(pdf, bgCream);
-    setT(8, muted);
-    pdf.setCharSpace(cs(2.4));
-    pdf.text("INVOICE", margin, 14);
-    pdf.setCharSpace(0);
     {
       const logoW = 30;
       const logoH = logoW * (91 / 600);
@@ -564,30 +481,22 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput, illustrationDataU
     ty = Math.max(leftY, rightY);
   }
 
-  // ---- Footer on every page (centred, Tinos + page numbers) ----
+  // ---- Footer on every page (single centred confidentiality line) ----
   const totalPages = pdf.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     pdf.setPage(p);
 
     drawHairline(ctx, 262, hairline, 0.18);
 
-    setT(9, charcoal);
-    pdf.text("Thank you.", pageWidth / 2, 268, { align: "center" });
-
     setT(6.5, muted);
     pdf.setCharSpace(cs(0.8));
     pdf.text(
       "Confidential — intended solely for the named recipient.   ·   Silvershadow Studio Limited   ·   silvershadowstudio.com",
       pageWidth / 2,
-      272,
+      268,
       { align: "center" },
     );
     pdf.setCharSpace(0);
-
-    if (totalPages > 1) {
-      setT(8, muted);
-      pdf.text(`${p} / ${totalPages}`, pageWidth - margin, 268, { align: "right" });
-    }
   }
 
   return new Uint8Array(pdf.output("arraybuffer"));

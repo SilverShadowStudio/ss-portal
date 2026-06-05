@@ -1,12 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  fetchIllustrationDataUrl,
   generateInvoicePdfV2,
   type InvoiceLineItem,
 } from "../_shared/documents/invoicePdf.ts";
 
 // Bump when the invoice template design changes so cached PDFs are regenerated.
-const TEMPLATE_VERSION = "tmpl-v4";
+const TEMPLATE_VERSION = "tmpl-v5";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,7 +145,6 @@ Deno.serve(async (req) => {
     }
 
     if (needsRegeneration) {
-      const illustrationDataUrl = await fetchIllustrationDataUrl();
       const pdfBytes = generateInvoicePdfV2({
         invoice_number: invoice.invoice_number,
         reference_number: invoice.reference_number,
@@ -169,7 +167,7 @@ Deno.serve(async (req) => {
         vat_rate: invoice.vat_rate,
         vat_amount: invoice.vat_amount,
         bank_account: (invoice as any).bank_account,
-      }, illustrationDataUrl);
+      });
 
       const { error: uploadError } = await admin.storage.from("agreements").upload(storagePath, pdfBytes, {
         contentType: "application/pdf",
