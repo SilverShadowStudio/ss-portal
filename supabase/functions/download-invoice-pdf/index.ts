@@ -5,7 +5,7 @@ import {
 } from "../_shared/documents/invoicePdf.ts";
 
 // Bump when the invoice template design changes so cached PDFs are regenerated.
-const TEMPLATE_VERSION = "tmpl-v5";
+const TEMPLATE_VERSION = "tmpl-v6";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -424,7 +424,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   // ---- Payment Details (two-column) ----
   {
     const bank = invoice.bank_details || getBankAccount(invoice.bank_account);
-    const PAYMENT_HEIGHT = 60;
+    const PAYMENT_HEIGHT = 72;
     if (ty + PAYMENT_HEIGHT > safeBottom) {
       pdf.addPage();
       drawContinuationHeader();
