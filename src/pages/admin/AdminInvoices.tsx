@@ -70,6 +70,7 @@ export default function AdminInvoices() {
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
   const [genAccountId, setGenAccountId] = useState<string>("");
+  const [genDesign, setGenDesign] = useState<"2027" | "classic">("2027");
   const { toast } = useToast();
 
   async function fetchInvoices() {
@@ -129,17 +130,18 @@ export default function AdminInvoices() {
   }, []);
 
   const generatorSrc = useMemo(() => {
-    if (!genAccountId) return "/generator/index.html";
-    const acc = genAccounts.find((a) => a.id === genAccountId);
-    if (!acc) return "/generator/index.html";
     const params = new URLSearchParams();
-    if (acc.company_name) params.set("client", acc.company_name);
-    const addressParts = [acc.building_number, acc.street, acc.postcode, acc.city, acc.country].filter(Boolean);
-    if (addressParts.length) params.set("address", addressParts.join(", "));
-    if (acc.contact_name) params.set("contact", acc.contact_name);
-    if (acc.registration_number) params.set("registration", acc.registration_number);
+    params.set("design", genDesign);
+    const acc = genAccounts.find((a) => a.id === genAccountId);
+    if (acc) {
+      if (acc.company_name) params.set("client", acc.company_name);
+      const addressParts = [acc.building_number, acc.street, acc.postcode, acc.city, acc.country].filter(Boolean);
+      if (addressParts.length) params.set("address", addressParts.join(", "));
+      if (acc.contact_name) params.set("contact", acc.contact_name);
+      if (acc.registration_number) params.set("registration", acc.registration_number);
+    }
     return `/generator/index.html?${params.toString()}`;
-  }, [genAccountId, genAccounts]);
+  }, [genAccountId, genAccounts, genDesign]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -441,7 +443,7 @@ export default function AdminInvoices() {
         </TabsContent>
 
         <TabsContent value="generator">
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-4">
             <Select value={genAccountId} onValueChange={setGenAccountId}>
               <SelectTrigger className="w-[280px]">
                 <SelectValue placeholder="Select a client…" />
@@ -452,6 +454,26 @@ export default function AdminInvoices() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center">
+              <Button
+                type="button"
+                variant={genDesign === "2027" ? "default" : "outline"}
+                size="sm"
+                className="rounded-none"
+                onClick={() => setGenDesign("2027")}
+              >
+                2027
+              </Button>
+              <Button
+                type="button"
+                variant={genDesign === "classic" ? "default" : "outline"}
+                size="sm"
+                className="rounded-none border-l-0"
+                onClick={() => setGenDesign("classic")}
+              >
+                Classic
+              </Button>
+            </div>
           </div>
           <iframe key={generatorSrc} src={generatorSrc} width="100%" style={{ height: "calc(100vh - 180px)", border: "none" }} />
         </TabsContent>

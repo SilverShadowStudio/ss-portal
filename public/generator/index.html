@@ -204,8 +204,150 @@ function printIframe2() {
     };
 }
 
-document.getElementById("printIframe1").addEventListener("click", printIframe1);
-document.getElementById("printIframe2").addEventListener("click", printIframe2);
+// ---- 2027 server-side PDF flow ----
+var SUPABASE_URL_GEN = "https://oodhsoiwnqxcimzmzick.supabase.co";
+var SUPABASE_ANON_GEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vZGhzb2l3bnF4Y2ltem16aWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTExMjYsImV4cCI6MjA5NDA4NzEyNn0.K1kAeQyhdu_DTjMq--0M7sQU8Cr8CtqkUqAmchPOr1I";
+
+function getDesignParam() {
+    return new URLSearchParams(window.location.search).get("design") || "2027";
+}
+
+function getAccessToken() {
+    try {
+        var raw = localStorage.getItem("sb-oodhsoiwnqxcimzmzick-auth-token");
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        return (parsed && parsed.access_token) || (parsed && parsed.currentSession && parsed.currentSession.access_token) || null;
+    } catch (e) { return null; }
+}
+
+// Build the InvoicePdfInput payload shared by both Generator buttons.
+// variant "A" = downpayment invoice (sub-line under TOTAL DUE), "B" = full balance.
+function buildInvoicePayload(variant) {
+    var num = function (v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; };
+    var params = new URLSearchParams(window.location.search);
+
+    var descriptions = document.querySelectorAll('input[name="description[]"]');
+    var quotations   = document.querySelectorAll('input[name="quotation[]"]');
+    var prices       = document.querySelectorAll('input[name="price[]"]');
+    var lineItems = [];
+    var subtotal = 0;
+    descriptions.forEach(function (desc, i) {
+        var category = (desc.value || "").trim();
+        var item = (quotations[i] ? quotations[i].value : "").trim();
+        var price = num(prices[i] ? prices[i].value : 0);
+        var description = category && item ? (category + " — " + item) : (category || item || "—");
+        lineItems.push({ description: description, quantity: 1, unit_price: price });
+        subtotal += price;
+    });
+
+    var vatRate = num(document.getElementById("vatRate").value);
+    var vatAmount = subtotal * vatRate / 100;
+    var gross = subtotal + vatAmount;
+
+    var issuedAt = variant === "A"
+        ? document.getElementById("invoiceDate").value || null
+        : document.getElementById("invoiceInputDate").value || null;
+    var dueDate = variant === "A"
+        ? null
+        : (localStorage.getItem("dueDate2") || (document.getElementById("dueDate2") ? document.getElementById("dueDate2").value : null) || null);
+
+    var totalDueNote = null;
+    if (variant === "A") {
+        var downPct = num(document.getElementById("down").value);
+        if (downPct > 0) {
+            var downAmount = gross * downPct / 100;
+            var fmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(downAmount);
+            totalDueNote = downPct + "% downpayment: GBP " + fmt;
+        }
+    }
+
+    var invoiceNumber = document.getElementById("invoiceNumber").value || null;
+
+    return {
+        invoice_number: invoiceNumber,
+        reference_number: invoiceNumber,
+        amount: gross,
+        currency: "GBP",
+        status: "sent",
+        due_date: dueDate,
+        issued_at: issuedAt,
+        created_at: new Date().toISOString(),
+        notes: null,
+        line_items: lineItems,
+        client_company: document.getElementById("client").value || null,
+        client_name: document.getElementById("contact").value || null,
+        client_address: document.getElementById("address").value || null,
+        client_registration: params.get("registration") || null,
+        client_country: null,
+        client_email: null,
+        client_position: null,
+        subtotal: subtotal,
+        vat_rate: vatRate,
+        vat_amount: vatAmount,
+        total_due_note: totalDueNote,
+        bank_details: {
+            id: "generator",
+            label: "Generator",
+            bankName: document.getElementById("bank").value || "",
+            sortCode: document.getElementById("sortCode").value || "",
+            accountNumber: document.getElementById("accountNumber").value || "",
+            swiftCode: document.getElementById("swift").value || "",
+            iban: document.getElementById("iban").value || ""
+        }
+    };
+}
+
+async function downloadServerPdf(variant, btn) {
+    saveAllData();
+    var token = getAccessToken();
+    if (!token) {
+        alert("Not signed in. Open the Generator from the portal admin so it can authenticate.");
+        return;
+    }
+    var payload = buildInvoicePayload(variant);
+    var originalLabel = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+    try {
+        var res = await fetch(SUPABASE_URL_GEN + "/functions/v1/generate-invoice-pdf-v2", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token,
+                "apikey": SUPABASE_ANON_GEN
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            var msg = "Failed to generate PDF (" + res.status + ")";
+            try { var j = await res.json(); if (j && j.error) msg = j.error; } catch (e) {}
+            alert(msg);
+            return;
+        }
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "invoice-" + ((payload.invoice_number || "invoice").replace(/[^a-zA-Z0-9._-]+/g, "-")) + ".pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    } catch (e) {
+        alert("Failed to generate PDF: " + (e && e.message ? e.message : e));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    }
+}
+
+document.getElementById("printIframe1").addEventListener("click", function (e) {
+    if (getDesignParam() === "classic") { printIframe1(); }
+    else { downloadServerPdf("A", e.currentTarget); }
+});
+document.getElementById("printIframe2").addEventListener("click", function (e) {
+    if (getDesignParam() === "classic") { printIframe2(); }
+    else { downloadServerPdf("B", e.currentTarget); }
+});
 
 // Restore saved VAT and downpayment values into inputs on load
 document.addEventListener('DOMContentLoaded', function() {
