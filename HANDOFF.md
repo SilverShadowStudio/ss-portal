@@ -8,6 +8,37 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 5 June 2026
+
+## Completed this session
+
+### Invoice PDF PAYMENT_HEIGHT guard fix (`3504de8`)
+`PAYMENT_HEIGHT` constant in `supabase/functions/_shared/documents/invoicePdf.ts` was `60` — the actual block requires `70.4 mm` (14 pre-hairline gap + 14 hairline-to-heading + 8.5 heading + 33.9 left-column fields). On short invoices (1–2 line items), `ty` after TOTAL DUE lands around `197 mm`; `197 + 60 = 257 ≤ 261` passed the guard, the block started on page 1, and Account Number was clipped at the bottom. Fixed to `72` (70.4 + 1.6 breathing room). `TEMPLATE_VERSION` bumped `tmpl-v5 → tmpl-v6` to invalidate cached PDFs. Cache also manually wiped (see below).
+
+### Storage cache wipe (post-deploy race condition)
+After the tmpl-v6 deploy, Fred's first download hit a warm Supabase Edge Runtime instance still running the old code. It saw the fingerprint mismatch (`tmpl-v5 → tmpl-v6`), regenerated a broken PDF with the 60 mm guard, and wrote it to storage under the tmpl-v6 fingerprint. All subsequent requests served the broken cached file. Deleted 4 stale files from the `agreements` bucket:
+
+- `invoice-pdfs/229db31a-…/latest.pdf` (UNI-022, written 2026-06-05T10:17 by stale runtime)
+- `invoice-pdfs/229db31a-…/fingerprint.txt`
+- `invoice-pdfs/e1355c47-…/latest.pdf` (KAT025-A, pre-deploy tmpl-v5)
+- `invoice-pdfs/e1355c47-…/fingerprint.txt`
+
+Both invoices will regenerate cleanly on next download.
+
+## Technical debt / known gotchas
+
+### Edge Runtime race condition on PDF template deploys
+Supabase Edge Function deploys can race with warm runtime instances. If a deploy changes PDF generation logic, the first download request after deploy may execute against stale in-memory code, regenerate a broken artifact, and write it to the storage cache — locking in the broken file even after the new code is fully warm. The fingerprint mechanism works correctly; the race is at the runtime layer, not the cache logic.
+
+**Mitigations to consider for future PDF template deploys:**
+1. Wait ~60 seconds after deploy before any test download (gives runtime instances time to drain)
+2. Manually wipe `invoice-pdfs/*/latest.pdf` and `invoice-pdfs/*/fingerprint.txt` from the `agreements` bucket after any `TEMPLATE_VERSION` bump — the storage delete API call takes 10 seconds and is safer than relying on timing
+3. Longer term: implement a post-deploy first-run cache buster (e.g. a separate admin endpoint that deletes all fingerprints so the next natural download always regenerates)
+
+The fastest safe pattern today: deploy → wait 60s → wipe all cached PDFs via storage API → test.
+
+---
+
 # Session — 26 May 2026
 
 **Multi-user Phase 1** (Maybourne backlog 2/4, scoped to Phase 1: invites, role-based filtering, per-user pin colours/initials — Phase 2 live collaboration is a separate future task). Approach confirmed with Fred: **extend the existing `account_invitations` / `send-team-invitation` / `accept-invitation` / `TeamManagement` system — do not build a parallel one.** Role model: **`owner` stays the Client-Manager role** (UI labels it "Manager"); only `client_invitee` was added to the enum — no role backfill, no `is_account_owner` change.
