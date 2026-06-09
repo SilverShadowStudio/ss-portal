@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Plus, Clock, ChevronRight, MoreVertical, Trash2, ArchiveRestore, Pencil } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AdminLayout } from "@/components/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArborescenceTitle } from "@/components/client/ArborescenceTitle";
 import { LaneCard } from "@/components/client/LaneCard";
@@ -113,7 +113,7 @@ export default function AdminProjects() {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
-  // New Project modal — Airtable pre-flight match + 2-step link flow
+  // New Project modal — Airtable + Dropbox pre-flight match + 2-step link flow
   type ProjectMatch = {
     airtable_project_id: string;
     project_name: string;
@@ -121,11 +121,33 @@ export default function AdminProjects() {
     account_name?: string;
     account_airtable_id?: string;
   };
+  type DropboxFolder = {
+    folder_name: string;
+    path_display: string;
+    project_code: string | null;
+    display_name: string;
+    dropbox_folder_url: string;
+  };
+  type CombinedMatch = {
+    id: string;
+    source: "airtable" | "dropbox" | "both";
+    display_name: string;
+    project_code: string | null;
+    account_name?: string;
+    // Airtable
+    airtable_project_id?: string;
+    airtable_account_airtable_id?: string;
+    // Dropbox
+    dropbox_folder?: string;
+    dropbox_folder_url?: string;
+  };
   const [modalStep, setModalStep] = useState<1 | 2>(1);
   const [projectMatches, setProjectMatches] = useState<ProjectMatch[]>([]);
   const [projectMatchesLoading, setProjectMatchesLoading] = useState(false);
+  const [dropboxFolders, setDropboxFolders] = useState<DropboxFolder[]>([]);
+  const [dropboxFoldersLoading, setDropboxFoldersLoading] = useState(false);
   const [matchSelection, setMatchSelection] = useState<string | "new" | null>(null);
-  const [linkedMatch, setLinkedMatch] = useState<ProjectMatch | null>(null);
+  const [selectedCombinedMatch, setSelectedCombinedMatch] = useState<CombinedMatch | null>(null);
   const [step2ProjectName, setStep2ProjectName] = useState("");
 
   // Edit project dialog (Dropbox folder URL)
@@ -246,7 +268,7 @@ export default function AdminProjects() {
     return () => window.removeEventListener("keydown", handler);
   }, [selectedScene, selectedRound, sceneRounds]);
 
-  // Debounced Airtable project match lookup for the New Project modal step 1.
+  // Debounced Airtable + Dropbox parallel search for the New Project modal step 1.
   // Clears selection whenever the name input changes so a stale link never
   // silently carries over to a new search.
   useEffect(() => {
@@ -254,29 +276,48 @@ export default function AdminProjects() {
     if (!isAddDialogOpen || modalStep !== 1 || trimmed.length < 3) {
       setProjectMatches([]);
       setProjectMatchesLoading(false);
+      setDropboxFolders([]);
+      setDropboxFoldersLoading(false);
       return;
     }
     setMatchSelection(null);
-    setLinkedMatch(null);
+    setSelectedCombinedMatch(null);
     let cancelled = false;
     setProjectMatchesLoading(true);
+    setDropboxFoldersLoading(true);
     const timer = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke(
-          "airtable-find-matching-projects",
-          { body: { query: trimmed } },
-        );
-        if (cancelled) return;
-        if (error) {
-          setProjectMatches([]);
-        } else {
-          setProjectMatches((data?.matches ?? []) as ProjectMatch[]);
-        }
-      } catch {
-        if (!cancelled) setProjectMatches([]);
-      } finally {
-        if (!cancelled) setProjectMatchesLoading(false);
+      const [atResult, dbxResult] = await Promise.allSettled([
+        supabase.functions.invoke("airtable-find-matching-projects", { body: { query: trimmed } }),
+        supabase.auth.getSession().then(({ data: sessionData }) => {
+          const token = sessionData?.session?.access_token;
+          if (!token) return { folders: [] };
+          return fetch(
+            `${SUPABASE_URL}/functions/v1/dropbox-api?action=search-project-folders`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                apikey: SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({ query: trimmed }),
+            },
+          ).then((r) => (r.ok ? r.json() : { folders: [] }));
+        }),
+      ]);
+      if (cancelled) return;
+      if (atResult.status === "fulfilled" && !atResult.value.error) {
+        setProjectMatches((atResult.value.data?.matches ?? []) as ProjectMatch[]);
+      } else {
+        setProjectMatches([]);
       }
+      setProjectMatchesLoading(false);
+      if (dbxResult.status === "fulfilled") {
+        setDropboxFolders(((dbxResult.value as { folders?: DropboxFolder[] })?.folders ?? []) as DropboxFolder[]);
+      } else {
+        setDropboxFolders([]);
+      }
+      setDropboxFoldersLoading(false);
     }, 300);
     return () => {
       cancelled = true;
@@ -475,6 +516,70 @@ export default function AdminProjects() {
     }
   }
 
+  // Merge Airtable matches + Dropbox folders into a unified list.
+  // Merged (both): Dropbox folder whose CP/RUP code matches an Airtable record.
+  // Airtable-only: no matching Dropbox folder.
+  // Dropbox-only: no matching Airtable record (including codeless legacy folders).
+  const combinedMatches = useMemo<CombinedMatch[]>(() => {
+    const atByCode = new Map<string, ProjectMatch>();
+    for (const m of projectMatches) {
+      if (m.project_code) atByCode.set(m.project_code.toUpperCase(), m);
+    }
+    const results: CombinedMatch[] = [];
+    const usedAirtableCodes = new Set<string>();
+    for (const f of dropboxFolders) {
+      if (f.project_code) {
+        const upper = f.project_code.toUpperCase();
+        const at = atByCode.get(upper);
+        if (at) {
+          usedAirtableCodes.add(upper);
+          results.push({
+            id: at.airtable_project_id,
+            source: "both",
+            display_name: at.project_name || f.display_name,
+            project_code: at.project_code,
+            account_name: at.account_name,
+            airtable_project_id: at.airtable_project_id,
+            airtable_account_airtable_id: at.account_airtable_id,
+            dropbox_folder: f.path_display,
+            dropbox_folder_url: f.dropbox_folder_url,
+          });
+        } else {
+          results.push({
+            id: `dbx:${f.path_display}`,
+            source: "dropbox",
+            display_name: f.display_name,
+            project_code: f.project_code,
+            dropbox_folder: f.path_display,
+            dropbox_folder_url: f.dropbox_folder_url,
+          });
+        }
+      } else {
+        results.push({
+          id: `dbx:${f.path_display}`,
+          source: "dropbox",
+          display_name: f.display_name,
+          project_code: null,
+          dropbox_folder: f.path_display,
+          dropbox_folder_url: f.dropbox_folder_url,
+        });
+      }
+    }
+    for (const m of projectMatches) {
+      if (m.project_code && usedAirtableCodes.has(m.project_code.toUpperCase())) continue;
+      results.push({
+        id: m.airtable_project_id,
+        source: "airtable",
+        display_name: m.project_name || m.project_code,
+        project_code: m.project_code,
+        account_name: m.account_name,
+        airtable_project_id: m.airtable_project_id,
+        airtable_account_airtable_id: m.account_airtable_id,
+      });
+    }
+    return results;
+  }, [projectMatches, dropboxFolders]);
+
   /**
    * Pick the preview image for a project card: the latest delivered round of
    * the most recently delivered scene. Falls back to any uploaded preview so
@@ -591,17 +696,18 @@ export default function AdminProjects() {
     setSelectedClientId("");
     setProjectMatches([]);
     setProjectMatchesLoading(false);
+    setDropboxFolders([]);
+    setDropboxFoldersLoading(false);
     setMatchSelection(null);
-    setLinkedMatch(null);
+    setSelectedCombinedMatch(null);
     setStep2ProjectName("");
   };
 
-  // Link flow: inserts project with pre-populated Airtable + code fields.
-  // Skips airtable-sync-project (record already exists) and the Dropbox
-  // folder trigger short-circuits via the project_code guard.
+  // Airtable-only link: record exists in Airtable, admin provides Dropbox URL.
   const handleLinkProject = async () => {
-    if (!linkedMatch || !selectedClientId) return;
-    const portalName = step2ProjectName.trim() || linkedMatch.project_name || linkedMatch.project_code;
+    const match = selectedCombinedMatch;
+    if (!match?.airtable_project_id || !selectedClientId) return;
+    const portalName = step2ProjectName.trim() || match.display_name;
     const dropboxUrl = newProjectDropboxUrl.trim();
     if (!dropboxUrl) {
       toast.error("Dropbox folder URL is required.");
@@ -625,8 +731,8 @@ export default function AdminProjects() {
         user_id: selectedClientId,
         account_id: membership.account_id,
         status: "active",
-        airtable_project_id: linkedMatch.airtable_project_id,
-        project_code: linkedMatch.project_code,
+        airtable_project_id: match.airtable_project_id,
+        project_code: match.project_code,
         project_slug: slug,
         dropbox_folder_url: dropboxUrl,
       });
@@ -635,7 +741,115 @@ export default function AdminProjects() {
       const { logActivity } = await import("@/lib/activityLog");
       await logActivity({
         action: "project_created",
-        description: `Linked project "${portalName}" (${linkedMatch.project_code}) to existing Airtable record`,
+        description: `Linked project "${portalName}" (${match.project_code}) to existing Airtable record`,
+        actorRole: "admin",
+        entityType: "project",
+        projectName: portalName,
+      });
+      resetAddModal();
+      fetchData();
+    } catch (err: any) {
+      console.error("Error linking project:", err);
+      toast.error(err.message || "Failed to link project");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Dropbox-only link: folder exists in Dropbox, no Airtable record yet.
+  // Inserts project with dropbox_folder set (trigger skips folder creation),
+  // then calls airtable-sync-project to create the Airtable record.
+  const handleLinkDropboxProject = async () => {
+    const match = selectedCombinedMatch;
+    if (!match || match.source !== "dropbox" || !selectedClientId) return;
+    const portalName = step2ProjectName.trim() || match.display_name;
+    setIsCreating(true);
+    try {
+      const { data: membership, error: memErr } = await supabase
+        .from("account_members")
+        .select("account_id")
+        .eq("user_id", selectedClientId)
+        .maybeSingle();
+      if (memErr) throw memErr;
+      if (!membership?.account_id) {
+        toast.error("No company account found for this client. Provision them via Admin → Clients first.");
+        return;
+      }
+      const slug = portalName.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+      const { data: newProject, error } = await supabase.from("projects").insert({
+        name: portalName,
+        user_id: selectedClientId,
+        account_id: membership.account_id,
+        status: "active",
+        project_slug: slug,
+        dropbox_folder: match.dropbox_folder,
+        dropbox_folder_url: match.dropbox_folder_url,
+        ...(match.project_code ? { project_code: match.project_code } : {}),
+      }).select("id").single();
+      if (error) throw error;
+      // Create the Airtable record (none existed for this project).
+      // airtable-sync-project will use the supplied project_code if set,
+      // or generate a new one for codeless legacy folders.
+      if (newProject?.id) {
+        supabase.functions
+          .invoke("airtable-sync-project", { body: { project_id: newProject.id } })
+          .catch((e: unknown) => console.warn("[AdminProjects] airtable-sync-project:", e));
+      }
+      toast.success(`${portalName} has been linked.`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "project_created",
+        description: `Linked project "${portalName}" from Dropbox folder${match.project_code ? ` (${match.project_code})` : ""}`,
+        actorRole: "admin",
+        entityType: "project",
+        projectName: portalName,
+      });
+      resetAddModal();
+      fetchData();
+    } catch (err: any) {
+      console.error("Error linking Dropbox project:", err);
+      toast.error(err.message || "Failed to link project");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Both sources: Airtable record + Dropbox folder both found and matched.
+  // Insert with all fields pre-populated; skip Airtable sync.
+  const handleLinkBothProject = async () => {
+    const match = selectedCombinedMatch;
+    if (!match || match.source !== "both" || !selectedClientId) return;
+    const portalName = step2ProjectName.trim() || match.display_name;
+    setIsCreating(true);
+    try {
+      const { data: membership, error: memErr } = await supabase
+        .from("account_members")
+        .select("account_id")
+        .eq("user_id", selectedClientId)
+        .maybeSingle();
+      if (memErr) throw memErr;
+      if (!membership?.account_id) {
+        toast.error("No company account found for this client. Provision them via Admin → Clients first.");
+        return;
+      }
+      const slug = portalName.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+      const { error } = await supabase.from("projects").insert({
+        name: portalName,
+        user_id: selectedClientId,
+        account_id: membership.account_id,
+        status: "active",
+        airtable_project_id: match.airtable_project_id,
+        project_code: match.project_code,
+        project_slug: slug,
+        dropbox_folder: match.dropbox_folder,
+        dropbox_folder_url: match.dropbox_folder_url,
+      });
+      if (error) throw error;
+      toast.success(`${portalName} has been linked.`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "project_created",
+        description: `Linked project "${portalName}" (${match.project_code}) — Airtable + Dropbox`,
         actorRole: "admin",
         entityType: "project",
         projectName: portalName,
@@ -1480,45 +1694,53 @@ export default function AdminProjects() {
                       </Select>
                     </div>
 
-                    {/* Airtable match panel — appears once 3+ chars typed */}
+                    {/* Airtable + Dropbox match panel — appears once 3+ chars typed */}
                     {newProjectName.trim().length >= 3 && (
                       <div className="border border-border rounded-sm bg-muted/30 px-4 py-3 space-y-2">
-                        {projectMatchesLoading ? (
+                        {(projectMatchesLoading || dropboxFoldersLoading) ? (
                           <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground py-0.5">
-                            Checking Airtable…
+                            Searching Airtable + Dropbox…
                           </div>
                         ) : (
                           <>
-                            {projectMatches.length > 0 && (
+                            {combinedMatches.length > 0 && (
                               <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                                Matches in Airtable
+                                Existing projects
                               </div>
                             )}
-                            {projectMatches.map((m) => {
-                              const isSelected = matchSelection === m.airtable_project_id;
+                            {combinedMatches.map((m) => {
+                              const isSelected = matchSelection === m.id;
                               return (
                                 <button
-                                  key={m.airtable_project_id}
+                                  key={m.id}
                                   type="button"
                                   onClick={() => {
-                                    setMatchSelection(m.airtable_project_id);
-                                    setLinkedMatch(m);
+                                    setMatchSelection(m.id);
+                                    setSelectedCombinedMatch(m);
                                   }}
-                                  className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
+                                  className={`w-full flex items-start gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
                                     isSelected
                                       ? "border-gold/70 bg-gold/[0.07]"
                                       : "border-border hover:border-gold/40"
                                   }`}
                                 >
-                                  <span className={`text-[10px] shrink-0 ${isSelected ? "text-gold" : "text-muted-foreground"}`}>
+                                  <span className={`text-[10px] shrink-0 mt-0.5 ${isSelected ? "text-gold" : "text-muted-foreground"}`}>
                                     {isSelected ? "●" : "○"}
                                   </span>
-                                  <span className="min-w-0">
+                                  <span className="min-w-0 flex-1">
                                     <span className="text-xs font-medium text-foreground">
-                                      {m.project_name || m.project_code}
+                                      {m.display_name}
                                     </span>
                                     <span className="text-[11px] text-muted-foreground ml-1.5">
                                       {[m.project_code, m.account_name].filter(Boolean).join(" · ")}
+                                    </span>
+                                    <span className="ml-2 inline-flex gap-1">
+                                      {(m.source === "airtable" || m.source === "both") && (
+                                        <span className="text-[9px] uppercase tracking-[0.1em] px-1 bg-emerald-500/10 text-emerald-500 rounded-sm">AT</span>
+                                      )}
+                                      {(m.source === "dropbox" || m.source === "both") && (
+                                        <span className="text-[9px] uppercase tracking-[0.1em] px-1 bg-sky-500/10 text-sky-400 rounded-sm">DB</span>
+                                      )}
                                     </span>
                                   </span>
                                 </button>
@@ -1527,7 +1749,7 @@ export default function AdminProjects() {
                             {/* "Create new" — always shown once search settles */}
                             <button
                               type="button"
-                              onClick={() => { setMatchSelection("new"); setLinkedMatch(null); }}
+                              onClick={() => { setMatchSelection("new"); setSelectedCombinedMatch(null); }}
                               className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
                                 matchSelection === "new"
                                   ? "border-gold/70 bg-gold/[0.07]"
@@ -1562,8 +1784,8 @@ export default function AdminProjects() {
                         onClick={() => {
                           if (matchSelection === "new") {
                             handleCreateProject();
-                          } else if (linkedMatch) {
-                            setStep2ProjectName(linkedMatch.project_name || newProjectName.trim());
+                          } else if (selectedCombinedMatch) {
+                            setStep2ProjectName(selectedCombinedMatch.display_name || newProjectName.trim());
                             setModalStep(2);
                           }
                         }}
@@ -1574,21 +1796,34 @@ export default function AdminProjects() {
                   </div>
                 )}
 
-                {/* ── Step 2: Dropbox URL capture for link flow ── */}
-                {modalStep === 2 && linkedMatch && (
+                {/* ── Step 2: confirmation + optional Dropbox URL ── */}
+                {modalStep === 2 && selectedCombinedMatch && (
                   <div className="space-y-4 pt-4">
                     {/* Matched record summary */}
                     <div className="border border-border/50 rounded-sm px-3 py-2.5 bg-muted/20">
                       <div className="text-[9px] uppercase tracking-[0.24em] text-foreground/40 mb-1">
-                        Linking to existing project
+                        {selectedCombinedMatch.source === "both"
+                          ? "Linking to existing project"
+                          : selectedCombinedMatch.source === "airtable"
+                          ? "Airtable record found"
+                          : "Dropbox folder found"}
                       </div>
-                      <div className="text-xs text-foreground">
-                        {linkedMatch.project_name || linkedMatch.project_code}
-                        {" · "}
-                        <span className="text-muted-foreground">{linkedMatch.project_code}</span>
-                        {linkedMatch.account_name && (
-                          <span className="text-muted-foreground"> · {linkedMatch.account_name}</span>
+                      <div className="text-xs text-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <span>{selectedCombinedMatch.display_name}</span>
+                        {selectedCombinedMatch.project_code && (
+                          <span className="text-muted-foreground">· {selectedCombinedMatch.project_code}</span>
                         )}
+                        {selectedCombinedMatch.account_name && (
+                          <span className="text-muted-foreground">· {selectedCombinedMatch.account_name}</span>
+                        )}
+                        <span className="flex gap-1">
+                          {(selectedCombinedMatch.source === "airtable" || selectedCombinedMatch.source === "both") && (
+                            <span className="text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 bg-emerald-500/10 text-emerald-500 rounded-sm">Airtable ✓</span>
+                          )}
+                          {(selectedCombinedMatch.source === "dropbox" || selectedCombinedMatch.source === "both") && (
+                            <span className="text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 bg-sky-500/10 text-sky-400 rounded-sm">Dropbox ✓</span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -1601,27 +1836,44 @@ export default function AdminProjects() {
                         value={step2ProjectName}
                         onChange={(e) => setStep2ProjectName(e.target.value)}
                         placeholder="660 Madison"
+                        autoFocus
                       />
                       <p className="text-[11px] text-muted-foreground/70">
-                        Portal display name — can differ from Airtable.
+                        Portal display name — can differ from source.
                       </p>
                     </div>
 
-                    {/* Dropbox folder URL — required for link flow */}
-                    <div className="space-y-2">
-                      <label className="text-label text-muted-foreground">
-                        DROPBOX FOLDER URL
-                      </label>
-                      <Input
-                        type="url"
-                        value={newProjectDropboxUrl}
-                        onChange={(e) => setNewProjectDropboxUrl(e.target.value)}
-                        placeholder="https://www.dropbox.com/home/..."
-                      />
-                      <p className="text-[11px] text-muted-foreground/70">
-                        Right-click the project folder in Dropbox → Copy link.
-                      </p>
-                    </div>
+                    {/* Dropbox URL: manual input for Airtable-only; auto for Dropbox/both */}
+                    {selectedCombinedMatch.source === "airtable" ? (
+                      <div className="space-y-2">
+                        <label className="text-label text-muted-foreground">
+                          DROPBOX FOLDER URL
+                        </label>
+                        <Input
+                          type="url"
+                          value={newProjectDropboxUrl}
+                          onChange={(e) => setNewProjectDropboxUrl(e.target.value)}
+                          placeholder="https://www.dropbox.com/home/..."
+                        />
+                        <p className="text-[11px] text-muted-foreground/70">
+                          Right-click the project folder in Dropbox → Copy link.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-label text-muted-foreground">
+                          DROPBOX FOLDER
+                        </label>
+                        <div className="text-[11px] text-muted-foreground px-3 py-2 border border-border/50 rounded-sm bg-muted/10 break-all">
+                          {selectedCombinedMatch.dropbox_folder_url}
+                        </div>
+                        {selectedCombinedMatch.source === "dropbox" && (
+                          <p className="text-[11px] text-muted-foreground/70">
+                            Airtable record will be created when you link this project.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex gap-2 pt-1">
                       <Button
@@ -1633,16 +1885,21 @@ export default function AdminProjects() {
                       </Button>
                       <Button
                         className="flex-1"
-                        onClick={handleLinkProject}
+                        onClick={() => {
+                          if (selectedCombinedMatch.source === "airtable") handleLinkProject();
+                          else if (selectedCombinedMatch.source === "dropbox") handleLinkDropboxProject();
+                          else handleLinkBothProject();
+                        }}
                         disabled={
                           isCreating ||
                           !step2ProjectName.trim() ||
-                          !newProjectDropboxUrl.trim() ||
-                          !newProjectDropboxUrl.trim().startsWith("https://") ||
-                          !newProjectDropboxUrl.trim().includes("dropbox.com")
+                          (selectedCombinedMatch.source === "airtable" &&
+                            (!newProjectDropboxUrl.trim() ||
+                              !newProjectDropboxUrl.trim().startsWith("https://") ||
+                              !newProjectDropboxUrl.trim().includes("dropbox.com")))
                         }
                       >
-                        {isCreating ? "Creating…" : "Create Project"}
+                        {isCreating ? "Creating…" : "Link Project"}
                       </Button>
                     </div>
                   </div>

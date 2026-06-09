@@ -145,9 +145,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing project id or name" }), { status: 400 });
     }
 
-    // Linked projects arrive with project_code already set — skip folder creation.
-    if (record.project_code) {
-      console.log(`[dropbox-create-project-folder] project_code already set (${record.project_code}) — linked project, skipping`);
+    // Skip when the project already has a code (Airtable-linked) or a Dropbox
+    // folder (Dropbox-only match, including codeless legacy folders). Either
+    // means we're onboarding an existing project, not creating a new one.
+    if (record.project_code || record.dropbox_folder) {
+      const reason = record.project_code
+        ? `project_code (${record.project_code})`
+        : `dropbox_folder (${record.dropbox_folder})`;
+      console.log(`[dropbox-create-project-folder] already has ${reason} — linked project, skipping`);
       return new Response(JSON.stringify({ skipped: true, reason: "linked_project" }));
     }
 

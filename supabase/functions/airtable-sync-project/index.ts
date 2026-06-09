@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
   // Load project + account from portal
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, name, account_id")
+    .select("id, name, account_id, project_code")
     .eq("id", body.project_id)
     .single();
 
@@ -268,10 +268,19 @@ Deno.serve(async (req) => {
 
   const prefix = codePrefix(accountType);
 
-  // ── Step 1: Auto-generate project code ────────────────────────────────────
-  const highest = await getHighestProjectNumber(c.base_id, c.table_id, c.field_project_name, prefix, atHeaders);
-  const projectCode = `${prefix}${highest + 1}`;
-  console.log(`[airtable-sync-project] Generated project code: ${projectCode}`);
+  // ── Step 1: Project code — use pre-set value or auto-generate ─────────────
+  // Dropbox-only linked projects arrive with project_code already set from the
+  // folder name (e.g. CP107). Use it directly to avoid minting a duplicate code.
+  const existingCode = (project as Record<string, unknown>).project_code as string | null;
+  let projectCode: string;
+  if (existingCode) {
+    projectCode = existingCode;
+    console.log(`[airtable-sync-project] Using supplied project_code: ${projectCode}`);
+  } else {
+    const highest = await getHighestProjectNumber(c.base_id, c.table_id, c.field_project_name, prefix, atHeaders);
+    projectCode = `${prefix}${highest + 1}`;
+    console.log(`[airtable-sync-project] Generated project code: ${projectCode}`);
+  }
 
   // ── Step 2: Resolve Clients (company) record ──────────────────────────────
   // Prefer accounts.airtable_client_id; fall back to a by-name lookup

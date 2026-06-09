@@ -479,6 +479,91 @@ Deno.serve(async (req) => {
         );
       }
 
+      case "search-project-folders": {
+        // Admin only — fuzzy-searches existing project folders under PROJECTS_ROOT.
+        // Returns up to 8 matching folders with extracted project_code and web URL.
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .single();
+
+        if (!roleData) {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const body = await req.json();
+        const rawQuery = ((body.query as string) ?? "").trim();
+        if (rawQuery.length < 2) {
+          return new Response(
+            JSON.stringify({ folders: [] }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const listRes = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            ...pathRootHeader,
+          },
+          body: JSON.stringify({ path: ALLOWED_ROOT_PATH, recursive: false }),
+        });
+
+        if (!listRes.ok) {
+          const errText = await listRes.text();
+          console.warn("[dropbox-api] search-project-folders list_folder failed:", errText);
+          return new Response(
+            JSON.stringify({ folders: [], warning: "dropbox_list_failed" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const listData = await listRes.json() as { entries: Array<Record<string, unknown>> };
+
+        function normFolder(s: string): string {
+          return s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+        }
+
+        // Matches CP or RUP prefix, e.g. CP107_660-Madison or RUP42_Some-Project
+        const CODE_RE = /^(CP|RUP)(\d+)_(.+)$/i;
+        const normQ = normFolder(rawQuery);
+
+        const folders = (listData.entries ?? [])
+          .filter((e) => e[".tag"] === "folder")
+          .map((e) => {
+            const folderName = e.name as string;
+            const pathDisplay = e.path_display as string;
+            const m = folderName.match(CODE_RE);
+            const projectCode = m ? `${m[1].toUpperCase()}${m[2]}` : null;
+            const displayName = m ? m[3] : folderName;
+            const dropboxFolderUrl = `https://www.dropbox.com/home${pathDisplay}`;
+            return { folder_name: folderName, path_display: pathDisplay, project_code: projectCode, display_name: displayName, dropbox_folder_url: dropboxFolderUrl };
+          })
+          .filter(({ folder_name, display_name, project_code }) => {
+            const normName = normFolder(folder_name);
+            const normDisplay = normFolder(display_name);
+            const normCode = (project_code ?? "").toLowerCase();
+            return (
+              normName.includes(normQ) ||
+              normDisplay.includes(normQ) ||
+              normQ.includes(normDisplay) ||
+              (normCode.length > 0 && (normCode.includes(normQ) || normQ.startsWith(normCode)))
+            );
+          })
+          .slice(0, 8);
+
+        return new Response(
+          JSON.stringify({ folders }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Unknown action" }),
