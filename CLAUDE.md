@@ -20,6 +20,38 @@ Two commercial models:
 - **Never touch files unrelated to the task at hand, even if they look wrong.**
 - **Always deploy edge functions from the project root and verify the deploy with `npx supabase functions download <name>` + grep before trusting it.** A `functions deploy` run in the background or without an explicit CWD has twice silently shipped stale source while returning exit 0 and a success message.
 
+## Session Routines
+
+### Startup
+
+1. Launch: `cd ~/code/ss-portal && claude --dangerously-skip-permissions`
+2. First command in Claude Code: `cat HANDOFF.md && git status`
+3. First prompt: "Summarise the current state in your own words — what's shipped, what's blocked, what's queued. Don't take action yet."
+
+The HANDOFF.md prepended at the end of each session is the source of truth. Read it first, act second.
+
+### Closing
+
+Run these in order, pause between each:
+
+1. **Git status check** — Run `git status`. Surface any uncommitted changes. Don't commit blindly. Ask whether to commit, stash, or leave for next session.
+
+2. **Prepend HANDOFF.md** with a new dated session block at the TOP of the file (don't overwrite existing content). Title: `# Session — [today's date]`
+
+   Sections:
+   - **Completed this session** — commits shipped with hash and one-line description
+   - **In progress / needs verification** — shipped but not yet browser-tested
+   - **Pending** — queued for next session, including deferred work
+   - **Decisions made** — meaningful product/architectural decisions
+   - **Open questions or things to watch** — known risks, technical debt, gotchas
+   - **URGENT next session** — anything that genuinely needs to happen first
+
+   Commit message: `HANDOFF — [date] session: [one-line summary]`. Push to main.
+
+3. **CLAUDE.md promotion review** — Scan today's session for patterns, conventions, or gotchas worth codifying. Report candidate additions. Don't write them yet — let Fred approve which to add.
+
+4. **Final state confirmation** — Run `git status` one last time. Working tree should be clean.
+
 ## Architecture decisions
 
 - **Softr** stays for Kieran's internal production portal — do not touch it, ever
