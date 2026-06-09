@@ -114,6 +114,21 @@ export default function AdminProjects() {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  // New Project modal — Airtable pre-flight match + 2-step link flow
+  type ProjectMatch = {
+    airtable_project_id: string;
+    project_name: string;
+    project_code: string;
+    account_name?: string;
+    account_airtable_id?: string;
+  };
+  const [modalStep, setModalStep] = useState<1 | 2>(1);
+  const [projectMatches, setProjectMatches] = useState<ProjectMatch[]>([]);
+  const [projectMatchesLoading, setProjectMatchesLoading] = useState(false);
+  const [matchSelection, setMatchSelection] = useState<string | "new" | null>(null);
+  const [linkedMatch, setLinkedMatch] = useState<ProjectMatch | null>(null);
+  const [step2ProjectName, setStep2ProjectName] = useState("");
+
   // Edit project dialog (Dropbox folder URL)
   const [editProjectOpen, setEditProjectOpen] = useState(false);
   const [editProjectTarget, setEditProjectTarget] = useState<Project | null>(null);
@@ -231,6 +246,44 @@ export default function AdminProjects() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [selectedScene, selectedRound, sceneRounds]);
+
+  // Debounced Airtable project match lookup for the New Project modal step 1.
+  // Clears selection whenever the name input changes so a stale link never
+  // silently carries over to a new search.
+  useEffect(() => {
+    const trimmed = newProjectName.trim();
+    if (!isAddDialogOpen || modalStep !== 1 || trimmed.length < 3) {
+      setProjectMatches([]);
+      setProjectMatchesLoading(false);
+      return;
+    }
+    setMatchSelection(null);
+    setLinkedMatch(null);
+    let cancelled = false;
+    setProjectMatchesLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "airtable-find-matching-projects",
+          { body: { query: trimmed } },
+        );
+        if (cancelled) return;
+        if (error) {
+          setProjectMatches([]);
+        } else {
+          setProjectMatches((data?.matches ?? []) as ProjectMatch[]);
+        }
+      } catch {
+        if (!cancelled) setProjectMatches([]);
+      } finally {
+        if (!cancelled) setProjectMatchesLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [newProjectName, isAddDialogOpen, modalStep]);
 
   async function fetchData() {
     try {
@@ -531,6 +584,73 @@ export default function AdminProjects() {
     return items;
   }, [selectedClient, selectedProject, selectedScene, selectedRound]);
 
+  const resetAddModal = () => {
+    setIsAddDialogOpen(false);
+    setModalStep(1);
+    setNewProjectName("");
+    setNewProjectDropboxUrl("");
+    setSelectedClientId("");
+    setProjectMatches([]);
+    setProjectMatchesLoading(false);
+    setMatchSelection(null);
+    setLinkedMatch(null);
+    setStep2ProjectName("");
+  };
+
+  // Link flow: inserts project with pre-populated Airtable + code fields.
+  // Skips airtable-sync-project (record already exists) and the Dropbox
+  // folder trigger short-circuits via the project_code guard.
+  const handleLinkProject = async () => {
+    if (!linkedMatch || !selectedClientId) return;
+    const portalName = step2ProjectName.trim() || linkedMatch.project_name || linkedMatch.project_code;
+    const dropboxUrl = newProjectDropboxUrl.trim();
+    if (!dropboxUrl) {
+      toast.error("Dropbox folder URL is required.");
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const { data: membership, error: memErr } = await supabase
+        .from("account_members")
+        .select("account_id")
+        .eq("user_id", selectedClientId)
+        .maybeSingle();
+      if (memErr) throw memErr;
+      if (!membership?.account_id) {
+        toast.error("No company account found for this client. Provision them via Admin → Clients first.");
+        return;
+      }
+      const slug = portalName.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+      const { error } = await supabase.from("projects").insert({
+        name: portalName,
+        user_id: selectedClientId,
+        account_id: membership.account_id,
+        status: "active",
+        airtable_project_id: linkedMatch.airtable_project_id,
+        project_code: linkedMatch.project_code,
+        project_slug: slug,
+        dropbox_folder_url: dropboxUrl,
+      });
+      if (error) throw error;
+      toast.success(`${portalName} has been linked.`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "project_created",
+        description: `Linked project "${portalName}" (${linkedMatch.project_code}) to existing Airtable record`,
+        actorRole: "admin",
+        entityType: "project",
+        projectName: portalName,
+      });
+      resetAddModal();
+      fetchData();
+    } catch (err: any) {
+      console.error("Error linking project:", err);
+      toast.error(err.message || "Failed to link project");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const handleCreateProject = async () => {
     if (!newProjectName || !selectedClientId) {
       toast.error("Please provide project name and select a client.");
@@ -575,10 +695,7 @@ export default function AdminProjects() {
         entityType: "project",
         projectName: newProjectName,
       });
-      setIsAddDialogOpen(false);
-      setNewProjectName("");
-      setNewProjectDropboxUrl("");
-      setSelectedClientId("");
+      resetAddModal();
       fetchData();
     } catch (error: any) {
       console.error("Error creating project:", error);
@@ -1298,7 +1415,7 @@ export default function AdminProjects() {
               </label>
             <Dialog
               open={isAddDialogOpen}
-              onOpenChange={setIsAddDialogOpen}
+              onOpenChange={(open) => open ? setIsAddDialogOpen(true) : resetAddModal()}
             >
               <DialogTrigger asChild>
                 <button className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/10 dark:shadow-none font-sans">
@@ -1308,58 +1425,213 @@ export default function AdminProjects() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Create New Project</DialogTitle>
+                  <DialogTitle>
+                    {modalStep === 1 ? "New Project" : "Link to Existing Project"}
+                  </DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <label className="text-label text-muted-foreground">
-                      PROJECT NAME
-                    </label>
-                    <Input
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      placeholder="The Emory Hotel"
-                    />
+
+                {/* ── Step 1: project name + client + Airtable match panel ── */}
+                {modalStep === 1 && (
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <label className="text-label text-muted-foreground">
+                        PROJECT NAME
+                      </label>
+                      <Input
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        placeholder="660 Madison"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-label text-muted-foreground">
+                        CLIENT
+                      </label>
+                      <Select
+                        value={selectedClientId}
+                        onValueChange={setSelectedClientId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a client" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allClientOptions.map((c) => (
+                            <SelectItem key={c.user_id} value={c.user_id}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Airtable match panel — appears once 3+ chars typed */}
+                    {newProjectName.trim().length >= 3 && (
+                      <div className="border border-border rounded-sm bg-muted/30 px-4 py-3 space-y-2">
+                        {projectMatchesLoading ? (
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground py-0.5">
+                            Checking Airtable…
+                          </div>
+                        ) : (
+                          <>
+                            {projectMatches.length > 0 && (
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                                Matches in Airtable
+                              </div>
+                            )}
+                            {projectMatches.map((m) => {
+                              const isSelected = matchSelection === m.airtable_project_id;
+                              return (
+                                <button
+                                  key={m.airtable_project_id}
+                                  type="button"
+                                  onClick={() => {
+                                    setMatchSelection(m.airtable_project_id);
+                                    setLinkedMatch(m);
+                                  }}
+                                  className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
+                                    isSelected
+                                      ? "border-gold/70 bg-gold/[0.07]"
+                                      : "border-border hover:border-gold/40"
+                                  }`}
+                                >
+                                  <span className={`text-[10px] shrink-0 ${isSelected ? "text-gold" : "text-muted-foreground"}`}>
+                                    {isSelected ? "●" : "○"}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="text-xs font-medium text-foreground">
+                                      {m.project_name || m.project_code}
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground ml-1.5">
+                                      {[m.project_code, m.account_name].filter(Boolean).join(" · ")}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                            {/* "Create new" — always shown once search settles */}
+                            <button
+                              type="button"
+                              onClick={() => { setMatchSelection("new"); setLinkedMatch(null); }}
+                              className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
+                                matchSelection === "new"
+                                  ? "border-gold/70 bg-gold/[0.07]"
+                                  : "border-border hover:border-gold/40"
+                              }`}
+                            >
+                              <span className={`text-[10px] shrink-0 ${matchSelection === "new" ? "text-gold" : "text-muted-foreground"}`}>
+                                {matchSelection === "new" ? "●" : "○"}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Create new project "{newProjectName.trim()}"
+                              </span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <Button variant="outline" className="flex-1" onClick={resetAddModal}>
+                        Cancel
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        disabled={
+                          isCreating ||
+                          !newProjectName.trim() ||
+                          newProjectName.trim().length < 3 ||
+                          !selectedClientId ||
+                          !matchSelection
+                        }
+                        onClick={() => {
+                          if (matchSelection === "new") {
+                            handleCreateProject();
+                          } else if (linkedMatch) {
+                            setStep2ProjectName(linkedMatch.project_name || newProjectName.trim());
+                            setModalStep(2);
+                          }
+                        }}
+                      >
+                        {isCreating ? "Working…" : "Continue"}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-label text-muted-foreground">
-                      CLIENT
-                    </label>
-                    <Select
-                      value={selectedClientId}
-                      onValueChange={setSelectedClientId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a client" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allClientOptions.map((c) => (
-                          <SelectItem key={c.user_id} value={c.user_id}>
-                            {c.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                )}
+
+                {/* ── Step 2: Dropbox URL capture for link flow ── */}
+                {modalStep === 2 && linkedMatch && (
+                  <div className="space-y-4 pt-4">
+                    {/* Matched record summary */}
+                    <div className="border border-border/50 rounded-sm px-3 py-2.5 bg-muted/20">
+                      <div className="text-[9px] uppercase tracking-[0.24em] text-foreground/40 mb-1">
+                        Linking to existing project
+                      </div>
+                      <div className="text-xs text-foreground">
+                        {linkedMatch.project_name || linkedMatch.project_code}
+                        {" · "}
+                        <span className="text-muted-foreground">{linkedMatch.project_code}</span>
+                        {linkedMatch.account_name && (
+                          <span className="text-muted-foreground"> · {linkedMatch.account_name}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Portal name — editable, pre-filled from match */}
+                    <div className="space-y-2">
+                      <label className="text-label text-muted-foreground">
+                        PROJECT NAME
+                      </label>
+                      <Input
+                        value={step2ProjectName}
+                        onChange={(e) => setStep2ProjectName(e.target.value)}
+                        placeholder="660 Madison"
+                      />
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Portal display name — can differ from Airtable.
+                      </p>
+                    </div>
+
+                    {/* Dropbox folder URL — required for link flow */}
+                    <div className="space-y-2">
+                      <label className="text-label text-muted-foreground">
+                        DROPBOX FOLDER URL
+                      </label>
+                      <Input
+                        type="url"
+                        value={newProjectDropboxUrl}
+                        onChange={(e) => setNewProjectDropboxUrl(e.target.value)}
+                        placeholder="https://www.dropbox.com/home/..."
+                      />
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Right-click the project folder in Dropbox → Copy link.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => { setModalStep(1); setNewProjectDropboxUrl(""); }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        onClick={handleLinkProject}
+                        disabled={
+                          isCreating ||
+                          !step2ProjectName.trim() ||
+                          !newProjectDropboxUrl.trim() ||
+                          !newProjectDropboxUrl.trim().startsWith("https://") ||
+                          !newProjectDropboxUrl.trim().includes("dropbox.com")
+                        }
+                      >
+                        {isCreating ? "Creating…" : "Create Project"}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-label text-muted-foreground">
-                      DROPBOX FOLDER
-                    </label>
-                    <Input
-                      type="url"
-                      value={newProjectDropboxUrl}
-                      onChange={(e) => setNewProjectDropboxUrl(e.target.value)}
-                      placeholder="https://www.dropbox.com/home/..."
-                    />
-                  </div>
-                  <Button
-                    className="w-full"
-                    onClick={handleCreateProject}
-                    disabled={isCreating}
-                  >
-                    {isCreating ? "Creating..." : "Create Project"}
-                  </Button>
-                </div>
+                )}
               </DialogContent>
             </Dialog>
             </div>

@@ -145,6 +145,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing project id or name" }), { status: 400 });
     }
 
+    // Linked projects arrive with project_code already set — skip folder creation.
+    if (record.project_code) {
+      console.log(`[dropbox-create-project-folder] project_code already set (${record.project_code}) — linked project, skipping`);
+      return new Response(JSON.stringify({ skipped: true, reason: "linked_project" }));
+    }
+
     console.log(`[dropbox-create-project-folder] project=${projectId} name="${projectName}"`);
 
     // Get Dropbox connection
