@@ -1395,14 +1395,27 @@ export default function AdminProjects() {
         <div className="flex items-center justify-between">
           <ArborescenceTitle items={breadcrumbs} />
           {selectedClient && !selectedProject && selectedClient.account_id && (
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/clients/${selectedClient.account_id}`)}
-              className="font-sans uppercase text-foreground/55 hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer"
-              style={{ fontSize: 10, letterSpacing: "0.18em" }}
-            >
-              View profile →
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/clients/${selectedClient.account_id}`)}
+                className="font-sans uppercase text-foreground/55 hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer"
+                style={{ fontSize: 10, letterSpacing: "0.18em" }}
+              >
+                View profile →
+              </button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  setSelectedClientId(selectedClient.user_id);
+                  setIsAddDialogOpen(true);
+                }}
+              >
+                <Plus size={14} />
+                Add Project
+              </Button>
+            </div>
           )}
           {!selectedClient && (
             <div className="flex items-center gap-4">
