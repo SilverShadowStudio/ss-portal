@@ -14,7 +14,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -1426,16 +1425,19 @@ export default function AdminProjects() {
                 />
                 Show archived
               </label>
-            <Dialog
-              open={isAddDialogOpen}
-              onOpenChange={(open) => open ? setIsAddDialogOpen(true) : resetAddModal()}
-            >
-              <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/10 dark:shadow-none font-sans">
+                <button
+                  className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-full text-sm font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/10 dark:shadow-none font-sans"
+                  onClick={() => setIsAddDialogOpen(true)}
+                >
                   <Plus size={18} />
                   New Project
                 </button>
-              </DialogTrigger>
+            </div>
+          )}
+          <Dialog
+            open={isAddDialogOpen}
+            onOpenChange={(open) => open ? setIsAddDialogOpen(true) : resetAddModal()}
+          >
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>
@@ -1646,9 +1648,7 @@ export default function AdminProjects() {
                   </div>
                 )}
               </DialogContent>
-            </Dialog>
-            </div>
-          )}
+          </Dialog>
         </div>
       </div>
 
