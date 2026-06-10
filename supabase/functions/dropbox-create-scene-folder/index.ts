@@ -176,6 +176,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
     }
 
+    // Skip when the scene already has a code (linked/onboarded scene) or a Dropbox
+    // folder set on INSERT. Mirrors the dropbox-create-project-folder guard.
+    if (record.scene_code || record.dropbox_folder) {
+      const reason = record.scene_code
+        ? `scene_code (${record.scene_code})`
+        : `dropbox_folder (${record.dropbox_folder})`;
+      console.log(`[dropbox-create-scene-folder] already has ${reason} — linked scene, skipping`);
+      return new Response(JSON.stringify({ skipped: true, reason: "linked_scene" }));
+    }
+
     console.log(`[dropbox-create-scene-folder] scene=${sceneId} project=${projectId} name="${sceneName}"`);
 
     // Get Dropbox connection

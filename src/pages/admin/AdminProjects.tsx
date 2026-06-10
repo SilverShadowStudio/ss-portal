@@ -141,6 +141,13 @@ export default function AdminProjects() {
     dropbox_folder?: string;
     dropbox_folder_url?: string;
   };
+  type SceneFolder = {
+    folder_name: string;
+    path_display: string;
+    scene_code: string | null;
+    display_name: string;
+    dropbox_folder_url: string;
+  };
   const [modalStep, setModalStep] = useState<1 | 2>(1);
   const [projectMatches, setProjectMatches] = useState<ProjectMatch[]>([]);
   const [projectMatchesLoading, setProjectMatchesLoading] = useState(false);
@@ -149,6 +156,17 @@ export default function AdminProjects() {
   const [matchSelection, setMatchSelection] = useState<string | "new" | null>(null);
   const [selectedCombinedMatch, setSelectedCombinedMatch] = useState<CombinedMatch | null>(null);
   const [step2ProjectName, setStep2ProjectName] = useState("");
+
+  // Add Scene modal
+  const [isAddSceneDialogOpen, setIsAddSceneDialogOpen] = useState(false);
+  const [newSceneName, setNewSceneName] = useState("");
+  const [sceneFolders, setSceneFolders] = useState<SceneFolder[]>([]);
+  const [sceneFoldersLoading, setSceneFoldersLoading] = useState(false);
+  const [sceneMatchSelection, setSceneMatchSelection] = useState<string | "new" | null>(null);
+  const [selectedSceneFolder, setSelectedSceneFolder] = useState<SceneFolder | null>(null);
+  const [sceneModalStep, setSceneModalStep] = useState<1 | 2>(1);
+  const [step2SceneName, setStep2SceneName] = useState("");
+  const [isCreatingScene, setIsCreatingScene] = useState(false);
 
   // Edit project dialog (Dropbox folder URL)
   const [editProjectOpen, setEditProjectOpen] = useState(false);
@@ -324,6 +342,50 @@ export default function AdminProjects() {
       clearTimeout(timer);
     };
   }, [newProjectName, isAddDialogOpen, modalStep]);
+
+  // Debounced Dropbox scene-folder search for the Add Scene modal step 1.
+  useEffect(() => {
+    const trimmed = newSceneName.trim();
+    if (!isAddSceneDialogOpen || sceneModalStep !== 1 || trimmed.length < 3 || !selectedProject) {
+      setSceneFolders([]);
+      setSceneFoldersLoading(false);
+      return;
+    }
+    setSceneMatchSelection(null);
+    setSelectedSceneFolder(null);
+    let cancelled = false;
+    setSceneFoldersLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) {
+          if (!cancelled) { setSceneFolders([]); setSceneFoldersLoading(false); }
+          return;
+        }
+        const resp = await fetch(
+          `${SUPABASE_URL}/functions/v1/dropbox-api?action=search-scene-folders`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              apikey: SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({ project_id: selectedProject.id, query: trimmed }),
+          },
+        );
+        if (cancelled) return;
+        const data = resp.ok ? await resp.json() : { folders: [] };
+        setSceneFolders((data?.folders ?? []) as SceneFolder[]);
+      } catch {
+        if (!cancelled) setSceneFolders([]);
+      } finally {
+        if (!cancelled) setSceneFoldersLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [newSceneName, isAddSceneDialogOpen, sceneModalStep, selectedProject]);
 
   async function fetchData() {
     try {
@@ -703,6 +765,17 @@ export default function AdminProjects() {
     setStep2ProjectName("");
   };
 
+  const resetAddSceneModal = () => {
+    setIsAddSceneDialogOpen(false);
+    setSceneModalStep(1);
+    setNewSceneName("");
+    setSceneFolders([]);
+    setSceneFoldersLoading(false);
+    setSceneMatchSelection(null);
+    setSelectedSceneFolder(null);
+    setStep2SceneName("");
+  };
+
   // Airtable-only link: record exists in Airtable, admin provides Dropbox URL.
   const handleLinkProject = async () => {
     const match = selectedCombinedMatch;
@@ -915,6 +988,114 @@ export default function AdminProjects() {
       toast.error(error.message || "Failed to create project");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  // Create new scene (no existing Dropbox folder) — mirrors AdminScenes.tsx flow.
+  // Inserts scene + Round 01. DB trigger creates the Dropbox folder.
+  const handleCreateScene = async () => {
+    if (!newSceneName.trim() || !selectedProject) return;
+    setIsCreatingScene(true);
+    try {
+      const { data: newScene, error: sceneError } = await supabase
+        .from("scenes")
+        .insert({
+          name: newSceneName.trim(),
+          project_id: selectedProject.id,
+          status: "pending_instruction",
+          current_round: 1,
+          paid_rounds: 2,
+        })
+        .select("id")
+        .single();
+      if (sceneError) throw sceneError;
+
+      const { error: roundError } = await supabase
+        .from("scene_rounds")
+        .insert({ scene_id: newScene.id, round_number: 1, status: "pending" });
+      if (roundError) throw roundError;
+
+      toast.success(`${newSceneName.trim()} has been created.`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await Promise.all([
+        logActivity({
+          action: "scene_created",
+          description: `Created scene "${newSceneName.trim()}"`,
+          actorRole: "admin",
+          entityType: "scene",
+          entityId: newScene.id,
+          sceneId: newScene.id,
+          sceneName: newSceneName.trim(),
+          projectId: selectedProject.id,
+        }),
+        logActivity({
+          action: "round_created",
+          description: `Created Round 01 for "${newSceneName.trim()}"`,
+          actorRole: "admin",
+          entityType: "scene_round",
+          sceneId: newScene.id,
+          sceneName: newSceneName.trim(),
+          projectId: selectedProject.id,
+          roundNumber: 1,
+        }),
+      ]);
+      resetAddSceneModal();
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create scene");
+    } finally {
+      setIsCreatingScene(false);
+    }
+  };
+
+  // Link existing Dropbox scene folder. Inserts scene with scene_code + dropbox_folder
+  // pre-set so the DB trigger skips folder creation. No Round 01 — the project has
+  // historical work; admin adds rounds manually. Calls push-scene to create Airtable Task.
+  const handleLinkSceneDropbox = async () => {
+    if (!selectedSceneFolder || !selectedProject) return;
+    const sceneName = step2SceneName.trim() || selectedSceneFolder.display_name;
+    setIsCreatingScene(true);
+    try {
+      const slug = sceneName.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+      const { data: newScene, error } = await supabase
+        .from("scenes")
+        .insert({
+          name: sceneName,
+          project_id: selectedProject.id,
+          status: "pending_instruction",
+          current_round: 1,
+          paid_rounds: 2,
+          scene_slug: slug,
+          dropbox_folder: selectedSceneFolder.path_display,
+          ...(selectedSceneFolder.scene_code ? { scene_code: selectedSceneFolder.scene_code } : {}),
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+
+      // Create Airtable Task record for this scene.
+      supabase.functions
+        .invoke("airtable-sync", { body: { action: "push-scene", scene_id: newScene.id } })
+        .catch((e: unknown) => console.warn("[AdminProjects] airtable-sync push-scene:", e));
+
+      toast.success(`${sceneName} has been linked.`);
+      const { logActivity } = await import("@/lib/activityLog");
+      await logActivity({
+        action: "scene_created",
+        description: `Linked scene "${sceneName}"${selectedSceneFolder.scene_code ? ` (${selectedSceneFolder.scene_code})` : ""} from Dropbox folder`,
+        actorRole: "admin",
+        entityType: "scene",
+        entityId: newScene.id,
+        sceneId: newScene.id,
+        sceneName,
+        projectId: selectedProject.id,
+      });
+      resetAddSceneModal();
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to link scene");
+    } finally {
+      setIsCreatingScene(false);
     }
   };
 
@@ -1630,6 +1811,16 @@ export default function AdminProjects() {
               </Button>
             </div>
           )}
+          {selectedProject && !selectedScene && (
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setIsAddSceneDialogOpen(true)}
+            >
+              <Plus size={14} />
+              Add Scene
+            </Button>
+          )}
           {!selectedClient && (
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground cursor-pointer select-none">
@@ -1905,6 +2096,188 @@ export default function AdminProjects() {
                   </div>
                 )}
               </DialogContent>
+          </Dialog>
+
+          {/* Add Scene Dialog — mounted unconditionally so open state is always consumed */}
+          <Dialog
+            open={isAddSceneDialogOpen}
+            onOpenChange={(open) => open ? setIsAddSceneDialogOpen(true) : resetAddSceneModal()}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {sceneModalStep === 1 ? "New Scene" : "Link to Existing Scene"}
+                </DialogTitle>
+              </DialogHeader>
+
+              {/* ── Step 1: scene name + Dropbox folder search ── */}
+              {sceneModalStep === 1 && (
+                <div className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <label className="text-label text-muted-foreground">SCENE NAME</label>
+                    <Input
+                      value={newSceneName}
+                      onChange={(e) => setNewSceneName(e.target.value)}
+                      placeholder="Master Bedroom"
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Dropbox match panel — appears once 3+ chars typed */}
+                  {newSceneName.trim().length >= 3 && (
+                    <div className="border border-border rounded-sm bg-muted/30 px-4 py-3 space-y-2">
+                      {sceneFoldersLoading ? (
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground py-0.5">
+                          Searching Dropbox…
+                        </div>
+                      ) : (
+                        <>
+                          {sceneFolders.length > 0 && (
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                              Existing scene folders
+                            </div>
+                          )}
+                          {sceneFolders.map((f) => {
+                            const isSelected = sceneMatchSelection === f.path_display;
+                            return (
+                              <button
+                                key={f.path_display}
+                                type="button"
+                                onClick={() => {
+                                  setSceneMatchSelection(f.path_display);
+                                  setSelectedSceneFolder(f);
+                                }}
+                                className={`w-full flex items-start gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
+                                  isSelected
+                                    ? "border-gold/70 bg-gold/[0.07]"
+                                    : "border-border hover:border-gold/40"
+                                }`}
+                              >
+                                <span className={`text-[10px] shrink-0 mt-0.5 ${isSelected ? "text-gold" : "text-muted-foreground"}`}>
+                                  {isSelected ? "●" : "○"}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="text-xs font-medium text-foreground">
+                                    {f.display_name}
+                                  </span>
+                                  {f.scene_code && (
+                                    <span className="text-[11px] text-muted-foreground ml-1.5">
+                                      {f.scene_code}
+                                    </span>
+                                  )}
+                                  <span className="ml-2 inline-flex gap-1">
+                                    <span className="text-[9px] uppercase tracking-[0.1em] px-1 bg-sky-500/10 text-sky-400 rounded-sm">DB</span>
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {/* "Create new" — always shown once search settles */}
+                          <button
+                            type="button"
+                            onClick={() => { setSceneMatchSelection("new"); setSelectedSceneFolder(null); }}
+                            className={`w-full flex items-center gap-3 text-left px-3 py-2 rounded-sm border transition-colors ${
+                              sceneMatchSelection === "new"
+                                ? "border-gold/70 bg-gold/[0.07]"
+                                : "border-border hover:border-gold/40"
+                            }`}
+                          >
+                            <span className={`text-[10px] shrink-0 ${sceneMatchSelection === "new" ? "text-gold" : "text-muted-foreground"}`}>
+                              {sceneMatchSelection === "new" ? "●" : "○"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Create new scene "{newSceneName.trim()}"
+                            </span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" className="flex-1" onClick={resetAddSceneModal}>
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      disabled={
+                        isCreatingScene ||
+                        !newSceneName.trim() ||
+                        newSceneName.trim().length < 3 ||
+                        !sceneMatchSelection
+                      }
+                      onClick={() => {
+                        if (sceneMatchSelection === "new") {
+                          handleCreateScene();
+                        } else if (selectedSceneFolder) {
+                          setStep2SceneName(selectedSceneFolder.display_name);
+                          setSceneModalStep(2);
+                        }
+                      }}
+                    >
+                      {isCreatingScene ? "Working…" : "Continue"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 2: linked scene review ── */}
+              {sceneModalStep === 2 && selectedSceneFolder && (
+                <div className="space-y-4 pt-4">
+                  {/* Summary */}
+                  <div className="border border-border/50 rounded-sm px-3 py-2.5 bg-muted/20">
+                    <div className="text-[9px] uppercase tracking-[0.24em] text-foreground/40 mb-1">
+                      Dropbox folder found
+                    </div>
+                    <div className="text-xs text-foreground flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      <span>{selectedSceneFolder.display_name}</span>
+                      {selectedSceneFolder.scene_code && (
+                        <span className="text-muted-foreground">· {selectedSceneFolder.scene_code}</span>
+                      )}
+                      <span className="text-[9px] uppercase tracking-[0.1em] px-1 py-0.5 bg-sky-500/10 text-sky-400 rounded-sm">Dropbox ✓</span>
+                    </div>
+                  </div>
+
+                  {/* Scene name — editable */}
+                  <div className="space-y-2">
+                    <label className="text-label text-muted-foreground">SCENE NAME</label>
+                    <Input
+                      value={step2SceneName}
+                      onChange={(e) => setStep2SceneName(e.target.value)}
+                      placeholder="Master Bedroom"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-muted-foreground/70">
+                      Portal display name — can differ from folder name.
+                    </p>
+                  </div>
+
+                  {/* Dropbox folder — auto-populated */}
+                  <div className="space-y-2">
+                    <label className="text-label text-muted-foreground">DROPBOX FOLDER</label>
+                    <div className="text-[11px] text-muted-foreground px-3 py-2 border border-border/50 rounded-sm bg-muted/10 break-all">
+                      {selectedSceneFolder.dropbox_folder_url}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/70">
+                      Airtable Task record will be created. No Round 01 — add rounds manually when ready.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" className="flex-1" onClick={() => setSceneModalStep(1)}>
+                      Back
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={handleLinkSceneDropbox}
+                      disabled={isCreatingScene || !step2SceneName.trim()}
+                    >
+                      {isCreatingScene ? "Creating…" : "Link Scene"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
           </Dialog>
         </div>
       </div>

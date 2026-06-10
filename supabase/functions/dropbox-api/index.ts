@@ -479,6 +479,146 @@ Deno.serve(async (req) => {
         );
       }
 
+      case "search-scene-folders": {
+        // Admin only — fuzzy-searches SC{NN}_* subfolders inside a specific project folder.
+        // Accepts { project_id, query }; resolves project folder via DB + prefix-search fallback.
+        const { data: sceneRoleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .single();
+
+        if (!sceneRoleData) {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const body = await req.json();
+        const projectId = ((body.project_id as string) ?? "").trim();
+        const rawQuery = ((body.query as string) ?? "").trim();
+
+        if (!projectId) {
+          return new Response(
+            JSON.stringify({ error: "project_id is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (rawQuery.length < 2) {
+          return new Response(
+            JSON.stringify({ folders: [] }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Resolve project folder from DB
+        const { data: projectRow } = await supabase
+          .from("projects")
+          .select("dropbox_folder, project_code")
+          .eq("id", projectId)
+          .maybeSingle();
+
+        let projectFolderPath: string | null = (projectRow?.dropbox_folder as string | null) ?? null;
+
+        // Fallback: prefix-search PROJECTS_ROOT by project_code
+        if (!projectFolderPath && projectRow?.project_code) {
+          const projCode = (projectRow.project_code as string).toUpperCase();
+          const rootListRes = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              ...pathRootHeader,
+            },
+            body: JSON.stringify({ path: ALLOWED_ROOT_PATH, recursive: false }),
+          });
+          if (rootListRes.ok) {
+            const rootData = await rootListRes.json() as { entries: Array<Record<string, unknown>> };
+            const prefix = projCode.toLowerCase() + "_";
+            const hit = (rootData.entries ?? []).find(
+              (e) => e[".tag"] === "folder" && (e.name as string).toLowerCase().startsWith(prefix)
+            );
+            if (hit) projectFolderPath = hit.path_display as string;
+          }
+        }
+
+        if (!projectFolderPath) {
+          return new Response(
+            JSON.stringify({ folders: [], warning: "project_folder_not_found" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Security: project folder must be within allowed root
+        const validatedProjectFolder = validatePath(projectFolderPath);
+        if (!validatedProjectFolder) {
+          return new Response(
+            JSON.stringify({ error: "Access denied: project folder outside allowed scope" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // List scene subfolders
+        const sceneListRes = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            ...pathRootHeader,
+          },
+          body: JSON.stringify({ path: validatedProjectFolder, recursive: false }),
+        });
+
+        if (!sceneListRes.ok) {
+          const errText = await sceneListRes.text();
+          console.warn("[dropbox-api] search-scene-folders list_folder failed:", errText);
+          return new Response(
+            JSON.stringify({ folders: [], warning: "dropbox_list_failed" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const sceneListData = await sceneListRes.json() as { entries: Array<Record<string, unknown>> };
+
+        function normScene(s: string): string {
+          return s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+        }
+
+        const SC_RE = /^SC(\d+)_(.+)$/i;
+        const normSceneQ = normScene(rawQuery);
+
+        const sceneFolders = (sceneListData.entries ?? [])
+          .filter((e) => e[".tag"] === "folder")
+          .map((e) => {
+            const folderName = e.name as string;
+            const pathDisplay = e.path_display as string;
+            const m = folderName.match(SC_RE);
+            const sceneCode = m ? `SC${m[1].padStart(2, "0")}` : null;
+            const displayName = m ? m[2] : folderName;
+            const dropboxFolderUrl = `https://www.dropbox.com/home${pathDisplay}`;
+            return { folder_name: folderName, path_display: pathDisplay, scene_code: sceneCode, display_name: displayName, dropbox_folder_url: dropboxFolderUrl };
+          })
+          .filter(({ folder_name, display_name, scene_code }) => {
+            const normName = normScene(folder_name);
+            const normDisplay = normScene(display_name);
+            const normCode = (scene_code ?? "").toLowerCase();
+            return (
+              normName.includes(normSceneQ) ||
+              normDisplay.includes(normSceneQ) ||
+              normSceneQ.includes(normDisplay) ||
+              (normCode.length > 0 && (normCode.includes(normSceneQ) || normSceneQ.startsWith(normCode)))
+            );
+          })
+          .slice(0, 8);
+
+        return new Response(
+          JSON.stringify({ folders: sceneFolders }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       case "search-project-folders": {
         // Admin only — fuzzy-searches existing project folders under PROJECTS_ROOT.
         // Returns up to 8 matching folders with extracted project_code and web URL.
