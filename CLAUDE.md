@@ -608,6 +608,10 @@ The Dropbox web URL for a folder is `https://www.dropbox.com/home` + `path_displ
 
 **Caveat**: Still unverified for Business team accounts — personal Dropbox uses `/home` but team accounts may require a namespace-aware path variant. If `/home` resolves incorrectly, the correct format may be `/home/Team%20Space` + path or similar. Verify before surfacing these URLs to clients.
 
+### Historical rounds are never imported on scene link
+
+When the Add Scene flow links to an existing Dropbox folder, historical VS_Visuals rounds (R01, R02, R03…) are **not** imported as `scene_rounds` records. `scene_rounds` carries status, booking, and payment state that has no meaning for completed legacy work. Historical renders remain accessible via Dropbox directly. The portal only tracks rounds booked after onboarding.
+
 ### Zero scene matches — check folder path before fuzzy logic
 
 When a linked project shows zero results in the Add Scene modal, suspect `projects.dropbox_folder` pointing at a path that doesn't exist in Dropbox before assuming a fuzzy-match bug. The match logic is correct; the edge function silently returns `{ folders: [] }` on `path/not_found`. Verify the path exists by calling `list_folder` on `projects.dropbox_folder` directly with the team namespace header.
