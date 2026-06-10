@@ -8,6 +8,84 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 10 June 2026 (continued)
+
+Continuation of the same calendar day. PWA promotion + Add Scene diagnostic + legacy round import build.
+
+## Completed this session
+
+### CLAUDE.md: PWA session learnings promoted (`f84c7d1`)
+Candidates 1–4 from the 25 May PWA session applied to CLAUDE.md: new `## PWA (installable portal)` section, Vercel afterFiles routing note, `scripts/generate-pwa-icons.mjs` local tooling bullet, project structure tree additions.
+
+### Add Scene zero-match diagnostic + fix
+Root cause 1: `dropbox-api` had `search-scene-folders` in source but was never deployed after `9efe651`. Deployed; download-verified.
+Root cause 2: CP106 project rows stored `dropbox_folder = CP116_660-Madison` (wrong folder). CP116_660-Madison does not exist in Dropbox (phantom path). Deleted duplicate row `ff69f879`, updated `18547558` to `project_code='CP106', dropbox_folder='/00_Production/PRD01_Client-Projects/CP106_660-Madison'`.
+Dropbox audit: full PRD01_Client-Projects listing shows CP088–CP115 as real project folders; no CP116–CP128 phantom folders exist. CP113 and CP115 have portal `dropbox_folder` mismatches (documented in Pending).
+
+### Decision: Option B — legacy round import (`13f313b`)
+Historical rounds from VS_Visuals imported as read-only delivered history on scene-link. Option A ("don't import") retracted.
+
+### Migration `20260610000001_scene_rounds_legacy.sql` (applied + committed)
+`ALTER TABLE scene_rounds ADD COLUMN is_legacy BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN legacy_source_path TEXT`
+
+### Edge function: `import-legacy-rounds` (new, deployed, download-verified)
+Takes `{ scene_id }`. Uses `scenes.dropbox_folder` directly (no prefix search). Lists `<dropbox_folder>/VS_Visuals/`, parses filenames via `/_R(\d+)_(\d+)\.(jpg|jpeg|png|tiff|tif)$/i` (no `-VS` gate — trust folder location). Groups by round number. Inserts `scene_rounds` rows: `kind='production', status='approved', is_legacy=true, delivered_at/approved_at = min(server_modified) across round files`. Inserts one `round_assets` row per JPG. Idempotent per `(scene_id, round_number, is_legacy=true)`. Returns `{ rounds_created, assets_created }`. Skips cleanly when VS_Visuals doesn't exist.
+
+### Edge function: `dropbox-scan-visuals` — VS variant filter fixed (`13f313b`)
+`includes("-vs_")` → `/[-]VS\d*_/i.test(...)`. Previously silently skipped files with variant-numbered suffixes (`VS01_`, `VS02_`). Deployed, download-verified at line 258.
+
+### Frontend: legacy badge treatment (`13f313b`)
+- `Portfolio.tsx`: `is_legacy` added to `SceneRound`, included in scene_rounds SELECT, threaded into `siblingRounds` mapping and as `isLegacy` prop on `TaskDetail`.
+- `TaskDetail.tsx`: `isLegacy` prop + `is_legacy` on sibling tabs type. "· Legacy" badge (`text-[9px] text-foreground/35`) on in-production sibling tabs. "Delivered before portal · {d MMM yyyy}" eyebrow above `AssetViewer` when `isLegacy && deliveredAt`.
+- `AssetViewer.tsx`: `is_legacy` on sibling tabs type, `isLegacy` prop. "· Legacy" badge on delivered-view round tabs.
+
+### Fire-and-forget wired in `handleLinkSceneDropbox` (`13f313b`)
+`import-legacy-rounds` called after `airtable-sync push-scene`. Same `.catch()` pattern. Admin links a scene → legacy rounds import silently in background.
+
+## In progress / needs verification
+
+- **Browser test — 660-Madison → SC09 (Master Bedroom)**: Link scene, wait ~5s, refresh. Expect Round 01 with `· Legacy` tab badge and "Delivered before portal" header. 8 `.max` files should produce zero assets (extension filter); 2 R01 JPGs should produce 1 round row + 2 asset rows.
+- **Browser test — 660-Madison → SC05 (Living Kitchen)**: Expect Round 03 + Round 04 with all JPG variants as separate `round_assets` (SC05A-VS01, SC05A-VS02, SC05B-VS01, SC05B-VS02, SC05B-VS_). The SC04A-prefixed file in SC05's VS_Visuals should import under Round 04 (trust folder location).
+- **Browser test — scene with empty VS_Visuals**: Expect no rounds created, no error.
+- **New Project modal parallel search**: Still not browser-tested (carried from earlier today).
+
+## Pending
+
+### Known gotchas / operational debt
+
+- **CP113 / CP115 `dropbox_folder` drift**: Portal projects table may drift from Dropbox folder reality. CP113 (`CP113_Test-Project` in DB vs `CP113_Park-Modern` in Dropbox) and CP115 (`CP115_Madison-Residence` in DB vs `CP115_unnamed` in Dropbox) both have portal rows pointing at folder paths that don't match real Dropbox folders. These rows will silently return zero matches in the Add Scene flow. Worth a future audit script: `SELECT` every `projects.dropbox_folder`, check via Dropbox API if the folder exists with that name, surface mismatches. Not urgent — just operational debt from earlier test data.
+
+(Carried from previous sessions)
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence; currently manual
+- **Clean up test invoices** in DB before going live with real clients
+- **Stripe webhook HMAC verification** — tech debt; currently trusts all `checkout.session.completed` events
+- **Client correction flow** — round review with pins, submit corrections, auto-create Round 02
+- **New commission brief flow** — 3-step overlay from idle dashboard state
+- **Airtable inbound webhook** — `pull-status` is manual only
+- **Pre-launch ghost mode test** — walk through full client flow as each active client before invites go out
+
+## Decisions made
+
+- **Option B: legacy rounds imported as read-only history on scene-link.** `is_legacy=true, status='approved'`. No booking/payment state. Naturally excluded from ReservationBasket, expire-reservations, and booking checkout by their status/NULL fields. Option A (don't import) was trialled and retracted — empty round list on a scene with real delivered work creates a misleading client experience.
+- **No Round 01 for Dropbox-linked scenes**: Scenes onboarded from Dropbox already have historical VS_Visuals content. Auto-creating Round 01 would set `status: pending` against work that may already be delivered. Admin adds rounds manually via the existing booking flow.
+- **Historical round import — Option A RETRACTED**: The "don't import legacy rounds" decision is reversed. Option B (import as read-only delivered history) is inbound. Rationale: empty rounds list on a scene with real delivered work in Dropbox creates a misleading client experience. See Option B implementation.
+- **`supabase.functions.invoke` can't pass URL query params**: `dropbox-api` routes via `?action=...`. Dropbox search actions in AdminProjects.tsx use direct `fetch` with explicit `Authorization` + `apikey` headers derived from `supabase.auth.getSession()` + `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` exports.
+- **Linked-project bypass requires no migration**: `project_code` or `dropbox_folder` non-null on INSERT is the skip signal. Both trigger guards check both fields.
+
+## Open questions / things to watch
+
+- `import-legacy-rounds` uses `scenes.dropbox_folder` (the Dropbox API path). If this column is NULL on a linked scene (shouldn't happen via the new link flow, but possible for older scenes), the function skips cleanly and returns `skipped: no_dropbox_folder`. Watch for this on any older scenes.
+- Legacy rounds get `delivered_at` = earliest `server_modified` across files in the round. This is the file's last-modified time in Dropbox, not necessarily when it was first delivered to the client. Close enough for historical display purposes; not reliable as an audit timestamp.
+- Dropbox Business team accounts may require a different web URL format — `https://www.dropbox.com/home` works for personal; team accounts sometimes need the namespace path. Verify before shipping the URL to clients.
+- `airtable-find-matching-projects` reads up to 200 Airtable records (2 pages) to find the max project number. If the base grows beyond 200 projects, the highest-number detection will silently undercount. Not a problem today but worth noting.
+- All scene/project Dialogs are now mounted unconditionally in AdminProjects.tsx — minor render cost but avoids the "button inert" class of bug. Prefer this pattern for all admin modal triggers going forward.
+
+## URGENT next session
+
+Browser-verify the three legacy round import scenarios (SC09, SC05, empty VS_Visuals) before using Add Scene in production.
+
+---
+
 # Session — 10 June 2026
 
 ## Completed this session
