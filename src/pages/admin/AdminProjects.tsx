@@ -387,9 +387,9 @@ export default function AdminProjects() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [newSceneName, isAddSceneDialogOpen, sceneModalStep, selectedProject]);
 
-  async function fetchData() {
+  async function fetchData({ silent = false }: { silent?: boolean } = {}) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       const { data: profiles } = await supabase
         .from("profiles")
@@ -572,9 +572,9 @@ export default function AdminProjects() {
       }
     } catch (error) {
       console.error("Error fetching admin projects:", error);
-      toast.error("Failed to load projects");
+      if (!silent) toast.error("Failed to load projects");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -1010,9 +1010,11 @@ export default function AdminProjects() {
         .single();
       if (sceneError) throw sceneError;
 
-      const { error: roundError } = await supabase
+      const { data: newRound, error: roundError } = await supabase
         .from("scene_rounds")
-        .insert({ scene_id: newScene.id, round_number: 1, status: "pending" });
+        .insert({ scene_id: newScene.id, round_number: 1, status: "pending" })
+        .select("id")
+        .single();
       if (roundError) throw roundError;
 
       toast.success(`${newSceneName.trim()} has been created.`);
@@ -1039,8 +1041,30 @@ export default function AdminProjects() {
           roundNumber: 1,
         }),
       ]);
+
+      const minimalScene: Scene = {
+        id: newScene.id,
+        name: newSceneName.trim(),
+        status: "pending_instruction",
+        current_round: 1,
+        paid_rounds: 2,
+        project_id: selectedProject.id,
+        next_delivery_at: null,
+      };
+      const minimalRound: SceneRound = {
+        id: newRound.id,
+        round_number: 1,
+        status: "pending",
+        delivered_at: null,
+        image_url: null,
+        start_date: null,
+        end_date: null,
+        preview_url: null,
+      };
+      setSceneRounds((prev) => new Map(prev).set(newScene.id, [minimalRound]));
       resetAddSceneModal();
-      fetchData();
+      setSelectedScene(minimalScene);
+      fetchData({ silent: true });
     } catch (err: any) {
       toast.error(err.message || "Failed to create scene");
     } finally {
@@ -1095,8 +1119,19 @@ export default function AdminProjects() {
         sceneName,
         projectId: selectedProject.id,
       });
+
+      const minimalScene: Scene = {
+        id: newScene.id,
+        name: sceneName,
+        status: "pending_instruction",
+        current_round: 1,
+        paid_rounds: 2,
+        project_id: selectedProject.id,
+        next_delivery_at: null,
+      };
       resetAddSceneModal();
-      fetchData();
+      setSelectedScene(minimalScene);
+      fetchData({ silent: true });
     } catch (err: any) {
       toast.error(err.message || "Failed to link scene");
     } finally {
