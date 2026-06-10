@@ -8,6 +8,44 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 10 June 2026 (operational cleanup)
+
+## Completed this session
+
+### AdminProjects: new scene navigates immediately on create/link (`3c371d2`)
+After creating or linking a scene, the UI now navigates into the new scene immediately — no manual click required. `fetchData` gained a `{ silent?: boolean }` flag; background refreshes after scene creation skip the full-page loader. `handleCreateScene` now also returns the round ID from the INSERT so Round 01 is visible in the scene view straight away.
+
+### CP106 duplicate scenes deleted (direct SQL, no migration)
+Three duplicate scenes under "660 Madison" (CP106) removed via `DELETE FROM scenes WHERE id IN (...)`. Cascade cleaned scene_rounds + round_assets.
+
+- `601b47fc` — "Master Bedroom" (0 rounds, no Airtable record) — clear junk
+- `760248de` — "Living-Kitchen" (0 rounds, no Airtable record, SC05 code conflict) — abandoned link attempt
+- `a0848776` — "Master Bedroom" (1 round, 2 assets identical Dropbox paths to canonical `1df3bd04`) — duplicate import
+
+Canonical scene retained: `1df3bd04` "09 - Master Bedroom" (SC09, Airtable `recqkNUUI2ryDdt3M`, SC09_Master-Bedroom, 1 approved round, 2 assets).
+No Dropbox files touched. No Airtable Tasks touched. No triggers fire on scenes DELETE.
+
+### Test/junk projects deleted (direct SQL, no migration)
+Four junk projects removed via `DELETE FROM projects WHERE id IN (...)`. Cascade cleaned all child scenes, rounds, and assets.
+
+- CP118 "660 Madison Avenue" (`09149f39`) — no scenes, stub owner
+- CP119 "660 Madison Avenue" (`30d2644f`) — no scenes, stub owner
+- CP120 "Madison" (`6c5eb276`) — junk scenes "54654", "dfgdsdf", "sdfqsd"; one orphaned Airtable record `rec5B734LTJyXnAx6` left in Airtable (acceptable)
+- CP115 "Madison Residence" (`56658b44`) — test seed data from 26 May session; 6 scenes, 13 rounds, 1 asset, all test
+
+## Pending
+
+- **Test Client account not cleaned up.** "Test Client Company" (account `5faeeafa`, user `f7ec90ec`) still exists with 1 signed test agreement and auth user. The project (CP115) is gone but the account remains. Delete via `admin-delete-account` edge function or retain for future UI testing — your call.
+- **Inline scene delete on AdminProjects** — delete capability currently only exists on AdminScenes page via SceneCard.tsx:341. Adding it to the AdminProjects drill-down view is a separate future task.
+- **CP120 "dfgdsdf" Airtable record** (`rec5B734LTJyXnAx6`) is now orphaned in Airtable — no portal scene points to it. Can be deleted manually from Airtable if Kieran wants to tidy up.
+
+## Decisions made
+
+- Hard DELETE (not soft archive) is the right approach for duplicate/junk scene cleanup. No triggers fire, no Dropbox or Airtable side effects. The existing "Admins can delete scenes" RLS policy covers it.
+- `activity_log.scene_id` has no FK constraint — log entries for deleted scenes remain as dangling references (by design; the log is append-only and immutable).
+
+---
+
 # Session — 10 June 2026 (continued)
 
 Continuation of the same calendar day. PWA promotion + Add Scene diagnostic + legacy round import build.
