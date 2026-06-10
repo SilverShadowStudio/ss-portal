@@ -608,6 +608,10 @@ The Dropbox web URL for a folder is `https://www.dropbox.com/home` + `path_displ
 
 **Caveat**: Still unverified for Business team accounts — personal Dropbox uses `/home` but team accounts may require a namespace-aware path variant. If `/home` resolves incorrectly, the correct format may be `/home/Team%20Space` + path or similar. Verify before surfacing these URLs to clients.
 
+### Zero scene matches — check folder path before fuzzy logic
+
+When a linked project shows zero results in the Add Scene modal, suspect `projects.dropbox_folder` pointing at a path that doesn't exist in Dropbox before assuming a fuzzy-match bug. The match logic is correct; the edge function silently returns `{ folders: [] }` on `path/not_found`. Verify the path exists by calling `list_folder` on `projects.dropbox_folder` directly with the team namespace header.
+
 ### DB trigger bypass — linked projects and scenes
 
 When onboarding an existing project or scene (one that already has a Dropbox folder), the INSERT-triggered edge functions must not create new folders. The bypass signal is a **non-null `project_code` or `dropbox_folder`** on the INSERT record:

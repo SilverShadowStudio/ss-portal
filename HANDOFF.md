@@ -65,6 +65,10 @@ Parallel to the project guard: if `record.scene_code` or `record.dropbox_folder`
 
 ## Pending
 
+### Known gotchas / operational debt
+
+- **CP113 / CP115 `dropbox_folder` drift**: Portal projects table may drift from Dropbox folder reality. CP113 (`CP113_Test-Project` in DB vs `CP113_Park-Modern` in Dropbox) and CP115 (`CP115_Madison-Residence` in DB vs `CP115_unnamed` in Dropbox) both have portal rows pointing at folder paths that don't match real Dropbox folders. These rows will silently return zero matches in the Add Scene flow. Worth a future audit script: `SELECT` every `projects.dropbox_folder`, check via Dropbox API if the folder exists with that name, surface mismatches. Not urgent — just operational debt from earlier test data.
+
 (Carried from previous sessions)
 - **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence; currently manual
 - **Clean up test invoices** in DB before going live with real clients
