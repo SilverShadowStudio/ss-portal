@@ -8,6 +8,90 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 10 June 2026
+
+## Completed this session
+
+### CLAUDE.md: session routines codified (`fdb2574`)
+Added `## Session Routines` section to CLAUDE.md: startup sequence (launch command, first shell command, first prompt) and closing procedure (git status, prepend HANDOFF.md, CLAUDE.md promotion review, final git status). These were being done ad-hoc; now canonical.
+
+### Airtable project fuzzy-match edge function (`138cc6d`)
+New `supabase/functions/airtable-find-matching-projects/index.ts`. Admin-gated. Accepts `{ query }`, reads `airtable_project_field_config` from app_settings, runs a coarse Airtable `filterByFormula` on first-word narrowing + JS-side bidirectional substring match. Batch-resolves company names from linked Client records. Returns up to 5 matches with `{ airtable_project_id, display_name, project_code, account_name }`.
+
+### dropbox-create-project-folder: linked-project skip guard (`138cc6d`, `31b94e6`)
+INSERT trigger guard added at line 149: if `record.project_code` or `record.dropbox_folder` is already set, logs and returns `{ skipped: true, reason: "linked_project" }`. Prevents Dropbox from creating a new CP folder when the admin is onboarding an existing project.
+
+### airtable-sync-project: honour pre-set project_code (`31b94e6`)
+If `project.project_code` is already set on the row at sync time, use it directly instead of auto-incrementing from Airtable. Prevents code duplication when a Dropbox-onboarded project (where `project_code` was parsed from the folder name) is synced to Airtable.
+
+### dropbox-api: search-project-folders action (`31b94e6`)
+Admin-only action on the existing `dropbox-api` edge function. Lists `/00_Production/PRD01_Client-Projects/`, extracts CP/RUP codes via regex, fuzzy-matches against a `query`, returns up to 8 results with `{ folder_name, path_display, project_code, display_name, dropbox_folder_url }`. `dropbox_folder_url` is `https://www.dropbox.com/home` + `path_display`.
+
+### Admin New Project: parallel Airtable + Dropbox search with merged match cards (`31b94e6`)
+`AdminProjects.tsx` New Project modal now runs parallel fuzzy searches — Supabase invoke for Airtable, direct fetch (with `?action=search-project-folders`) for Dropbox. Results merged via `combinedMatches` useMemo:
+- Dropbox folders whose CP/RUP code matches an Airtable result → `source: "both"` card
+- Unmatched Dropbox → `source: "dropbox"` card
+- Unmatched Airtable → `source: "airtable"` card
+
+Three submit handlers depending on match source:
+- Airtable-only: INSERT with `airtable_project_id + project_code`, Dropbox URL captured manually in step 2
+- Dropbox-only: INSERT with `dropbox_folder + dropbox_folder_url + project_code`; calls `airtable-sync-project` afterwards
+- Both: INSERT with all fields pre-populated; no Airtable sync needed (code already in AT)
+
+### Admin Projects: Dialog lift fix — button inert on per-client view (`dde8557`)
+Root cause: `<Dialog open={isAddDialogOpen}>` was inside `{!selectedClient && (...)}`. When `selectedClient` was set, the Dialog unmounted; `setIsAddDialogOpen(true)` had no mounted consumer. Fixed by lifting both project and scene Dialogs unconditionally to the component root.
+
+### Admin Projects: Add Project button on per-client view (`3344054`)
+The global "New Project" button was inside the `{!selectedClient && (...)}` block, invisible when drilling into a client. Added a `<Button>` to the `selectedClient && !selectedProject` header block.
+
+### dropbox-api: search-scene-folders action (`9efe651`)
+New action on `dropbox-api`. Accepts `{ project_id, query }`. Self-resolves the project's Dropbox folder from DB (`dropbox_folder`) or falls back to a prefix-search in `PROJECTS_ROOT` using `project_code`. Lists `SC{NN}_*` subfolders, fuzzy-matches. Returns `{ folder_name, path_display, scene_code, display_name, dropbox_folder_url }`.
+
+### dropbox-create-scene-folder: linked-scene skip guard (`9efe651`)
+Parallel to the project guard: if `record.scene_code` or `record.dropbox_folder` is already set on INSERT, skip Dropbox folder creation silently.
+
+### Admin Projects: Add Scene button + link-to-existing Dropbox flow (`9efe651`)
+`selectedProject && !selectedScene` header block: `+ Add Scene` button opens a two-step modal:
+- Step 1: enter scene name → triggers `search-scene-folders` against the project's Dropbox folder → match cards with `SC` badges (source: dropbox)
+- Step 2 (new scene): INSERT scene + INSERT Round 01 + logActivity — identical to AdminScenes flow
+- Step 2 (linked scene): INSERT scene with `scene_code + dropbox_folder + scene_slug` pre-set; **no Round 01** (historical work exists in the folder); calls `airtable-sync push-scene` fire-and-forget
+
+## In progress / needs verification
+
+- **New Project modal — parallel search**: Not browser-tested. Try typing a known project name (e.g. "660" or "Madison") and confirm a merged `both` card appears with AT + DB badges.
+- **Add Scene — link flow**: Not browser-tested. Drill into a project, click `+ Add Scene`, type part of an existing SC folder name, confirm it appears as a `dropbox` match card.
+- **Dropbox web URL**: `https://www.dropbox.com/home` + `path_display` — verify this resolves correctly for the Dropbox Business team account. May need `/home/Team%20Space` prefix instead.
+- **airtable-sync-project for Dropbox-only projects**: Verify end-to-end that when a Dropbox-only project is onboarded (project_code set from folder name), the Airtable sync creates the record with the correct pre-set code, not a newly incremented one.
+
+## Pending
+
+(Carried from previous sessions)
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence; currently manual
+- **Clean up test invoices** in DB before going live with real clients
+- **Stripe webhook HMAC verification** — tech debt; currently trusts all `checkout.session.completed` events
+- **Client correction flow** — round review with pins, submit corrections, auto-create Round 02
+- **New commission brief flow** — 3-step overlay from idle dashboard state
+- **Airtable inbound webhook** — `pull-status` is manual only
+- **Pre-launch ghost mode test** — walk through full client flow as each active client before invites go out
+
+## Decisions made
+
+- **No Round 01 for Dropbox-linked scenes**: Scenes onboarded from Dropbox already have historical VS_Visuals content. Auto-creating Round 01 would set `status: pending` against work that may already be delivered. Admin adds rounds manually via the existing booking flow.
+- **`supabase.functions.invoke` can't pass URL query params**: `dropbox-api` routes via `?action=...`. Dropbox search actions in AdminProjects.tsx use direct `fetch` with explicit `Authorization` + `apikey` headers derived from `supabase.auth.getSession()` + `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` exports.
+- **Linked-project bypass requires no migration**: `project_code` or `dropbox_folder` non-null on INSERT is the skip signal. Both trigger guards check both fields.
+
+## Open questions / things to watch
+
+- Dropbox Business team accounts may require a different web URL format — `https://www.dropbox.com/home` works for personal; team accounts sometimes need the namespace path. Verify before shipping the URL to clients.
+- `airtable-find-matching-projects` reads up to 200 Airtable records (2 pages) to find the max project number. If the base grows beyond 200 projects, the highest-number detection will silently undercount. Not a problem today but worth noting.
+- All scene/project Dialogs are now mounted unconditionally in AdminProjects.tsx — minor render cost but avoids the "button inert" class of bug. Prefer this pattern for all admin modal triggers going forward.
+
+## URGENT next session
+
+None. New Project + Add Scene flows are deployed; browser verification is the first step.
+
+---
+
 # Session — 5 June 2026
 
 ## Completed this session

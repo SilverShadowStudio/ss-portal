@@ -125,6 +125,29 @@ Rules:
 - Connection is hardcoded in `src/integrations/supabase/client.ts` — Vercel env vars are not used (they were previously injected by Lovable's integration and caused conflicts)
 - **OTP expiry**: extended to 604800 seconds (7 days) via Supabase Auth settings API — invitation links are valid for 7 days
 
+### Calling action-routed edge functions from the frontend
+
+`dropbox-api` (and any edge function that routes via `?action=...` query params) cannot be called with `supabase.functions.invoke` — that method sends a plain POST with no way to append URL query parameters. Use a direct `fetch` call instead:
+
+```ts
+const { data: sessionData } = await supabase.auth.getSession();
+const token = sessionData?.session?.access_token;
+const res = await fetch(
+  `${SUPABASE_URL}/functions/v1/dropbox-api?action=search-project-folders`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({ query }),
+  }
+);
+```
+
+`SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are both exported from `src/integrations/supabase/client.ts`.
+
 ## Git / Deploy workflow
 
 ```bash
@@ -386,6 +409,14 @@ Both `AdminSidebar` and `ClientSidebar` import from `src/lib/sidebarConstants.ts
 
 Key values: `SB.widthExpanded = "w-64"`, nav label `fontSize: 11, letterSpacing: "0.24em"`, account name `12px text-foreground`.
 
+## React component patterns
+
+### Dialogs must be mounted unconditionally
+
+`<Dialog open={state}>` only responds to state changes when mounted. If a Dialog is nested inside a conditional block that can unmount it (e.g. `{!selectedClient && (...)}`) then calling `setDialogOpen(true)` sets state but has no mounted consumer — the trigger button appears to do nothing.
+
+**Rule**: Always render Dialog components unconditionally at the component root, outside any conditional render block. Convert `DialogTrigger` buttons to plain `<Button onClick={() => setOpen(true)}>` elements when the trigger and Dialog are in different conditional scopes. This bug has caused at least two wasted diagnostic sessions — treat it as a first suspect whenever a modal button is inert.
+
 ## Database key tables
 
 | Table | Purpose |
@@ -551,6 +582,21 @@ In DropboxVisualsPanel, enter only the short codes — `project_code` (e.g. `CP1
 ### Team namespace (Dropbox Business)
 
 The Dropbox account is a Business team account. All files live in the team namespace, not the personal root. The `dropbox-scan-visuals` and `dropbox-webhook` functions detect this by calling `/2/users/get_current_account` on startup, reading `root_info.root_namespace_id`, and passing a `Dropbox-API-Path-Root` header on every subsequent API call. Without this header, all path operations return `path/not_found`.
+
+### Dropbox web URL format
+
+The Dropbox web URL for a folder is `https://www.dropbox.com/home` + `path_display` (e.g. `https://www.dropbox.com/home/00_Production/PRD01_Client-Projects/CP107_Charles-Street`). This is stored in `projects.dropbox_folder_url` and surfaced as a clickable link in the admin UI.
+
+**Caveat**: Still unverified for Business team accounts — personal Dropbox uses `/home` but team accounts may require a namespace-aware path variant. If `/home` resolves incorrectly, the correct format may be `/home/Team%20Space` + path or similar. Verify before surfacing these URLs to clients.
+
+### DB trigger bypass — linked projects and scenes
+
+When onboarding an existing project or scene (one that already has a Dropbox folder), the INSERT-triggered edge functions must not create new folders. The bypass signal is a **non-null `project_code` or `dropbox_folder`** on the INSERT record:
+
+- `dropbox-create-project-folder` — skips if `record.project_code` or `record.dropbox_folder` is set.
+- `dropbox-create-scene-folder` — skips if `record.scene_code` or `record.dropbox_folder` is set.
+
+`airtable-sync-project` also honours a pre-set `project_code` rather than auto-incrementing, so Dropbox-onboarded projects (where the code was parsed from the folder name) sync without minting a duplicate code. No migration is required — the pattern relies entirely on the INSERT payload.
 
 ## Airtable sync
 
