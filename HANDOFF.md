@@ -81,7 +81,7 @@ Parallel to the project guard: if `record.scene_code` or `record.dropbox_folder`
 ## Decisions made
 
 - **No Round 01 for Dropbox-linked scenes**: Scenes onboarded from Dropbox already have historical VS_Visuals content. Auto-creating Round 01 would set `status: pending` against work that may already be delivered. Admin adds rounds manually via the existing booking flow.
-- **Historical rounds are never imported on scene link**: When a scene is linked to an existing Dropbox folder (R01–R04 visible in VS_Visuals), those historical rounds are NOT created as `scene_rounds` records. Rationale: `scene_rounds` carries status/booking/payment state that has no meaning for completed legacy work. Historical work remains accessible via Dropbox directly. The portal tracks only new rounds booked after onboarding.
+- **Historical round import — Option A RETRACTED**: The "don't import legacy rounds" decision is reversed. Option B (import as read-only delivered history) is inbound. Rationale: empty rounds list on a scene with real delivered work in Dropbox creates a misleading client experience. See Option B implementation.
 - **`supabase.functions.invoke` can't pass URL query params**: `dropbox-api` routes via `?action=...`. Dropbox search actions in AdminProjects.tsx use direct `fetch` with explicit `Authorization` + `apikey` headers derived from `supabase.auth.getSession()` + `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` exports.
 - **Linked-project bypass requires no migration**: `project_code` or `dropbox_folder` non-null on INSERT is the skip signal. Both trigger guards check both fields.
 
