@@ -67,6 +67,8 @@ interface SceneRound {
   buffer_weeks?: number | null;
   /** Resolved preview URL — either image_url or the latest uploaded asset. */
   preview_url?: string | null;
+  /** True for rounds imported from Dropbox VS_Visuals history at scene-link time. */
+  is_legacy?: boolean | null;
 }
 
 // ── Future-booking predicates (Isabelle button) ──
@@ -283,7 +285,7 @@ export default function Portfolio() {
       const { data: allRounds } = sceneIds.length
         ? await supabase
             .from("scene_rounds")
-            .select("id, round_number, status, delivered_at, image_url, start_date, end_date, scene_id, kind, buffer_weeks")
+            .select("id, round_number, status, delivered_at, image_url, start_date, end_date, scene_id, kind, buffer_weeks, is_legacy")
             .in("scene_id", sceneIds)
             // Review rounds are a timeline-only artifact and must not show
             // up as separate cards in the per-scene round list.
@@ -1126,10 +1128,12 @@ export default function Portfolio() {
           nextRoundNumber={canRequestNext ? nextRoundNumber : undefined}
           isLocked={!isLatestRound}
           successorRoundNumber={successorRoundNumber}
+          isLegacy={selectedRound.is_legacy ?? false}
           siblingRounds={sceneRoundsList.map((r) => ({
             id: r.id,
             round_number: r.round_number,
             status: r.status,
+            is_legacy: r.is_legacy ?? false,
           }))}
           onSelectRound={(rid) => {
             const target = sceneRoundsList.find((r) => r.id === rid);

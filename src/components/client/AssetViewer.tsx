@@ -90,7 +90,8 @@ interface AssetViewerProps {
    * tab strip is rendered at the top-left of the visual so the client can
    * hop between rounds of the same scene without leaving the viewer.
    */
-  siblingRounds?: { id: string; round_number: number; status?: string }[];
+  siblingRounds?: { id: string; round_number: number; status?: string; is_legacy?: boolean }[];
+  isLegacy?: boolean;
   onSelectRound?: (roundId: string) => void;
 }
 
@@ -237,7 +238,7 @@ function ImageLoadOverlay({
   );
 }
 
-export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber, onClose, onRequestNextRound, nextRoundNumber, deliveredAt, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound }: AssetViewerProps) {
+export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber, onClose, onRequestNextRound, nextRoundNumber, deliveredAt, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, isLegacy = false }: AssetViewerProps) {
   const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -628,6 +629,9 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
                   >
                     <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusDot)} />
                     {label}
+                    {r.is_legacy && (
+                      <span className="text-[9px] tracking-[0.1em] uppercase text-foreground/35 font-sans">· Legacy</span>
+                    )}
                     {isActive && (
                       <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-gold rounded-full" />
                     )}

@@ -53,8 +53,10 @@ interface TaskDetailProps {
   successorRoundNumber?: number;
   /** Sibling rounds on the same scene — used by the AssetViewer to render
    *  a top-left round picker. Optional; passing nothing hides the picker. */
-  siblingRounds?: { id: string; round_number: number; status?: string }[];
+  siblingRounds?: { id: string; round_number: number; status?: string; is_legacy?: boolean }[];
   onSelectRound?: (roundId: string) => void;
+  /** True when the currently-viewed round was imported from Dropbox history. */
+  isLegacy?: boolean;
   /** When provided, shows a "Reschedule" link next to View Instructions on
    *  the in-production view. The parent decides whether to provide it
    *  based on the round's start_date / lock cutoff. */
@@ -85,7 +87,7 @@ function titleCase(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, onReschedule }: TaskDetailProps) {
+export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, onReschedule, isLegacy = false }: TaskDetailProps) {
   // Strict status → UI mapping:
   //   in_production / in_progress / pending → "Production in Progress" (no image)
   //   client_review / delivered             → image + annotation tools
@@ -526,6 +528,9 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                     >
                       <span className={cn("inline-block h-1.5 w-1.5 rounded-full", statusDot)} />
                       {label}
+                      {r.is_legacy && (
+                        <span className="text-[9px] tracking-[0.1em] uppercase text-foreground/35 font-sans">· Legacy</span>
+                      )}
                       {isActive && (
                         <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-gold rounded-full" />
                       )}
@@ -621,6 +626,11 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     <>
       <div>
         {adminStatusBar}
+        {isLegacy && deliveredAt && (
+          <p className="text-[10px] tracking-[0.24em] uppercase text-foreground/40 font-sans mb-4">
+            Delivered before portal · {format(new Date(deliveredAt), "d MMM yyyy")}
+          </p>
+        )}
         <AssetViewer
           sceneRoundId={roundId}
           projectName={projectName}
@@ -634,6 +644,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           successorRoundNumber={successorRoundNumber}
           siblingRounds={siblingRounds}
           onSelectRound={onSelectRound}
+          isLegacy={isLegacy}
         />
       </div>
       {dropboxPanel}

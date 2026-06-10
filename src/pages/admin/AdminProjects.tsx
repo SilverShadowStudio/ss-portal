@@ -1078,6 +1078,11 @@ export default function AdminProjects() {
         .invoke("airtable-sync", { body: { action: "push-scene", scene_id: newScene.id } })
         .catch((e: unknown) => console.warn("[AdminProjects] airtable-sync push-scene:", e));
 
+      // Import historical rounds from Dropbox VS_Visuals as read-only legacy history.
+      supabase.functions
+        .invoke("import-legacy-rounds", { body: { scene_id: newScene.id } })
+        .catch((e: unknown) => console.warn("[AdminProjects] import-legacy-rounds:", e));
+
       toast.success(`${sceneName} has been linked.`);
       const { logActivity } = await import("@/lib/activityLog");
       await logActivity({

@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       const parsed = parseFilename(entry.name);
       if (!parsed) continue;
 
-      if (!entry.name.toLowerCase().includes("-vs_")) continue;
+      if (!/[-]VS\d*_/i.test(entry.name as string)) continue;
 
       allFiles.push({
         round: parsed.round,
