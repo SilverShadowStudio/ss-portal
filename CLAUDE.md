@@ -181,6 +181,18 @@ Without this, direct URL navigation (e.g. `/admin/clients`) returns 404.
 
 The `/auth/verify` rewrite (added for email deliverability) must be listed **before** this SPA catch-all — Vercel evaluates rewrites in order and the catch-all would otherwise swallow `/auth/verify`. See the Email deliverability section.
 
+Real files placed under `public/` (manifests, service workers, icons) are served as static assets by Vercel *before* any rewrite rules are applied (afterFiles phase). New `public/` files never need a `vercel.json` entry.
+
+## PWA (installable portal)
+
+The portal is installable as a Progressive Web App on mobile and desktop.
+
+- **`public/manifest.json`** — `display: standalone`, `theme_color: #1A1814` (charcoal), `background_color: #EDE8E0` (cream), two icons (192 + 512) with `purpose: "any maskable"`.
+- **`public/service-worker.js`** — minimal worker for install eligibility only. Online-only by design: `install` → `skipWaiting()`, `activate` → `clients.claim()`, empty `fetch` handler. Browsers require a registered SW with a fetch handler before offering an install prompt; the handler intentionally does no caching.
+- **`src/components/PWAInstallPrompt.tsx`** — branded bottom banner. Shows only when: user is signed in + 30 s dwell elapsed + browser fired `beforeinstallprompt` + not already running standalone. Sticky `localStorage["pwa-prompt-dismissed"]="1"` suppresses re-prompting after dismissal. iOS Safari path shows an "Add to Home Screen" instruction variant (no `beforeinstallprompt`).
+- **No offline support.** If caching is ever added, a versioning/update story is needed; `skipWaiting` + `clients.claim` are already in place.
+- **Icons bake the charcoal background in** (not transparent) so maskable cropping on Android/iOS renders a clean solid-backed mark. 14% inset keeps the glyph inside the circular/squircle safe zone.
+
 ## Project structure
 
 ```
@@ -237,6 +249,8 @@ src/
     AdminLayout.tsx        # Admin page wrapper
     ClientLayout.tsx       # Client page wrapper
     GhostModeBanner.tsx    # Fixed-position banner when admin views as client; sidebar offsets by banner height
+    PWAInstallPrompt.tsx   # PWA install banner — signed-in + 30 s dwell gate, iOS Safari variant;
+                           # SW registered in src/main.tsx (feature-guarded navigator.serviceWorker.register)
 
     admin/
       DropboxVisualsPanel.tsx      # Scans Dropbox VS_Visuals folder, shows highest version per round
@@ -368,6 +382,11 @@ public/
                          # VAT + downpayment totals
     images/
       SS - Logo 2019.svg # Brand logo (copy manually if missing — not in git)
+  manifest.json          # PWA manifest — display:standalone, charcoal theme, cream background
+  service-worker.js      # Minimal install-eligibility SW — online-only, no caching
+  icons/
+    icon-192.png         # PWA icon — white wing mark on #1A1814, maskable-safe 14% inset
+    icon-512.png         # PWA icon — same at 512 px
 ```
 
 ## Client dashboard — state machine (Index.tsx)
@@ -723,6 +742,7 @@ Version: SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replac
 
 - **`scripts/` is gitignored — local-only.** Shell diagnostics and one-off jobs live in named scripts there, not inline `cd ... && cmd` chains. Established scripts: `scripts/sql.sh` (SQL via the Supabase Management API), `scripts/delete-auth-users.sh` (orphan auth-user cleanup). Build new named scripts as needed and reuse them within a session.
 - **PDF generation with non-ASCII names.** jsPDF's built-in fonts are WinAnsi-only and mangle Latin Extended-A characters (`Srđan`, `Bogdanović`). The `scripts/generate-subcontractor-letter.ts` pattern reads `/System/Library/Fonts/Supplemental/Georgia*.ttf` (regular + bold + italic) at runtime and registers them via `addFileToVFS` + `addFont` for clean coverage. Reuse this approach for any PDF containing non-ASCII names.
+- **PWA icon generation.** `scripts/generate-pwa-icons.mjs` composites the wing mark onto a solid `#1A1814` background at 14% inset and outputs `public/icons/icon-192.png` + `icon-512.png`. Requires `sharp` installed transiently (`npm install sharp --no-save --legacy-peer-deps`) — **never add `sharp` to `package.json`**. Re-run only when the source icon changes.
 
 ## Pending
 
