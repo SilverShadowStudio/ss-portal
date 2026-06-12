@@ -1082,6 +1082,74 @@ export function Lightbox({
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
+
+  // ── TEMPORARY DEBUG OVERLAY ─────────────────────────────────────────────
+  // Remove once the fullscreen centering root-cause is identified.
+  type DebugInfo = {
+    containerRect: { left: number; top: number; width: number; height: number } | null;
+    imgRect: { left: number; top: number; width: number; height: number } | null;
+    innerW: number;
+    innerH: number;
+    fullscreenTag: string;
+    fullscreenIsContainer: boolean;
+    fixedAncestors: string[];
+    computedContainerPos: string;
+    computedContainerTransform: string;
+  };
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+
+  function collectDebug(): DebugInfo {
+    const cont = containerRef.current;
+    const img = imgRef.current;
+    const cr = cont ? cont.getBoundingClientRect() : null;
+    const ir = img ? img.getBoundingClientRect() : null;
+    const fsEl = document.fullscreenElement;
+    // Walk DOM ancestors of the container looking for any element with
+    // position:fixed (other than the container itself).
+    const fixedAncs: string[] = [];
+    let node: Element | null = cont?.parentElement ?? null;
+    while (node && node !== document.documentElement) {
+      const pos = window.getComputedStyle(node).position;
+      const xform = window.getComputedStyle(node).transform;
+      if (pos === "fixed" || (xform && xform !== "none")) {
+        fixedAncs.push(
+          `${node.tagName.toLowerCase()}${node.id ? "#" + node.id : ""}${node.className ? "." + String(node.className).trim().split(/\s+/).slice(0, 2).join(".") : ""} pos=${pos} transform=${xform?.slice(0, 30) ?? "none"}`
+        );
+      }
+      node = node.parentElement;
+    }
+    const cs = cont ? window.getComputedStyle(cont) : null;
+    return {
+      containerRect: cr ? { left: cr.left, top: cr.top, width: cr.width, height: cr.height } : null,
+      imgRect: ir ? { left: ir.left, top: ir.top, width: ir.width, height: ir.height } : null,
+      innerW: window.innerWidth,
+      innerH: window.innerHeight,
+      fullscreenTag: fsEl ? fsEl.tagName : "none",
+      fullscreenIsContainer: fsEl === cont,
+      fixedAncestors: fixedAncs,
+      computedContainerPos: cs?.position ?? "?",
+      computedContainerTransform: cs?.transform ?? "?",
+    };
+  }
+
+  useEffect(() => {
+    const tick = () => setDebugInfo(collectDebug());
+    tick();
+    const id = setInterval(tick, 500);
+    // Also log once on fullscreenchange so it's in the console even if the
+    // overlay itself renders at a wrong position.
+    const onFs = () => {
+      const d = collectDebug();
+      console.log("[LightboxDebug] fullscreenchange →", JSON.stringify(d, null, 2));
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("fullscreenchange", onFs);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // ── END TEMPORARY DEBUG OVERLAY ─────────────────────────────────────────
   const [isPanning, setIsPanning] = useState(false);
   // Progressive-load fade: src starts at opacity 0 and flips to 1 once
   // <img> onLoad fires. While that's happening, placeholderSrc (if any)
@@ -2629,6 +2697,41 @@ export function Lightbox({
       >
         {scale.toFixed(1)}× · scroll to zoom · drag to pan · click image to pin
       </div>
+
+      {/* TEMPORARY DEBUG OVERLAY — remove once centering root-cause found */}
+      {debugInfo && (
+        <div
+          style={{
+            position: "fixed",
+            top: 80,
+            left: 8,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.85)",
+            color: "#39ff14",
+            fontFamily: "monospace",
+            fontSize: 10,
+            lineHeight: 1.5,
+            padding: "6px 8px",
+            borderRadius: 4,
+            maxWidth: 420,
+            pointerEvents: "none",
+            whiteSpace: "pre",
+          }}
+        >
+          {[
+            `=== LIGHTBOX DEBUG (${new Date().toLocaleTimeString()}) ===`,
+            `window: ${debugInfo.innerW}×${debugInfo.innerH}`,
+            `container.getBCR: left=${debugInfo.containerRect?.left ?? "?"} top=${debugInfo.containerRect?.top ?? "?"} w=${debugInfo.containerRect?.width ?? "?"} h=${debugInfo.containerRect?.height ?? "?"}`,
+            `img.getBCR:       left=${debugInfo.imgRect?.left ?? "?"} top=${debugInfo.imgRect?.top ?? "?"} w=${debugInfo.imgRect?.width ?? "?"} h=${debugInfo.imgRect?.height ?? "?"}`,
+            `scale=${scale.toFixed(3)} tx=${tx.toFixed(1)} ty=${ty.toFixed(1)}`,
+            `fullscreenElement: ${debugInfo.fullscreenTag} (isContainer=${debugInfo.fullscreenIsContainer})`,
+            `container computed: position=${debugInfo.computedContainerPos} transform=${debugInfo.computedContainerTransform?.slice(0, 40)}`,
+            `fixed/transformed ancestors (${debugInfo.fixedAncestors.length}):`,
+            ...debugInfo.fixedAncestors.map(a => `  ${a}`),
+          ].join("\n")}
+        </div>
+      )}
+      {/* END TEMPORARY DEBUG OVERLAY */}
 
       {/* Next-round CTA — vertically centered on the right edge */}
       {/* Only the last delivered round on a scene exposes the action bar.
