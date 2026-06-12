@@ -1106,12 +1106,16 @@ export function Lightbox({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
-    const el = containerRef.current;
     const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-    if (!el || isMobile || typeof el.requestFullscreen !== "function") return;
+    if (isMobile || typeof document.documentElement.requestFullscreen !== "function") return;
 
+    // Enter fullscreen on the document root, not the lightbox div itself.
+    // Fullscreening a position:fixed element directly keeps its pre-fullscreen
+    // computed dimensions as the containing block, so the image lands off-centre.
+    // Fullscreening the document lets fixed inset-0 resolve against the true
+    // screen dimensions without any CSS specificity overrides.
     let entered = false;
-    el.requestFullscreen().then(() => { entered = true; }).catch(() => { /* keep app-fullscreen */ });
+    document.documentElement.requestFullscreen().then(() => { entered = true; }).catch(() => {});
 
     const onFsChange = () => {
       if (entered && !document.fullscreenElement) onCloseRef.current();
@@ -1119,7 +1123,6 @@ export function Lightbox({
     document.addEventListener("fullscreenchange", onFsChange);
     return () => {
       document.removeEventListener("fullscreenchange", onFsChange);
-      // Closing via the X / backdrop while still in fullscreen: leave it.
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
   }, []);
