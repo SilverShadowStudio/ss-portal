@@ -249,15 +249,18 @@
     @apply text-xs font-medium tracking-[0.2em] uppercase text-gold;
   }
 
-  /* Force the fullscreen lightbox surface to fill the screen. A position:fixed
-     element fullscreened directly keeps its pre-fullscreen viewport width, so
-     the flex-centred image lands off to one side with black filling the rest.
-     Sizing the :fullscreen element to the screen lets the existing flex-center
-     + tx=0 land the image dead centre. */
+  /* Force the fullscreen lightbox surface to fill the screen. The lightbox
+     container is the :fullscreen element. Browsers keep pre-fullscreen computed
+     dimensions as the containing block, so we override them here so the
+     flex-centred image lands dead centre on the full monitor. */
   .lightbox-fullscreen-target:fullscreen {
     width: 100vw !important;
     height: 100vh !important;
     inset: 0 !important;
+    /* Ensure no transform residue from animate-lightbox-open bleeds into
+       the fullscreen state and creates a wrong containing block for any
+       position:fixed descendants (e.g. the blended crosshair cursor). */
+    transform: none !important;
   }
 
   .card-elevated {
@@ -480,6 +483,18 @@ input:-webkit-autofill:active {
 
 .animate-fade-in {
   animation: fade-in var(--duration-deliberate) var(--ease-default) forwards;
+}
+
+/* Lightbox-specific fade: opacity only, no translateY. The regular fade-in
+   leaves transform:translateY(0) via forwards fill mode, which creates a new
+   containing block for position:fixed descendants (BlendedCrosshair) and can
+   break the fixed inset-0 centre calculation in Safari. */
+@keyframes lightbox-open {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-lightbox-open {
+  animation: lightbox-open var(--duration-deliberate) var(--ease-default) forwards;
 }
 
 .animate-slide-in-left {

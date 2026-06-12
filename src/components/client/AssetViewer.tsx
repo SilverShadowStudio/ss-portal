@@ -1109,13 +1109,17 @@ export function Lightbox({
     const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
     if (isMobile || typeof document.documentElement.requestFullscreen !== "function") return;
 
-    // Enter fullscreen on the document root, not the lightbox div itself.
-    // Fullscreening a position:fixed element directly keeps its pre-fullscreen
-    // computed dimensions as the containing block, so the image lands off-centre.
-    // Fullscreening the document lets fixed inset-0 resolve against the true
-    // screen dimensions without any CSS specificity overrides.
+    // Fullscreen the lightbox container itself so the :fullscreen CSS rule
+    // (.lightbox-fullscreen-target:fullscreen) fires and forces 100vw×100vh.
+    // Fullscreening document.documentElement instead caused Safari to shift
+    // the fixed inset-0 containing block in ways that left the image off-centre
+    // (a large black void on the left, image pushed right). The :fullscreen rule
+    // also clears any residual transform so position:fixed children (crosshair)
+    // anchor against the true screen coordinates.
+    const el = containerRef.current;
+    if (!el) return;
     let entered = false;
-    document.documentElement.requestFullscreen().then(() => { entered = true; }).catch(() => {});
+    el.requestFullscreen().then(() => { entered = true; }).catch(() => {});
 
     const onFsChange = () => {
       if (entered && !document.fullscreenElement) onCloseRef.current();
@@ -1998,7 +2002,7 @@ export function Lightbox({
       onPointerCancel={endPan}
       onPointerLeave={() => setCursorPos(null)}
       onDoubleClick={reset}
-      className="lightbox-fullscreen-target fixed inset-0 z-[100] overflow-hidden bg-black/95 animate-fade-in select-none"
+      className="lightbox-fullscreen-target fixed inset-0 z-[100] overflow-hidden bg-black/95 animate-lightbox-open select-none"
       role="dialog"
       aria-modal="true"
       aria-label="Full size image"
