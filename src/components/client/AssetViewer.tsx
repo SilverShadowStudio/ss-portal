@@ -1083,22 +1083,6 @@ export function Lightbox({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
 
-  useEffect(() => {
-    const onFs = () => {
-      const cont = containerRef.current;
-      const img = imgRef.current;
-      console.log("[LightboxDebug] fullscreenchange →", {
-        viewport: `${window.innerWidth}×${window.innerHeight}`,
-        containerRect: cont?.getBoundingClientRect(),
-        imgRect: img?.getBoundingClientRect(),
-        fullscreenElement: document.fullscreenElement?.tagName ?? "none",
-        isContainer: document.fullscreenElement === cont,
-      });
-    };
-    document.addEventListener("fullscreenchange", onFs);
-    return () => document.removeEventListener("fullscreenchange", onFs);
-  }, []);
-
   const [isPanning, setIsPanning] = useState(false);
   // Progressive-load fade: src starts at opacity 0 and flips to 1 once
   // <img> onLoad fires. While that's happening, placeholderSrc (if any)
@@ -1903,6 +1887,11 @@ export function Lightbox({
       didPan.current = false;
       if (drawMode) return;
       if (scale <= MIN_SCALE) return;
+      // Don't intercept clicks on interactive elements (close button, pin
+      // markers, toolbar buttons). preventDefault on pointerdown suppresses
+      // the subsequent click event, making those controls unresponsive when
+      // the image is zoomed in.
+      if ((e.target as HTMLElement).closest("button")) return;
       e.preventDefault();
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       setIsPanning(true);
@@ -2684,29 +2673,39 @@ export function Lightbox({
       {/* Centered, transformed image */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div
-          className="relative will-change-transform"
+          className="relative"
           style={{
+            // Only promote to a GPU compositor layer while actively panning or
+            // zoomed — at scale=1 idle, this div is full image size (~26 MB GPU
+            // texture on 4K) and every cursor move forces recomposition.
+            willChange: isPanning || scale > 1 ? "transform" : "auto",
             transform: `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`,
             transformOrigin: "center center",
             transition: isPanning ? "none" : "transform var(--duration-quick) var(--ease-default)",
           }}
         >
-          {/* Low-res placeholder — absolute overlay only (not in-flow).
-              Kept visible until full-res loads; never sizes the wrapper div. */}
+          {/* Low-res placeholder is in-flow (block) while the full-res streams.
+              This keeps the wrapper div — and any GPU compositor layer — at the
+              small placeholder dimensions (~640×480) during download. Unmounted
+              the moment full-res fires onLoad; the wrapper then resizes to full
+              image dimensions so flex centering and pin % coords are correct. */}
           {placeholderSrc && !fullResLoaded && (
             <img
               src={placeholderSrc}
               alt=""
               aria-hidden
               draggable={false}
-              className="absolute inset-0 m-auto max-h-[100vh] max-w-[100vw] object-contain"
+              className="block max-h-[100vh] max-w-[100vw] object-contain"
             />
           )}
-          {/* Full-res is always block (in-flow) so the wrapper div takes the
-              correct image dimensions. Flex on the outer container then centres
-              the correctly-sized div — fixing the 4K void-on-left issue where
-              a placeholder-sized (640px) div was centred at left=1600 while the
-              3055px image anchored there instead of at (3840-3055)/2=392.5. */}
+          {/* Full-res image:
+              - Loading with placeholder: absolute (out of flow, opacity-0) so it
+                doesn't affect div dimensions while placeholder is visible; onLoad
+                still fires when bytes arrive.
+              - Loading without placeholder: block (in-flow) at opacity-0; no
+                alternative to size the div, but ImageLoadOverlay covers it.
+              - Loaded: block (in-flow) at opacity-100 — correctly sizes the div
+                for centering and pin/stroke coordinate mapping. */}
           <img
             ref={imgRef}
             src={fullRes.src}
@@ -2766,8 +2765,12 @@ export function Lightbox({
               }
             }}
             className={cn(
-              "block max-h-[100vh] max-w-[100vw] object-contain transition-opacity duration-300",
-              fullResLoaded ? "opacity-100" : "opacity-0",
+              "max-h-[100vh] max-w-[100vw] object-contain transition-opacity duration-300",
+              fullResLoaded
+                ? "block opacity-100"
+                : placeholderSrc
+                  ? "absolute inset-0 m-auto opacity-0"
+                  : "block opacity-0",
             )}
           />
 
