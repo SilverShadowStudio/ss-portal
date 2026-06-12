@@ -8,6 +8,65 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 12 June 2026
+
+## Completed this session
+
+### AssetViewer: fullscreen centring fix confirmed working (`28752df`)
+Fred confirmed commit `28752df` fixed the image position (was pushed-right with black void on left at 4K). Root cause was the `will-change-transform` wrapper div being sized by the in-flow placeholder (~640px), not the full-res image (3055px). Fix: full-res img promoted to in-flow (`block`), placeholder became `absolute` overlay. Confirmed working.
+
+### AssetViewer: performance + interaction regression diagnosed and fixed (`73899d5`)
+`28752df` introduced a performance regression (lag, broken close/pin-delete). Four fixes shipped:
+
+1. **Conditional `will-change: transform`** — `will-change-transform` class removed. `willChange` style now set to `"transform"` only when `isPanning || scale > 1`; otherwise `"auto"`. Prevents browser promoting the full 3055×2160 image (~26 MB at DPR=1, ~105 MB at DPR=2) to a permanent GPU compositor layer that forced recomposition on every cursor move.
+
+2. **Button click pass-through at scale > 1** — `onPointerDown` on the container called `e.preventDefault()` when `scale > 1`, which suppressed the `click` event on child buttons (close button, pin delete). Fix: bail early with `if ((e.target as HTMLElement).closest("button")) return` before `e.preventDefault()`. Covers close button, pin marker buttons, toolbar — anything inside a `<button>` element.
+
+3. **Placeholder restored during streaming load** — After `28752df`, the placeholder was `absolute inset-0 m-auto` inside the `will-change-transform` div, which was 0×0 when `fullRes.src = undefined` (during download). The placeholder collapsed to 0×0 and was invisible. Fix: placeholder reverted to `block` (in-flow) while `!fullResLoaded`, keeping the div at 640×480 and showing the thumbnail. Full-res is `absolute inset-0 m-auto opacity-0` while loading with a placeholder (out-of-flow, invisible, `onLoad` still fires). On load, placeholder unmounts, full-res switches to `block opacity-100` (correct dimensions, 300ms fade).
+
+4. **Debug console.log removed** — `useEffect` that logged `[LightboxDebug]` on every `fullscreenchange` removed.
+
+## In progress / needs verification
+
+All four AssetViewer fixes need browser testing in sequence:
+- Open lightbox → low-res thumbnail visible during streaming load
+- Move cursor at scale=1 → no lag
+- Zoom in → drag pan → smooth
+- Zoom in → click ✕ close → closes (was broken at scale > 1)
+- Zoom in → drop a pin → click × delete → confirm dialog appears (was broken at scale > 1)
+- Zoom back out → image correctly centred
+
+The legacy round import browser tests from the previous session remain unverified (carried forward).
+
+## Pending
+
+(Carried forward — unchanged from previous session)
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals) — URGENT before using Add Scene in production
+- **Test Client account** ("Test Client Company", account `5faeeafa`) — still exists, not cleaned up
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence
+- **Clean up test invoices** before going live with real clients
+- **Client correction flow** — pins → submit corrections → auto-create Round 02
+- **New commission brief flow** — 3-step overlay from idle state
+- **Airtable inbound webhook** — `pull-status` is manual only
+- **Pre-launch ghost mode test** — walk full client flow before invites go out
+
+## Decisions made
+
+- **`will-change-transform` should be conditional, not permanent** on large image wrappers. At scale=1 idle the compositor layer is the full decoded image size. Only promote on `isPanning || scale > 1`.
+- **`e.preventDefault()` on container `onPointerDown` must not fire when target is a `button`**. The container-level pan gesture intercept must always exempt interactive children. Use `closest("button")` as the guard — it covers icon children inside buttons too.
+- **Placeholder must be in-flow (block) while loading** to correctly size the wrapper div, keeping GPU layer small during download. Full-res transitions from `absolute opacity-0` (out-of-flow, loading) → `block opacity-100` (in-flow, loaded). This is the correct three-state structure; avoid collapsing it to a two-state.
+
+## Open questions / things to watch
+
+- The `closest("button")` guard on `onPointerDown` means panning can't START from a button element when scale > 1. This is intentional and correct — buttons should always be clickable. If a future draggable control is added inside the lightbox that is not a `button`, this guard won't cover it.
+- The placeholder `absolute inset-0 m-auto opacity-0` during loading is inside a 640×480 div — it renders at 640×480 (not 3055×2160) with `object-contain`. Invisible due to opacity. `onLoad` fires correctly regardless of rendered size. The div resizes to full image dimensions when `fullResLoaded` flips; this is an instant layout change under a 300ms opacity transition, so the user never sees the jump.
+
+## URGENT next session
+
+Browser-verify AssetViewer perf + interaction fixes (zoom-in close, zoom-in pin delete, no lag at scale=1) and legacy round import browser tests before any client-facing use.
+
+---
+
 # Session — 10 June 2026 (operational cleanup)
 
 ## Completed this session
