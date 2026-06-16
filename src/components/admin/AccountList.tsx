@@ -113,6 +113,9 @@ export interface AccountListProps {
     editProfile?: boolean;
     delete?: boolean;
   };
+  /** Optional extra controls rendered to the left of the primary Add button
+   *  in the page header. Use for page-specific actions like template management. */
+  headerActions?: React.ReactNode;
 }
 
 // TEMPORARY: Silver Shadow Studio is the studio's own account, currently
@@ -222,6 +225,7 @@ export function AccountList({
   showAccountType = false,
   headerNavigatesToProjects = false,
   accountActions,
+  headerActions,
 }: AccountListProps) {
   const showEditProfile = !!accountActions?.editProfile;
   const showDelete = !!accountActions?.delete;
@@ -256,11 +260,27 @@ export function AccountList({
   const [activityLoading, setActivityLoading] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  // Team Add Member is a two-step popup: choose "Ask them to register" (the
-  // existing email invite) or "Register them" (the engagement contract form).
-  const [teamAddMode, setTeamAddMode] = useState<"choice" | "invite">("choice");
+  // Team Add Member — three-step state machine:
+  //   choice        → three option cards
+  //   invite        → email-only invite (no contract)
+  //   template-pick → select a template (or blank) before opening contract form
+  //   presigned     → upload a pre-existing signed PDF
+  const [teamAddMode, setTeamAddMode] = useState<"choice" | "invite" | "template-pick" | "presigned">("choice");
   const [isContractDialogOpen, setIsContractDialogOpen] = useState(false);
+  const [contractInitialValues, setContractInitialValues] = useState<Record<string, unknown> | null>(null);
+  const [contractTemplateId, setContractTemplateId] = useState<string | null>(null);
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
+  // Templates for the template-pick step
+  const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
+  const [teamTemplatesLoading, setTeamTemplatesLoading] = useState(false);
+  // Pre-signed upload form state
+  const [presignedName, setPresignedName] = useState("");
+  const [presignedEmail, setPresignedEmail] = useState("");
+  const [presignedSignedByName, setPresignedSignedByName] = useState("");
+  const [presignedSigningDate, setPresignedSigningDate] = useState("");
+  const [presignedSubjectLine, setPresignedSubjectLine] = useState("");
+  const [presignedPdfFile, setPresignedPdfFile] = useState<File | null>(null);
+  const [isPresignedUploading, setIsPresignedUploading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   // Full client form state — unused fields are simply ignored when isTeamOnly.
@@ -582,6 +602,77 @@ export function AccountList({
     setLinkedAirtableId(null);
   };
 
+  const resetPresignedForm = () => {
+    setPresignedName("");
+    setPresignedEmail("");
+    setPresignedSignedByName("");
+    setPresignedSigningDate("");
+    setPresignedSubjectLine("");
+    setPresignedPdfFile(null);
+  };
+
+  const fetchTeamTemplates = async () => {
+    setTeamTemplatesLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("team-contract-templates-manage", {
+        body: { action: "list" },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      setTeamTemplates((data.templates ?? []).filter((t: { archived_at: string | null }) => !t.archived_at));
+    } catch (e: unknown) {
+      toast({ title: "Failed to load templates", description: (e as Error)?.message, variant: "destructive" });
+      setTeamTemplates([]);
+    } finally {
+      setTeamTemplatesLoading(false);
+    }
+  };
+
+  const handlePresignedUpload = async () => {
+    if (!presignedName.trim() || !presignedEmail.trim() || !presignedSignedByName.trim() || !presignedSigningDate || !presignedPdfFile) {
+      toast({ title: "All fields are required", variant: "destructive" });
+      return;
+    }
+    if (presignedPdfFile.type !== "application/pdf") {
+      toast({ title: "Please upload a PDF file", variant: "destructive" });
+      return;
+    }
+    if (presignedPdfFile.size > 10 * 1024 * 1024) {
+      toast({ title: "PDF must be 10 MB or smaller", variant: "destructive" });
+      return;
+    }
+    setIsPresignedUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const fd = new FormData();
+      fd.append("email", presignedEmail.trim().toLowerCase());
+      fd.append("name", presignedName.trim());
+      fd.append("signed_by_name", presignedSignedByName.trim());
+      fd.append("signing_date", presignedSigningDate);
+      if (presignedSubjectLine.trim()) fd.append("subject_line", presignedSubjectLine.trim());
+      fd.append("pdf", presignedPdfFile);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/team-contract-upload-presigned`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) throw new Error(data?.error || `Upload failed (${res.status})`);
+      toast({ title: "Pre-signed contract uploaded", description: `Invite sent to ${presignedEmail.trim()}` });
+      setIsAddDialogOpen(false);
+      setTeamAddMode("choice");
+      resetPresignedForm();
+      fetchAccounts();
+    } catch (e: unknown) {
+      toast({ title: "Upload failed", description: (e as Error)?.message, variant: "destructive" });
+    } finally {
+      setIsPresignedUploading(false);
+    }
+  };
+
   const handleParseSignature = async () => {
     if (!signature.trim()) return;
     setIsParsing(true);
@@ -834,15 +925,22 @@ export function AccountList({
             if (!open) {
               resetForm();
               setInviteEmail("");
+              resetPresignedForm();
+              setTeamTemplates([]);
+              setContractInitialValues(null);
+              setContractTemplateId(null);
             }
           }}
         >
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              {addButtonLabel}
-            </Button>
-          </DialogTrigger>
+          <div className="flex items-center gap-2">
+            {headerActions}
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                {addButtonLabel}
+              </Button>
+            </DialogTrigger>
+          </div>
           <DialogContent
             className={
               isTeamOnly
@@ -863,29 +961,39 @@ export function AccountList({
                     <button
                       type="button"
                       onClick={() => setTeamAddMode("invite")}
-                      className="w-full text-left rounded-md border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
-                      <p className="text-sm font-medium text-foreground">Ask them to register</p>
+                      <p className="text-sm text-foreground">Add member only</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Send an invite. They set a password, enter their details, and sign the NDA + service agreement during onboarding.
+                        Send a portal invite. No contract — they set a password and sign the NDA + service agreement during onboarding.
                       </p>
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setIsAddDialogOpen(false); setIsContractDialogOpen(true); }}
-                      className="w-full text-left rounded-md border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                      onClick={() => { setTeamAddMode("template-pick"); fetchTeamTemplates(); }}
+                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
-                      <p className="text-sm font-medium text-foreground">Register them</p>
+                      <p className="text-sm text-foreground">Add member with contract to sign</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Create an engagement contract yourself (individual or company). Saved as a draft you can later download or send for signature.
+                        Create an engagement contract. Member signs it in the portal before starting work.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTeamAddMode("presigned")}
+                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                    >
+                      <p className="text-sm text-foreground">Add member with pre-signed contract</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Upload a contract that was already signed on paper. Stored as a historical record. Portal invite still sent.
                       </p>
                     </button>
                   </div>
                 </>
-              ) : (
+              ) : teamAddMode === "invite" ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Add team member</DialogTitle>
+                    <DialogTitle>Add member only</DialogTitle>
                   </DialogHeader>
                   <p className="text-xs text-muted-foreground mt-1">
                     They'll enter their name and details during onboarding.
@@ -908,6 +1016,148 @@ export function AccountList({
                       </Button>
                       <Button onClick={handleSubmit} disabled={isCreating} className="flex-1">
                         {isCreating ? "Sending…" : "Send invite"}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : teamAddMode === "template-pick" ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Choose a contract template</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Select a template to pre-populate the contract form, or start from blank.
+                  </p>
+                  <div className="space-y-3 pt-3">
+                    {teamTemplatesLoading && (
+                      <p className="text-xs text-muted-foreground py-4 text-center">Loading templates…</p>
+                    )}
+                    {!teamTemplatesLoading && teamTemplates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setContractInitialValues(t.default_fields);
+                          setContractTemplateId(t.id);
+                          setIsAddDialogOpen(false);
+                          setIsContractDialogOpen(true);
+                        }}
+                        className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
+                      >
+                        <p className="text-sm text-foreground">{t.name}</p>
+                        {t.description && (
+                          <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
+                        )}
+                      </button>
+                    ))}
+                    {!teamTemplatesLoading && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContractInitialValues(null);
+                          setContractTemplateId(null);
+                          setIsAddDialogOpen(false);
+                          setIsContractDialogOpen(true);
+                        }}
+                        className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/20 hover:bg-muted/20 transition-colors opacity-60 hover:opacity-100"
+                      >
+                        <p className="text-sm text-foreground">Start from blank</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Open an empty contract form without any pre-filled fields.
+                        </p>
+                      </button>
+                    )}
+                    <div className="pt-1">
+                      <Button variant="ghost" size="sm" onClick={() => setTeamAddMode("choice")} className="text-muted-foreground text-xs">
+                        ← Back
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : teamAddMode === "presigned" ? (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Upload pre-signed contract</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Upload a contract that was signed before joining the portal. A portal invite will be sent after upload.
+                  </p>
+                  <div className="space-y-4 pt-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Full name *</label>
+                        <Input
+                          value={presignedName}
+                          onChange={(e) => setPresignedName(e.target.value)}
+                          placeholder="Jane Smith"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Email *</label>
+                        <Input
+                          type="email"
+                          value={presignedEmail}
+                          onChange={(e) => setPresignedEmail(e.target.value)}
+                          placeholder="jane@company.com"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Signatory name *</label>
+                        <Input
+                          value={presignedSignedByName}
+                          onChange={(e) => setPresignedSignedByName(e.target.value)}
+                          placeholder="Name as signed on paper"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Date signed *</label>
+                        <Input
+                          type="date"
+                          value={presignedSigningDate}
+                          onChange={(e) => setPresignedSigningDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Contract title <span className="opacity-50">(optional)</span></label>
+                      <Input
+                        value={presignedSubjectLine}
+                        onChange={(e) => setPresignedSubjectLine(e.target.value)}
+                        placeholder="e.g. Scene Manager Engagement"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Contract PDF *</label>
+                      <div
+                        className="flex items-center gap-3 rounded-sm border border-input px-3 py-2.5 cursor-pointer hover:border-gold/50 transition-colors"
+                        onClick={() => document.getElementById("presigned-pdf-input")?.click()}
+                      >
+                        <span className="text-sm text-muted-foreground flex-1 truncate">
+                          {presignedPdfFile ? presignedPdfFile.name : "Click to select PDF…"}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">Browse</span>
+                      </div>
+                      <input
+                        id="presigned-pdf-input"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={(e) => setPresignedPdfFile(e.target.files?.[0] ?? null)}
+                      />
+                      {presignedPdfFile && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isPresignedUploading} className="text-muted-foreground">
+                        Back
+                      </Button>
+                      <Button onClick={handlePresignedUpload} disabled={isPresignedUploading} className="flex-1">
+                        {isPresignedUploading ? "Uploading…" : "Upload and send invite"}
                       </Button>
                     </div>
                   </div>
@@ -1499,7 +1749,15 @@ export function AccountList({
       </div>
 
       {/* Register Them — engagement contract draft form */}
-      <TeamContractFormDialog open={isContractDialogOpen} onOpenChange={setIsContractDialogOpen} />
+      <TeamContractFormDialog
+        open={isContractDialogOpen}
+        onOpenChange={(open) => {
+          setIsContractDialogOpen(open);
+          if (!open) { setContractInitialValues(null); setContractTemplateId(null); }
+        }}
+        initialValues={contractInitialValues ?? undefined}
+        templateId={contractTemplateId ?? undefined}
+      />
 
       {/* Invitation success overlay */}
       {resultBanner && (

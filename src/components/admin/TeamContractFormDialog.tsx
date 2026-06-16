@@ -54,6 +54,13 @@ interface TeamContractFormDialogProps {
   /** When set, the dialog opens pre-filled to edit this existing draft; every
    *  action then UPDATEs the row rather than INSERTing a new one. */
   existingContract?: TeamContractRow | null;
+  /** Template default_fields to pre-populate a new contract form. Ignored when
+   *  existingContract is set. Only the 8 template-applicable fields are applied;
+   *  all per-person and per-contract fields stay blank. */
+  initialValues?: Record<string, unknown>;
+  /** ID of the template the form was opened from. Passed to team-contract-create
+   *  so the contract row is linked to its source template. */
+  templateId?: string;
 }
 
 const DEFAULT_SCOPE =
@@ -112,6 +119,20 @@ const initialState: FormState = {
   milestone1: 10, milestone2: 40, milestone3: 50,
 };
 
+function applyInitialValues(fields: Record<string, unknown>): FormState {
+  return {
+    ...initialState,
+    entityType: (fields.entity_type as EntityType | undefined) ?? initialState.entityType,
+    subjectLine: (fields.subject_line as string | undefined) ?? initialState.subjectLine,
+    scopeDescription: (fields.scope_description as string | undefined) ?? initialState.scopeDescription,
+    feeCurrency: (fields.fee_currency as string | undefined) ?? initialState.feeCurrency,
+    feeScopeDescription: (fields.fee_scope_description as string | undefined) ?? initialState.feeScopeDescription,
+    milestone1: (fields.payment_milestone_1_pct as number | undefined) ?? initialState.milestone1,
+    milestone2: (fields.payment_milestone_2_pct as number | undefined) ?? initialState.milestone2,
+    milestone3: (fields.payment_milestone_3_pct as number | undefined) ?? initialState.milestone3,
+  };
+}
+
 function rowToFormState(r: TeamContractRow): FormState {
   return {
     entityType: r.entity_type,
@@ -149,7 +170,7 @@ const Label = ({ children, required }: { children: React.ReactNode; required?: b
   </label>
 );
 
-export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingContract }: TeamContractFormDialogProps) {
+export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingContract, initialValues, templateId }: TeamContractFormDialogProps) {
   const { toast } = useToast();
   const [f, setF] = useState<FormState>(initialState);
   const [busy, setBusy] = useState<null | "generate" | "save" | "send">(null);
@@ -159,18 +180,23 @@ export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingCo
   // create — so every later action UPDATEs the same row rather than INSERTing.
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
 
-  // Pre-fill from an existing draft (edit) or reset to a blank form (new) each
-  // time the dialog opens.
+  // Pre-fill from an existing draft (edit), from template initialValues (new
+  // from template), or reset to blank (new without template), each time the
+  // dialog opens.
   useEffect(() => {
     if (!open) return;
     if (existingContract) {
       setF(rowToFormState(existingContract));
       setLastCreatedId(existingContract.id);
+    } else if (initialValues) {
+      setF(applyInitialValues(initialValues));
+      setLastCreatedId(null);
     } else {
       setF(initialState);
       setLastCreatedId(null);
     }
-  }, [open, existingContract?.id]);
+    setSent(false);
+  }, [open, existingContract?.id, initialValues]);
 
   const up = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -250,6 +276,7 @@ export function TeamContractFormDialog({ open, onOpenChange, onSaved, existingCo
         payment_milestone_1_pct: f.milestone1,
         payment_milestone_2_pct: f.milestone2,
         payment_milestone_3_pct: f.milestone3,
+        ...(templateId ? { template_id: templateId } : {}),
       }),
     });
     const data = await res.json().catch(() => ({}));

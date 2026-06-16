@@ -30,6 +30,7 @@ export type ActivityAction =
   | "team_contract_sent"
   | "team_contract_signed"
   | "team_contract_declined"
+  | "team_contract_uploaded"
   | "client_member_invited"
   | "client_member_joined"
   | "client_member_promoted"
@@ -68,6 +69,7 @@ export const ACTION_LABELS: Record<string, string> = {
   team_contract_sent: "Contract",
   team_contract_signed: "Contract",
   team_contract_declined: "Contract",
+  team_contract_uploaded: "Contract",
   client_member_invited: "Member",
   client_member_joined: "Member",
   client_member_promoted: "Member",
