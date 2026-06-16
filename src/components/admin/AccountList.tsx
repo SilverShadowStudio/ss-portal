@@ -1163,6 +1163,7 @@ export function AccountList({
                   </div>
                 </>
               )
+              : null
             ) : (
               <>
                 <DialogHeader>
