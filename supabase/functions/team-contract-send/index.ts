@@ -13,6 +13,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildTeamContractInviteHtml, TEAM_CONTRACT_INVITE_SUBJECT } from "../_shared/teamContractInvite.ts";
+import { provisionTeamMember, splitName } from "../_shared/teamProvisioning.ts";
 
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://portal.silvershadowstudio.com";
 
@@ -34,13 +35,6 @@ function buildPortalVerifyUrl(properties: Record<string, unknown> | undefined, f
   const params = new URLSearchParams({ token, type });
   if (redirectTo) params.set("redirect_to", redirectTo);
   return `${APP_BASE_URL}/auth/verify?${params.toString()}`;
-}
-
-function splitName(full: string | null): { first: string; last: string } {
-  const parts = (full || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { first: "Contractor", last: "" };
-  if (parts.length === 1) return { first: parts[0], last: "" };
-  return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
 Deno.serve(async (req) => {
@@ -70,81 +64,25 @@ Deno.serve(async (req) => {
   const email = (contract.recipient_email as string | null)?.trim().toLowerCase();
   if (!email) return json({ error: "Contract has no recipient email" }, 400);
 
-  // Find an existing auth user by email (scan a few pages — adequate here).
-  async function findUserByEmail(em: string): Promise<string | null> {
-    let page = 1;
-    while (page <= 5) {
-      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-      if (error) return null;
-      const found = data.users.find((u) => (u.email || "").toLowerCase() === em);
-      if (found) return found.id;
-      if (data.users.length < 200) break;
-      page += 1;
-    }
-    return null;
-  }
-
-  // ── Reuse-aware provisioning with compensating rollback ───────────────────
-  let createdUserId: string | null = null;
-  let createdAccountId: string | null = null;
-  let createdMemberId: string | null = null;
-  let createdProfileId: string | null = null;
-  const rollback = async () => {
-    if (createdProfileId) await admin.from("freelancer_profiles").delete().eq("id", createdProfileId).then(() => {}, () => {});
-    if (createdMemberId) await admin.from("account_members").delete().eq("id", createdMemberId).then(() => {}, () => {});
-    if (createdAccountId) await admin.from("accounts").delete().eq("id", createdAccountId).then(() => {}, () => {});
-    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).then(() => {}, () => {});
-  };
+  // ── Reuse-aware provisioning ──────────────────────────────────────────────
+  const isCompany = contract.entity_type === "company";
+  const partyName = (isCompany ? contract.company_director_name : contract.individual_full_name) as string | null;
+  const { first } = splitName(partyName);
+  const companyLabel = (isCompany ? contract.company_name : contract.individual_full_name) as string | null || first;
 
   let accountId: string;
   let profileId: string;
-  const isCompany = contract.entity_type === "company";
-  const partyName = (isCompany ? contract.company_director_name : contract.individual_full_name) as string | null;
-  const { first, last } = splitName(partyName);
-  const companyLabel = (isCompany ? contract.company_name : contract.individual_full_name) as string | null || first;
-
   try {
-    // Step 2 — auth user
-    let userId = await findUserByEmail(email);
-    if (!userId) {
-      const { data: created, error } = await admin.auth.admin.createUser({ email, email_confirm: false });
-      if (error || !created?.user) throw new Error(`Could not create user: ${error?.message ?? "unknown"}`);
-      userId = created.user.id;
-      createdUserId = userId;
-    }
+    const provisioned = await provisionTeamMember(admin, {
+      email,
+      partyName,
+      companyLabel,
+      invitedBy: user.id,
+    });
+    accountId = provisioned.accountId;
+    profileId = provisioned.profileId;
 
-    // Steps 3/4 — account + membership (reuse the user's single existing membership if any)
-    const { data: existingMember } = await admin.from("account_members").select("account_id").eq("user_id", userId).maybeSingle();
-    if (existingMember?.account_id) {
-      accountId = existingMember.account_id as string;
-    } else {
-      const { data: acct, error: acctErr } = await admin.from("accounts")
-        .insert({ company_name: companyLabel, account_type: "team", owner_user_id: userId } as Record<string, unknown>)
-        .select("id").single();
-      if (acctErr || !acct) throw new Error(`Could not create account: ${acctErr?.message ?? "unknown"}`);
-      accountId = acct.id;
-      createdAccountId = acct.id;
-      const { data: member, error: memErr } = await admin.from("account_members")
-        .insert({ account_id: accountId, user_id: userId, role: "owner", joined_at: new Date().toISOString(), invited_by: user.id } as Record<string, unknown>)
-        .select("id").single();
-      if (memErr || !member) throw new Error(`Could not create membership: ${memErr?.message ?? "unknown"}`);
-      createdMemberId = member.id;
-    }
-
-    // Step 5 — freelancer profile (reuse if the user already has one)
-    const { data: existingProfile } = await admin.from("freelancer_profiles").select("id").eq("user_id", userId).maybeSingle();
-    if (existingProfile?.id) {
-      profileId = existingProfile.id as string;
-    } else {
-      const { data: prof, error: profErr } = await admin.from("freelancer_profiles")
-        .insert({ user_id: userId, first_name: first, last_name: last, email } as Record<string, unknown>)
-        .select("id").single();
-      if (profErr || !prof) throw new Error(`Could not create profile: ${profErr?.message ?? "unknown"}`);
-      profileId = prof.id;
-      createdProfileId = prof.id;
-    }
-
-    // Step 6 — link the contract + mark sent
+    // Link the contract + mark sent
     const { error: updErr } = await admin.from("team_contracts").update({
       account_id: accountId,
       profile_id: profileId,
@@ -154,7 +92,6 @@ Deno.serve(async (req) => {
     }).eq("id", contractId);
     if (updErr) throw new Error(`Could not update contract: ${updErr.message}`);
   } catch (e) {
-    await rollback();
     console.error("[team-contract-send] provisioning failed:", e);
     return json({ error: (e as Error)?.message ?? "Provisioning failed" }, 500);
   }
