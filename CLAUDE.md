@@ -19,6 +19,7 @@ Two commercial models:
 - **When multiple approaches exist, always pick the one with the smallest blast radius — the one that is easiest to revert and least likely to break something else.**
 - **Never touch files unrelated to the task at hand, even if they look wrong.**
 - **Always deploy edge functions from the project root and verify the deploy with `npx supabase functions download <name>` + grep before trusting it.** A `functions deploy` run in the background or without an explicit CWD has twice silently shipped stale source while returning exit 0 and a success message.
+- **Always run `npm run build` locally before pushing major frontend changes.** Vercel silently falls back to the last successful build on failure — the live URL shows no error, and the new code is never served. `tsc --noEmit` does NOT catch all build errors (esbuild syntax errors like mismatched ternary arms pass TypeScript but break Vite). `npm run build` is the authoritative pre-push check. After pushing, confirm the build is green in the Vercel dashboard before marking work complete.
 
 ## Session Routines
 
