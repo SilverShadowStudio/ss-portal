@@ -27,3 +27,7 @@ dist-ssr
 # Migration/export scripts (contain credentials and exported data)
 scripts/
 supabase/.temp/
+
+# Airtable schema audit artefacts (local only)
+airtable-schema.json
+airtable-schema-summary.md
