@@ -133,6 +133,7 @@ The original audit misclassified `airtable-sync-contact` as read-only on Users. 
 
 ## Pending (ongoing)
 
+- **Scene drag-reorder removed from Timeline in Gantt rebuild** — only controlled display order, no data loss. Scenes now display in creation order. Revisit if needed.
 - **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals)
 - **Test Client account** ("Test Client Company", account `5faeeafa`) — still exists, not cleaned up
 - **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence
