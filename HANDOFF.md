@@ -1,5 +1,95 @@
 # Handoff Log
 
+---
+
+# Session — 18 June 2026
+
+## Completed this session
+
+### Timeline Gantt — scheduling data diagnostic (no code)
+
+Full audit of all scheduling date data across Supabase and Airtable before building the new admin horizontal Gantt view. No code was written.
+
+**Key findings — Supabase `scene_rounds`:**
+
+- `start_date` / `end_date` — set ONLY on BA-mode booked rounds and Dropbox-triggered review rounds. Legacy rounds (`is_legacy=true`) have NULL for both. The existing timeline already filters `.not("start_date", "is", null)` so legacy rounds are invisible there.
+- BA-mode booking: `start_date` = chosen Monday midnight UTC, `end_date` = Monday + 7 days. On Dropbox delivery, `end_date` is overwritten to the computed Friday 14:00 review deadline for the production round. The sibling review round (`kind='review'`) gets its own `start_date` (delivery timestamp) and `end_date` (same Friday 14:00).
+- `delivery_due_at` — pulled from Airtable's Deadline field via `pull-status`; also written by `airtable-auto-sync` if Deadline is already set when round_created fires. Sparse.
+- `delivered_at` / `approved_at` — point-in-time milestones; populated for all delivered/approved rounds including legacy.
+- `booking_payments` — only financial dates (`created_at`, `paid_at`). No production scheduling dates.
+- Non-BA manually-created rounds: `start_date` / `end_date` are NULL unless Dropbox delivery fires or admin sets them manually.
+
+**Key findings — Airtable Tasks:**
+
+- `Deadline` (YYYY-MM-DD) — only date field on Tasks. No start date exists anywhere in Airtable. Airtable can supply a deadline milestone or a forward-looking bar (today → deadline), but not a true start→end bar.
+- `Last Modified Time Status` — auto-timestamp of last status change; closest proxy to "went DONE at."
+- `Accountable to` — linked record to Airtable Users table. Manager/freelancer assignment. NOT read by any portal code today. Resolution requires a second API call (or a one-shot Users table list) to get the name string.
+- `Round` single-select field exists in Airtable but `field_round` is blank in the config — not mapped.
+- Scene Manager Day Logs: NOT wired to the portal at all. Would need a new table ID secret and read path. Buildable but a separate work item.
+
+**Join path confirmed:** `scenes.airtable_record_id` → direct GET `/v0/{baseId}/{tableId}/{recordId}`. For bulk timeline load: one paginated LIST of the Tasks table (1–2 API calls for a typical base), join client-side. Rate limit (5 req/s) is not a concern with a 5-minute cache matching the `airtable-list-models` pattern.
+
+**Write-pause flag:** Does not exist. The question is moot — no such gate is in the codebase.
+
+**CP106 (660 Madison) side-by-side:**
+- Supabase: `start_date=2025-09-15, end_date=2025-09-22, delivered_at=2025-09-22, status=approved` for both SC09 and SC05 R01 — set manually via migration `20260505093341`. Timeline can already draw this bar.
+- Airtable: Deadline date unknown (may or may not match Sep 22), Status = "🟢 DONE", manager via `Accountable to` linked record. No start date.
+
+**Supabase token expired:** The hardcoded token in `scripts/sql.sh` returned 401 — live SQL count queries couldn't run. Token needs refreshing from Supabase dashboard → Account → Access tokens before next SQL diagnostic.
+
+**Bar-mapping design conclusion:**
+| Source | Can draw | Missing |
+|---|---|---|
+| Supabase BA-mode | True start→end production + feedback bars | Nothing |
+| Supabase non-BA / Dropbox-delivered | Point-in-time milestones only | No production start |
+| Supabase legacy | Delivered/approved milestones | NULL start_date/end_date |
+| Airtable Tasks | Deadline milestone, DONE timestamp, manager dot | No start date |
+| Airtable Day Logs | Days-worked bars | Not wired to portal yet |
+
+## In progress / needs verification
+
+Carried from 12 June session:
+
+- **Browser-verify AssetViewer perf + interaction fixes** (`73899d5`) — thumbnail during load, no lag at scale=1, close/pin-delete at zoom > 1.
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals) — URGENT before using Add Scene in production.
+
+## Pending
+
+### New — Timeline Gantt
+- **Build the horizontal Gantt view** — design reference exists; diagnostic done. Bar-mapping strategy now clear.
+- **Airtable Tasks bulk-fetch for timeline** — new edge function or extension of existing pattern; 5-min cache; returns deadline + manager + status for all scenes with an `airtable_record_id`.
+- **Manager name resolution** — needs Airtable Users table one-shot fetch to map linked-record IDs to names. Cache alongside Tasks fetch.
+- **Day Logs integration** — deferred; separate work item.
+
+### Carried forward
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals) — URGENT before using Add Scene in production
+- **Test Client account** ("Test Client Company", account `5faeeafa`) — still exists, not cleaned up
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence
+- **Clean up test invoices** before going live with real clients
+- **Client correction flow** — pins → submit corrections → auto-create Round 02
+- **New commission brief flow** — 3-step overlay from idle state
+- **Airtable inbound webhook** — `pull-status` is manual only
+- **Pre-launch ghost mode test** — walk full client flow before invites go out
+
+## Decisions made
+
+- **Gantt toggle design confirmed:** Supabase toggle = duration bars (where `start_date` non-null); Airtable toggle = deadline pins and manager dots overlaid. Independent per source.
+- **Legacy rounds excluded from Gantt by design** — they have NULL `start_date`/`end_date` and only milestone data. Could add a separate "legacy milestone" layer later if needed.
+- **Do not use `supabase.functions.invoke` for Airtable timeline fetch** — same rule as `dropbox-api`: use direct `fetch` with explicit headers if query params are needed.
+
+## Open questions / things to watch
+
+- **What is Airtable's actual Deadline coverage?** The token expiry prevented live SQL + we can't inspect Airtable directly. Once the Supabase token is refreshed, run: `SELECT COUNT(*) FROM scene_rounds WHERE delivery_due_at IS NOT NULL` to see how many rounds have a synced Deadline.
+- **CP106 Airtable Deadlines** — unknown whether Kieran entered Sep 22 2025 or something else. Pull-status on SC09/SC05 would reveal this.
+- **Manager dot feasibility** — `Accountable to` linked records require a Users table lookup. Verify the Airtable PAT has read access to the Users table (it's a system table — may require explicit permission).
+
+## URGENT next session
+
+1. Refresh the Supabase access token (`scripts/sql.sh`) — expired this session.
+2. Browser-verify AssetViewer fixes and legacy round import before any client-facing use.
+
+---
+
 ## How to use this file
 
 This is the rolling session log. Each session appends a new block at the top. `CLAUDE.md` carries the stable rules, architecture, and migration history; `HANDOFF.md` carries the moving parts: what shipped, what's mid-flight, what's pending, and what was learned.
