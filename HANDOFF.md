@@ -8,6 +8,70 @@ This is the rolling session log. Each session appends a new block at the top. `C
 
 ---
 
+# Session — 17–18 June 2026
+
+## Completed this session
+
+### AccountList: JSX syntax fix — teamAddMode ternary (`d38d823`)
+Missing `: null` else-arm in the four-way `teamAddMode` ternary was causing Vite/esbuild to fail silently. Vercel was serving the previous successful build with no visible error. Fix: added `: null` at line 1166 of `AccountList.tsx`. `npm run build` confirmed clean before push.
+
+### CLAUDE.md: Vercel silent fallback rule codified (`628f834`)
+Added hard rule: "Always run `npm run build` locally before pushing major frontend changes." `tsc --noEmit` does not catch all esbuild syntax errors; `npm run build` is authoritative. Rule also notes Vercel silently serves stale build on failure.
+
+### Airtable base schema audit — full boundary map completed (`af009cc`)
+Fetched full schema via `airtable-schema-dump` diagnostic function (deployed `--no-verify-jwt`, read-only). Raw JSON saved to `airtable-schema.json` (gitignored); human-readable summary at `airtable-schema-summary.md` (gitignored). Key findings:
+- 22 tables / 552 fields
+- Portal writes to 3 tables: **Tasks**, **Clients**, **Projects**
+- Portal reads from 2 more: **Users**, **Models**
+- 17 tables completely untouched (Kieran's exclusive domain)
+
+### Airtable corruption root cause identified — `airtable-sync-contact`
+The original audit misclassified `airtable-sync-contact` as read-only on Users. It **writes** to Users (PATCH or POST) on every invocation. Specifically: hardcodes `role: "Client"` unconditionally, sets `Clients` and `Company` linked fields. No guard against overwriting production team members.
+
+`admin-create-client` fires `airtable-sync-contact` fire-and-forget in both `invite` and `provision` modes. Yesterday at 15:31 UTC, `admin-create-client` ran for `mvstudioarq@gmail.com` (activity log: `invite_sent`), which triggered `airtable-sync-contact`, which found Maycon's existing Airtable Users record by email and corrupted it: Role → "Client", Clients/Company fields → client company record ID.
+
+## In progress / needs verification
+
+- **All three add-member flows need browser verification** — the gear icon, 3-option modal, template picker, and pre-signed upload were blocked by the now-fixed JSX syntax error. They have never been live. Verify each path works end-to-end before real use.
+- **AssetViewer perf + interaction fixes** — still unverified in browser (carried from 12 June session).
+
+## Pending — URGENT before next action
+
+- **`airtable-sync-contact` fix: awaiting Kieran meeting** — DO NOT SHIP until Fred returns with agreed guard behaviour. The corruption mechanism (`role: "Client"` unconditionally overwriting any matched Users row) is fully understood. Fix is straightforward but Kieran must approve the guard logic (e.g. skip if matched record's Role is a team role; or never write Role at all; or require explicit opt-in flag).
+- **Airtable writes remain paused** — do not re-enable `airtable-sync-contact` calls until the fix is live.
+- **Maycon's Users record in Airtable** — Kieran and Fred to fix manually together. Do not touch from the portal.
+
+## Pending (ongoing)
+
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals)
+- **Test Client account** ("Test Client Company", account `5faeeafa`) — still exists, not cleaned up
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence
+- **Clean up test invoices** before going live with real clients
+- **Client correction flow** — pins → submit corrections → auto-create Round 02
+- **New commission brief flow** — 3-step overlay from idle state
+- **Airtable inbound webhook** — `pull-status` is manual only
+- **Pre-launch ghost mode test** — walk full client flow before invites go out
+
+## Decisions made
+
+- **`airtable-sync-contact` must not write `role: "Client"` unconditionally.** Guard logic to be agreed with Kieran before implementing. Options: (a) skip write if matched row has a non-client Role; (b) remove Role write entirely; (c) require explicit `overrideRole` flag from caller.
+- **`airtable-schema-dump` function stays deployed** — it is read-only, requires anon key, returns only schema metadata. Acceptable as a permanent diagnostic endpoint.
+- **Vercel silent fallback is a standing risk** — confirmed with a real incident. `npm run build` must be run locally before every frontend push from now on.
+
+## Open questions / things to watch
+
+- Is `mvstudioarq@gmail.com` Maycon himself (accidentally onboarded as client) or a different person whose email happened to collide with Maycon's Airtable row? The 33+ login retries suggest password confusion — consistent with an unexpected invite.
+- The `airtable-sync-contact` Users write also creates NEW Users rows if no email match found. When a real client is onboarded, this adds them to Kieran's Airtable Users table (which is his team roster). That may be intentional (Kieran wants clients visible there) or may pollute the table. Confirm intent with Kieran during the fix meeting.
+- `fred+testteam2@silvershadowstudio.com` was invited via the resend mode (no Airtable write). Password set correctly. This test user exists in the DB — clean up if no longer needed.
+
+## URGENT next session
+
+1. Receive Kieran-agreed fix spec for `airtable-sync-contact` guard and implement it.
+2. Browser-verify the three add-member flows (gear icon → template modal, invite with template, pre-signed upload).
+3. Browser-verify AssetViewer fixes.
+
+---
+
 # Session — 12 June 2026
 
 ## Completed this session
