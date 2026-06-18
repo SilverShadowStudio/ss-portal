@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { format } from "date-fns";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
-import { ProductionGantt } from "@/components/admin/ProductionGantt";
+import { ProductionGantt, type GanttProject, type GanttRound } from "@/components/admin/ProductionGantt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,13 +24,170 @@ interface PendingRequest {
   attachments: AttachmentRef[];
 }
 
+// Parse a YYYY-MM-DD string as a local-midnight Date (avoids UTC→local shift).
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export default function AdminTimeline() {
-  // Phase color state — wired for future color-picker controls, static for Stage 1
   const [productionColor] = useState('#4f6c99');
   const [feedbackColor]   = useState('#a8493c');
   const [showPhaseLabels, setShowPhaseLabels] = useState(true);
+  const [showSupabase,    setShowSupabase]    = useState(true);
+  // showAirtable is a no-op placeholder — wired in Stage 3
+  const [showAirtable] = useState(false);
 
-  // ─── Pending lane task requests (logic preserved intact from previous impl) ──
+  // ─── Gantt data ───────────────────────────────────────────────────────────────
+  const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
+  const [ganttLoading,  setGanttLoading]  = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setGanttLoading(true);
+      try {
+        // 1. All projects
+        const { data: projRows } = await supabase
+          .from('projects')
+          .select('id, project_code, name')
+          .order('created_at', { ascending: true });
+
+        if (!projRows?.length || cancelled) return;
+
+        const projIds = projRows.map((p) => p.id);
+
+        // 2. Scenes belonging to those projects
+        const { data: sceneRows } = await supabase
+          .from('scenes')
+          .select('id, name, project_id')
+          .in('project_id', projIds)
+          .order('created_at', { ascending: true });
+
+        if (cancelled) return;
+
+        const sceneIds = (sceneRows ?? []).map((s) => s.id);
+
+        // 3. Rounds — all kinds; filter to rows with at least one usable date
+        const { data: roundRows } = sceneIds.length
+          ? await supabase
+              .from('scene_rounds')
+              .select('id, scene_id, round_number, kind, start_date, end_date, delivered_at')
+              .in('scene_id', sceneIds)
+              .order('round_number', { ascending: true })
+          : { data: [] };
+
+        if (cancelled) return;
+
+        // Group rounds by scene_id; drop rows with no visible date
+        const roundsByScene = new Map<string, GanttRound[]>();
+        for (const r of (roundRows ?? [])) {
+          if (!r.start_date && !r.delivered_at) continue;
+          const kind: 'production' | 'review' = r.kind === 'review' ? 'review' : 'production';
+          const gr: GanttRound = {
+            id:          r.id,
+            roundNumber: r.round_number,
+            kind,
+            startDate:   r.start_date   ?? null,
+            endDate:     r.end_date     ?? null,
+            deliveredAt: r.delivered_at ?? null,
+          };
+          const arr = roundsByScene.get(r.scene_id) ?? [];
+          arr.push(gr);
+          roundsByScene.set(r.scene_id, arr);
+        }
+
+        // Group scenes by project_id
+        const scenesByProject = new Map<string, typeof sceneRows>();
+        for (const s of (sceneRows ?? [])) {
+          const arr = scenesByProject.get(s.project_id) ?? [];
+          arr.push(s);
+          scenesByProject.set(s.project_id, arr);
+        }
+
+        // Assemble GanttProject[]; keep only projects that have at least one visible round
+        const gantt: GanttProject[] = projRows
+          .map((p) => ({
+            id:   p.id,
+            code: p.project_code ?? '',
+            name: p.name,
+            scenes: (scenesByProject.get(p.id) ?? []).map((s) => ({
+              id:     s.id,
+              name:   s.name,
+              rounds: roundsByScene.get(s.id) ?? [],
+            })),
+          }))
+          .filter((p) => p.scenes.some((s) => s.rounds.length > 0));
+
+        setGanttProjects(gantt);
+      } finally {
+        if (!cancelled) setGanttLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Dynamic subtitle: date range + counts derived from live data
+  const subtitle = useMemo(() => {
+    if (ganttLoading) return '…';
+    if (!ganttProjects.length) return 'No scheduled rounds found';
+
+    let minStr = '', maxStr = '';
+    let sceneCount = 0;
+
+    for (const proj of ganttProjects) {
+      for (const scene of proj.scenes) {
+        if (scene.rounds.length > 0) sceneCount++;
+        for (const r of scene.rounds) {
+          // date-only strings are directly comparable; timestamptz: take date part
+          const candidates = [r.startDate, r.endDate].filter(Boolean) as string[];
+          if (r.deliveredAt) candidates.push(r.deliveredAt.slice(0, 10));
+          for (const s of candidates) {
+            const ds = s.slice(0, 10); // normalise to YYYY-MM-DD for comparison
+            if (!minStr || ds < minStr) minStr = ds;
+            if (!maxStr || ds > maxStr) maxStr = ds;
+          }
+        }
+      }
+    }
+
+    const projCount = ganttProjects.length;
+    const scenePart = `${sceneCount} scene${sceneCount !== 1 ? 's' : ''}`;
+    const projPart  = `${projCount} project${projCount !== 1 ? 's' : ''}`;
+
+    if (!minStr) return `${scenePart} · ${projPart}`;
+
+    const fmt = (s: string) => format(parseLocalDate(s), 'd MMM yyyy');
+    return `${fmt(minStr)} — ${fmt(maxStr)} · ${scenePart} · ${projPart}`;
+  }, [ganttProjects, ganttLoading]);
+
+  // ─── Toggle button helper ─────────────────────────────────────────────────────
+  const toggleBtn = (label: string, active: boolean, disabled: boolean, onClick: () => void) => (
+    <button
+      key={label}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        fontFamily: "'Jost', sans-serif",
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: '1.5px',
+        textTransform: 'uppercase',
+        color: disabled ? '#3a332c' : active ? '#c5a572' : '#6a6258',
+        background: 'none',
+        border: '1px solid',
+        borderColor: disabled ? 'rgba(197,165,114,0.05)' : active ? 'rgba(197,165,114,0.35)' : 'rgba(197,165,114,0.10)',
+        borderRadius: 4,
+        padding: '4px 10px',
+        cursor: disabled ? 'default' : 'pointer',
+        transition: 'color 0.15s, border-color 0.15s',
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  // ─── Pending lane task requests (logic preserved intact) ──────────────────────
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [validating, setValidating] = useState<PendingRequest | null>(null);
   const [validateForm, setValidateForm] = useState({
@@ -103,7 +260,7 @@ export default function AdminTimeline() {
   return (
     <AdminLayout>
 
-      {/* ── Page header (design-spec typography) ── */}
+      {/* ── Page header ── */}
       <div style={{ marginBottom: 0 }}>
         {/* Eyebrow */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -133,10 +290,10 @@ export default function AdminTimeline() {
             margin: 0,
           }}
         >
-          Summer Production Schedule
+          Production Schedule
         </h1>
 
-        {/* Subtitle */}
+        {/* Subtitle — dynamic */}
         <p
           style={{
             fontFamily: "'Jost', sans-serif",
@@ -147,7 +304,7 @@ export default function AdminTimeline() {
             marginBottom: 0,
           }}
         >
-          19 May — 24 July 2025 · 14 scenes · 3 projects
+          {subtitle}
         </p>
 
         {/* Legend */}
@@ -168,7 +325,7 @@ export default function AdminTimeline() {
           </div>
           {/* Vertical divider */}
           <div style={{ width: 1, height: 18, background: 'rgba(197,165,114,0.16)', flexShrink: 0 }} />
-          {/* Manager dots */}
+          {/* Manager dots — placeholder until Stage 3 Airtable overlay */}
           {[
             { name: 'Katerina', color: '#8a76ad' },
             { name: 'Fiodor',   color: '#4f9aa3' },
@@ -181,33 +338,20 @@ export default function AdminTimeline() {
               </span>
             </div>
           ))}
-          {/* Phase labels toggle */}
-          <button
-            onClick={() => setShowPhaseLabels((v) => !v)}
-            style={{
-              marginLeft: 'auto',
-              fontFamily: "'Jost', sans-serif",
-              fontSize: 10,
-              fontWeight: 500,
-              letterSpacing: '1.5px',
-              textTransform: 'uppercase',
-              color: showPhaseLabels ? '#c5a572' : '#6a6258',
-              background: 'none',
-              border: '1px solid',
-              borderColor: showPhaseLabels ? 'rgba(197,165,114,0.35)' : 'rgba(197,165,114,0.10)',
-              borderRadius: 4,
-              padding: '4px 10px',
-              cursor: 'pointer',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-          >
-            {showPhaseLabels ? 'Labels on' : 'Labels off'}
-          </button>
+          {/* Toggle buttons */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            {toggleBtn('Supabase', showSupabase, false, () => setShowSupabase((v) => !v))}
+            {toggleBtn('Airtable', showAirtable, true, () => {})}
+            {toggleBtn(showPhaseLabels ? 'Labels on' : 'Labels off', showPhaseLabels, false, () => setShowPhaseLabels((v) => !v))}
+          </div>
         </div>
       </div>
 
       {/* ── Gantt card ── */}
       <ProductionGantt
+        projects={ganttProjects}
+        loading={ganttLoading}
+        showSupabase={showSupabase}
         productionColor={productionColor}
         feedbackColor={feedbackColor}
         showPhaseLabels={showPhaseLabels}
