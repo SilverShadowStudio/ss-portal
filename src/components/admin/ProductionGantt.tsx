@@ -116,6 +116,14 @@ function band(col: number, span: number, bg: string): BandSeg   { return { kind:
 function cell(col: number, num: number,  bg: string): CellSeg   { return { kind: 'cell',  col, num,  bg }; }
 function lbl (col: number, text: string, color: string): LabelSeg { return { kind: 'label', col, text, color }; }
 
+// ─── Overlay types (exported — imported by AdminTimeline) ─────────────────────
+export interface OverlayEntry {
+  deadline:     string | null;
+  managerName:  string | null;
+  managerColor: string | null;
+  status:       string | null;
+}
+
 // ─── Data types (exported — imported by AdminTimeline for fetch + shaping) ────
 export interface GanttRound {
   id: string;
@@ -127,9 +135,10 @@ export interface GanttRound {
 }
 
 export interface GanttScene {
-  id: string;
-  name: string;
-  rounds: GanttRound[];
+  id:               string;
+  name:             string;
+  airtableRecordId: string | null; // links to OverlayEntry key
+  rounds:           GanttRound[];
 }
 
 export interface GanttProject {
@@ -250,6 +259,28 @@ function renderSeg(seg: Seg, i: number) {
   );
 }
 
+// ─── Deadline pin renderer ────────────────────────────────────────────────────
+// Gold diamond marker (10×10 square, rotate 45°) centered in the cell column.
+// z:2 — above bands (z:1), below Supabase cell markers (z:3) so round numbers win.
+function renderDeadlinePin(col: number) {
+  return (
+    <div
+      key={`pin-${col}`}
+      style={{
+        position: 'absolute',
+        top: 14,
+        left: col * CELL_W + 12,
+        width: 10,
+        height: 10,
+        transform: 'rotate(45deg)',
+        background: '#c5a572',
+        zIndex: 2,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.45)',
+      }}
+    />
+  );
+}
+
 // ─── Scrollbar + font injection ───────────────────────────────────────────────
 const SCROLLBAR_CSS = `
 .gantt-scroll::-webkit-scrollbar { height: 8px; }
@@ -270,6 +301,8 @@ interface ProductionGanttProps {
   projects:         GanttProject[];
   loading:          boolean;
   showSupabase?:    boolean;
+  showAirtable?:    boolean;
+  overlayData?:     Record<string, OverlayEntry>;
   productionColor?: string;
   feedbackColor?:   string;
   showPhaseLabels?: boolean;
@@ -280,6 +313,8 @@ export function ProductionGantt({
   projects,
   loading,
   showSupabase    = true,
+  showAirtable    = true,
+  overlayData,
   productionColor = '#4f6c99',
   feedbackColor   = '#a8493c',
   showPhaseLabels = true,
@@ -303,9 +338,10 @@ export function ProductionGantt({
     }
   }, []);
 
-  // Derive date window from real data
+  // Derive date window from all data sources — always includes deadline dates
+  // so the window is stable regardless of which toggles are on.
   const { dates, dateMap } = useMemo(() => {
-    if (!showSupabase || !projects.length) {
+    if (!projects.length) {
       return { dates: [] as Date[], dateMap: new Map<string, number>() };
     }
     const all: Date[] = [];
@@ -316,13 +352,18 @@ export function ProductionGantt({
           if (round.endDate)     all.push(toUKCalendarDate(round.endDate));
           if (round.deliveredAt) all.push(toUKCalendarDate(round.deliveredAt));
         }
+        // Always fold deadline into window (toggle doesn't shrink the range)
+        if (scene.airtableRecordId && overlayData) {
+          const oe = overlayData[scene.airtableRecordId];
+          if (oe?.deadline) all.push(toUKCalendarDate(oe.deadline));
+        }
       }
     }
     const d = buildWindowDates(all);
     const m = new Map<string, number>();
     d.forEach((date, i) => m.set(toDateKey(date), i));
     return { dates: d, dateMap: m };
-  }, [projects, showSupabase]);
+  }, [projects, overlayData]);
 
   const TRACK_W_DYN   = dates.length * CELL_W;
   const CONTENT_W_DYN = FROZEN_W + TRACK_W_DYN;
@@ -469,6 +510,12 @@ export function ProductionGantt({
                       buildSegsForRound(r, dateMap, productionColor, feedbackColor, showPhaseLabels)
                     )
                   : [];
+
+                const oe          = scene.airtableRecordId ? overlayData?.[scene.airtableRecordId] : undefined;
+                const deadlineCol = (showAirtable && oe?.deadline)
+                  ? dateToCol(oe.deadline, dateMap)
+                  : null;
+
                 return (
                   <div key={scene.id} style={{ display: 'flex', height: SCENE_H }}>
                     {/* Frozen scene left */}
@@ -501,9 +548,30 @@ export function ProductionGantt({
                       >
                         {scene.name}
                       </div>
-                      {/* Manager placeholder — real names from Airtable in Stage 3 */}
-                      <div style={{ width: MANAGER_COL_W, display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
-                        <span style={{ fontSize: 10, fontFamily: "'Jost', sans-serif", color: '#3a332c' }}>—</span>
+                      {/* Manager — real name + dot from Airtable overlay; always visible (not toggle-gated) */}
+                      <div style={{ width: MANAGER_COL_W, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8 }}>
+                        {oe?.managerName ? (
+                          <>
+                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: oe.managerColor ?? '#6a6258', flexShrink: 0 }} />
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontFamily: "'Jost', sans-serif",
+                                fontWeight: 500,
+                                letterSpacing: '1.5px',
+                                textTransform: 'uppercase',
+                                color: '#a89e8c',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {oe.managerName}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 10, fontFamily: "'Jost', sans-serif", color: '#3a332c' }}>—</span>
+                        )}
                       </div>
                     </div>
 
@@ -522,6 +590,7 @@ export function ProductionGantt({
                       }}
                     >
                       {segs.map((seg, i) => renderSeg(seg, i))}
+                      {deadlineCol !== null && renderDeadlinePin(deadlineCol)}
                     </div>
                   </div>
                 );

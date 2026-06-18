@@ -3,7 +3,12 @@ import { format } from "date-fns";
 import { Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
-import { ProductionGantt, type GanttProject, type GanttRound } from "@/components/admin/ProductionGantt";
+import {
+  ProductionGantt,
+  type GanttProject,
+  type GanttRound,
+  type OverlayEntry,
+} from "@/components/admin/ProductionGantt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,99 +40,123 @@ export default function AdminTimeline() {
   const [feedbackColor]   = useState('#a8493c');
   const [showPhaseLabels, setShowPhaseLabels] = useState(true);
   const [showSupabase,    setShowSupabase]    = useState(true);
-  // showAirtable is a no-op placeholder — wired in Stage 3
-  const [showAirtable] = useState(false);
+  const [showAirtable,    setShowAirtable]    = useState(true); // now live: gates deadline pins
 
-  // ─── Gantt data ───────────────────────────────────────────────────────────────
+  // ─── Gantt data (Supabase) ────────────────────────────────────────────────────
   const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
   const [ganttLoading,  setGanttLoading]  = useState(true);
 
+  // ─── Airtable overlay ─────────────────────────────────────────────────────────
+  const [overlayData,  setOverlayData]  = useState<Record<string, OverlayEntry>>({});
+  const [overlayError, setOverlayError] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      setGanttLoading(true);
-      try {
-        // 1. All projects
-        const { data: projRows } = await supabase
-          .from('projects')
-          .select('id, project_code, name')
-          .order('created_at', { ascending: true });
 
-        if (!projRows?.length || cancelled) return;
+    // ── Supabase data fetch (3 sequential queries) ──────────────────────────────
+    const fetchSupabase = async (): Promise<GanttProject[]> => {
+      const { data: projRows } = await supabase
+        .from('projects')
+        .select('id, project_code, name')
+        .order('created_at', { ascending: true });
 
-        const projIds = projRows.map((p) => p.id);
+      if (!projRows?.length) return [];
 
-        // 2. Scenes belonging to those projects
-        const { data: sceneRows } = await supabase
-          .from('scenes')
-          .select('id, name, project_id')
-          .in('project_id', projIds)
-          .order('created_at', { ascending: true });
+      const projIds = projRows.map((p) => p.id);
 
-        if (cancelled) return;
+      const { data: sceneRows } = await supabase
+        .from('scenes')
+        .select('id, name, project_id, airtable_record_id') // Stage 3: include airtable_record_id
+        .in('project_id', projIds)
+        .order('created_at', { ascending: true });
 
-        const sceneIds = (sceneRows ?? []).map((s) => s.id);
+      const sceneIds = (sceneRows ?? []).map((s) => s.id);
 
-        // 3. Rounds — all kinds; filter to rows with at least one usable date
-        const { data: roundRows } = sceneIds.length
-          ? await supabase
-              .from('scene_rounds')
-              .select('id, scene_id, round_number, kind, start_date, end_date, delivered_at')
-              .in('scene_id', sceneIds)
-              .order('round_number', { ascending: true })
-          : { data: [] };
+      const { data: roundRows } = sceneIds.length
+        ? await supabase
+            .from('scene_rounds')
+            .select('id, scene_id, round_number, kind, start_date, end_date, delivered_at')
+            .in('scene_id', sceneIds)
+            .order('round_number', { ascending: true })
+        : { data: [] };
 
-        if (cancelled) return;
-
-        // Group rounds by scene_id; drop rows with no visible date
-        const roundsByScene = new Map<string, GanttRound[]>();
-        for (const r of (roundRows ?? [])) {
-          if (!r.start_date && !r.delivered_at) continue;
-          const kind: 'production' | 'review' = r.kind === 'review' ? 'review' : 'production';
-          const gr: GanttRound = {
-            id:          r.id,
-            roundNumber: r.round_number,
-            kind,
-            startDate:   r.start_date   ?? null,
-            endDate:     r.end_date     ?? null,
-            deliveredAt: r.delivered_at ?? null,
-          };
-          const arr = roundsByScene.get(r.scene_id) ?? [];
-          arr.push(gr);
-          roundsByScene.set(r.scene_id, arr);
-        }
-
-        // Group scenes by project_id
-        const scenesByProject = new Map<string, typeof sceneRows>();
-        for (const s of (sceneRows ?? [])) {
-          const arr = scenesByProject.get(s.project_id) ?? [];
-          arr.push(s);
-          scenesByProject.set(s.project_id, arr);
-        }
-
-        // Assemble GanttProject[]; keep only projects that have at least one visible round
-        const gantt: GanttProject[] = projRows
-          .map((p) => ({
-            id:   p.id,
-            code: p.project_code ?? '',
-            name: p.name,
-            scenes: (scenesByProject.get(p.id) ?? []).map((s) => ({
-              id:     s.id,
-              name:   s.name,
-              rounds: roundsByScene.get(s.id) ?? [],
-            })),
-          }))
-          .filter((p) => p.scenes.some((s) => s.rounds.length > 0));
-
-        setGanttProjects(gantt);
-      } finally {
-        if (!cancelled) setGanttLoading(false);
+      const roundsByScene = new Map<string, GanttRound[]>();
+      for (const r of (roundRows ?? [])) {
+        if (!r.start_date && !r.delivered_at) continue;
+        const kind: 'production' | 'review' = r.kind === 'review' ? 'review' : 'production';
+        const gr: GanttRound = {
+          id:          r.id,
+          roundNumber: r.round_number,
+          kind,
+          startDate:   r.start_date   ?? null,
+          endDate:     r.end_date     ?? null,
+          deliveredAt: r.delivered_at ?? null,
+        };
+        const arr = roundsByScene.get(r.scene_id) ?? [];
+        arr.push(gr);
+        roundsByScene.set(r.scene_id, arr);
       }
-    })();
+
+      const scenesByProject = new Map<string, typeof sceneRows>();
+      for (const s of (sceneRows ?? [])) {
+        const arr = scenesByProject.get(s.project_id) ?? [];
+        arr.push(s);
+        scenesByProject.set(s.project_id, arr);
+      }
+
+      return projRows
+        .map((p) => ({
+          id:   p.id,
+          code: p.project_code ?? '',
+          name: p.name,
+          scenes: (scenesByProject.get(p.id) ?? []).map((s) => ({
+            id:               s.id,
+            name:             s.name,
+            airtableRecordId: (s as any).airtable_record_id ?? null,
+            rounds:           roundsByScene.get(s.id) ?? [],
+          })),
+        }))
+        .filter((p) => p.scenes.some((s) => s.rounds.length > 0));
+    };
+
+    // ── Airtable overlay fetch ──────────────────────────────────────────────────
+    const fetchOverlay = async (): Promise<Record<string, OverlayEntry>> => {
+      const { data, error } = await supabase.functions.invoke('timeline-airtable-overlay');
+      if (error) throw error;
+      return (data?.overlay ?? {}) as Record<string, OverlayEntry>;
+    };
+
+    const run = async () => {
+      setGanttLoading(true);
+      setOverlayError(false);
+
+      const [supaResult, overlayResult] = await Promise.allSettled([
+        fetchSupabase(),
+        fetchOverlay(),
+      ]);
+
+      if (cancelled) return;
+
+      setGanttProjects(
+        supaResult.status === 'fulfilled' ? supaResult.value : [],
+      );
+
+      if (overlayResult.status === 'fulfilled') {
+        setOverlayData(overlayResult.value);
+      } else {
+        console.warn('[AdminTimeline] Airtable overlay failed:', overlayResult.reason);
+        setOverlayData({});
+        setOverlayError(true);
+      }
+
+      setGanttLoading(false);
+    };
+
+    run();
     return () => { cancelled = true; };
   }, []);
 
-  // Dynamic subtitle: date range + counts derived from live data
+  // Dynamic subtitle: date range + counts derived from live Supabase data
   const subtitle = useMemo(() => {
     if (ganttLoading) return '…';
     if (!ganttProjects.length) return 'No scheduled rounds found';
@@ -139,11 +168,10 @@ export default function AdminTimeline() {
       for (const scene of proj.scenes) {
         if (scene.rounds.length > 0) sceneCount++;
         for (const r of scene.rounds) {
-          // date-only strings are directly comparable; timestamptz: take date part
           const candidates = [r.startDate, r.endDate].filter(Boolean) as string[];
           if (r.deliveredAt) candidates.push(r.deliveredAt.slice(0, 10));
           for (const s of candidates) {
-            const ds = s.slice(0, 10); // normalise to YYYY-MM-DD for comparison
+            const ds = s.slice(0, 10);
             if (!minStr || ds < minStr) minStr = ds;
             if (!maxStr || ds > maxStr) maxStr = ds;
           }
@@ -323,9 +351,24 @@ export default function AdminTimeline() {
               Feedback
             </span>
           </div>
+          {/* Airtable deadline pin swatch */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 9,
+                height: 9,
+                transform: 'rotate(45deg)',
+                background: '#c5a572',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontFamily: "'Jost', sans-serif", fontSize: 11, fontWeight: 500, letterSpacing: '2px', textTransform: 'uppercase', color: '#a89e8c' }}>
+              Deadline
+            </span>
+          </div>
           {/* Vertical divider */}
           <div style={{ width: 1, height: 18, background: 'rgba(197,165,114,0.16)', flexShrink: 0 }} />
-          {/* Manager dots — placeholder until Stage 3 Airtable overlay */}
+          {/* Manager dots — resolved from Airtable; static placeholder names until Stage 3 overlay loads */}
           {[
             { name: 'Katerina', color: '#8a76ad' },
             { name: 'Fiodor',   color: '#4f9aa3' },
@@ -341,10 +384,26 @@ export default function AdminTimeline() {
           {/* Toggle buttons */}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             {toggleBtn('Supabase', showSupabase, false, () => setShowSupabase((v) => !v))}
-            {toggleBtn('Airtable', showAirtable, true, () => {})}
+            {toggleBtn(showAirtable ? 'Airtable on' : 'Airtable off', showAirtable, false, () => setShowAirtable((v) => !v))}
             {toggleBtn(showPhaseLabels ? 'Labels on' : 'Labels off', showPhaseLabels, false, () => setShowPhaseLabels((v) => !v))}
           </div>
         </div>
+
+        {/* Airtable error note — quiet, inline, only when overlay failed */}
+        {overlayError && (
+          <p
+            style={{
+              fontFamily: "'Jost', sans-serif",
+              fontSize: 10,
+              letterSpacing: '1px',
+              color: '#5a5248',
+              marginTop: 10,
+              marginBottom: 0,
+            }}
+          >
+            Airtable unavailable — deadline pins and manager names hidden
+          </p>
+        )}
       </div>
 
       {/* ── Gantt card ── */}
@@ -352,6 +411,8 @@ export default function AdminTimeline() {
         projects={ganttProjects}
         loading={ganttLoading}
         showSupabase={showSupabase}
+        showAirtable={showAirtable}
+        overlayData={overlayData}
         productionColor={productionColor}
         feedbackColor={feedbackColor}
         showPhaseLabels={showPhaseLabels}
