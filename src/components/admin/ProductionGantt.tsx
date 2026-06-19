@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 // ─── Gantt-scoped warm background constants ───────────────────────────────────
 const GANTT_CARD_BG   = '#14110d';
@@ -283,7 +283,7 @@ function renderDeadlinePin(col: number) {
 
 // ─── Scrollbar + font injection ───────────────────────────────────────────────
 const SCROLLBAR_CSS = `
-.gantt-scroll::-webkit-scrollbar { height: 8px; }
+.gantt-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .gantt-scroll::-webkit-scrollbar-track { background: #0c0a08; border-radius: 6px; }
 .gantt-scroll::-webkit-scrollbar-thumb { background: #2c2620; border-radius: 6px; border: 2px solid #0c0a08; }
 .gantt-scroll::-webkit-scrollbar-thumb:hover { background: #3c352b; }
@@ -368,6 +368,26 @@ export function ProductionGantt({
   const TRACK_W_DYN   = dates.length * CELL_W;
   const CONTENT_W_DYN = FROZEN_W + TRACK_W_DYN;
 
+  // Today — snap weekends (Sat→Fri, Sun→Mon) to stay on the grid
+  const todayKey = useMemo(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    if (t.getDay() === 6) t.setDate(t.getDate() - 1);
+    if (t.getDay() === 0) t.setDate(t.getDate() + 1);
+    return toDateKey(t);
+  }, []);
+  const todayCol = dateMap.get(todayKey) ?? null;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Center on today's column once dates are ready
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || todayCol === null) return;
+    const todayX = FROZEN_W + todayCol * CELL_W + CELL_W / 2;
+    el.scrollLeft = Math.max(0, todayX - el.clientWidth / 2);
+  }, [todayCol]);
+
   const cardStyle: React.CSSProperties = {
     background: GANTT_CARD_BG,
     border: '1px solid rgba(197,165,114,0.13)',
@@ -400,11 +420,11 @@ export function ProductionGantt({
 
   return (
     <div style={cardStyle}>
-      <div className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+      <div ref={scrollRef} className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
         <div style={{ width: CONTENT_W_DYN }}>
 
           {/* ── Date header row ── */}
-          <div style={{ display: 'flex', height: HEADER_H }}>
+          <div style={{ display: 'flex', height: HEADER_H, position: 'sticky', top: 0, zIndex: 8, background: GANTT_HEADER_BG }}>
             {/* Frozen header left */}
             <div
               style={{
@@ -431,7 +451,8 @@ export function ProductionGantt({
             {/* Day columns */}
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {dates.map((d, i) => {
-                const isMon = d.getDay() === 1;
+                const isMon   = d.getDay() === 1;
+                const isToday = toDateKey(d) === todayKey;
                 return (
                   <div
                     key={i}
@@ -446,6 +467,8 @@ export function ProductionGantt({
                       borderRight: '1px solid rgba(197,165,114,0.05)',
                       borderLeft: isMon ? '1px solid rgba(197,165,114,0.14)' : undefined,
                       boxSizing: 'border-box',
+                      background: isToday ? 'rgba(197,165,114,0.07)' : undefined,
+                      borderTop: isToday ? '2px solid rgba(197,165,114,0.40)' : undefined,
                     }}
                   >
                     <span
@@ -453,10 +476,10 @@ export function ProductionGantt({
                         writingMode: 'vertical-rl',
                         transform: 'rotate(180deg)',
                         fontSize: 10,
-                        fontWeight: 500,
+                        fontWeight: isToday ? 600 : 500,
                         fontFamily: "'Jost', sans-serif",
                         letterSpacing: '0.8px',
-                        color: isMon ? '#c7a06a' : '#8c8478',
+                        color: isToday ? '#e0c47a' : isMon ? '#c7a06a' : '#8c8478',
                         userSelect: 'none',
                       }}
                     >
@@ -589,6 +612,14 @@ export function ProductionGantt({
                         ].join(', '),
                       }}
                     >
+                      {todayCol !== null && (
+                        <div style={{
+                          position: 'absolute', top: 0, left: todayCol * CELL_W,
+                          width: CELL_W, height: '100%',
+                          background: 'rgba(197,165,114,0.04)',
+                          pointerEvents: 'none', zIndex: 0,
+                        }} />
+                      )}
                       {segs.map((seg, i) => renderSeg(seg, i))}
                       {deadlineCol !== null && renderDeadlinePin(deadlineCol)}
                     </div>
