@@ -1235,7 +1235,11 @@ export function NewRoundModal({
 
               {/* ── Footer ── */}
               {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
-              <div className="px-12 pb-12 flex gap-3 items-center">
+              <>
+              <div className="px-12" style={{ marginTop: 24 }}>
+                <div style={{ borderTop: "1px solid #2A2820" }} />
+              </div>
+              <div className="px-12 pb-12 flex gap-3 items-center" style={{ paddingTop: 64 }}>
                 <button
                   type="button"
                   onClick={onClose}
@@ -1323,6 +1327,7 @@ export function NewRoundModal({
                   </button>
                 </div>
               </div>
+              </>
               )}
 
             </form>
