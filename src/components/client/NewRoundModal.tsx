@@ -135,12 +135,14 @@ function UploadItem({
   onFilesAdded,
   onRemoveFile,
   required,
+  goldLabel,
 }: {
   label: string;
   files: UploadedFile[];
   onFilesAdded: (files: FileList) => void;
   onRemoveFile: (index: number) => void;
   required?: boolean;
+  goldLabel?: boolean;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -242,6 +244,8 @@ function UploadItem({
                 className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
                   active
                     ? "text-gold font-medium"
+                    : goldLabel
+                    ? "text-gold"
                     : isDragging
                     ? "text-gold/70"
                     : "text-foreground/75"
@@ -920,43 +924,55 @@ export function NewRoundModal({
               {/* ── Sections ── */}
               <div className="px-12 pt-8 pb-10">
 
-                {/* 01 — REQUIRED */}
-                <SectionOpener number="01" word="REQUIRED" subtitle="Necessary to initiate" />
+                {/* Required intro */}
+                <p className="font-sans italic mb-8" style={{ fontSize: 13, color: "#B89A6A" }}>
+                  Necessary to initiate
+                </p>
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                  <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
-                  <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+                  <UploadItem goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
+                  <UploadItem goldLabel label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
 
                   {/* Delivery date — third required element */}
-                  <div className="py-4 border-t border-border/20">
-                    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                      Delivery Date
-                    </p>
-                    {isDelivery ? (
-                      <>
-                        {pickerDate ? (
-                          <p className="font-serif text-foreground mb-5" style={{ fontSize: 22, lineHeight: 1.2 }}>
-                            {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-                          </p>
+                  <div className="border-t border-border/20">
+                    {/* Row: label left / state right — mirrors UploadItem layout */}
+                    <div className="flex items-start justify-between gap-3 py-4">
+                      <span className="text-[11px] font-sans uppercase tracking-[0.12em] text-gold shrink-0">
+                        Delivery Date
+                      </span>
+                      <div className="shrink-0 text-right">
+                        {isDelivery ? (
+                          pickerDate ? (
+                            <span className="font-serif text-foreground" style={{ fontSize: 14 }}>
+                              {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                            </span>
+                          ) : (
+                            <span className="font-sans italic text-foreground/40" style={{ fontSize: 13 }}>
+                              No date selected
+                            </span>
+                          )
                         ) : (
-                          <p className="font-sans italic text-foreground/40 mb-5" style={{ fontSize: 13 }}>
-                            No date selected
-                          </p>
+                          <>
+                            <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
+                              {deliveryDateStr}
+                            </p>
+                            <p className="mt-0.5 text-[11px] font-sans text-foreground/50" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              Order within {deadlineLabel}
+                            </p>
+                          </>
                         )}
-                        {renderDeliveryPicker()}
+                      </div>
+                    </div>
+                    {/* Calendar — delivery mode only, right-aligned */}
+                    {isDelivery && (
+                      <>
+                        <div className="flex justify-end pb-4">
+                          {renderDeliveryPicker()}
+                        </div>
                         {pickerDate && deliveryCountdown && (
-                          <p className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                          <p className="pb-4 text-right text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
                             {deliveryCountdown}
                           </p>
                         )}
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                          Delivery — {deliveryDateStr}
-                        </p>
-                        <p className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                          Order within {deadlineLabel}
-                        </p>
                       </>
                     )}
                   </div>
