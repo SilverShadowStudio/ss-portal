@@ -241,6 +241,12 @@ Deno.serve(async (req) => {
     // ── push-scene ────────────────────────────────────────────────────────────
     // Creates or updates the scene row in Airtable
     if (action === "push-scene") {
+      if (Deno.env.get("AIRTABLE_WRITES_ENABLED") !== "true") {
+        console.log("[airtable-sync] Airtable writes paused (AIRTABLE_WRITES_ENABLED=false)");
+        return new Response(JSON.stringify({ skipped: true, reason: "writes_paused" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const { sceneId } = body as { sceneId?: string };
       if (!sceneId) throw new Error("sceneId required");
 
@@ -300,6 +306,12 @@ Deno.serve(async (req) => {
     // ── push-status ───────────────────────────────────────────────────────────
     // Called when a portal round status changes — writes the Airtable value
     if (action === "push-status") {
+      if (Deno.env.get("AIRTABLE_WRITES_ENABLED") !== "true") {
+        console.log("[airtable-sync] Airtable writes paused (AIRTABLE_WRITES_ENABLED=false)");
+        return new Response(JSON.stringify({ skipped: true, reason: "writes_paused" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const { sceneId, status } = body as { sceneId?: string; status?: string };
       if (!sceneId || !status) throw new Error("sceneId and status required");
 

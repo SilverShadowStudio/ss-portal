@@ -255,6 +255,13 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (Deno.env.get("AIRTABLE_WRITES_ENABLED") !== "true") {
+    console.log("[airtable-sync-contact] Airtable writes paused (AIRTABLE_WRITES_ENABLED=false)");
+    return new Response(JSON.stringify({ skipped: true, reason: "writes_paused" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   let body: ContactBody;
   try {
     body = await req.json();

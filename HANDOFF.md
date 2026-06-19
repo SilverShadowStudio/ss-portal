@@ -2,6 +2,18 @@
 
 ---
 
+## ⚠️ AIRTABLE WRITES PAUSED (AIRTABLE_WRITES_ENABLED=false)
+
+push-scene was creating duplicate Task stubs in Kieran's base (25 confirmed: 9 real CP107 scene stubs + 16 test/junk rows, all with null deadline + null manager, shadowing Kieran's real `SC{N}-R{round}` production rows). All Airtable writes disabled pending reconciliation with Kieran.
+
+**What is paused:** airtable-sync (push-scene, push-status), airtable-auto-sync (round_created / status_changed / instructions_submitted Airtable writes), airtable-sync-contact, airtable-sync-project. Emails and Slack from airtable-auto-sync still fire.
+
+**What still works:** All reads — timeline-airtable-overlay, pull-status, probe-records, get-fields, get-config. Timeline Gantt reads Airtable normally.
+
+**Re-enable only after:** push-scene is fixed to match Kieran's existing `SC{N}-R{round}` rows instead of creating new stubs (requires reconciliation strategy agreed with Kieran). To re-enable: set `AIRTABLE_WRITES_ENABLED=true` in Supabase Dashboard → Settings → Edge Functions → Secrets. No redeploy needed.
+
+---
+
 # Session — 19 June 2026
 
 ## Completed this session

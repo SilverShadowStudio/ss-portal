@@ -293,6 +293,12 @@ Deno.serve(async (req) => {
       console.warn("[airtable-auto-sync] Airtable not configured — skipping sync, sending email only");
     }
 
+    // Write-pause guard — emails and Slack still fire, only Airtable writes are blocked
+    const airtableWritesPaused = Deno.env.get("AIRTABLE_WRITES_ENABLED") !== "true";
+    if (airtableWritesPaused) {
+      console.log("[airtable-auto-sync] Airtable writes paused (AIRTABLE_WRITES_ENABLED=false)");
+    }
+
     // ── round_created (also fires on the draft→non-draft Submit transition) ──
     // When a draft transitions to a real status, we treat that transition
     // as the moment the round is "created" from the external systems'
@@ -304,7 +310,7 @@ Deno.serve(async (req) => {
 
       let airtableId: string | null = scene.airtable_record_id ?? null;
 
-      if (airtableConfigured) {
+      if (airtableConfigured && !airtableWritesPaused) {
         const config = await getConfig(supabase);
         const pushMap = buildPushMap(config);
         const atStatus = status ? (pushMap[status] ?? "") : "";
@@ -368,7 +374,7 @@ Deno.serve(async (req) => {
       const oldStatus = oldRecord?.status as string | undefined;
       const deliveryDueAt = record.delivery_due_at as string | null;
 
-      if (airtableConfigured) {
+      if (airtableConfigured && !airtableWritesPaused) {
         const recordId = scene.airtable_record_id;
         if (!recordId) {
           console.warn("[airtable-auto-sync] No Airtable record for scene — status push skipped");
@@ -426,7 +432,7 @@ Deno.serve(async (req) => {
     if (triggerName === "instructions_submitted") {
       const instructions = record.instructions as string;
 
-      if (airtableConfigured) {
+      if (airtableConfigured && !airtableWritesPaused) {
         const recordId = scene.airtable_record_id;
         if (!recordId) {
           console.warn("[airtable-auto-sync] No Airtable record for scene — instructions push skipped");
