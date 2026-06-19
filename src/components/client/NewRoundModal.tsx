@@ -738,10 +738,11 @@ export function NewRoundModal({
                   onClick={() => { if (selectable) { setPickerDate(day); setPickerOpen(false); } }}
                   className={[
                     "flex h-8 w-7 items-center justify-center border font-serif text-[13px] tabular-nums transition-colors",
-                    isSelected ? "bg-gold border-gold" : "border-transparent",
-                    isSelected ? "text-[#1A1814]" : selectable ? "text-foreground hover:border-[var(--brand-gold,#B89A6A)]" : "text-foreground/18 cursor-default",
+                    isSelected ? "bg-gold border-gold text-[#1A1814]" : "border-transparent",
+                    selectable && !isSelected ? "text-foreground hover:border-[var(--brand-gold,#B89A6A)]" : "",
+                    !selectable ? "cursor-default text-foreground" : "",
                   ].join(" ")}
-                  style={{ borderRadius: 2 }}
+                  style={{ borderRadius: 2, opacity: (!isSelected && !selectable) ? 0.18 : 1 }}
                 >
                   {dayNum}
                 </button>
@@ -1047,12 +1048,14 @@ export function NewRoundModal({
                     <button
                       type="button"
                       onClick={() => setPickerOpen(v => !v)}
-                      className="flex items-center gap-4 border border-[#2A2820] hover:border-[var(--brand-gold,#B89A6A)] px-6 py-3 font-serif text-foreground transition-colors"
-                      style={{ fontSize: 18, borderRadius: 2 }}
+                      className="flex items-center gap-3 border border-[#2A2820] hover:border-[var(--brand-gold,#B89A6A)] px-4 py-3 transition-colors"
+                      style={{ borderRadius: 2 }}
                     >
-                      {pickerDate
-                        ? pickerDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-                        : "Select a date"}
+                      <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-foreground/75">
+                        {pickerDate
+                          ? pickerDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+                          : "Select a date"}
+                      </span>
                       <span
                         className="font-sans text-foreground/35 transition-transform"
                         style={{ fontSize: 10, display: "inline-block", transform: pickerOpen ? "rotate(180deg)" : "none" }}
