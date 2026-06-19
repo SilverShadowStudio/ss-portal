@@ -423,10 +423,10 @@ export default function AdminClientProfile() {
                 value={form.bookingMode}
                 onChange={(v) => update("bookingMode", v)}
                 options={[
-                  { value: "calendar", label: "Option 1 — Calendar, with quote" },
-                  { value: "calendar_no_quote", label: "Option 1 — Calendar, no quote" },
-                  { value: "delivery", label: "Option 2 — Delivery date, with quote" },
-                  { value: "delivery_no_quote", label: "Option 2 — Delivery date, no quote" },
+                  { value: "calendar_no_quote", label: "Monday — 7 days" },
+                  { value: "calendar", label: "Monday — 7 days (Quote)" },
+                  { value: "delivery_no_quote", label: "Any day" },
+                  { value: "delivery", label: "Any day (Quote)" },
                 ]}
               />
               <Field label="Country" value={form.country} onChange={(v) => update("country", v)} />
