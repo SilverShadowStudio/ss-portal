@@ -965,7 +965,7 @@ export function NewRoundModal({
                     {/* Calendar — delivery mode only, right-aligned */}
                     {isDelivery && (
                       <>
-                        <div className="flex justify-end pb-4">
+                        <div className="flex justify-center pb-4">
                           {renderDeliveryPicker()}
                         </div>
                         {pickerDate && deliveryCountdown && (
