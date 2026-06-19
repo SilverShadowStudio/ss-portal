@@ -689,6 +689,23 @@ export function NewRoundModal({
 
   const hasAtLeastOneFile = Object.values(filesByCategory).some(files => files.length > 0);
 
+  const hasFloorPlan  = filesByCategory.floor_plan.length > 0;
+  const hasCgiPackage = filesByCategory.cgi_package.length > 0;
+  const hasDeliveryDate = !isDelivery || pickerDate !== null;
+
+  const submissionIndicator = useMemo(() => {
+    if (hasFloorPlan && hasCgiPackage && hasDeliveryDate) return null;
+    const fileParts: string[] = [];
+    if (!hasFloorPlan)  fileParts.push("Floor Plan");
+    if (!hasCgiPackage) fileParts.push("CGI Package");
+    const needDate = isDelivery && !pickerDate;
+    if (fileParts.length === 0 && needDate) return "Select a delivery date to submit.";
+    const allParts = needDate ? [...fileParts, "a delivery date"] : fileParts;
+    if (allParts.length === 1) return `Add ${allParts[0]} to submit.`;
+    if (allParts.length === 2) return `Add ${allParts[0]} and ${allParts[1]} to submit.`;
+    return `Add ${allParts.slice(0, -1).join(", ")}, and ${allParts[allParts.length - 1]} to submit.`;
+  }, [hasFloorPlan, hasCgiPackage, hasDeliveryDate, isDelivery, pickerDate]);
+
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
@@ -1088,25 +1105,26 @@ export function NewRoundModal({
                 </p>
                 {isDelivery ? (
                   <>
-                    {/* Date picker button */}
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen(v => !v)}
-                      className="flex items-center gap-3 border border-[#2A2820] hover:border-[var(--brand-gold,#B89A6A)] px-4 py-3 transition-colors"
-                      style={{ borderRadius: 2 }}
-                    >
-                      <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-foreground/75">
-                        {pickerDate
-                          ? pickerDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-                          : "Select a date"}
-                      </span>
-                      <span
-                        className="font-sans text-foreground/35 transition-transform"
-                        style={{ fontSize: 10, display: "inline-block", transform: pickerOpen ? "rotate(180deg)" : "none" }}
-                      >▾</span>
-                    </button>
-                    {/* 2-month calendar */}
-                    {pickerOpen && renderDeliveryPicker()}
+                    {/* Selected date — serif display or placeholder */}
+                    {pickerDate ? (
+                      <p
+                        className="font-serif text-foreground mb-5"
+                        style={{ fontSize: 22, lineHeight: 1.2 }}
+                      >
+                        {pickerDate.toLocaleDateString("en-GB", {
+                          weekday: "long", day: "numeric", month: "long", year: "numeric",
+                        })}
+                      </p>
+                    ) : (
+                      <p
+                        className="font-serif italic text-foreground/40 mb-5"
+                        style={{ fontSize: 15 }}
+                      >
+                        No date selected
+                      </p>
+                    )}
+                    {/* Always-visible 2-month calendar */}
+                    {renderDeliveryPicker()}
                     {/* Countdown */}
                     {pickerDate && deliveryCountdown && (
                       <p
@@ -1131,6 +1149,15 @@ export function NewRoundModal({
                   </>
                 )}
               </div>
+
+              {/* ── Submission requirements indicator ── */}
+              {submissionIndicator && (
+                <div className="px-12 pb-4 flex justify-end">
+                  <p className="text-[12px] font-sans text-foreground/40 leading-relaxed">
+                    {submissionIndicator}
+                  </p>
+                </div>
+              )}
 
               {/* ── Footer ── */}
               <div className="px-12 pb-12 flex gap-3 items-center">
@@ -1170,7 +1197,7 @@ export function NewRoundModal({
                 )}
                 <button
                   type="submit"
-                  disabled={isSubmitting || (isDelivery ? (!pickerDate || !hasAtLeastOneFile) : (!hasAtLeastOneFile || (deliveryMode === "choose" && !selectedMonday)))}
+                  disabled={isSubmitting || !hasFloorPlan || !hasCgiPackage || (isDelivery && !pickerDate) || (!isDelivery && deliveryMode === "choose" && !selectedMonday)}
                   className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
