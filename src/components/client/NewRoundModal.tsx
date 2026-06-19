@@ -337,14 +337,23 @@ function UploadItem({
   );
 }
 
-function SectionLabel({ children, subtitle, noPadTop }: { children: React.ReactNode; subtitle?: string; noPadTop?: boolean }) {
+function SectionOpener({ number, word, subtitle, muted }: {
+  number: string;
+  word: string;
+  subtitle?: string;
+  muted?: boolean;
+}) {
+  const accent = muted ? "#8A8070" : "#B89A6A";
   return (
-    <div className={`${noPadTop ? "pt-0" : "pt-8"} pb-4 first:pt-0`}>
-      <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
-        {children}
+    <div className="pb-8">
+      <p className="font-sans uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.3em", color: accent, lineHeight: 1 }}>
+        {number}
+      </p>
+      <p className="font-serif" style={{ fontSize: 28, color: accent, lineHeight: 1, marginTop: 6 }}>
+        {word}
       </p>
       {subtitle && (
-        <p className="mt-1.5 font-sans italic text-foreground/40" style={{ fontSize: 13 }}>
+        <p className="font-sans italic text-foreground/40" style={{ fontSize: 13, marginTop: 8 }}>
           {subtitle}
         </p>
       )}
@@ -912,7 +921,7 @@ export function NewRoundModal({
               <div className="px-12 pt-8 pb-10">
 
                 {/* 01 — REQUIRED */}
-                <SectionLabel subtitle="Necessary to initiate">01 — Required</SectionLabel>
+                <SectionOpener number="01" word="REQUIRED" subtitle="Necessary to initiate" />
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                   <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
@@ -1009,10 +1018,10 @@ export function NewRoundModal({
                 </div>
 
                 {/* Section break */}
-                <div style={{ marginTop: 48, marginBottom: 48, borderTop: "1px solid #2A2820" }} />
+                <div style={{ marginTop: 64, marginBottom: 64, borderTop: "1px solid #2A2820" }} />
 
                 {/* 02 — WELCOME */}
-                <SectionLabel noPadTop subtitle="The more detail you share, the better Round 01 we can deliver.">02 — Welcome</SectionLabel>
+                <SectionOpener number="02" word="WELCOME" subtitle="The more detail you share, the better Round 01 we can deliver." muted />
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
                   <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
