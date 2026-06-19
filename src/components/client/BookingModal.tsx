@@ -22,6 +22,7 @@ interface BookingModalProps {
   sceneName: string;
   projectName?: string;
   onBooked: () => void;
+  bookingMode?: 'calendar' | 'delivery';
 }
 
 const MIN_ROUNDS = 1;
@@ -29,8 +30,6 @@ const MAX_ROUNDS = 5;
 const DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_MS = 86400000;
 
-// One week between a round's delivery and the next round's earliest start
-// (default cadence; matches scene_rounds.buffer_weeks default of 1).
 function addWeeks(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n * 7);
@@ -45,16 +44,15 @@ function addMonths(d: Date, n: number): Date {
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
+function isWeekday(d: Date): boolean {
+  const dow = d.getDay();
+  return dow !== 0 && dow !== 6;
+}
 
-// Round N's earliest start = previous round's delivery + one week. Because the
-// delivery Monday is excluded (min = delivery + 1 day), the earliest selectable
-// Monday is delivery + 7 days — which is also the default. Single source.
 function earliestStartAfter(prevStart: Date): Date {
   return addWeeks(getRoundEndDate(prevStart), 1);
 }
 
-// The seven days of a round's production week (Mon → Sun), which occupy exactly
-// one Monday-first calendar row. The round rectangle encloses these.
 function roundWeekDays(start: Date): Date[] {
   return Array.from({ length: 7 }, (_, k) => {
     const d = new Date(start);
@@ -64,14 +62,10 @@ function roundWeekDays(start: Date): Date[] {
 }
 function roundEndDay(start: Date): Date {
   const d = new Date(start);
-  d.setDate(d.getDate() + 6); // Sunday — last production day
+  d.setDate(d.getDate() + 6);
   return d;
 }
 
-// Locate a contiguous run of days within one displayed month. A round week sits
-// on one Monday-first grid row, so this returns the row + column span, or null
-// when none fall in this month. When the week straddles the month divide each
-// month resolves its own segment.
 function daySpanSegment(days: Date[], year: number, month: number, lead: number) {
   let colStart = Infinity;
   let colEnd = -Infinity;
@@ -87,11 +81,22 @@ function daySpanSegment(days: Date[], year: number, month: number, lead: number)
   return rowIndex === -1 ? null : { rowIndex, colStart, colEnd };
 }
 
-export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName, onBooked }: BookingModalProps) {
+export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName, onBooked, bookingMode }: BookingModalProps) {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const isDelivery = bookingMode === 'delivery';
+
   const earliest = useMemo(() => getEarliestBookableMonday(), []);
+  // Next weekday after today — minimum selectable delivery date.
+  const earliestDelivery = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    while (!isWeekday(d)) d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
   const [startRoundNumber, setStartRoundNumber] = useState(1);
   const [numRounds, setNumRounds] = useState(1);
   const [currentStep, setCurrentStep] = useState(0);
@@ -106,26 +111,24 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   );
   const totals = useMemo(() => calculateTotalsForRounds(roundNumbers), [roundNumbers]);
 
-  // Total steps = ROUNDS (1) + one per round + REVIEW (1).
-  const totalSteps = 2 + numRounds;
+  const totalSteps = isDelivery ? 2 : 2 + numRounds;
   const reviewStep = totalSteps - 1;
 
-  // Step labels for the progress indicator.
   const stepLabels = useMemo(() => {
+    if (isDelivery) return ['DELIVERY DATE', 'REVIEW'];
     const labels = ["ROUNDS"];
     for (let i = 0; i < numRounds; i++) {
       labels.push(`ROUND ${String(startRoundNumber + i).padStart(2, "0")}`);
     }
     labels.push("REVIEW");
     return labels;
-  }, [numRounds, startRoundNumber]);
+  }, [isDelivery, numRounds, startRoundNumber]);
 
   const minMondayFor = useCallback(
     (idx: number): Date => (idx === 0 ? earliest : earliestStartAfter(mondays[idx - 1])),
     [earliest, mondays],
   );
 
-  // Derive the next round number from existing non-cancelled rounds on the scene.
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
@@ -143,19 +146,22 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     return () => { cancelled = true; };
   }, [isOpen, sceneId]);
 
-  // Reset to the first step and default dates on each open.
   useEffect(() => {
     if (!isOpen) return;
-    setNumRounds(1);
     setCurrentStep(0);
-    setMondays([earliest]);
-    setDisplayMonth(startOfMonth(earliest));
     setShowDiscardConfirm(false);
-  }, [isOpen, earliest]);
+    if (isDelivery) {
+      setMondays([earliestDelivery]);
+      setDisplayMonth(startOfMonth(earliestDelivery));
+    } else {
+      setNumRounds(1);
+      setMondays([earliest]);
+      setDisplayMonth(startOfMonth(earliest));
+    }
+  }, [isOpen, isDelivery, earliest, earliestDelivery]);
 
-  // Pad/truncate the dates array as the round count changes. Existing picks are
-  // preserved; new rounds default to one week after the previous delivery.
   useEffect(() => {
+    if (isDelivery) return;
     setMondays((prev) => {
       const next = prev.slice(0, numRounds);
       for (let i = next.length; i < numRounds; i++) {
@@ -163,24 +169,23 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
       }
       return next;
     });
-  }, [numRounds, earliest]);
+  }, [numRounds, earliest, isDelivery]);
 
-  // If numRounds shrinks while on a now-out-of-range step, clamp.
   useEffect(() => {
-    setCurrentStep((s) => Math.min(s, 2 + numRounds - 1));
-  }, [numRounds]);
+    setCurrentStep((s) => Math.min(s, reviewStep));
+  }, [reviewStep]);
 
-  // When entering a date step, snap the calendar to the selected round's month.
   useEffect(() => {
+    if (isDelivery) return;
     if (currentStep >= 1 && currentStep <= numRounds) {
       const sel = mondays[currentStep - 1];
       if (sel) setDisplayMonth(startOfMonth(sel));
     }
-  }, [currentStep, numRounds, mondays]);
+  }, [currentStep, numRounds, mondays, isDelivery]);
 
   const nextStep = useCallback(() => {
-    setCurrentStep((s) => Math.min(s + 1, 2 + numRounds - 1));
-  }, [numRounds]);
+    setCurrentStep((s) => Math.min(s + 1, reviewStep));
+  }, [reviewStep]);
 
   const prevStep = useCallback(() => {
     setCurrentStep((s) => Math.max(s - 1, 0));
@@ -190,9 +195,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     setCurrentStep((s) => (n < s ? n : s));
   }, []);
 
-  // Pick a Monday for round `idx`. Subsequent rounds shift by the same delta to
-  // preserve the chosen feedback gaps; any that fall out of range reset to their
-  // default (previous delivery + one week) and later rounds shift from there.
   const selectDate = useCallback((idx: number, day: Date) => {
     setMondays((prev) => {
       const next = prev.slice();
@@ -212,27 +214,48 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     });
   }, []);
 
-  const valid = !!user && mondays.length === numRounds && mondays.every(Boolean);
+  const valid = !!user && (isDelivery ? !!mondays[0] : mondays.length === numRounds && mondays.every(Boolean));
 
   async function handleConfirm() {
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
       const bookingGroupId = crypto.randomUUID();
-      const firstStart = mondays[0];
-      const expiry = getReservationExpiry(firstStart);
-      const rows = roundNumbers.map((rn, i) => ({
-        scene_id: sceneId,
-        round_number: rn,
-        status: "reserved",
-        start_date: mondays[i].toISOString(),
-        end_date: getRoundEndDate(mondays[i]).toISOString(),
-        round_fee: calculateRoundFee(rn),
-        reservation_expires_at: expiry.toISOString(),
-        booking_group_id: bookingGroupId,
-        instructions: null,
-        created_by: user!.id,
-      }));
+
+      let rows: object[];
+      if (isDelivery) {
+        const now = new Date();
+        const expiry = new Date(now);
+        expiry.setDate(expiry.getDate() + 7);
+        rows = [{
+          scene_id: sceneId,
+          round_number: startRoundNumber,
+          status: "reserved",
+          start_date: now.toISOString(),
+          end_date: mondays[0].toISOString(),
+          round_fee: calculateRoundFee(startRoundNumber),
+          reservation_expires_at: expiry.toISOString(),
+          booking_group_id: bookingGroupId,
+          instructions: null,
+          created_by: user!.id,
+        }];
+      } else {
+        const firstStart = mondays[0];
+        const expiry = getReservationExpiry(firstStart);
+        rows = roundNumbers.map((rn, i) => ({
+          scene_id: sceneId,
+          round_number: rn,
+          status: "reserved",
+          start_date: mondays[i].toISOString(),
+          end_date: getRoundEndDate(mondays[i]).toISOString(),
+          round_fee: calculateRoundFee(rn),
+          reservation_expires_at: expiry.toISOString(),
+          booking_group_id: bookingGroupId,
+          instructions: null,
+          created_by: user!.id,
+        }));
+      }
+
       const { error } = await supabase.from("scene_rounds").insert(rows as never);
       if (error) throw error;
 
@@ -248,7 +271,9 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
       window.dispatchEvent(new Event(RESERVATIONS_CHANGED_EVENT));
       toast({
         title: "Booking reserved",
-        description: `Payment required by ${expiry.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} to confirm production.`,
+        description: isDelivery
+          ? `Delivery target: ${mondays[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })}.`
+          : `Payment required by ${getReservationExpiry(mondays[0]).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} to confirm production.`,
       });
       onBooked();
       onClose();
@@ -260,9 +285,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     }
   }
 
-  // Step 0 with the default single round is pristine — nothing to lose, close
-  // straight away. Any other step or an adjusted round count prompts to confirm.
-  const isPristine = currentStep === 0 && numRounds === 1;
+  const isPristine = isDelivery ? currentStep === 0 : currentStep === 0 && numRounds === 1;
   const requestClose = () => {
     if (submitting) return;
     if (isPristine) onClose();
@@ -292,7 +315,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </button>
   );
 
-  // ── Step 0: ROUNDS ────────────────────────────────────────────────────────
+  // ── Step 0 (calendar mode): ROUNDS ────────────────────────────────────────
   const renderRoundsStep = () => (
     <div className="flex flex-col items-center text-center">
       <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>How many rounds?</h3>
@@ -328,16 +351,16 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </div>
   );
 
-  // ── One month grid (rectangle round pills) ─────────────────────────────────
+  // ── Calendar mode: one month grid with Monday-cadence week rectangles ──────
   const renderMonthGrid = (monthStart: Date, roundIdx: number, min: Date, activeStart: Date | undefined, lockedStarts: Date[]) => {
     const year = monthStart.getFullYear();
     const month = monthStart.getMonth();
     const total = daysInMonth(year, month);
-    const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7;
     const numRows = Math.ceil((lead + total) / 7);
 
-    const activeEnd = activeStart ? roundEndDay(activeStart) : undefined; // Sunday X+6 (rectangle end)
-    const activeDelivery = activeStart ? getRoundEndDate(activeStart) : undefined; // Monday X+7 (filled delivery cell)
+    const activeEnd = activeStart ? roundEndDay(activeStart) : undefined;
+    const activeDelivery = activeStart ? getRoundEndDate(activeStart) : undefined;
     const activeSeg = activeStart ? daySpanSegment(roundWeekDays(activeStart), year, month, lead) : null;
 
     const locked = lockedStarts.map((s) => ({
@@ -413,7 +436,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
               })}
             </div>
 
-            {/* Round rectangle — encloses the seven production-week cells */}
             {activeSeg && activeSeg.rowIndex === r && (
               <div
                 className="pointer-events-none absolute border border-gold"
@@ -433,7 +455,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     );
   };
 
-  // ── Two-month calendar for a date step ─────────────────────────────────────
   const renderCalendar = (idx: number) => {
     const min = minMondayFor(idx);
     const activeStart = mondays[idx];
@@ -468,7 +489,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     );
   };
 
-  // ── Steps 1…N: per-round date selection ────────────────────────────────────
+  // ── Calendar mode: per-round date step ─────────────────────────────────────
   const renderDateStep = (roundIdx: number) => {
     const rn = startRoundNumber + roundIdx;
     const prevRn = rn - 1;
@@ -498,26 +519,144 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     );
   };
 
-  // ── Step N+1: REVIEW ───────────────────────────────────────────────────────
+  // ── Delivery mode: simple any-weekday month grid ───────────────────────────
+  const renderDeliveryMonthGrid = (monthStart: Date, min: Date, selected: Date | undefined) => {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const total = daysInMonth(year, month);
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7;
+    const numRows = Math.ceil((lead + total) / 7);
+
+    return (
+      <div className="w-[224px]">
+        <p className="mb-3 text-center font-sans uppercase text-[11px] tracking-[0.2em] text-label">
+          {monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        </p>
+        <div className="grid grid-cols-7">
+          {DAY_HEADERS.map((h, i) => (
+            <div key={i} className="flex h-6 items-center justify-center font-sans uppercase text-[10px] tracking-[0.12em] text-recessive">{h}</div>
+          ))}
+        </div>
+        {Array.from({ length: numRows }).map((_, r) => (
+          <div key={r} className="pb-1">
+            <div className="grid grid-cols-7">
+              {Array.from({ length: 7 }).map((__, c) => {
+                const cellIndex = r * 7 + c;
+                const dayNum = cellIndex - lead + 1;
+                if (dayNum < 1 || dayNum > total) return <div key={c} className="h-8 w-8" />;
+                const day = new Date(year, month, dayNum);
+                const isSelected = selected != null && isSameDay(day, selected);
+                const selectable = isWeekday(day) && day.getTime() >= min.getTime();
+
+                const bgClass = isSelected ? "bg-gold" : "";
+                const textClass = isSelected
+                  ? "text-brand-dark"
+                  : selectable ? "text-strong"
+                  : "text-recessive";
+                const borderClass = selectable && !isSelected ? "border-transparent hover:border-gold" : "border-transparent";
+
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={!selectable}
+                    onClick={() => selectable && setMondays([day])}
+                    className={[
+                      "flex h-8 w-8 items-center justify-center border font-serif text-[14px] tabular-nums transition-colors",
+                      bgClass, textClass, borderClass,
+                      selectable ? "cursor-pointer" : "cursor-default",
+                    ].join(" ")}
+                    style={{ borderRadius: 2 }}
+                  >
+                    {dayNum}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDeliveryCalendar = () => {
+    const min = earliestDelivery;
+    const selected = mondays[0];
+    const canGoPrev = displayMonth.getTime() > startOfMonth(min).getTime();
+    return (
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => canGoPrev && setDisplayMonth((m) => addMonths(m, -1))}
+          disabled={!canGoPrev}
+          className="font-serif text-label transition-colors hover:text-strong disabled:opacity-30 disabled:hover:text-label"
+          style={{ fontSize: 18 }}
+          aria-label="Previous months"
+        >
+          ‹
+        </button>
+        <div className="flex gap-6">
+          {renderDeliveryMonthGrid(displayMonth, min, selected)}
+          {renderDeliveryMonthGrid(addMonths(displayMonth, 1), min, selected)}
+        </div>
+        <button
+          type="button"
+          onClick={() => setDisplayMonth((m) => addMonths(m, 1))}
+          className="font-serif text-label transition-colors hover:text-strong"
+          style={{ fontSize: 18 }}
+          aria-label="Next months"
+        >
+          ›
+        </button>
+      </div>
+    );
+  };
+
+  const renderDeliveryDateStep = () => (
+    <div className="flex flex-col items-center text-center">
+      <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>
+        When do you need Round {String(startRoundNumber).padStart(2, "0")} delivered?
+      </h3>
+      <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
+        Select your target delivery date. Production begins from today.
+      </p>
+      {renderDeliveryCalendar()}
+    </div>
+  );
+
+  // ── Review step ────────────────────────────────────────────────────────────
   const renderReviewStep = () => (
     <div className="flex flex-col">
       <h3 className="text-center font-serif text-strong" style={{ fontSize: 28 }}>Review your booking</h3>
 
       <p className="mt-8 font-sans text-[9px] uppercase tracking-[0.28em] text-label">Production schedule</p>
       <div className="mt-3">
-        {roundNumbers.map((rn, i) => (
-          <div key={rn} className="flex items-center justify-between border-b border-border py-3">
+        {isDelivery ? (
+          <div className="flex items-center justify-between border-b border-border py-3">
             <span className="font-sans uppercase text-[11px] tracking-[0.16em] text-standard">
-              Round {String(rn).padStart(2, "0")}
+              Round {String(startRoundNumber).padStart(2, "0")}
             </span>
             <span className="font-serif tabular-nums text-standard" style={{ fontSize: 14 }}>
-              {formatDayMonth(mondays[i])} → {formatDayMonth(getRoundEndDate(mondays[i]))}
+              Today → {formatDayMonth(mondays[0])}
             </span>
           </div>
-        ))}
+        ) : (
+          roundNumbers.map((rn, i) => (
+            <div key={rn} className="flex items-center justify-between border-b border-border py-3">
+              <span className="font-sans uppercase text-[11px] tracking-[0.16em] text-standard">
+                Round {String(rn).padStart(2, "0")}
+              </span>
+              <span className="font-serif tabular-nums text-standard" style={{ fontSize: 14 }}>
+                {formatDayMonth(mondays[i])} → {formatDayMonth(getRoundEndDate(mondays[i]))}
+              </span>
+            </div>
+          ))
+        )}
       </div>
       <p className="mt-3 font-sans italic normal-case text-label" style={{ fontSize: 13, lineHeight: 1.6 }}>
-        Round dates may shift if feedback is delayed. Briefs must arrive by Friday 12:00 for the round starting the following Monday.
+        {isDelivery
+          ? `Production begins today. Delivery target: ${mondays[0].toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}.`
+          : "Round dates may shift if feedback is delayed. Briefs must arrive by Friday 12:00 for the round starting the following Monday."}
       </p>
 
       <div className="mt-8 space-y-2">
@@ -537,15 +676,16 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     </div>
   );
 
-  const isRoundsStep = currentStep === 0;
+  const isRoundsStep = !isDelivery && currentStep === 0;
+  const isDeliveryDateStep = isDelivery && currentStep === 0;
   const isReviewStep = currentStep === reviewStep;
-  const dateRoundIdx = !isRoundsStep && !isReviewStep ? currentStep - 1 : -1;
+  const dateRoundIdx = !isRoundsStep && !isReviewStep && !isDeliveryDateStep ? currentStep - 1 : -1;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/55" onClick={requestClose} />
       <div className="relative z-10 flex w-full max-w-[640px] flex-col border border-border/60 bg-card p-8 shadow-2xl" style={{ borderRadius: 4, minHeight: 560, maxHeight: "90vh" }}>
-        {/* Header — constant across steps */}
+        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-serif text-strong" style={{ fontSize: 18 }}>Book production rounds</h2>
@@ -590,16 +730,17 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           })}
         </div>
 
-        {/* Step body — vertically centred, fills remaining height */}
+        {/* Step body */}
         <div className="flex flex-1 flex-col justify-center py-8">
           {isRoundsStep && renderRoundsStep()}
+          {isDeliveryDateStep && renderDeliveryDateStep()}
           {dateRoundIdx >= 0 && renderDateStep(dateRoundIdx)}
           {isReviewStep && renderReviewStep()}
         </div>
 
         {/* Actions */}
         <div className="flex items-center justify-between">
-          <div>{!isRoundsStep && backLink}</div>
+          <div>{!isRoundsStep && !isDeliveryDateStep && backLink}</div>
           <div>
             {isReviewStep ? (
               <button
@@ -618,7 +759,6 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
         </div>
       </div>
 
-      {/* Discard confirmation — layered over the dimmed wizard */}
       {showDiscardConfirm && (
         <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowDiscardConfirm(false)} />

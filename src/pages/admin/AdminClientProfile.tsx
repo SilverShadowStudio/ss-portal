@@ -70,6 +70,7 @@ interface FormState {
   companyName: string;
   clientCode: string;
   accountType: string;
+  bookingMode: string;
   country: string;
   registrationNumber: string;
   streetName: string;
@@ -87,6 +88,7 @@ const EMPTY: FormState = {
   companyName: "",
   clientCode: "",
   accountType: "project",
+  bookingMode: "calendar",
   country: "",
   registrationNumber: "",
   streetName: "",
@@ -185,7 +187,7 @@ export default function AdminClientProfile() {
         const { data: account, error: accErr } = await supabase
           .from("accounts")
           .select(
-            "id, owner_user_id, company_name, client_code, account_type, country, registration_number, street_name, building_number, city, postcode",
+            "id, owner_user_id, company_name, client_code, account_type, booking_mode, country, registration_number, street_name, building_number, city, postcode",
           )
           .eq("id", accountId)
           .maybeSingle();
@@ -225,6 +227,7 @@ export default function AdminClientProfile() {
           companyName: account.company_name || "",
           clientCode: account.client_code || "",
           accountType: account.account_type || "project",
+          bookingMode: account.booking_mode || "calendar",
           country: account.country || "",
           registrationNumber: account.registration_number || "",
           streetName: account.street_name || "",
@@ -344,7 +347,7 @@ export default function AdminClientProfile() {
       if (data?.error) throw new Error(data.error);
       const { error: typeErr } = await supabase
         .from("accounts")
-        .update({ account_type: form.accountType })
+        .update({ account_type: form.accountType, booking_mode: form.bookingMode })
         .eq("id", accountId);
       if (typeErr) throw typeErr;
       toast({ title: "Client updated" });
@@ -402,6 +405,15 @@ export default function AdminClientProfile() {
                 options={[
                   { value: "project", label: "Project" },
                   { value: "partnership", label: "Partnership" },
+                ]}
+              />
+              <SelectField
+                label="Booking mode"
+                value={form.bookingMode}
+                onChange={(v) => update("bookingMode", v)}
+                options={[
+                  { value: "calendar", label: "Calendar (Monday cadence)" },
+                  { value: "delivery", label: "Delivery date (any weekday)" },
                 ]}
               />
               <Field label="Country" value={form.country} onChange={(v) => update("country", v)} />

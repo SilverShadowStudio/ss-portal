@@ -237,6 +237,8 @@ export type Database = {
           account_type: string
           agreement_acknowledged_at: string | null
           agreement_acknowledged_version: string | null
+          airtable_client_id: string | null
+          booking_mode: string
           building_number: string | null
           city: string | null
           client_code: string | null
@@ -254,6 +256,8 @@ export type Database = {
           account_type?: string
           agreement_acknowledged_at?: string | null
           agreement_acknowledged_version?: string | null
+          airtable_client_id?: string | null
+          booking_mode?: string
           building_number?: string | null
           city?: string | null
           client_code?: string | null
@@ -271,6 +275,8 @@ export type Database = {
           account_type?: string
           agreement_acknowledged_at?: string | null
           agreement_acknowledged_version?: string | null
+          airtable_client_id?: string | null
+          booking_mode?: string
           building_number?: string | null
           city?: string | null
           client_code?: string | null
