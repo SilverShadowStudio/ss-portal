@@ -337,14 +337,14 @@ function UploadItem({
   );
 }
 
-function SectionLabel({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
+function SectionLabel({ children, subtitle, noPadTop }: { children: React.ReactNode; subtitle?: string; noPadTop?: boolean }) {
   return (
-    <div className="pt-8 pb-4 first:pt-0">
+    <div className={`${noPadTop ? "pt-0" : "pt-8"} pb-4 first:pt-0`}>
       <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
         {children}
       </p>
       {subtitle && (
-        <p className="mt-1.5 font-serif italic text-foreground/40" style={{ fontSize: 13 }}>
+        <p className="mt-1.5 font-sans italic text-foreground/40" style={{ fontSize: 13 }}>
           {subtitle}
         </p>
       )}
@@ -916,10 +916,103 @@ export function NewRoundModal({
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                   <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+
+                  {/* Delivery date — third required element */}
+                  <div className="py-4 border-t border-border/20">
+                    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                      Delivery Date
+                    </p>
+                    {isDelivery ? (
+                      <>
+                        {pickerDate ? (
+                          <p className="font-serif text-foreground mb-5" style={{ fontSize: 22, lineHeight: 1.2 }}>
+                            {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                          </p>
+                        ) : (
+                          <p className="font-sans italic text-foreground/40 mb-5" style={{ fontSize: 13 }}>
+                            No date selected
+                          </p>
+                        )}
+                        {renderDeliveryPicker()}
+                        {pickerDate && deliveryCountdown && (
+                          <p className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                            {deliveryCountdown}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
+                          Delivery — {deliveryDateStr}
+                        </p>
+                        <p className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                          Order within {deadlineLabel}
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Buffer between rounds — non-delivery mode only */}
+                  {!isDelivery && (
+                    <div className="pt-6 pb-2 border-t border-border/20">
+                      <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                        Buffer between rounds
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
+                          disabled={bufferWeeks <= 1}
+                          aria-label="Decrease buffer"
+                          className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                          style={{ borderRadius: 2 }}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={bufferWeeks}
+                          onChange={(e) => {
+                            const raw = parseInt(e.target.value, 10);
+                            if (Number.isNaN(raw)) return;
+                            setBufferWeeks(Math.min(12, Math.max(1, raw)));
+                          }}
+                          className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
+                          style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
+                          disabled={bufferWeeks >= 12}
+                          aria-label="Increase buffer"
+                          className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                          style={{ borderRadius: 2 }}
+                        >
+                          +
+                        </button>
+                        <select
+                          value="weeks"
+                          onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
+                          className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="weeks">weeks</option>
+                        </select>
+                      </div>
+                      <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
+                        How long you want between each round of work. Default is one week of production plus your buffer time.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
+                {/* Section break */}
+                <div style={{ marginTop: 48, marginBottom: 48, borderTop: "1px solid #2A2820" }} />
+
                 {/* 02 — WELCOME */}
-                <SectionLabel subtitle="The more detail you share, the better Round 01 we can deliver.">02 — Welcome</SectionLabel>
+                <SectionLabel noPadTop subtitle="The more detail you share, the better Round 01 we can deliver.">02 — Welcome</SectionLabel>
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
                   <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
@@ -1012,92 +1105,6 @@ export function NewRoundModal({
                     )}
                   </div>
                 </div>
-
-                {/* Buffer between rounds — non-delivery mode only */}
-                {!isDelivery && (
-                  <div className="pt-6 pb-2">
-                    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                      Buffer between rounds
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
-                        disabled={bufferWeeks <= 1}
-                        aria-label="Decrease buffer"
-                        className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                        style={{ borderRadius: 2 }}
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={12}
-                        value={bufferWeeks}
-                        onChange={(e) => {
-                          const raw = parseInt(e.target.value, 10);
-                          if (Number.isNaN(raw)) return;
-                          setBufferWeeks(Math.min(12, Math.max(1, raw)));
-                        }}
-                        className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
-                        style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
-                        disabled={bufferWeeks >= 12}
-                        aria-label="Increase buffer"
-                        className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                        style={{ borderRadius: 2 }}
-                      >
-                        +
-                      </button>
-                      <select
-                        value="weeks"
-                        onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
-                        className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
-                        style={{ borderRadius: 2 }}
-                      >
-                        <option value="weeks">weeks</option>
-                      </select>
-                    </div>
-                    <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
-                      How long you want between each round of work. Default is one week of production plus your buffer time.
-                    </p>
-                  </div>
-                )}
-
-                {/* 03 — DELIVERY DATE */}
-                <SectionLabel>03 — Delivery Date</SectionLabel>
-                {isDelivery ? (
-                  <>
-                    {pickerDate ? (
-                      <p className="font-serif text-foreground mb-5" style={{ fontSize: 22, lineHeight: 1.2 }}>
-                        {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-                      </p>
-                    ) : (
-                      <p className="font-serif italic text-foreground/40 mb-5" style={{ fontSize: 15 }}>
-                        No date selected
-                      </p>
-                    )}
-                    {renderDeliveryPicker()}
-                    {pickerDate && deliveryCountdown && (
-                      <p className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                        {deliveryCountdown}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                      Delivery — {deliveryDateStr}
-                    </p>
-                    <p className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      Order within {deadlineLabel}
-                    </p>
-                  </>
-                )}
 
               </div>
 
