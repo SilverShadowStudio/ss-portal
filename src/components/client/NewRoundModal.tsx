@@ -1020,8 +1020,10 @@ export function NewRoundModal({
                 {/* Section break */}
                 <div style={{ marginTop: 64, marginBottom: 64, borderTop: "1px solid #2A2820" }} />
 
-                {/* 02 — WELCOME */}
-                <SectionOpener number="02" word="WELCOME" subtitle="The more detail you share, the better Round 01 we can deliver." muted />
+                {/* Welcome intro */}
+                <p className="font-sans italic text-foreground/40 mb-6" style={{ fontSize: 14 }}>
+                  Optional — the more detail you share, the better Round 01 we can deliver.
+                </p>
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
                   <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
