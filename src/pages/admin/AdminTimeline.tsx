@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { format } from "date-fns";
 import { Check, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/AdminLayout";
 import {
   ProductionGantt,
@@ -121,9 +121,14 @@ export default function AdminTimeline() {
 
     // ── Airtable overlay fetch ──────────────────────────────────────────────────
     const fetchOverlay = async (): Promise<Record<string, OverlayEntry>> => {
-      const { data, error } = await supabase.functions.invoke('timeline-airtable-overlay');
-      if (error) throw error;
-      return (data?.overlay ?? {}) as Record<string, OverlayEntry>;
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/timeline-airtable-overlay`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_PUBLISHABLE_KEY },
+      });
+      const json = await r.json();
+      if (!r.ok) throw new Error(json?.error ?? `HTTP ${r.status}`);
+      return (json?.overlay ?? {}) as Record<string, OverlayEntry>;
     };
 
     const run = async () => {
