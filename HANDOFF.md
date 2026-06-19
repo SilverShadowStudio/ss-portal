@@ -2,6 +2,50 @@
 
 ---
 
+# Session — 19 June 2026
+
+## Completed this session
+
+- `3644402` — Round request modal: horizontal rule + 64px padding above button row (Pass 13)
+- `89877b4` — Round request modal: disable click-outside dismissal; ESC key added (Pass 14)
+- `b482649` — dropbox-create-scene-folder: nest PP_Post-Production inside VS_Visuals
+- `477fa09` — Merge `refactor/round-request-clarity` into `main` (all modal passes now in production)
+
+## In progress / needs verification
+
+- **Deploy `dropbox-create-scene-folder` edge function** — the code fix is in `main` (`b482649`) but the Supabase access token in `~/.zshrc` is returning 401. The live edge function still has the old structure (PP_Post-Production at scene root). Needs a fresh token to deploy. Command: `SUPABASE_ACCESS_TOKEN=<fresh> npx supabase functions deploy dropbox-create-scene-folder --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt`
+
+## Pending
+
+- **Refresh Supabase access token** — expired (`~/.zshrc` token 401s). Get a new one from Supabase Dashboard → Account → Access tokens. Update `~/.zshrc` for future sessions.
+- **Browser-verify the full Round Request Modal refactor** — all 14 passes are now in production. Walk through: floor plan upload, CGI package upload, delivery date selection, progressive disclosure revealing footer, ESC to close, Cancel button, backdrop click (should do nothing).
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals) — URGENT before using Add Scene in production.
+- **Timeline Gantt build** — diagnostic done last session, bar-mapping strategy clear.
+- **Test Client account** ("Test Client Company", `5faeeafa`) — still exists, not cleaned up.
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence.
+- **Clean up test invoices** before going live with real clients.
+- **Client correction flow** — pins → submit corrections → auto-create Round 02.
+- **New commission brief flow** — 3-step overlay from idle state.
+- **Airtable inbound webhook** — `pull-status` is manual only.
+- **Pre-launch ghost mode test** — walk full client flow before invites go out.
+
+## Decisions made
+
+- **Modal refactor on a feature branch, merged to main at end** — `refactor/round-request-clarity` carried Passes 1–14; merged cleanly. Pattern to reuse for future multi-pass visual work.
+- **Click-outside dismissal disabled** — modal holds state across accidental misclicks. ESC is the no-UI exit; Cancel is the explicit UI exit (visible once Required is complete).
+- **PP_Post-Production nests inside VS_Visuals** — confirmed from Dropbox screenshot. Edge function updated; awaiting deploy.
+
+## Open questions / things to watch
+
+- **Supabase token expired** — blocks any edge function deploy or `scripts/sql.sh` queries. Refresh before any backend work next session.
+
+## URGENT next session
+
+1. Deploy `dropbox-create-scene-folder` with a fresh Supabase token — the code is right but the live function is still wrong.
+2. Browser-verify the full modal refactor and legacy round import.
+
+---
+
 # Session — 18 June 2026
 
 ## Completed this session
