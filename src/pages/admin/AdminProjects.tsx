@@ -1528,7 +1528,7 @@ export default function AdminProjects() {
             type SceneGroup = { key: string; label: string; scenes: SceneItem[] };
             const groups: Record<string, SceneGroup> = {
               review: { key: "review", label: "Awaiting Review", scenes: [] },
-              brief: { key: "brief", label: "Awaiting Brief", scenes: [] },
+              brief: { key: "brief", label: "Awaiting Round 01 Brief", scenes: [] },
               approved: { key: "approved", label: "Approved", scenes: [] },
               other: { key: "other", label: "Other", scenes: [] },
               production: { key: "production", label: "In Production", scenes: [] },

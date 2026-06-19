@@ -1210,7 +1210,7 @@ export default function Portfolio() {
               };
               const groups: Record<string, SceneGroup> = {
                 review: { key: "review", label: "Awaiting Review", scenes: [] },
-                brief: { key: "brief", label: "Awaiting Brief", scenes: [] },
+                brief: { key: "brief", label: "Awaiting Round 01 Brief", scenes: [] },
                 approved: { key: "approved", label: "Approved", scenes: [] },
                 other: { key: "other", label: "Other", scenes: [] },
                 production: { key: "production", label: "In Production", scenes: [] },
@@ -1351,6 +1351,11 @@ export default function Portfolio() {
                         openRoundModalForScene(scene.id);
                         return;
                       }
+                      if (rounds.length === 0) {
+                        setSelectedScene(scene);
+                        setIsBookingOpen(true);
+                        return;
+                      }
                       setSelectedScene(scene);
                       const sorted = [...rounds].sort(
                         (a, b) => b.round_number - a.round_number
@@ -1390,7 +1395,7 @@ export default function Portfolio() {
                           </p>
                         ) : (
                           <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground/60 font-sans">
-                            Brief pending
+                            Awaiting Round 01 Brief
                           </p>
                         )}
                       </div>

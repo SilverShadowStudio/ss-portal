@@ -125,7 +125,7 @@ export function SceneCard({ scene, index, onFolderMappingClick, onDeleted }: Sce
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, { text: string; class: string }> = {
-      pending_instruction: { text: "AWAITING BRIEF", class: "bg-muted text-muted-foreground" },
+      pending_instruction: { text: "AWAITING ROUND 01 BRIEF", class: "bg-muted text-muted-foreground" },
       in_production: { text: "IN PRODUCTION", class: "bg-muted text-foreground" },
       delivered: { text: "CLIENT REVIEW", class: "bg-[#1C1A17] text-gold" },
       approved: { text: "APPROVED", class: "bg-primary/20 text-primary" },
