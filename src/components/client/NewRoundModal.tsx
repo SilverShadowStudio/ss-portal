@@ -713,6 +713,17 @@ export function NewRoundModal({
     return `Add ${allParts.slice(0, -1).join(", ")}, and ${allParts[allParts.length - 1]} to submit.`;
   }, [hasFloorPlan, hasCgiPackage, hasDeliveryDate, isDelivery, pickerDate]);
 
+  const isSubmitDisabled =
+    isSubmitting ||
+    !hasFloorPlan ||
+    !hasCgiPackage ||
+    (isDelivery && !pickerDate) ||
+    (!isDelivery && deliveryMode === "choose" && !selectedMonday);
+
+  const [submitHovered, setSubmitHovered] = useState(false);
+  const [submitFocused, setSubmitFocused] = useState(false);
+  const showTooltip = !!submissionIndicator && (submitHovered || submitFocused);
+
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
@@ -1126,18 +1137,58 @@ export function NewRoundModal({
                     {isSubmitting ? "Saving…" : "Save Draft"}
                   </button>
                 )}
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !hasFloorPlan || !hasCgiPackage || (isDelivery && !pickerDate) || (!isDelivery && deliveryMode === "choose" && !selectedMonday)}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
-                  style={{ borderRadius: 2 }}
+                {/* Submit — wrapped for tooltip positioning */}
+                <div
+                  className="flex-1"
+                  style={{ position: "relative" }}
+                  onMouseEnter={() => setSubmitHovered(true)}
+                  onMouseLeave={() => setSubmitHovered(false)}
                 >
-                  {isSubmitting
-                    ? "Uploading…"
-                    : isDelivery || deliveryMode === "next"
-                    ? "Submit for Production"
-                    : "Book Production Slot"}
-                </button>
+                  {/* Tooltip — always in DOM when indicator exists; opacity driven by hover/focus */}
+                  {submissionIndicator && (
+                    <div
+                      role="tooltip"
+                      id="submit-tooltip"
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 12px)",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: "#232019",
+                        border: "1px solid #2A2820",
+                        padding: "12px 16px",
+                        width: "max-content",
+                        maxWidth: 280,
+                        pointerEvents: "none",
+                        zIndex: 10,
+                        opacity: showTooltip ? 1 : 0,
+                        transition: `opacity ${showTooltip ? 150 : 100}ms ease`,
+                      }}
+                    >
+                      <p
+                        className="font-sans text-foreground/85 leading-relaxed"
+                        style={{ fontSize: 13 }}
+                      >
+                        {submissionIndicator}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitDisabled}
+                    aria-describedby={submissionIndicator ? "submit-tooltip" : undefined}
+                    onFocus={() => setSubmitFocused(true)}
+                    onBlur={() => setSubmitFocused(false)}
+                    className="w-full h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    {isSubmitting
+                      ? "Uploading…"
+                      : isDelivery || deliveryMode === "next"
+                      ? "Submit for Production"
+                      : "Book Production Slot"}
+                  </button>
+                </div>
               </div>
 
             </form>
