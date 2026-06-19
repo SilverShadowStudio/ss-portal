@@ -337,11 +337,18 @@ function UploadItem({
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
   return (
-    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-8 pb-4 first:pt-0">
-      {children}
-    </p>
+    <div className="pt-8 pb-4 first:pt-0">
+      <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
+        {children}
+      </p>
+      {subtitle && (
+        <p className="mt-1.5 font-serif italic text-foreground/40" style={{ fontSize: 13 }}>
+          {subtitle}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -890,247 +897,182 @@ export function NewRoundModal({
                 )}
               </div>
 
-              {/* ── Main content ── */}
-              <div className="px-12 py-8 space-y-10">
+              {/* ── Sections ── */}
+              <div className="px-12 pt-8 pb-10">
 
-                {/* Instructions */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
-                      Instructions
-                    </label>
-                    <button
-                      type="button"
-                      onClick={isRecording ? stopDictation : startDictation}
-                      disabled={isPolishing || !!briefReview}
-                      className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
-                        isRecording
-                          ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
-                          : (isPolishing || briefReview)
-                          ? "border-border/30 text-foreground/25 cursor-not-allowed"
-                          : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
-                      }`}
-                      style={{ borderRadius: 2 }}
-                    >
-                      {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
-                    </button>
-                  </div>
+                {/* 01 — REQUIRED */}
+                <SectionLabel subtitle="Necessary to initiate">01 — Required</SectionLabel>
+                <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
+                  <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
+                  <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+                </div>
 
-                  {isPolishing ? (
-                    // Loading state shown while the LLM formats the transcript.
-                    // Holds the textarea-sized space so the layout doesn't jump.
-                    <div
-                      className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
-                      style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
-                    >
-                      Formatting your brief…
+                {/* 02 — WELCOME */}
+                <SectionLabel subtitle="The more detail you share, the better Round 01 we can deliver.">02 — Welcome</SectionLabel>
+                <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
+                  <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
+                  <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
+                  <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
+                  <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
+                  <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
+                  <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
+                  <UploadItem label="Existing 3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
+
+                  {/* Instructions — last item in Welcome section */}
+                  <div className="py-5 border-t border-border/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <label className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
+                        Instructions
+                      </label>
+                      <button
+                        type="button"
+                        onClick={isRecording ? stopDictation : startDictation}
+                        disabled={isPolishing || !!briefReview}
+                        className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
+                          isRecording
+                            ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
+                            : (isPolishing || briefReview)
+                            ? "border-border/30 text-foreground/25 cursor-not-allowed"
+                            : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
+                        }`}
+                        style={{ borderRadius: 2 }}
+                      >
+                        {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
+                      </button>
                     </div>
-                  ) : briefReview ? (
-                    // Review panel: raw transcript vs LLM-formatted brief.
-                    // Picking either populates the textarea and clears the
-                    // review state. The client still has a final pass in
-                    // the textarea — we never auto-submit.
-                    <div className="space-y-5">
-                      <div>
-                        <p
-                          className="font-sans uppercase text-foreground/55 mb-2"
-                          style={{ fontSize: 9, letterSpacing: "0.22em" }}
-                        >
-                          What you said
-                        </p>
-                        <p
-                          className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap"
-                          style={{ fontSize: 13, opacity: 0.45 }}
-                        >
-                          {briefReview.raw}
-                        </p>
+
+                    {isPolishing ? (
+                      <div
+                        className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
+                        style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
+                      >
+                        Formatting your brief…
                       </div>
-                      <div>
-                        <p
-                          className="font-sans uppercase text-foreground mb-2"
-                          style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}
-                        >
-                          Formatted brief
-                        </p>
-                        <p
-                          className="font-sans text-foreground leading-relaxed whitespace-pre-wrap"
-                          style={{ fontSize: 14 }}
-                        >
-                          {briefReview.formatted}
-                        </p>
+                    ) : briefReview ? (
+                      <div className="space-y-5">
+                        <div>
+                          <p className="font-sans uppercase text-foreground/55 mb-2" style={{ fontSize: 9, letterSpacing: "0.22em" }}>
+                            What you said
+                          </p>
+                          <p className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 13, opacity: 0.45 }}>
+                            {briefReview.raw}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-sans uppercase text-foreground mb-2" style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}>
+                            Formatted brief
+                          </p>
+                          <p className="font-sans text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 14 }}>
+                            {briefReview.formatted}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-6 pt-2">
+                          <button
+                            type="button"
+                            onClick={acceptFormatted}
+                            className="font-sans uppercase hover:opacity-80 transition-opacity"
+                            style={{ fontSize: 11, letterSpacing: "0.15em", color: "#B89A6A", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "#B89A6A", paddingBottom: 6 }}
+                          >
+                            Use formatted
+                          </button>
+                          <button
+                            type="button"
+                            onClick={useOriginal}
+                            className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
+                            style={{ fontSize: 11, letterSpacing: "0.15em", opacity: 0.35, background: "transparent", border: "none", padding: 0 }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                          >
+                            Use original
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-6 pt-2">
-                        <button
-                          type="button"
-                          onClick={acceptFormatted}
-                          className="font-sans uppercase hover:opacity-80 transition-opacity"
-                          style={{
-                            fontSize: 11,
-                            letterSpacing: "0.15em",
-                            color: "#B89A6A",
-                            borderBottom: "1px solid #B89A6A",
-                            paddingBottom: 6,
-                            background: "transparent",
-                            border: "none",
-                            borderBottomWidth: 1,
-                            borderBottomStyle: "solid",
-                            borderBottomColor: "#B89A6A",
-                          }}
-                        >
-                          Use formatted
-                        </button>
-                        <button
-                          type="button"
-                          onClick={useOriginal}
-                          className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
-                          style={{
-                            fontSize: 11,
-                            letterSpacing: "0.15em",
-                            opacity: 0.35,
-                            background: "transparent",
-                            border: "none",
-                            padding: 0,
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
-                        >
-                          Use original
-                        </button>
-                      </div>
+                    ) : (
+                      <textarea
+                        ref={instructionsRef}
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                        placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
+                        rows={3}
+                        maxLength={2000}
+                        className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
+                        style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Buffer between rounds — non-delivery mode only */}
+                {!isDelivery && (
+                  <div className="pt-6 pb-2">
+                    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                      Buffer between rounds
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
+                        disabled={bufferWeeks <= 1}
+                        aria-label="Decrease buffer"
+                        className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                        style={{ borderRadius: 2 }}
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={bufferWeeks}
+                        onChange={(e) => {
+                          const raw = parseInt(e.target.value, 10);
+                          if (Number.isNaN(raw)) return;
+                          setBufferWeeks(Math.min(12, Math.max(1, raw)));
+                        }}
+                        className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
+                        style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
+                        disabled={bufferWeeks >= 12}
+                        aria-label="Increase buffer"
+                        className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                        style={{ borderRadius: 2 }}
+                      >
+                        +
+                      </button>
+                      <select
+                        value="weeks"
+                        onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
+                        className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
+                        style={{ borderRadius: 2 }}
+                      >
+                        <option value="weeks">weeks</option>
+                      </select>
                     </div>
-                  ) : (
-                    <textarea
-                      ref={instructionsRef}
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
-                      autoFocus
-                      rows={3}
-                      maxLength={2000}
-                      className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
-                      style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
-                    />
-                  )}
-                  <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
-                    Upload what you have. The more detail you share, the better Round 01 we can deliver.
-                  </p>
-                </div>
-
-                {/* File fields */}
-                <div>
-                  {/* 01 — Architecture */}
-                  <SectionLabel>01 — Architecture</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Floor plan" required files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
-                    <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
-                    <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
+                    <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
+                      How long you want between each round of work. Default is one week of production plus your buffer time.
+                    </p>
                   </div>
+                )}
 
-                  {/* 02 — Design & Finishes */}
-                  <SectionLabel>02 — Design & Finishes</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
-                    <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
-                    <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
-                  </div>
-
-                  {/* 03 — References & Assets */}
-                  <SectionLabel>03 — References & Assets</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
-                    <UploadItem label="3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
-                    <UploadItem label="CGI Package (PDF)" required files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
-                  </div>
-                </div>
-
-              </div>
-
-              {/* ── Buffer between rounds — hidden in "any day" delivery mode ── */}
-              {!isDelivery && <div className="px-12 pt-2 pb-6">
-                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                  Buffer between rounds
-                </p>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
-                    disabled={bufferWeeks <= 1}
-                    aria-label="Decrease buffer"
-                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                    style={{ borderRadius: 2 }}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={bufferWeeks}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value, 10);
-                      if (Number.isNaN(raw)) return;
-                      setBufferWeeks(Math.min(12, Math.max(1, raw)));
-                    }}
-                    className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
-                    style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
-                    disabled={bufferWeeks >= 12}
-                    aria-label="Increase buffer"
-                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                    style={{ borderRadius: 2 }}
-                  >
-                    +
-                  </button>
-                  <select
-                    value="weeks"
-                    onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
-                    className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
-                    style={{ borderRadius: 2 }}
-                  >
-                    <option value="weeks">weeks</option>
-                  </select>
-                </div>
-                <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
-                  How long you want between each round of work. Default is one week of production plus your buffer time.
-                </p>
-              </div>}
-
-              {/* ── Delivery date ── */}
-              <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
-                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                  Delivery date
-                </p>
+                {/* 03 — DELIVERY DATE */}
+                <SectionLabel>03 — Delivery Date</SectionLabel>
                 {isDelivery ? (
                   <>
-                    {/* Selected date — serif display or placeholder */}
                     {pickerDate ? (
-                      <p
-                        className="font-serif text-foreground mb-5"
-                        style={{ fontSize: 22, lineHeight: 1.2 }}
-                      >
-                        {pickerDate.toLocaleDateString("en-GB", {
-                          weekday: "long", day: "numeric", month: "long", year: "numeric",
-                        })}
+                      <p className="font-serif text-foreground mb-5" style={{ fontSize: 22, lineHeight: 1.2 }}>
+                        {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                       </p>
                     ) : (
-                      <p
-                        className="font-serif italic text-foreground/40 mb-5"
-                        style={{ fontSize: 15 }}
-                      >
+                      <p className="font-serif italic text-foreground/40 mb-5" style={{ fontSize: 15 }}>
                         No date selected
                       </p>
                     )}
-                    {/* Always-visible 2-month calendar */}
                     {renderDeliveryPicker()}
-                    {/* Countdown */}
                     {pickerDate && deliveryCountdown && (
-                      <p
-                        className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                        style={{ fontVariantNumeric: "tabular-nums" }}
-                      >
+                      <p className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
                         {deliveryCountdown}
                       </p>
                     )}
@@ -1140,24 +1082,13 @@ export function NewRoundModal({
                     <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
                       Delivery — {deliveryDateStr}
                     </p>
-                    <p
-                      className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
+                    <p className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
                       Order within {deadlineLabel}
                     </p>
                   </>
                 )}
-              </div>
 
-              {/* ── Submission requirements indicator ── */}
-              {submissionIndicator && (
-                <div className="px-12 pb-4 flex justify-end">
-                  <p className="text-[12px] font-sans text-foreground/40 leading-relaxed">
-                    {submissionIndicator}
-                  </p>
-                </div>
-              )}
+              </div>
 
               {/* ── Footer ── */}
               <div className="px-12 pb-12 flex gap-3 items-center">
