@@ -1065,109 +1065,116 @@ export function NewRoundModal({
                   )}
                 </div>
 
-                {/* Section break */}
-                <div style={{ marginTop: 64, marginBottom: 64, borderTop: "1px solid #2A2820" }} />
+                {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
+                  <>
+                    {/* Section break */}
+                    <div style={{ marginTop: 64, marginBottom: 64, borderTop: "1px solid #2A2820" }} />
 
-                {/* Welcome intro */}
-                <p className="font-sans italic text-foreground/40 mb-6" style={{ fontSize: 14 }}>
-                  Optional — the more detail you share, the better Round 01 we can deliver.
-                </p>
-                <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                  <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
-                  <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
-                  <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
-                  <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
-                  <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
-                  <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
-                  <UploadItem label="Existing 3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
+                    {/* Welcome intro */}
+                    <p className="font-sans italic mb-6" style={{ fontSize: 14 }}>
+                      <span style={{ color: "#B89A6A" }}>Optional</span>
+                      <span className="text-foreground"> — the more detail you share, the better Round 01 we can deliver.</span>
+                    </p>
+                    <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
 
-                  {/* Instructions — last item in Welcome section */}
-                  <div className="py-5 border-t border-border/20">
-                    <div className="flex items-center justify-between mb-4">
-                      <label className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
-                        Instructions
-                      </label>
-                      <button
-                        type="button"
-                        onClick={isRecording ? stopDictation : startDictation}
-                        disabled={isPolishing || !!briefReview}
-                        className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
-                          isRecording
-                            ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
-                            : (isPolishing || briefReview)
-                            ? "border-border/30 text-foreground/25 cursor-not-allowed"
-                            : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
-                        }`}
-                        style={{ borderRadius: 2 }}
-                      >
-                        {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
-                      </button>
+                      {/* Instructions — first in Welcome section */}
+                      <div className="py-5 border-b" style={{ borderBottomColor: "#2A2820" }}>
+                        <div className="flex items-center justify-between mb-4">
+                          <label className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground/75">
+                            Instructions
+                          </label>
+                          <button
+                            type="button"
+                            onClick={isRecording ? stopDictation : startDictation}
+                            disabled={isPolishing || !!briefReview}
+                            className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
+                              isRecording
+                                ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
+                                : (isPolishing || briefReview)
+                                ? "border-border/30 text-foreground/25 cursor-not-allowed"
+                                : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
+                            }`}
+                            style={{ borderRadius: 2 }}
+                          >
+                            {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
+                          </button>
+                        </div>
+
+                        {isPolishing ? (
+                          <div
+                            className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
+                            style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
+                          >
+                            Formatting your brief…
+                          </div>
+                        ) : briefReview ? (
+                          <div className="space-y-5">
+                            <div>
+                              <p className="font-sans uppercase text-foreground/55 mb-2" style={{ fontSize: 9, letterSpacing: "0.22em" }}>
+                                What you said
+                              </p>
+                              <p className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 13, opacity: 0.45 }}>
+                                {briefReview.raw}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="font-sans uppercase text-foreground mb-2" style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}>
+                                Formatted brief
+                              </p>
+                              <p className="font-sans text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 14 }}>
+                                {briefReview.formatted}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-6 pt-2">
+                              <button
+                                type="button"
+                                onClick={acceptFormatted}
+                                className="font-sans uppercase hover:opacity-80 transition-opacity"
+                                style={{ fontSize: 11, letterSpacing: "0.15em", color: "#B89A6A", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "#B89A6A", paddingBottom: 6 }}
+                              >
+                                Use formatted
+                              </button>
+                              <button
+                                type="button"
+                                onClick={useOriginal}
+                                className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
+                                style={{ fontSize: 11, letterSpacing: "0.15em", opacity: 0.35, background: "transparent", border: "none", padding: 0 }}
+                                onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                              >
+                                Use original
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <textarea
+                            ref={instructionsRef}
+                            value={instructions}
+                            onChange={(e) => setInstructions(e.target.value)}
+                            placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
+                            rows={3}
+                            maxLength={2000}
+                            className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
+                            style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
+                          />
+                        )}
+                      </div>
+
+                      <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
+                      <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
+                      <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
+                      <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
+                      <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
+                      <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
+                      <UploadItem label="Existing 3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
                     </div>
-
-                    {isPolishing ? (
-                      <div
-                        className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
-                        style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
-                      >
-                        Formatting your brief…
-                      </div>
-                    ) : briefReview ? (
-                      <div className="space-y-5">
-                        <div>
-                          <p className="font-sans uppercase text-foreground/55 mb-2" style={{ fontSize: 9, letterSpacing: "0.22em" }}>
-                            What you said
-                          </p>
-                          <p className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 13, opacity: 0.45 }}>
-                            {briefReview.raw}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-sans uppercase text-foreground mb-2" style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}>
-                            Formatted brief
-                          </p>
-                          <p className="font-sans text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 14 }}>
-                            {briefReview.formatted}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-6 pt-2">
-                          <button
-                            type="button"
-                            onClick={acceptFormatted}
-                            className="font-sans uppercase hover:opacity-80 transition-opacity"
-                            style={{ fontSize: 11, letterSpacing: "0.15em", color: "#B89A6A", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "#B89A6A", paddingBottom: 6 }}
-                          >
-                            Use formatted
-                          </button>
-                          <button
-                            type="button"
-                            onClick={useOriginal}
-                            className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
-                            style={{ fontSize: 11, letterSpacing: "0.15em", opacity: 0.35, background: "transparent", border: "none", padding: 0 }}
-                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
-                          >
-                            Use original
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <textarea
-                        ref={instructionsRef}
-                        value={instructions}
-                        onChange={(e) => setInstructions(e.target.value)}
-                        placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
-                        rows={3}
-                        maxLength={2000}
-                        className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
-                        style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
-                      />
-                    )}
-                  </div>
-                </div>
+                  </>
+                )}
 
               </div>
 
               {/* ── Footer ── */}
+              {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
               <div className="px-12 pb-12 flex gap-3 items-center">
                 <button
                   type="button"
@@ -1256,6 +1263,7 @@ export function NewRoundModal({
                   </button>
                 </div>
               </div>
+              )}
 
             </form>
           </motion.div>
