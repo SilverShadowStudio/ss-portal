@@ -110,6 +110,7 @@ export default function AdminClientProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [loadedEmail, setLoadedEmail] = useState("");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [hasSigned, setHasSigned] = useState<boolean | null>(null);
   const [resendLoading, setResendLoading] = useState(false);
@@ -223,6 +224,7 @@ export default function AdminClientProfile() {
           // best-effort; field stays empty (placeholder shown instead)
         }
 
+        setLoadedEmail(ownerEmail);
         setForm({
           companyName: account.company_name || "",
           clientCode: account.client_code || "",
@@ -318,6 +320,20 @@ export default function AdminClientProfile() {
     }
     setSaving(true);
     try {
+      // Always persist account-level fields first, independently of the edge
+      // function — so booking_mode / account_type are never blocked by an
+      // unrelated contact-update failure.
+      const { error: typeErr } = await supabase
+        .from("accounts")
+        .update({ account_type: form.accountType, booking_mode: form.bookingMode })
+        .eq("id", accountId);
+      if (typeErr) throw typeErr;
+
+      // Only send email to the edge function when the admin explicitly changed
+      // it — avoids triggering an unnecessary auth.updateUserById call that can
+      // fail for non-standard email addresses (e.g. local part containing &).
+      const emailChanged = form.email.trim() !== "" && form.email.trim() !== loadedEmail;
+
       const { data, error } = await supabase.functions.invoke(
         "admin-update-client",
         {
@@ -337,7 +353,7 @@ export default function AdminClientProfile() {
               firstName: form.firstName.trim() || null,
               lastName: form.lastName.trim() || null,
               position: form.position.trim() || null,
-              ...(form.email.trim() ? { email: form.email.trim() } : {}),
+              ...(emailChanged ? { email: form.email.trim() } : {}),
               ...(form.password ? { password: form.password } : {}),
             },
           },
@@ -345,11 +361,6 @@ export default function AdminClientProfile() {
       );
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      const { error: typeErr } = await supabase
-        .from("accounts")
-        .update({ account_type: form.accountType, booking_mode: form.bookingMode })
-        .eq("id", accountId);
-      if (typeErr) throw typeErr;
       toast({ title: "Client updated" });
       setForm((p) => ({ ...p, password: "" }));
     } catch (err: any) {
