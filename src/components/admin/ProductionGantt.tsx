@@ -418,8 +418,43 @@ export function ProductionGantt({
     );
   }
 
+  function scrollToToday() {
+    const el = scrollRef.current;
+    if (!el || todayCol === null) return;
+    const todayX = FROZEN_W + todayCol * CELL_W + CELL_W / 2;
+    el.scrollTo({ left: Math.max(0, todayX - el.clientWidth / 2), behavior: 'smooth' });
+  }
+
   return (
-    <div style={cardStyle}>
+    <div style={{ ...cardStyle, position: 'relative' }}>
+      {todayCol !== null && (
+        <button
+          onClick={scrollToToday}
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 18,
+            zIndex: 20,
+            background: 'transparent',
+            border: '1px solid rgba(197,165,114,0.30)',
+            borderRadius: 2,
+            padding: '0 14px',
+            height: 28,
+            cursor: 'pointer',
+            fontFamily: "'Jost', sans-serif",
+            fontSize: 10,
+            fontWeight: 500,
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+            color: '#c5a572',
+            transition: 'border-color 150ms ease, color 150ms ease',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(197,165,114,0.65)'; e.currentTarget.style.color = '#e0c47a'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(197,165,114,0.30)'; e.currentTarget.style.color = '#c5a572'; }}
+        >
+          Today
+        </button>
+      )}
       <div ref={scrollRef} className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
         <div style={{ width: CONTENT_W_DYN }}>
 
