@@ -130,9 +130,11 @@ export default function Portfolio() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
+  // Re-fetch when the auth user changes (covers ghost mode session swaps).
   useEffect(() => {
     fetchProjects();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Honor a sceneId / projectId / roundId passed via navigation state
   // (e.g. dashboard pipeline) OR via query params (e.g. email deep-link
@@ -260,11 +262,12 @@ export default function Portfolio() {
         return;
       }
 
-      const { data: accountData } = await supabase
+      const { data: accountData, error: accountErr } = await supabase
         .from("accounts")
         .select("booking_mode")
         .eq("id", membership.account_id)
         .maybeSingle();
+      if (accountErr) console.error("[Portfolio] booking_mode fetch:", accountErr.message);
       setBookingMode((accountData?.booking_mode as 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote') || 'calendar');
 
       const { data: projectsData, error } = await supabase
