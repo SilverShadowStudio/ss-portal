@@ -925,8 +925,9 @@ export function NewRoundModal({
               <div className="px-12 pt-8 pb-10">
 
                 {/* Required intro */}
-                <p className="font-sans italic mb-8" style={{ fontSize: 13, color: "#B89A6A" }}>
-                  Necessary to initiate
+                <p className="font-sans italic mb-8" style={{ fontSize: 14 }}>
+                  <span style={{ color: "#B89A6A" }}>Required</span>
+                  <span className="text-foreground"> — we need these three before Round 01 can begin.</span>
                 </p>
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                   <UploadItem goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
@@ -1087,16 +1088,16 @@ export function NewRoundModal({
                             type="button"
                             onClick={isRecording ? stopDictation : startDictation}
                             disabled={isPolishing || !!briefReview}
-                            className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
+                            className={`px-3 py-1 text-[13px] font-sans border transition-all ${
                               isRecording
                                 ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
                                 : (isPolishing || briefReview)
                                 ? "border-border/30 text-foreground/25 cursor-not-allowed"
-                                : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
+                                : "border-border/40 hover:border-[#B89A6A]/60 hover:opacity-80"
                             }`}
-                            style={{ borderRadius: 2 }}
+                            style={{ borderRadius: 2, color: (isPolishing || briefReview || isRecording) ? undefined : "#B89A6A" }}
                           >
-                            {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
+                            {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Speak"}
                           </button>
                         </div>
 
