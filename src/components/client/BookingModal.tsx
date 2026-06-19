@@ -105,6 +105,8 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const [displayMonth, setDisplayMonth] = useState<Date>(startOfMonth(earliest));
   const [submitting, setSubmitting] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [countdown, setCountdown] = useState<string | null>(null);
 
   const roundNumbers = useMemo(
     () => Array.from({ length: numRounds }, (_, i) => startRoundNumber + i),
@@ -151,6 +153,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     if (!isOpen) return;
     setCurrentStep(0);
     setShowDiscardConfirm(false);
+    setCalendarOpen(false);
     if (isDelivery) {
       setMondays([earliestDelivery]);
       setDisplayMonth(startOfMonth(earliestDelivery));
@@ -183,6 +186,24 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
       if (sel) setDisplayMonth(startOfMonth(sel));
     }
   }, [currentStep, numRounds, mondays, isDelivery]);
+
+  useEffect(() => {
+    if (!isDelivery || !mondays[0]) { setCountdown(null); return; }
+    const target = new Date(mondays[0]);
+    target.setHours(12, 0, 0, 0);
+    const update = () => {
+      const diff = target.getTime() - Date.now();
+      if (diff <= 0) { setCountdown(null); return; }
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`Delivery in ${d} days ${h} hours ${m} minutes ${s} seconds`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [isDelivery, mondays]);
 
   const nextStep = useCallback(() => {
     setCurrentStep((s) => Math.min(s + 1, reviewStep));
@@ -239,6 +260,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           booking_group_id: bookingGroupId,
           instructions: null,
           created_by: user!.id,
+          buffer_weeks: 0,
         }];
       } else {
         const firstStart = mondays[0];
@@ -521,7 +543,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   };
 
   // ── Delivery mode: simple any-weekday month grid ───────────────────────────
-  const renderDeliveryMonthGrid = (monthStart: Date, min: Date, selected: Date | undefined) => {
+  const renderDeliveryMonthGrid = (monthStart: Date, min: Date, selected: Date | undefined, onSelect?: (day: Date) => void) => {
     const year = monthStart.getFullYear();
     const month = monthStart.getMonth();
     const total = daysInMonth(year, month);
@@ -561,7 +583,7 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
                     key={c}
                     type="button"
                     disabled={!selectable}
-                    onClick={() => selectable && setMondays([day])}
+                    onClick={() => { if (selectable) { if (onSelect) onSelect(day); else setMondays([day]); } }}
                     className={[
                       "flex h-8 w-8 items-center justify-center border font-serif text-[14px] tabular-nums transition-colors",
                       bgClass, textClass, borderClass,
@@ -580,12 +602,12 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     );
   };
 
-  const renderDeliveryCalendar = () => {
+  const renderDeliveryCalendar = (onSelect?: (day: Date) => void) => {
     const min = earliestDelivery;
     const selected = mondays[0];
     const canGoPrev = displayMonth.getTime() > startOfMonth(min).getTime();
     return (
-      <div className="mt-8 flex items-center justify-center gap-3">
+      <div className="mt-4 flex items-center justify-center gap-3">
         <button
           type="button"
           onClick={() => canGoPrev && setDisplayMonth((m) => addMonths(m, -1))}
@@ -597,8 +619,8 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           ‹
         </button>
         <div className="flex gap-6">
-          {renderDeliveryMonthGrid(displayMonth, min, selected)}
-          {renderDeliveryMonthGrid(addMonths(displayMonth, 1), min, selected)}
+          {renderDeliveryMonthGrid(displayMonth, min, selected, onSelect)}
+          {renderDeliveryMonthGrid(addMonths(displayMonth, 1), min, selected, onSelect)}
         </div>
         <button
           type="button"
@@ -613,17 +635,57 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
     );
   };
 
-  const renderDeliveryDateStep = () => (
-    <div className="flex flex-col items-center text-center">
-      <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>
-        When do you need Round {String(startRoundNumber).padStart(2, "0")} delivered?
-      </h3>
-      <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
-        Select your target delivery date. Production begins from today.
-      </p>
-      {renderDeliveryCalendar()}
-    </div>
-  );
+  const renderDeliveryDateStep = () => {
+    const selected = mondays[0];
+    const dateLabel = selected
+      ? selected.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+      : "Select a date";
+
+    const handleDeliverySelect = (day: Date) => {
+      setMondays([day]);
+      setCalendarOpen(false);
+    };
+
+    return (
+      <div className="flex flex-col items-center text-center">
+        <h3 className="font-serif text-strong" style={{ fontSize: 28 }}>
+          When do you need Round {String(startRoundNumber).padStart(2, "0")} delivered?
+        </h3>
+        <p className="mt-4 max-w-[440px] font-sans text-standard" style={{ fontSize: 15, lineHeight: 1.6 }}>
+          Select your target delivery date. Production begins from today.
+        </p>
+
+        {/* Date picker button */}
+        <button
+          type="button"
+          onClick={() => setCalendarOpen((v) => !v)}
+          className="mt-8 flex items-center gap-4 border border-border/60 px-7 py-3 font-serif text-strong transition-colors hover:border-gold"
+          style={{ fontSize: 20, borderRadius: 2 }}
+        >
+          {dateLabel}
+          <span
+            className="font-sans text-label transition-transform"
+            style={{ fontSize: 10, letterSpacing: "0.1em", display: "inline-block", transform: calendarOpen ? "rotate(180deg)" : "none" }}
+          >
+            ▾
+          </span>
+        </button>
+
+        {/* Calendar (expandable) */}
+        {calendarOpen && renderDeliveryCalendar(handleDeliverySelect)}
+
+        {/* Countdown */}
+        {selected && countdown && (
+          <p
+            className="font-sans text-label"
+            style={{ fontSize: 12, letterSpacing: "0.04em", marginTop: calendarOpen ? 20 : 16 }}
+          >
+            {countdown}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   // ── Review step ────────────────────────────────────────────────────────────
   const renderReviewStep = () => (

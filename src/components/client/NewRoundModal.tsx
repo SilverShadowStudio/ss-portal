@@ -39,6 +39,24 @@ function cutoffForStart(monday: Date): Date {
   return c;
 }
 
+// ── Date-picker helpers for "any day" delivery mode ──────────────────────────
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+function isWeekday(d: Date): boolean {
+  return d.getDay() !== 0 && d.getDay() !== 6;
+}
+function isSameDayPicker(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+const PICKER_DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
+
 interface UploadedFile {
   name: string;
   size?: number;
@@ -101,6 +119,7 @@ interface NewRoundModalProps {
     status?: string | null;
     start_date?: string | null;
   } | null;
+  bookingMode?: 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote';
 }
 
 function UploadItem({
@@ -281,9 +300,17 @@ export function NewRoundModal({
   sceneId,
   roundNumber = 1,
   existingDraft,
+  bookingMode,
 }: NewRoundModalProps) {
+  const isDelivery = bookingMode === 'delivery' || bookingMode === 'delivery_no_quote';
+
   const [instructions, setInstructions] = useState("");
   const [bufferWeeks, setBufferWeeks] = useState<number>(1);
+
+  // Delivery date picker state (used in "any day" booking mode only)
+  const [pickerDate, setPickerDate] = useState<Date | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerDisplayMonth, setPickerDisplayMonth] = useState<Date>(startOfMonth(new Date()));
   // Delivery scheduling: "next" preserves the legacy immediate-request flow;
   // "choose" is the Isabelle button — pick a future production Monday.
   const [deliveryMode, setDeliveryMode] = useState<"next" | "choose">("next");
@@ -336,12 +363,12 @@ export function NewRoundModal({
     if (!isOpen) return;
     setInstructions(existingDraft?.instructions ?? "");
     setBufferWeeks(existingDraft?.buffer_weeks ?? 1);
-    // Booking a future production slot now lives in BookingModal (reserved
-    // rounds). This modal only handles the immediate "next available" brief
-    // flow — the old "choose a date" (Isabelle) picker has been removed.
     setDeliveryMode("next");
     setSelectedMonday(null);
     setBriefReview(null);
+    setPickerDate(null);
+    setPickerOpen(false);
+    setPickerDisplayMonth(startOfMonth(new Date()));
     // Start with empty widgets; if reopening a draft, hydrate from
     // `round_uploads` so files the client uploaded before saving the
     // draft are visible (and removable) on this session.
@@ -556,6 +583,30 @@ export function NewRoundModal({
     `${mins} ${mins === 1 ? "minute" : "minutes"}`,
   ].filter(Boolean).join(", ");
 
+  // Earliest selectable delivery date in picker: next weekday after today.
+  const earliestPickerDate = useMemo(() => {
+    if (!isDelivery) return null;
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    while (!isWeekday(d)) d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [isDelivery]);
+
+  // Countdown derived from currentTime (already ticks every second) — no extra interval needed.
+  const deliveryCountdown = useMemo(() => {
+    if (!isDelivery || !pickerDate) return null;
+    const target = new Date(pickerDate);
+    target.setHours(12, 0, 0, 0);
+    const diff = target.getTime() - currentTime.getTime();
+    if (diff <= 0) return null;
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    return `Delivery in ${d} days ${h} hours ${m} minutes ${s} seconds`;
+  }, [isDelivery, pickerDate, currentTime]);
+
   // ── Future-Monday booking (Isabelle button) ──
   // Grid of the next 12 Mondays from (today + 7 days, rounded forward to the
   // next Monday) — same anchor as RescheduleRoundModal.
@@ -613,7 +664,7 @@ export function NewRoundModal({
         toast({ title: "Upload failed", description: "Some files could not be uploaded. Please try again.", variant: "destructive" });
         return;
       }
-      onSaveDraft(instructions.trim(), bufferWeeks);
+      onSaveDraft(instructions.trim(), isDelivery ? 0 : bufferWeeks);
     } finally {
       setIsSubmitting(false);
     }
@@ -622,6 +673,7 @@ export function NewRoundModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!instructions.trim()) return;
+    if (isDelivery && !pickerDate) return;
     setIsSubmitting(true);
     try {
       const success = await uploadAllFiles();
@@ -629,21 +681,101 @@ export function NewRoundModal({
         toast({ title: "Upload failed", description: "Some files could not be uploaded. Please try again.", variant: "destructive" });
         return;
       }
-      const useBooked = deliveryMode === "choose" && bookedStart && bookedDelivery;
-      if (onCreateWithDate) {
-        if (useBooked) {
-          // Book Production Slot: picked Monday is the production start,
-          // delivery is start + 7 days.
-          onCreateWithDate(instructions.trim(), bookedDelivery!, bookedStart!, bufferWeeks);
+      if (isDelivery) {
+        const now = new Date();
+        if (onCreateWithDate) {
+          onCreateWithDate(instructions.trim(), pickerDate!, now, 0);
         } else {
-          onCreateWithDate(instructions.trim(), deliveryDate, startDate, bufferWeeks);
+          onCreate(instructions.trim(), 0);
         }
       } else {
-        onCreate(instructions.trim(), bufferWeeks);
+        const useBooked = deliveryMode === "choose" && bookedStart && bookedDelivery;
+        if (onCreateWithDate) {
+          if (useBooked) {
+            onCreateWithDate(instructions.trim(), bookedDelivery!, bookedStart!, bufferWeeks);
+          } else {
+            onCreateWithDate(instructions.trim(), deliveryDate, startDate, bufferWeeks);
+          }
+        } else {
+          onCreate(instructions.trim(), bufferWeeks);
+        }
       }
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // ── Date picker renderer for "any day" delivery mode ─────────────────────
+  const renderPickerMonthGrid = (monthStart: Date) => {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const total = daysInMonth(year, month);
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7;
+    const numRows = Math.ceil((lead + total) / 7);
+    return (
+      <div style={{ width: 196 }}>
+        <p className="mb-3 text-center font-sans uppercase text-[10px] tracking-[0.2em] text-foreground/40">
+          {monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        </p>
+        <div className="grid grid-cols-7">
+          {PICKER_DAY_HEADERS.map((h, i) => (
+            <div key={i} className="flex h-7 items-center justify-center font-sans text-[9px] tracking-[0.1em] text-foreground/25">{h}</div>
+          ))}
+        </div>
+        {Array.from({ length: numRows }).map((_, r) => (
+          <div key={r} className="grid grid-cols-7">
+            {Array.from({ length: 7 }).map((__, c) => {
+              const dayNum = r * 7 + c - lead + 1;
+              if (dayNum < 1 || dayNum > total) return <div key={c} className="h-8 w-7" />;
+              const day = new Date(year, month, dayNum);
+              const isSelected = pickerDate != null && isSameDayPicker(day, pickerDate);
+              const selectable = isWeekday(day) && earliestPickerDate != null && day >= earliestPickerDate;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={!selectable}
+                  onClick={() => { if (selectable) { setPickerDate(day); setPickerOpen(false); } }}
+                  className={[
+                    "flex h-8 w-7 items-center justify-center border font-serif text-[13px] tabular-nums transition-colors",
+                    isSelected ? "bg-gold border-gold" : "border-transparent",
+                    isSelected ? "text-[#1A1814]" : selectable ? "text-foreground hover:border-[var(--brand-gold,#B89A6A)]" : "text-foreground/18 cursor-default",
+                  ].join(" ")}
+                  style={{ borderRadius: 2 }}
+                >
+                  {dayNum}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDeliveryPicker = () => {
+    const canGoPrev = earliestPickerDate != null && pickerDisplayMonth > startOfMonth(earliestPickerDate);
+    return (
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => canGoPrev && setPickerDisplayMonth(m => addMonths(m, -1))}
+          disabled={!canGoPrev}
+          className="font-serif text-foreground/35 hover:text-foreground transition-colors disabled:opacity-20"
+          style={{ fontSize: 18 }}
+        >‹</button>
+        <div className="flex gap-5">
+          {renderPickerMonthGrid(pickerDisplayMonth)}
+          {renderPickerMonthGrid(addMonths(pickerDisplayMonth, 1))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPickerDisplayMonth(m => addMonths(m, 1))}
+          className="font-serif text-foreground/35 hover:text-foreground transition-colors"
+          style={{ fontSize: 18 }}
+        >›</button>
+      </div>
+    );
   };
 
   return (
@@ -851,8 +983,8 @@ export function NewRoundModal({
 
               </div>
 
-              {/* ── Buffer between rounds — sits between brief inputs and delivery summary ── */}
-              <div className="px-12 pt-2 pb-6">
+              {/* ── Buffer between rounds — hidden in "any day" delivery mode ── */}
+              {!isDelivery && <div className="px-12 pt-2 pb-6">
                 <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
                   Buffer between rounds
                 </p>
@@ -902,22 +1034,55 @@ export function NewRoundModal({
                 <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
                   How long you want between each round of work. Default is one week of production plus your buffer time.
                 </p>
-              </div>
+              </div>}
 
-              {/* ── Delivery date — picker + summary ── */}
+              {/* ── Delivery date ── */}
               <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
                 <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
                   Delivery date
                 </p>
-                <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                  Delivery — {deliveryDateStr}
-                </p>
-                <p
-                  className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                  style={{ fontVariantNumeric: "tabular-nums" }}
-                >
-                  Order within {deadlineLabel}
-                </p>
+                {isDelivery ? (
+                  <>
+                    {/* Date picker button */}
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(v => !v)}
+                      className="flex items-center gap-4 border border-[#2A2820] hover:border-[var(--brand-gold,#B89A6A)] px-6 py-3 font-serif text-foreground transition-colors"
+                      style={{ fontSize: 18, borderRadius: 2 }}
+                    >
+                      {pickerDate
+                        ? pickerDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+                        : "Select a date"}
+                      <span
+                        className="font-sans text-foreground/35 transition-transform"
+                        style={{ fontSize: 10, display: "inline-block", transform: pickerOpen ? "rotate(180deg)" : "none" }}
+                      >▾</span>
+                    </button>
+                    {/* 2-month calendar */}
+                    {pickerOpen && renderDeliveryPicker()}
+                    {/* Countdown */}
+                    {pickerDate && deliveryCountdown && (
+                      <p
+                        className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed"
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {deliveryCountdown}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
+                      Delivery — {deliveryDateStr}
+                    </p>
+                    <p
+                      className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      Order within {deadlineLabel}
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* ── Footer ── */}
@@ -958,15 +1123,15 @@ export function NewRoundModal({
                 )}
                 <button
                   type="submit"
-                  disabled={!instructions.trim() || isSubmitting || (deliveryMode === "choose" && !selectedMonday)}
+                  disabled={!instructions.trim() || isSubmitting || (isDelivery ? !pickerDate : deliveryMode === "choose" && !selectedMonday)}
                   className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
                   {isSubmitting
                     ? "Uploading…"
-                    : deliveryMode === "choose"
-                    ? "Book Production Slot"
-                    : "Submit for Production"}
+                    : isDelivery || deliveryMode === "next"
+                    ? "Submit for Production"
+                    : "Book Production Slot"}
                 </button>
               </div>
 

@@ -139,6 +139,7 @@ export default function Portfolio() {
   // Always fetch a fresh booking_mode immediately before the modal opens so
   // admin changes in another tab take effect without a page reload.
   const openBookingModal = useCallback(async () => {
+    let mode: 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote' = bookingMode;
     try {
       const { data: session } = await supabase.auth.getSession();
       if (session?.session?.user) {
@@ -154,15 +155,22 @@ export default function Portfolio() {
             .eq("id", membership.account_id)
             .maybeSingle();
           if (accountData?.booking_mode) {
-            setBookingMode(accountData.booking_mode as 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote');
+            mode = accountData.booking_mode as typeof mode;
+            setBookingMode(mode);
           }
         }
       }
     } catch {
       // fall back to whichever mode was last fetched
     }
-    setIsBookingOpen(true);
-  }, []);
+    // Delivery ("any day") modes go straight to the brief form; calendar modes
+    // go through the slot-booking flow first.
+    if (mode === 'delivery' || mode === 'delivery_no_quote') {
+      setIsNewRoundModalOpen(true);
+    } else {
+      setIsBookingOpen(true);
+    }
+  }, [bookingMode]);
 
   // Honor a sceneId / projectId / roundId passed via navigation state
   // (e.g. dashboard pipeline) OR via query params (e.g. email deep-link
@@ -619,8 +627,8 @@ export default function Portfolio() {
 
       toast.success("Scene created");
 
-      // CHAIN: Open Round Modal after 300ms
-      setTimeout(() => setIsNewRoundModalOpen(true), 300);
+      // CHAIN: Open Booking Modal after 300ms
+      setTimeout(() => openBookingModal(), 300);
     } catch (error: any) {
       console.error("Error creating scene:", error);
       const msg = error?.message;
@@ -1718,6 +1726,7 @@ export default function Portfolio() {
       sceneId={selectedScene?.id}
       roundNumber={selectedScene ? (sceneRounds.get(selectedScene.id)?.length || 0) + 1 : 1}
       existingDraft={editingDraft}
+      bookingMode={bookingMode}
     />
     <RescheduleRoundModal
       isOpen={!!rescheduleTarget}
