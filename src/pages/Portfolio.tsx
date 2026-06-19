@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -135,6 +135,34 @@ export default function Portfolio() {
     fetchProjects();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Always fetch a fresh booking_mode immediately before the modal opens so
+  // admin changes in another tab take effect without a page reload.
+  const openBookingModal = useCallback(async () => {
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (session?.session?.user) {
+        const { data: membership } = await supabase
+          .from("account_members")
+          .select("account_id")
+          .eq("user_id", session.session.user.id)
+          .maybeSingle();
+        if (membership?.account_id) {
+          const { data: accountData } = await supabase
+            .from("accounts")
+            .select("booking_mode")
+            .eq("id", membership.account_id)
+            .maybeSingle();
+          if (accountData?.booking_mode) {
+            setBookingMode(accountData.booking_mode as 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote');
+          }
+        }
+      }
+    } catch {
+      // fall back to whichever mode was last fetched
+    }
+    setIsBookingOpen(true);
+  }, []);
 
   // Honor a sceneId / projectId / roundId passed via navigation state
   // (e.g. dashboard pipeline) OR via query params (e.g. email deep-link
@@ -1137,7 +1165,7 @@ export default function Portfolio() {
             // British Airways-mode: the round-request affordance now opens the
             // BookingModal (reserve slots). The old NewRoundModal brief flow +
             // handleRequestNextRoundDirect are kept for now (Commit 1, Option b).
-            canRequestNext ? () => setIsBookingOpen(true) : undefined
+            canRequestNext ? openBookingModal : undefined
           }
           nextRoundNumber={canRequestNext ? nextRoundNumber : undefined}
           isLocked={!isLatestRound}
@@ -1174,7 +1202,7 @@ export default function Portfolio() {
             </p>
             <button
               type="button"
-              onClick={() => setIsBookingOpen(true)}
+              onClick={openBookingModal}
               className="inline-flex items-center gap-2 border border-gold bg-transparent px-6 py-3 font-sans uppercase text-[10px] tracking-[0.24em] text-gold transition-colors hover:bg-gold/10"
               style={{ borderRadius: 2 }}
             >
@@ -1359,7 +1387,7 @@ export default function Portfolio() {
                       }
                       if (rounds.length === 0) {
                         setSelectedScene(scene);
-                        setIsBookingOpen(true);
+                        openBookingModal();
                         return;
                       }
                       setSelectedScene(scene);
