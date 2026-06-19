@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
-import { X, FileIcon } from "lucide-react";
+import { X, FileIcon, MoreHorizontal } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,6 +56,13 @@ function isSameDayPicker(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 const PICKER_DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
+
+function formatFileSize(bytes?: number): string {
+  if (bytes == null || bytes === 0) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
 
 interface UploadedFile {
   name: string;
@@ -127,15 +134,20 @@ function UploadItem({
   files,
   onFilesAdded,
   onRemoveFile,
+  required,
+  goldLabel,
 }: {
   label: string;
   files: UploadedFile[];
   onFilesAdded: (files: FileList) => void;
   onRemoveFile: (index: number) => void;
+  required?: boolean;
+  goldLabel?: boolean;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const active = files.length > 0;
+  const firstFile = files[0] ?? null;
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -166,10 +178,10 @@ function UploadItem({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onClick={() => inputRef.current?.click()}
+      onClick={active ? undefined : () => inputRef.current?.click()}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group flex items-start py-4 border-b cursor-pointer last:border-b-0"
+      className={`group flex items-start py-4 border-b last:border-b-0 ${active ? "" : "cursor-pointer"}`}
       style={{
         marginLeft: "-3rem", marginRight: "-3rem",
         paddingLeft: active ? "calc(3rem - 3px)" : "3rem", paddingRight: "3rem",
@@ -194,7 +206,7 @@ function UploadItem({
         }}
       />
 
-      {/* Subtle hover/drag overlay */}
+      {/* Subtle hover/drag overlay — only in empty state */}
       <div
         style={{
           position: "absolute",
@@ -223,69 +235,198 @@ function UploadItem({
       />
 
       <div className="flex-1 min-w-0" style={{ position: "relative" }}>
-        <div className="flex items-center justify-between gap-3">
-          <span
-            className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
-              active
-                ? "text-gold font-medium"
-                : isDragging
-                ? "text-gold/70"
-                : "text-foreground/75"
-            }`}
-          >
-            {label}
-          </span>
-          {!active && (
-            <span
-              style={{ transition: "opacity var(--duration-standard) var(--ease-default)" }}
-              className={`text-[9px] font-sans uppercase tracking-[0.2em] shrink-0 ${
-                isDragging ? "text-gold/70" : "text-foreground/40"
-              }`}
-            >
-              Drop or click
-            </span>
-          )}
-          {active && (
-            <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-gold shrink-0">
-              {files.length} file{files.length > 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+        <div className="flex items-start justify-between gap-3">
 
-        {files.length > 0 && (
-          <div className="mt-2.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {files.map((f, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <FileIcon size={10} className="shrink-0 text-foreground/25" />
-                <span className="text-[10px] text-foreground/85 truncate flex-1 font-sans">
-                  {f.name}
+          {/* Left: label + uploaded file info */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-3">
+              <span
+                className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
+                  active
+                    ? "text-gold font-medium"
+                    : goldLabel
+                    ? "text-gold"
+                    : isDragging
+                    ? "text-gold/70"
+                    : "text-foreground/75"
+                }`}
+              >
+                {label}
+              </span>
+              {/* REQUIRED tag — shown only when empty */}
+              {required && !active && (
+                <span className="text-[9px] font-sans uppercase tracking-[0.15em] text-gold shrink-0">
+                  Required
                 </span>
-                {f.uploading && (
-                  <BrandLoader size="sm" className="h-2.5 w-2.5" />
+              )}
+            </div>
+
+            {/* Populated: filename + size + overflow files */}
+            {active && firstFile && (
+              <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                <p className="font-serif text-[14px] text-foreground leading-snug truncate">
+                  {firstFile.name}
+                </p>
+                {firstFile.size != null && firstFile.size > 0 && (
+                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40">
+                    {formatFileSize(firstFile.size)}
+                  </p>
                 )}
-                {f.error && (
-                  <span className="text-[9px] text-destructive uppercase tracking-wider">Error</span>
+                {firstFile.uploading && (
+                  <BrandLoader size="sm" className="mt-1 h-2.5 w-2.5" />
                 )}
-                <button
-                  onClick={() => onRemoveFile(i)}
-                  className="p-0.5 text-foreground/25 hover:text-foreground/60 transition-colors"
-                >
-                  <X size={10} />
-                </button>
+                {firstFile.error && (
+                  <span className="mt-0.5 text-[9px] text-destructive uppercase tracking-wider">Upload error</span>
+                )}
+                {/* Additional files (multi-upload) */}
+                {files.length > 1 && (
+                  <div className="mt-2 space-y-1">
+                    {files.slice(1).map((f, i) => (
+                      <div key={i + 1} className="flex items-center gap-2">
+                        <FileIcon size={9} className="shrink-0 text-foreground/25" />
+                        <span className="text-[10px] text-foreground/50 truncate flex-1 font-sans">{f.name}</span>
+                        {f.uploading && <BrandLoader size="sm" className="h-2.5 w-2.5" />}
+                        <button
+                          type="button"
+                          onClick={() => onRemoveFile(i + 1)}
+                          className="p-0.5 text-foreground/25 hover:text-foreground/60 transition-colors"
+                        >
+                          <X size={9} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
-        )}
+
+          {/* Right: affordance */}
+          <div className="shrink-0 pt-0.5">
+            {!active && (
+              <span
+                style={{ transition: "opacity var(--duration-standard) var(--ease-default)" }}
+                className={`text-[9px] font-sans uppercase tracking-[0.2em] ${
+                  isDragging ? "text-gold/70" : "text-foreground/40"
+                }`}
+              >
+                Drop or click
+              </span>
+            )}
+            {active && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <RowActions
+                  type="file"
+                  onReplace={() => inputRef.current?.click()}
+                  onRemove={() => { for (let i = files.length - 1; i >= 0; i--) onRemoveFile(i); }}
+                />
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </div>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function RowActions({
+  type, onReplace, onRemove, onAction,
+}: {
+  type: "file" | "date";
+  onReplace?: () => void;
+  onRemove?: () => void;
+  onAction?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
+  const iconBtn = (label: string, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="p-1 text-foreground/30 hover:text-gold transition-colors"
+      style={{ lineHeight: 0 }}
+    >
+      <MoreHorizontal size={15} strokeWidth={1.5} />
+    </button>
+  );
+
+  if (type === "date") return iconBtn("Change delivery date", onAction!);
+
   return (
-    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-5 pb-1 first:pt-0">
-      {children}
-    </p>
+    <div ref={ref} style={{ position: "relative" }}>
+      {iconBtn("File actions", () => setOpen(o => !o))}
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute", right: 0, top: "calc(100% + 4px)",
+            background: "#1E1C18", border: "1px solid #2A2820",
+            borderRadius: 2, minWidth: 120, zIndex: 20,
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { onReplace?.(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-[11px] font-sans uppercase tracking-[0.12em] text-foreground/65 hover:text-foreground hover:bg-white/5 transition-colors"
+          >
+            Replace
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { onRemove?.(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-[11px] font-sans uppercase tracking-[0.12em] text-amber-400/70 hover:text-amber-300 hover:bg-white/5 transition-colors"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionOpener({ number, word, subtitle, muted }: {
+  number: string;
+  word: string;
+  subtitle?: string;
+  muted?: boolean;
+}) {
+  const accent = muted ? "#8A8070" : "#B89A6A";
+  return (
+    <div className="pb-8">
+      <p className="font-sans uppercase font-medium" style={{ fontSize: 11, letterSpacing: "0.3em", color: accent, lineHeight: 1 }}>
+        {number}
+      </p>
+      <p className="font-serif" style={{ fontSize: 28, color: accent, lineHeight: 1, marginTop: 6 }}>
+        {word}
+      </p>
+      {subtitle && (
+        <p className="font-sans italic text-foreground/40" style={{ fontSize: 13, marginTop: 8 }}>
+          {subtitle}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -633,6 +774,34 @@ export function NewRoundModal({
 
   const hasAtLeastOneFile = Object.values(filesByCategory).some(files => files.length > 0);
 
+  const hasFloorPlan  = filesByCategory.floor_plan.length > 0;
+  const hasCgiPackage = filesByCategory.cgi_package.length > 0;
+  const hasDeliveryDate = !isDelivery || pickerDate !== null;
+
+  const submissionIndicator = useMemo(() => {
+    if (hasFloorPlan && hasCgiPackage && hasDeliveryDate) return null;
+    const fileParts: string[] = [];
+    if (!hasFloorPlan)  fileParts.push("Floor Plan");
+    if (!hasCgiPackage) fileParts.push("CGI Package");
+    const needDate = isDelivery && !pickerDate;
+    if (fileParts.length === 0 && needDate) return "Select a delivery date to submit.";
+    const allParts = needDate ? [...fileParts, "a delivery date"] : fileParts;
+    if (allParts.length === 1) return `Add ${allParts[0]} to submit.`;
+    if (allParts.length === 2) return `Add ${allParts[0]} and ${allParts[1]} to submit.`;
+    return `Add ${allParts.slice(0, -1).join(", ")}, and ${allParts[allParts.length - 1]} to submit.`;
+  }, [hasFloorPlan, hasCgiPackage, hasDeliveryDate, isDelivery, pickerDate]);
+
+  const isSubmitDisabled =
+    isSubmitting ||
+    !hasFloorPlan ||
+    !hasCgiPackage ||
+    (isDelivery && !pickerDate) ||
+    (!isDelivery && deliveryMode === "choose" && !selectedMonday);
+
+  const [submitHovered, setSubmitHovered] = useState(false);
+  const [submitFocused, setSubmitFocused] = useState(false);
+  const showTooltip = !!submissionIndicator && (submitHovered || submitFocused);
+
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
@@ -641,6 +810,13 @@ export function NewRoundModal({
     // lingers across sessions.
     if (!isOpen) setConfirmDiscard(false);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, onClose]);
 
   const handleDiscardDraft = async () => {
     if (!onDiscardDraft || !existingDraft) return;
@@ -789,7 +965,6 @@ export function NewRoundModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
-            onClick={onClose}
             className="absolute inset-0 bg-background/75 backdrop-blur-md"
           />
           <motion.div
@@ -804,292 +979,273 @@ export function NewRoundModal({
 
               {/* ── Header ── */}
               <div className="px-12 pt-12 pb-7 border-b border-border/30">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2
-                      className="font-serif font-normal text-foreground"
-                      style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
-                    >
-                      Round {roundNumber.toString().padStart(2, "0")}
-                    </h2>
-                    {sceneName && (
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/45 font-sans">
-                        {sceneName}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="mt-1 text-foreground/50 hover:text-foreground transition-colors"
-                    style={{ lineHeight: 1 }}
-                  >
-                    <X size={16} strokeWidth={1} />
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Main content ── */}
-              <div className="px-12 py-8 space-y-10">
-
-                {/* Instructions */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold">
-                      Instructions
-                    </label>
-                    <button
-                      type="button"
-                      onClick={isRecording ? stopDictation : startDictation}
-                      disabled={isPolishing || !!briefReview}
-                      className={`px-3 py-1 text-[9px] font-sans uppercase tracking-[0.2em] border transition-all ${
-                        isRecording
-                          ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
-                          : (isPolishing || briefReview)
-                          ? "border-border/30 text-foreground/25 cursor-not-allowed"
-                          : "border-border/40 text-foreground/35 hover:border-foreground/30 hover:text-foreground/60"
-                      }`}
-                      style={{ borderRadius: 2 }}
-                    >
-                      {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Dictate"}
-                    </button>
-                  </div>
-
-                  {isPolishing ? (
-                    // Loading state shown while the LLM formats the transcript.
-                    // Holds the textarea-sized space so the layout doesn't jump.
-                    <div
-                      className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
-                      style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
-                    >
-                      Formatting your brief…
-                    </div>
-                  ) : briefReview ? (
-                    // Review panel: raw transcript vs LLM-formatted brief.
-                    // Picking either populates the textarea and clears the
-                    // review state. The client still has a final pass in
-                    // the textarea — we never auto-submit.
-                    <div className="space-y-5">
-                      <div>
-                        <p
-                          className="font-sans uppercase text-foreground/55 mb-2"
-                          style={{ fontSize: 9, letterSpacing: "0.22em" }}
-                        >
-                          What you said
-                        </p>
-                        <p
-                          className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap"
-                          style={{ fontSize: 13, opacity: 0.45 }}
-                        >
-                          {briefReview.raw}
-                        </p>
-                      </div>
-                      <div>
-                        <p
-                          className="font-sans uppercase text-foreground mb-2"
-                          style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}
-                        >
-                          Formatted brief
-                        </p>
-                        <p
-                          className="font-sans text-foreground leading-relaxed whitespace-pre-wrap"
-                          style={{ fontSize: 14 }}
-                        >
-                          {briefReview.formatted}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-6 pt-2">
-                        <button
-                          type="button"
-                          onClick={acceptFormatted}
-                          className="font-sans uppercase hover:opacity-80 transition-opacity"
-                          style={{
-                            fontSize: 11,
-                            letterSpacing: "0.15em",
-                            color: "#B89A6A",
-                            borderBottom: "1px solid #B89A6A",
-                            paddingBottom: 6,
-                            background: "transparent",
-                            border: "none",
-                            borderBottomWidth: 1,
-                            borderBottomStyle: "solid",
-                            borderBottomColor: "#B89A6A",
-                          }}
-                        >
-                          Use formatted
-                        </button>
-                        <button
-                          type="button"
-                          onClick={useOriginal}
-                          className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
-                          style={{
-                            fontSize: 11,
-                            letterSpacing: "0.15em",
-                            opacity: 0.35,
-                            background: "transparent",
-                            border: "none",
-                            padding: 0,
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
-                        >
-                          Use original
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <textarea
-                      ref={instructionsRef}
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
-                      autoFocus
-                      rows={3}
-                      maxLength={2000}
-                      className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
-                      style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
-                    />
-                  )}
-                  <p className="mt-4 text-[11px] font-sans text-foreground/30 leading-relaxed">
-                    Upload what you have. The more detail you share, the better Round 01 we can deliver.
+                <h2
+                  className="font-serif font-normal text-foreground"
+                  style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
+                >
+                  Round {roundNumber.toString().padStart(2, "0")}
+                </h2>
+                {sceneName && (
+                  <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/45 font-sans">
+                    {sceneName}
                   </p>
-                </div>
-
-                {/* File fields */}
-                <div>
-                  {/* 01 — Architecture */}
-                  <SectionLabel>01 — Architecture</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
-                    <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
-                    <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
-                  </div>
-
-                  {/* 02 — Design & Finishes */}
-                  <SectionLabel>02 — Design & Finishes</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
-                    <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
-                    <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
-                  </div>
-
-                  {/* 03 — References & Assets */}
-                  <SectionLabel>03 — References & Assets</SectionLabel>
-                  <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
-                    <UploadItem label="3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
-                    <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
-                  </div>
-                </div>
-
-              </div>
-
-              {/* ── Buffer between rounds — hidden in "any day" delivery mode ── */}
-              {!isDelivery && <div className="px-12 pt-2 pb-6">
-                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                  Buffer between rounds
-                </p>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
-                    disabled={bufferWeeks <= 1}
-                    aria-label="Decrease buffer"
-                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                    style={{ borderRadius: 2 }}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={bufferWeeks}
-                    onChange={(e) => {
-                      const raw = parseInt(e.target.value, 10);
-                      if (Number.isNaN(raw)) return;
-                      setBufferWeeks(Math.min(12, Math.max(1, raw)));
-                    }}
-                    className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
-                    style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
-                    disabled={bufferWeeks >= 12}
-                    aria-label="Increase buffer"
-                    className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
-                    style={{ borderRadius: 2 }}
-                  >
-                    +
-                  </button>
-                  <select
-                    value="weeks"
-                    onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
-                    className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
-                    style={{ borderRadius: 2 }}
-                  >
-                    <option value="weeks">weeks</option>
-                  </select>
-                </div>
-                <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
-                  How long you want between each round of work. Default is one week of production plus your buffer time.
-                </p>
-              </div>}
-
-              {/* ── Delivery date ── */}
-              <div className="px-12 pb-8" style={{ marginTop: "24px" }}>
-                <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
-                  Delivery date
-                </p>
-                {isDelivery ? (
-                  <>
-                    {/* Date picker button */}
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen(v => !v)}
-                      className="flex items-center gap-3 border border-[#2A2820] hover:border-[var(--brand-gold,#B89A6A)] px-4 py-3 transition-colors"
-                      style={{ borderRadius: 2 }}
-                    >
-                      <span className="font-sans text-[11px] uppercase tracking-[0.12em] text-foreground/75">
-                        {pickerDate
-                          ? pickerDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-                          : "Select a date"}
-                      </span>
-                      <span
-                        className="font-sans text-foreground/35 transition-transform"
-                        style={{ fontSize: 10, display: "inline-block", transform: pickerOpen ? "rotate(180deg)" : "none" }}
-                      >▾</span>
-                    </button>
-                    {/* 2-month calendar */}
-                    {pickerOpen && renderDeliveryPicker()}
-                    {/* Countdown */}
-                    {pickerDate && deliveryCountdown && (
-                      <p
-                        className="mt-4 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                        style={{ fontVariantNumeric: "tabular-nums" }}
-                      >
-                        {deliveryCountdown}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[10px] font-sans uppercase tracking-[0.2em] text-gold/80 leading-relaxed">
-                      Delivery — {deliveryDateStr}
-                    </p>
-                    <p
-                      className="mt-1.5 text-[11px] font-sans text-foreground/50 leading-relaxed"
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
-                      Order within {deadlineLabel}
-                    </p>
-                  </>
                 )}
               </div>
 
+              {/* ── Sections ── */}
+              <div className="px-12 pt-8 pb-10">
+
+                {/* Required intro */}
+                <p className="font-sans italic mb-8" style={{ fontSize: 14 }}>
+                  <span style={{ color: "#B89A6A" }}>Required</span>
+                  <span className="text-foreground"> — we need these three before Round 01 can begin.</span>
+                </p>
+                <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
+                  <UploadItem goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
+                  <UploadItem goldLabel label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+
+                  {/* Delivery date — same structural pattern as UploadItem */}
+                  <div
+                    className="group flex items-start py-4"
+                    style={{
+                      marginLeft: "-3rem", marginRight: "-3rem",
+                      paddingLeft: (isDelivery && pickerDate) ? "calc(3rem - 3px)" : "3rem",
+                      paddingRight: "3rem",
+                      position: "relative",
+                      transition: "background var(--duration-standard) var(--ease-default)",
+                      background: (isDelivery && pickerDate) ? "#252018" : "transparent",
+                      borderLeft: (isDelivery && pickerDate) ? "3px solid var(--brand-gold, #B89A6A)" : "3px solid transparent",
+                      boxShadow: (isDelivery && pickerDate) ? "inset 0 0 0 1px rgba(184,154,106,0.15)" : "none",
+                    }}
+                  >
+                    <div className="flex-1 min-w-0" style={{ position: "relative" }}>
+                      <div className="flex items-start justify-between gap-3">
+                        {/* Left: label + date */}
+                        <div className="min-w-0">
+                          <div className="flex items-baseline gap-3">
+                            <span className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
+                              (isDelivery && pickerDate) ? "text-gold font-medium" : "text-gold"
+                            }`}>
+                              Delivery Date
+                            </span>
+                          </div>
+                          {isDelivery ? (
+                            pickerDate && (
+                              <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                <p className="font-serif text-[14px] text-foreground leading-snug truncate">
+                                  {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                                </p>
+                                {deliveryCountdown && (
+                                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                    {deliveryCountdown}
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="mt-1.5">
+                              <p className="font-serif text-[14px] text-foreground leading-snug">
+                                {deliveryDateStr}
+                              </p>
+                              <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                Order within {deadlineLabel}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {/* Right: affordance */}
+                        <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+                          {isDelivery && (
+                            pickerDate ? (
+                              <RowActions type="date" onAction={() => setPickerOpen(true)} />
+                            ) : (
+                              <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40">
+                                No date selected
+                              </span>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Calendar — visible when no date selected or CHANGE clicked */}
+                  {isDelivery && (!pickerDate || pickerOpen) && (
+                    <div className="flex justify-center pb-4">
+                      {renderDeliveryPicker()}
+                    </div>
+                  )}
+
+                  {/* Buffer between rounds — non-delivery mode only */}
+                  {!isDelivery && (
+                    <div className="pt-6 pb-2 border-t border-border/20">
+                      <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold mb-4">
+                        Buffer between rounds
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setBufferWeeks((n) => Math.max(1, n - 1))}
+                          disabled={bufferWeeks <= 1}
+                          aria-label="Decrease buffer"
+                          className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                          style={{ borderRadius: 2 }}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={bufferWeeks}
+                          onChange={(e) => {
+                            const raw = parseInt(e.target.value, 10);
+                            if (Number.isNaN(raw)) return;
+                            setBufferWeeks(Math.min(12, Math.max(1, raw)));
+                          }}
+                          className="h-10 w-14 bg-transparent text-center text-[14px] font-sans text-foreground border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none"
+                          style={{ borderRadius: 2, fontVariantNumeric: "tabular-nums" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setBufferWeeks((n) => Math.min(12, n + 1))}
+                          disabled={bufferWeeks >= 12}
+                          aria-label="Increase buffer"
+                          className="h-10 w-10 flex items-center justify-center border border-[#2A2820] text-foreground/65 hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-25 disabled:cursor-not-allowed"
+                          style={{ borderRadius: 2 }}
+                        >
+                          +
+                        </button>
+                        <select
+                          value="weeks"
+                          onChange={() => { /* days unit deferred — single option keeps the chrome ready */ }}
+                          className="h-10 px-3 bg-transparent text-[12px] font-sans text-foreground/75 border border-[#2A2820] focus:border-[var(--brand-gold)] focus:outline-none cursor-pointer"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="weeks">weeks</option>
+                        </select>
+                      </div>
+                      <p className="mt-4 text-[11px] font-sans italic text-foreground/40 leading-relaxed">
+                        How long you want between each round of work. Default is one week of production plus your buffer time.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
+                  <>
+                    {/* Section break */}
+                    <div style={{ marginTop: 64, marginBottom: 64, borderTop: "1px solid #2A2820" }} />
+
+                    {/* Welcome intro */}
+                    <p className="font-sans italic mb-6" style={{ fontSize: 14 }}>
+                      <span style={{ color: "#B89A6A" }}>Optional</span>
+                      <span className="text-foreground"> — the more detail you share, the better Round 01 we can deliver.</span>
+                    </p>
+                    <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
+
+                      {/* Instructions — first in Welcome section */}
+                      <div className="py-5 border-b" style={{ borderBottomColor: "#2A2820" }}>
+                        <div className="flex items-center justify-between mb-4">
+                          <label className="text-[11px] font-sans uppercase tracking-[0.12em] text-foreground/75">
+                            Instructions
+                          </label>
+                          <button
+                            type="button"
+                            onClick={isRecording ? stopDictation : startDictation}
+                            disabled={isPolishing || !!briefReview}
+                            className={`px-3 py-1 text-[13px] font-sans border transition-all ${
+                              isRecording
+                                ? "border-rose-500/60 text-rose-400 bg-rose-500/5"
+                                : (isPolishing || briefReview)
+                                ? "border-border/30 text-foreground/25 cursor-not-allowed"
+                                : "border-border/40 hover:border-[#B89A6A]/60 hover:opacity-80"
+                            }`}
+                            style={{ borderRadius: 2, color: (isPolishing || briefReview || isRecording) ? undefined : "#B89A6A" }}
+                          >
+                            {isPolishing ? "Formatting…" : isRecording ? "Stop" : "Speak"}
+                          </button>
+                        </div>
+
+                        {isPolishing ? (
+                          <div
+                            className="flex items-center justify-center text-[11px] font-sans uppercase tracking-[0.18em] text-foreground/35"
+                            style={{ minHeight: 120, border: "1px solid #2A2820", padding: 16 }}
+                          >
+                            Formatting your brief…
+                          </div>
+                        ) : briefReview ? (
+                          <div className="space-y-5">
+                            <div>
+                              <p className="font-sans uppercase text-foreground/55 mb-2" style={{ fontSize: 9, letterSpacing: "0.22em" }}>
+                                What you said
+                              </p>
+                              <p className="font-sans italic text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 13, opacity: 0.45 }}>
+                                {briefReview.raw}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="font-sans uppercase text-foreground mb-2" style={{ fontSize: 9, letterSpacing: "0.22em", color: "#B89A6A" }}>
+                                Formatted brief
+                              </p>
+                              <p className="font-sans text-foreground leading-relaxed whitespace-pre-wrap" style={{ fontSize: 14 }}>
+                                {briefReview.formatted}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-6 pt-2">
+                              <button
+                                type="button"
+                                onClick={acceptFormatted}
+                                className="font-sans uppercase hover:opacity-80 transition-opacity"
+                                style={{ fontSize: 11, letterSpacing: "0.15em", color: "#B89A6A", background: "transparent", border: "none", borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "#B89A6A", paddingBottom: 6 }}
+                              >
+                                Use formatted
+                              </button>
+                              <button
+                                type="button"
+                                onClick={useOriginal}
+                                className="font-sans uppercase text-foreground hover:opacity-100 transition-opacity"
+                                style={{ fontSize: 11, letterSpacing: "0.15em", opacity: 0.35, background: "transparent", border: "none", padding: 0 }}
+                                onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                              >
+                                Use original
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <textarea
+                            ref={instructionsRef}
+                            value={instructions}
+                            onChange={(e) => setInstructions(e.target.value)}
+                            placeholder="Describe the camera angle, lighting mood, materials, and any specific changes required."
+                            rows={3}
+                            maxLength={2000}
+                            className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
+                            style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
+                          />
+                        )}
+                      </div>
+
+                      <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
+                      <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
+                      <UploadItem label="Finishes schedule" files={filesByCategory.finishes_schedule} onFilesAdded={(fl) => handleFilesAdded("finishes_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("finishes_schedule", i)} />
+                      <UploadItem label="Furniture schedule (FF&E)" files={filesByCategory.furniture_schedule} onFilesAdded={(fl) => handleFilesAdded("furniture_schedule", fl)} onRemoveFile={(i) => handleRemoveFile("furniture_schedule", i)} />
+                      <UploadItem label="Lighting plan" files={filesByCategory.lighting_plan} onFilesAdded={(fl) => handleFilesAdded("lighting_plan", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_plan", i)} />
+                      <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
+                      <UploadItem label="Existing 3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
+                    </div>
+                  </>
+                )}
+
+              </div>
+
               {/* ── Footer ── */}
-              <div className="px-12 pb-12 flex gap-3 items-center">
+              {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
+              <>
+              <div className="px-12" style={{ marginTop: 24 }}>
+                <div style={{ borderTop: "1px solid #2A2820" }} />
+              </div>
+              <div className="px-12 pb-12 flex gap-3 items-center" style={{ paddingTop: 64 }}>
                 <button
                   type="button"
                   onClick={onClose}
@@ -1124,19 +1280,61 @@ export function NewRoundModal({
                     {isSubmitting ? "Saving…" : "Save Draft"}
                   </button>
                 )}
-                <button
-                  type="submit"
-                  disabled={isSubmitting || (isDelivery ? (!pickerDate || !hasAtLeastOneFile) : (!hasAtLeastOneFile || (deliveryMode === "choose" && !selectedMonday)))}
-                  className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
-                  style={{ borderRadius: 2 }}
+                {/* Submit — wrapped for tooltip positioning */}
+                <div
+                  className="flex-1"
+                  style={{ position: "relative" }}
+                  onMouseEnter={() => setSubmitHovered(true)}
+                  onMouseLeave={() => setSubmitHovered(false)}
                 >
-                  {isSubmitting
-                    ? "Uploading…"
-                    : isDelivery || deliveryMode === "next"
-                    ? "Submit for Production"
-                    : "Book Production Slot"}
-                </button>
+                  {/* Tooltip — always in DOM when indicator exists; opacity driven by hover/focus */}
+                  {submissionIndicator && (
+                    <div
+                      role="tooltip"
+                      id="submit-tooltip"
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 12px)",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: "#232019",
+                        border: "1px solid #2A2820",
+                        padding: "12px 16px",
+                        width: "max-content",
+                        maxWidth: 280,
+                        pointerEvents: "none",
+                        zIndex: 10,
+                        opacity: showTooltip ? 1 : 0,
+                        transition: `opacity ${showTooltip ? 150 : 100}ms ease`,
+                      }}
+                    >
+                      <p
+                        className="font-sans text-foreground/85 leading-relaxed"
+                        style={{ fontSize: 13 }}
+                      >
+                        {submissionIndicator}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitDisabled}
+                    aria-describedby={submissionIndicator ? "submit-tooltip" : undefined}
+                    onFocus={() => setSubmitFocused(true)}
+                    onBlur={() => setSubmitFocused(false)}
+                    className="w-full h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                    style={{ borderRadius: 2 }}
+                  >
+                    {isSubmitting
+                      ? "Uploading…"
+                      : isDelivery || deliveryMode === "next"
+                      ? "Submit for Production"
+                      : "Book Production Slot"}
+                  </button>
+                </div>
               </div>
+              </>
+              )}
 
             </form>
           </motion.div>
