@@ -935,7 +935,10 @@ export function NewRoundModal({
                   {/* Delivery date — third required element */}
                   <div className="border-t border-border/20">
                     {/* Row: label left / state right — mirrors UploadItem layout */}
-                    <div className="flex items-start justify-between gap-3 py-4">
+                    <div
+                      className="flex items-start justify-between gap-3 py-4"
+                      style={pickerDate ? { borderLeft: "1px solid #B89A6A" } : undefined}
+                    >
                       <span className="text-[11px] font-sans uppercase tracking-[0.12em] text-gold shrink-0">
                         Delivery Date
                       </span>
