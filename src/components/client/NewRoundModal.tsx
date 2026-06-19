@@ -932,50 +932,81 @@ export function NewRoundModal({
                   <UploadItem goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                   <UploadItem goldLabel label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
 
-                  {/* Delivery date — third required element */}
-                  {/* Row: border-t and borderLeft on the same element so the corner meets cleanly */}
+                  {/* Delivery date — same structural pattern as UploadItem */}
                   <div
-                    className="flex items-start justify-between gap-3 py-4 border-t border-border/20"
-                    style={pickerDate ? { borderLeft: "1px solid #B89A6A" } : undefined}
+                    className="group flex items-start py-4"
+                    style={{
+                      marginLeft: "-3rem", marginRight: "-3rem",
+                      paddingLeft: (isDelivery && pickerDate) ? "calc(3rem - 3px)" : "3rem",
+                      paddingRight: "3rem",
+                      position: "relative",
+                      transition: "background var(--duration-standard) var(--ease-default)",
+                      background: (isDelivery && pickerDate) ? "#252018" : "transparent",
+                      borderLeft: (isDelivery && pickerDate) ? "3px solid var(--brand-gold, #B89A6A)" : "3px solid transparent",
+                      boxShadow: (isDelivery && pickerDate) ? "inset 0 0 0 1px rgba(184,154,106,0.15)" : "none",
+                    }}
                   >
-                    <span className="text-[11px] font-sans uppercase tracking-[0.12em] text-gold shrink-0">
-                      Delivery Date
-                    </span>
-                    <div className="shrink-0 text-right">
-                      {isDelivery ? (
-                        pickerDate ? (
-                          <span className="font-serif text-foreground" style={{ fontSize: 14 }}>
-                            {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-                          </span>
-                        ) : (
-                          <span className="font-sans italic text-foreground/40" style={{ fontSize: 13 }}>
-                            No date selected
-                          </span>
-                        )
-                      ) : (
-                        <>
-                          <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
-                            {deliveryDateStr}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-sans text-foreground/50" style={{ fontVariantNumeric: "tabular-nums" }}>
-                            Order within {deadlineLabel}
-                          </p>
-                        </>
-                      )}
+                    <div className="flex-1 min-w-0" style={{ position: "relative" }}>
+                      <div className="flex items-start justify-between gap-3">
+                        {/* Left: label + date */}
+                        <div className="min-w-0">
+                          <div className="flex items-baseline gap-3">
+                            <span className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
+                              (isDelivery && pickerDate) ? "text-gold font-medium" : "text-gold"
+                            }`}>
+                              Delivery Date
+                            </span>
+                          </div>
+                          {isDelivery ? (
+                            pickerDate && (
+                              <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                <p className="font-serif text-[14px] text-foreground leading-snug truncate">
+                                  {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                                </p>
+                                {deliveryCountdown && (
+                                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                    {deliveryCountdown}
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="mt-1.5">
+                              <p className="font-serif text-[14px] text-foreground leading-snug">
+                                {deliveryDateStr}
+                              </p>
+                              <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                Order within {deadlineLabel}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {/* Right: affordance */}
+                        <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+                          {isDelivery && (
+                            pickerDate ? (
+                              <button
+                                type="button"
+                                onClick={() => setPickerOpen(true)}
+                                className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
+                              >
+                                Change
+                              </button>
+                            ) : (
+                              <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40">
+                                No date selected
+                              </span>
+                            )
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  {/* Calendar — delivery mode only, centred */}
-                  {isDelivery && (
-                    <>
-                      <div className="flex justify-center pb-4">
-                        {renderDeliveryPicker()}
-                      </div>
-                      {pickerDate && deliveryCountdown && (
-                        <p className="pb-4 text-right text-[11px] font-sans text-foreground/50 leading-relaxed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                          {deliveryCountdown}
-                        </p>
-                      )}
-                    </>
+                  {/* Calendar — visible when no date selected or CHANGE clicked */}
+                  {isDelivery && (!pickerDate || pickerOpen) && (
+                    <div className="flex justify-center pb-4">
+                      {renderDeliveryPicker()}
+                    </div>
                   )}
 
                   {/* Buffer between rounds — non-delivery mode only */}
