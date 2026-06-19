@@ -23,7 +23,6 @@ const SCENE_SUBFOLDERS = [
   "MO_Models",
   "VS_Visuals",
   "AS_Assets",
-  "PP_Post-Production",
 ];
 
 function slugify(name: string): string {
@@ -270,10 +269,11 @@ Deno.serve(async (req) => {
     console.log(`[dropbox-create-scene-folder] Creating ${sceneFolderPath}`);
     await createFolder(accessToken, sceneFolderPath, namespaceId);
 
-    // Create six standard subfolders
+    // Create five standard subfolders, then PP_Post-Production inside VS_Visuals
     for (const sub of SCENE_SUBFOLDERS) {
       await createFolder(accessToken, `${sceneFolderPath}/${sub}`, namespaceId);
     }
+    await createFolder(accessToken, `${sceneFolderPath}/VS_Visuals/PP_Post-Production`, namespaceId);
 
     // Write scene_code, scene_slug, dropbox_folder back to DB
     const { error: updateErr } = await supabase
