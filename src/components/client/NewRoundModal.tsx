@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
-import { X, FileIcon } from "lucide-react";
+import { X, FileIcon, MoreHorizontal } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -314,29 +314,94 @@ function UploadItem({
               </span>
             )}
             {active && (
-              <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.click()}
-                  className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
-                >
-                  Replace
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    for (let i = files.length - 1; i >= 0; i--) onRemoveFile(i);
-                  }}
-                  className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
-                >
-                  Remove
-                </button>
+              <div onClick={(e) => e.stopPropagation()}>
+                <RowActions
+                  type="file"
+                  onReplace={() => inputRef.current?.click()}
+                  onRemove={() => { for (let i = files.length - 1; i >= 0; i--) onRemoveFile(i); }}
+                />
               </div>
             )}
           </div>
 
         </div>
       </div>
+    </div>
+  );
+}
+
+function RowActions({
+  type, onReplace, onRemove, onAction,
+}: {
+  type: "file" | "date";
+  onReplace?: () => void;
+  onRemove?: () => void;
+  onAction?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
+  const iconBtn = (label: string, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="p-1 text-foreground/30 hover:text-gold transition-colors"
+      style={{ lineHeight: 0 }}
+    >
+      <MoreHorizontal size={15} strokeWidth={1.5} />
+    </button>
+  );
+
+  if (type === "date") return iconBtn("Change delivery date", onAction!);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {iconBtn("File actions", () => setOpen(o => !o))}
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute", right: 0, top: "calc(100% + 4px)",
+            background: "#1E1C18", border: "1px solid #2A2820",
+            borderRadius: 2, minWidth: 120, zIndex: 20,
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { onReplace?.(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-[11px] font-sans uppercase tracking-[0.12em] text-foreground/65 hover:text-foreground hover:bg-white/5 transition-colors"
+          >
+            Replace
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { onRemove?.(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-[11px] font-sans uppercase tracking-[0.12em] text-amber-400/70 hover:text-amber-300 hover:bg-white/5 transition-colors"
+          >
+            Remove
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -986,13 +1051,7 @@ export function NewRoundModal({
                         <div className="shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
                           {isDelivery && (
                             pickerDate ? (
-                              <button
-                                type="button"
-                                onClick={() => setPickerOpen(true)}
-                                className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
-                              >
-                                Change
-                              </button>
+                              <RowActions type="date" onAction={() => setPickerOpen(true)} />
                             ) : (
                               <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40">
                                 No date selected
