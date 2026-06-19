@@ -674,11 +674,7 @@ export function NewRoundModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isDelivery) {
-      if (!pickerDate || !hasAtLeastOneFile) return;
-    } else {
-      if (!instructions.trim()) return;
-    }
+    if (isDelivery ? (!pickerDate || !hasAtLeastOneFile) : !hasAtLeastOneFile) return;
     setIsSubmitting(true);
     try {
       const success = await uploadAllFiles();
@@ -1131,7 +1127,7 @@ export function NewRoundModal({
                 )}
                 <button
                   type="submit"
-                  disabled={isSubmitting || (isDelivery ? (!pickerDate || !hasAtLeastOneFile) : (!instructions.trim() || (deliveryMode === "choose" && !selectedMonday)))}
+                  disabled={isSubmitting || (isDelivery ? (!pickerDate || !hasAtLeastOneFile) : (!hasAtLeastOneFile || (deliveryMode === "choose" && !selectedMonday)))}
                   className="flex-1 h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{ borderRadius: 2 }}
                 >
