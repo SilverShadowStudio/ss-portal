@@ -22,7 +22,7 @@ interface BookingModalProps {
   sceneName: string;
   projectName?: string;
   onBooked: () => void;
-  bookingMode?: 'calendar' | 'delivery';
+  bookingMode?: 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote';
 }
 
 const MIN_ROUNDS = 1;
@@ -85,7 +85,8 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const isDelivery = bookingMode === 'delivery';
+  const isDelivery = bookingMode === 'delivery' || bookingMode === 'delivery_no_quote';
+  const showPricing = bookingMode !== 'calendar_no_quote' && bookingMode !== 'delivery_no_quote';
 
   const earliest = useMemo(() => getEarliestBookableMonday(), []);
   // Next weekday after today — minimum selectable delivery date.
@@ -659,20 +660,22 @@ export function BookingModal({ isOpen, onClose, sceneId, sceneName, projectName,
           : "Round dates may shift if feedback is delayed. Briefs must arrive by Friday 12:00 for the round starting the following Monday."}
       </p>
 
-      <div className="mt-8 space-y-2">
-        <div className="flex items-center justify-between font-sans text-[13px]">
-          <span className="text-standard">Net total</span>
-          <span className="tabular-nums text-standard">{formatCurrency(totals.netTotal, "GBP")}</span>
+      {showPricing && (
+        <div className="mt-8 space-y-2">
+          <div className="flex items-center justify-between font-sans text-[13px]">
+            <span className="text-standard">Net total</span>
+            <span className="tabular-nums text-standard">{formatCurrency(totals.netTotal, "GBP")}</span>
+          </div>
+          <div className="flex items-center justify-between font-sans text-[13px]">
+            <span className="text-standard">VAT ({Math.round(VAT_RATE * 100)}%)</span>
+            <span className="tabular-nums text-standard">{formatCurrency(totals.vatAmount, "GBP")}</span>
+          </div>
+          <div className="flex items-center justify-between border-t border-border pt-3 font-sans" style={{ fontSize: 18 }}>
+            <span className="text-strong">Total</span>
+            <span className="tabular-nums text-strong">{formatCurrency(totals.grossTotal, "GBP")}</span>
+          </div>
         </div>
-        <div className="flex items-center justify-between font-sans text-[13px]">
-          <span className="text-standard">VAT ({Math.round(VAT_RATE * 100)}%)</span>
-          <span className="tabular-nums text-standard">{formatCurrency(totals.vatAmount, "GBP")}</span>
-        </div>
-        <div className="flex items-center justify-between border-t border-border pt-3 font-sans" style={{ fontSize: 18 }}>
-          <span className="text-strong">Total</span>
-          <span className="tabular-nums text-strong">{formatCurrency(totals.grossTotal, "GBP")}</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 

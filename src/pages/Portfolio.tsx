@@ -104,7 +104,7 @@ export default function Portfolio() {
   const [isNewSceneModalOpen, setIsNewSceneModalOpen] = useState(false);
   const [isNewRoundModalOpen, setIsNewRoundModalOpen] = useState(false);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [bookingMode, setBookingMode] = useState<'calendar' | 'delivery'>('calendar');
+  const [bookingMode, setBookingMode] = useState<'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote'>('calendar');
   // When the user opens the Round modal on a scene that already has a
   // draft, we pre-load it here so the modal updates that row on save
   // (one-draft-per-scene rule, enforced at DB level by the partial unique
@@ -265,7 +265,7 @@ export default function Portfolio() {
         .select("booking_mode")
         .eq("id", membership.account_id)
         .maybeSingle();
-      setBookingMode((accountData?.booking_mode as 'calendar' | 'delivery') || 'calendar');
+      setBookingMode((accountData?.booking_mode as 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote') || 'calendar');
 
       const { data: projectsData, error } = await supabase
         .from("projects")
