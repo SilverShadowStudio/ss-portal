@@ -57,6 +57,13 @@ function isSameDayPicker(a: Date, b: Date): boolean {
 }
 const PICKER_DAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
 
+function formatFileSize(bytes?: number): string {
+  if (bytes == null || bytes === 0) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 interface UploadedFile {
   name: string;
   size?: number;
@@ -127,15 +134,18 @@ function UploadItem({
   files,
   onFilesAdded,
   onRemoveFile,
+  required,
 }: {
   label: string;
   files: UploadedFile[];
   onFilesAdded: (files: FileList) => void;
   onRemoveFile: (index: number) => void;
+  required?: boolean;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const active = files.length > 0;
+  const firstFile = files[0] ?? null;
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -166,10 +176,10 @@ function UploadItem({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onClick={() => inputRef.current?.click()}
+      onClick={active ? undefined : () => inputRef.current?.click()}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group flex items-start py-4 border-b cursor-pointer last:border-b-0"
+      className={`group flex items-start py-4 border-b last:border-b-0 ${active ? "" : "cursor-pointer"}`}
       style={{
         marginLeft: "-3rem", marginRight: "-3rem",
         paddingLeft: active ? "calc(3rem - 3px)" : "3rem", paddingRight: "3rem",
@@ -194,7 +204,7 @@ function UploadItem({
         }}
       />
 
-      {/* Subtle hover/drag overlay */}
+      {/* Subtle hover/drag overlay — only in empty state */}
       <div
         style={{
           position: "absolute",
@@ -223,59 +233,105 @@ function UploadItem({
       />
 
       <div className="flex-1 min-w-0" style={{ position: "relative" }}>
-        <div className="flex items-center justify-between gap-3">
-          <span
-            className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
-              active
-                ? "text-gold font-medium"
-                : isDragging
-                ? "text-gold/70"
-                : "text-foreground/75"
-            }`}
-          >
-            {label}
-          </span>
-          {!active && (
-            <span
-              style={{ transition: "opacity var(--duration-standard) var(--ease-default)" }}
-              className={`text-[9px] font-sans uppercase tracking-[0.2em] shrink-0 ${
-                isDragging ? "text-gold/70" : "text-foreground/40"
-              }`}
-            >
-              Drop or click
-            </span>
-          )}
-          {active && (
-            <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-gold shrink-0">
-              {files.length} file{files.length > 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
+        <div className="flex items-start justify-between gap-3">
 
-        {files.length > 0 && (
-          <div className="mt-2.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {files.map((f, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <FileIcon size={10} className="shrink-0 text-foreground/25" />
-                <span className="text-[10px] text-foreground/85 truncate flex-1 font-sans">
-                  {f.name}
+          {/* Left: label + uploaded file info */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-3">
+              <span
+                className={`text-[11px] font-sans uppercase tracking-[0.12em] ${
+                  active
+                    ? "text-gold font-medium"
+                    : isDragging
+                    ? "text-gold/70"
+                    : "text-foreground/75"
+                }`}
+              >
+                {label}
+              </span>
+              {/* REQUIRED tag — shown only when empty */}
+              {required && !active && (
+                <span className="text-[9px] font-sans uppercase tracking-[0.15em] text-gold shrink-0">
+                  Required
                 </span>
-                {f.uploading && (
-                  <BrandLoader size="sm" className="h-2.5 w-2.5" />
+              )}
+            </div>
+
+            {/* Populated: filename + size + overflow files */}
+            {active && firstFile && (
+              <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                <p className="font-serif text-[14px] text-foreground leading-snug truncate">
+                  {firstFile.name}
+                </p>
+                {firstFile.size != null && firstFile.size > 0 && (
+                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40">
+                    {formatFileSize(firstFile.size)}
+                  </p>
                 )}
-                {f.error && (
-                  <span className="text-[9px] text-destructive uppercase tracking-wider">Error</span>
+                {firstFile.uploading && (
+                  <BrandLoader size="sm" className="mt-1 h-2.5 w-2.5" />
                 )}
+                {firstFile.error && (
+                  <span className="mt-0.5 text-[9px] text-destructive uppercase tracking-wider">Upload error</span>
+                )}
+                {/* Additional files (multi-upload) */}
+                {files.length > 1 && (
+                  <div className="mt-2 space-y-1">
+                    {files.slice(1).map((f, i) => (
+                      <div key={i + 1} className="flex items-center gap-2">
+                        <FileIcon size={9} className="shrink-0 text-foreground/25" />
+                        <span className="text-[10px] text-foreground/50 truncate flex-1 font-sans">{f.name}</span>
+                        {f.uploading && <BrandLoader size="sm" className="h-2.5 w-2.5" />}
+                        <button
+                          type="button"
+                          onClick={() => onRemoveFile(i + 1)}
+                          className="p-0.5 text-foreground/25 hover:text-foreground/60 transition-colors"
+                        >
+                          <X size={9} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: affordance */}
+          <div className="shrink-0 pt-0.5">
+            {!active && (
+              <span
+                style={{ transition: "opacity var(--duration-standard) var(--ease-default)" }}
+                className={`text-[9px] font-sans uppercase tracking-[0.2em] ${
+                  isDragging ? "text-gold/70" : "text-foreground/40"
+                }`}
+              >
+                Drop or click
+              </span>
+            )}
+            {active && (
+              <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                 <button
-                  onClick={() => onRemoveFile(i)}
-                  className="p-0.5 text-foreground/25 hover:text-foreground/60 transition-colors"
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
                 >
-                  <X size={10} />
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    for (let i = files.length - 1; i >= 0; i--) onRemoveFile(i);
+                  }}
+                  className="text-[11px] font-sans uppercase tracking-[0.15em] text-foreground/40 hover:text-foreground/80 transition-colors"
+                >
+                  Remove
                 </button>
               </div>
-            ))}
+            )}
           </div>
-        )}
+
+        </div>
       </div>
     </div>
   );
@@ -283,7 +339,7 @@ function UploadItem({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-5 pb-1 first:pt-0">
+    <p className="text-[9px] font-sans font-medium uppercase tracking-[0.3em] text-gold pt-8 pb-4 first:pt-0">
       {children}
     </p>
   );
@@ -804,29 +860,17 @@ export function NewRoundModal({
 
               {/* ── Header ── */}
               <div className="px-12 pt-12 pb-7 border-b border-border/30">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2
-                      className="font-serif font-normal text-foreground"
-                      style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
-                    >
-                      Round {roundNumber.toString().padStart(2, "0")}
-                    </h2>
-                    {sceneName && (
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/45 font-sans">
-                        {sceneName}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="mt-1 text-foreground/50 hover:text-foreground transition-colors"
-                    style={{ lineHeight: 1 }}
-                  >
-                    <X size={16} strokeWidth={1} />
-                  </button>
-                </div>
+                <h2
+                  className="font-serif font-normal text-foreground"
+                  style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
+                >
+                  Round {roundNumber.toString().padStart(2, "0")}
+                </h2>
+                {sceneName && (
+                  <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-foreground/45 font-sans">
+                    {sceneName}
+                  </p>
+                )}
               </div>
 
               {/* ── Main content ── */}
@@ -960,7 +1004,7 @@ export function NewRoundModal({
                   {/* 01 — Architecture */}
                   <SectionLabel>01 — Architecture</SectionLabel>
                   <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                    <UploadItem label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
+                    <UploadItem label="Floor plan" required files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                     <UploadItem label="Elevations" files={filesByCategory.elevations} onFilesAdded={(fl) => handleFilesAdded("elevations", fl)} onRemoveFile={(i) => handleRemoveFile("elevations", i)} />
                     <UploadItem label="Reflected ceiling plan (RCP)" files={filesByCategory.rcp} onFilesAdded={(fl) => handleFilesAdded("rcp", fl)} onRemoveFile={(i) => handleRemoveFile("rcp", i)} />
                   </div>
@@ -978,7 +1022,7 @@ export function NewRoundModal({
                   <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
                     <UploadItem label="Lighting mood reference" files={filesByCategory.lighting_mood_reference} onFilesAdded={(fl) => handleFilesAdded("lighting_mood_reference", fl)} onRemoveFile={(i) => handleRemoveFile("lighting_mood_reference", i)} />
                     <UploadItem label="3D models" files={filesByCategory.models_3d} onFilesAdded={(fl) => handleFilesAdded("models_3d", fl)} onRemoveFile={(i) => handleRemoveFile("models_3d", i)} />
-                    <UploadItem label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+                    <UploadItem label="CGI Package (PDF)" required files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
                   </div>
                 </div>
 
