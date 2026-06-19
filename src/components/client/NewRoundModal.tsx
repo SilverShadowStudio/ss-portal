@@ -946,7 +946,6 @@ export function NewRoundModal({
                       autoFocus
                       rows={3}
                       maxLength={2000}
-                      required
                       className="w-full bg-transparent text-foreground placeholder:text-foreground/20 text-[14px] font-sans leading-relaxed focus:outline-none resize-none p-4 border border-[#2A2820] focus:border-[var(--brand-gold)]"
                       style={{ overflow: "hidden", minHeight: "120px", transition: "border-color var(--duration-quick) var(--ease-default)" }}
                     />
