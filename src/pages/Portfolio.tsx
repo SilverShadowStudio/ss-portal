@@ -592,7 +592,10 @@ export default function Portfolio() {
       setTimeout(() => setIsNewRoundModalOpen(true), 300);
     } catch (error: any) {
       console.error("Error creating scene:", error);
-      toast.error(error.message || "Failed to create scene");
+      const msg = error?.message;
+      // Browser network errors ("Load failed", "Failed to fetch") are not meaningful to clients
+      const isNetworkError = !msg || /load failed|failed to fetch/i.test(msg);
+      toast.error(isNetworkError ? "Failed to create scene — please try again" : msg);
     }
   };
 

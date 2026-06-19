@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 interface NewSceneModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (title: string) => void;
+  onCreate: (title: string) => Promise<void> | void;
   projectName?: string;
 }
 
@@ -16,12 +16,17 @@ interface NewSceneModalProps {
 // the project context is known.
 export function NewSceneModal({ isOpen, onClose, onCreate, projectName }: NewSceneModalProps) {
   const [title, setTitle] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (title.trim()) {
-      onCreate(title.trim());
+    if (!title.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await onCreate(title.trim());
       setTitle("");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -145,7 +150,7 @@ export function NewSceneModal({ isOpen, onClose, onCreate, projectName }: NewSce
                 </button>
                 <button
                   type="submit"
-                  disabled={!title.trim()}
+                  disabled={!title.trim() || submitting}
                   className="flex-1 font-sans uppercase transition-opacity disabled:opacity-20 disabled:cursor-not-allowed"
                   style={{
                     height: 48,
@@ -157,7 +162,7 @@ export function NewSceneModal({ isOpen, onClose, onCreate, projectName }: NewSce
                     borderRadius: 2,
                   }}
                 >
-                  Create Scene
+                  {submitting ? "Creating…" : "Create Scene"}
                 </button>
               </div>
             </form>
