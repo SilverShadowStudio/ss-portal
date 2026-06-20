@@ -425,7 +425,28 @@ export function ProductionGantt({
   }, []);
   const todayCol = dateMap.get(todayKey) ?? null;
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const hoverColRef = useRef<HTMLDivElement>(null);
+
+  function handleScrollMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const scrollEl = scrollRef.current;
+    const hoverEl  = hoverColRef.current;
+    if (!scrollEl || !hoverEl) return;
+    const rect = scrollEl.getBoundingClientRect();
+    const rawX = e.clientX - rect.left + scrollEl.scrollLeft;
+    const col  = Math.floor((rawX - FROZEN_W) / CELL_W);
+    if (col >= 0 && col < dates.length) {
+      hoverEl.style.display = 'block';
+      hoverEl.style.left    = `${FROZEN_W + col * CELL_W}px`;
+    } else {
+      hoverEl.style.display = 'none';
+    }
+  }
+
+  function handleScrollMouseLeave() {
+    const hoverEl = hoverColRef.current;
+    if (hoverEl) hoverEl.style.display = 'none';
+  }
 
   // Smart initial scroll:
   // • Today in window → centre on today's column.
@@ -518,8 +539,29 @@ export function ProductionGantt({
 
       {/* Scroll container + right-edge fade affordance */}
       <div style={{ position: 'relative' }}>
-        <div ref={scrollRef} className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <div style={{ width: CONTENT_W_DYN }}>
+        <div
+          ref={scrollRef}
+          className="gantt-scroll"
+          onMouseMove={handleScrollMouseMove}
+          onMouseLeave={handleScrollMouseLeave}
+          style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}
+        >
+          <div style={{ width: CONTENT_W_DYN, position: 'relative' }}>
+            {/* Column hover highlight — DOM-driven, no React re-render on every mousemove */}
+            <div
+              ref={hoverColRef}
+              style={{
+                display: 'none',
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: CELL_W,
+                background: 'rgba(197,165,114,0.08)',
+                pointerEvents: 'none',
+                zIndex: 9,
+              }}
+            />
 
             {/* ── Date header row ── */}
             <div style={{ display: 'flex', height: HEADER_H, position: 'sticky', top: 0, zIndex: 8, background: GANTT_HEADER_BG }}>
