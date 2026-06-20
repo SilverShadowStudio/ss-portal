@@ -978,7 +978,16 @@ export function NewRoundModal({
             <form onSubmit={handleSubmit}>
 
               {/* ── Header ── */}
-              <div className="px-12 pt-12 pb-7 border-b border-border/30">
+              <div className="px-12 pt-12 pb-7 border-b border-border/30" style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="absolute top-10 right-10 flex items-center justify-center text-foreground/30 hover:text-foreground/60 transition-colors"
+                  aria-label="Close"
+                  style={{ width: 28, height: 28 }}
+                >
+                  <X size={14} />
+                </button>
                 <h2
                   className="font-serif font-normal text-foreground"
                   style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
