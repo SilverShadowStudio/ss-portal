@@ -2,6 +2,57 @@
 
 ---
 
+# Session — 20 June 2026
+
+## Completed this session
+
+- `912cd8a` — Timeline Gantt: today marker (1px gold vertical line), "Today" label in date header, smart initial scroll (`MAX_AUTO_COLS=130`), shimmer skeleton loading state, empty state rule lines, right-edge fade affordance (Stage 4 of 4)
+- `79440eb` — Remove `ReservationBasket` from `ClientLayout` (deferred — component preserved, just unmounted)
+- `ec530e6` — `NewRoundModal`: add X close button to header — always visible, not gated behind the three required fields (Cancel was invisible until all three filled)
+- `a2dc2f2` — Timeline Gantt: full-column hover highlight, top to bottom including date header; DOM-driven (no React re-render per mousemove)
+
+All four commits are on branch `stage4/timeline-polish` — **not yet merged to main**. Awaiting Fred's visual approval on the Vercel preview before merging.
+
+## In progress / needs verification
+
+- **Visual approval of `stage4/timeline-polish`** — check the Vercel preview URL for this branch. Verify: today marker line, "Today" label, column hover highlight spanning date header, shimmer skeleton on load, jump-to-today button, smart initial scroll. Merge to main once approved.
+- **Deploy `dropbox-create-scene-folder` edge function** — still undeployed from last session. Code is in `main` (`b482649`); live function is wrong. Needs fresh Supabase access token. Command: `SUPABASE_ACCESS_TOKEN=<fresh> npx supabase functions deploy dropbox-create-scene-folder --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt`
+
+## Pending
+
+- **Merge `stage4/timeline-polish` → main** after visual approval.
+- **Refresh Supabase access token** — expired (`~/.zshrc` token 401s). Get from Supabase Dashboard → Account → Access tokens.
+- **Browser-verify the full Round Request Modal refactor** — walk through floor plan upload, CGI package upload, delivery date selection, new X close button at top-right, Cancel, ESC.
+- **Browser-verify legacy round import** (SC09, SC05, empty VS_Visuals) — URGENT before using Add Scene in production.
+- **Kieran reconciliation (Airtable)** — 25 portal `airtable_record_id` stubs need linking to Kieran's real `SC{N}-R{round}` rows. Three options: (A) Kieran fills stubs, (B) re-link record IDs manually, (C) overlay matches by name pattern. Decision pending Kieran meeting.
+- **Re-enable Airtable writes** — after reconciliation only. Set `AIRTABLE_WRITES_ENABLED=true` in Supabase Dashboard → Settings → Edge Functions → Secrets.
+- **Test Client account** ("Test Client Company", `5faeeafa`) — not cleaned up.
+- **Quotation number auto-generation** — `WIN-001` style from `client_code` + sequence.
+- **Clean up test invoices** before going live.
+- **Client correction flow** — pins → submit corrections → auto-create Round 02.
+- **New commission brief flow** — 3-step overlay from idle state.
+- **Airtable inbound webhook** — `pull-status` is manual only.
+- **Pre-launch ghost mode test** — walk full client flow before invites go out.
+- **`ReservationBasket`** — preserved in `src/components/client/ReservationBasket.tsx`, deferred.
+
+## Decisions made
+
+- **Stage 4 Gantt on preview branch** — convention confirmed: all Gantt polish work stays on `stage4/timeline-polish` until Fred approves visually on Vercel.
+- **Hover highlight is DOM-driven** — `hoverColRef` updated via direct `.style` writes in `onMouseMove`, not React state, to avoid re-renders at 60fps.
+- **`NewRoundModal` X button always visible** — overrides the previous design where Cancel was gated behind completing all three required fields. Escape still works as secondary exit.
+
+## Open questions / things to watch
+
+- **`stage4/timeline-polish` hover highlight covers sticky date header** — the overlay is `zIndex: 9`, one above the sticky header (`zIndex: 8`). The semi-transparent gold highlight blends with the header background. Looks good in theory but needs visual confirmation on the preview.
+- **Supabase token still expired** — blocks edge function deploys and `scripts/sql.sh`. Refresh before any backend work.
+
+## URGENT next session
+
+1. Visual-approve `stage4/timeline-polish` on Vercel preview → merge to main.
+2. Deploy `dropbox-create-scene-folder` with a fresh Supabase token.
+
+---
+
 ## ⚠️ AIRTABLE WRITES PAUSED (AIRTABLE_WRITES_ENABLED=false)
 
 push-scene was creating duplicate Task stubs in Kieran's base (25 confirmed: 9 real CP107 scene stubs + 16 test/junk rows, all with null deadline + null manager, shadowing Kieran's real `SC{N}-R{round}` production rows). All Airtable writes disabled pending reconciliation with Kieran.
