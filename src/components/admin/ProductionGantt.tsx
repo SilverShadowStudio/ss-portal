@@ -17,6 +17,11 @@ const BAR_TOP       = 5;
 const BAR_H         = 28;
 const CELL_BAR_W    = 31;
 
+// When the date window exceeds this many weekday columns (~26 calendar weeks),
+// the initial scroll falls back to the data midpoint instead of the far left.
+// Prevents landing on empty 2024 space when the studio has legacy delivered_at dates.
+const MAX_AUTO_COLS = 130;
+
 // ─── Color helpers ────────────────────────────────────────────────────────────
 function hexToRgb(hex: string): [number, number, number] {
   return [
@@ -296,6 +301,48 @@ function fmtDay(d: Date): string {
   return `${DAY_ABBR[d.getDay()]} ${d.getDate()} ${MONTH_ABBR[d.getMonth()]}`;
 }
 
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+function GanttSkeleton() {
+  return (
+    <div style={{ padding: '20px 0 12px' }}>
+      {/* Header shimmer */}
+      <div style={{ display: 'flex', height: 28, marginBottom: 16, paddingLeft: 22, gap: 8, alignItems: 'center' }}>
+        <div style={{ width: 60, height: 10, borderRadius: 3, background: 'rgba(197,165,114,0.08)', animation: 'gantt-pulse 1.6s ease-in-out infinite' }} />
+        <div style={{ width: 120, height: 10, borderRadius: 3, background: 'rgba(197,165,114,0.05)', animation: 'gantt-pulse 1.6s ease-in-out infinite 0.2s' }} />
+      </div>
+      {/* Bar rows */}
+      {[
+        { w: 180, offset: 80  },
+        { w: 120, offset: 200 },
+        { w: 220, offset: 40  },
+        { w: 90,  offset: 320 },
+        { w: 160, offset: 140 },
+      ].map((row, i) => (
+        <div key={i} style={{ display: 'flex', height: SCENE_H, alignItems: 'center', borderBottom: '1px solid rgba(197,165,114,0.04)' }}>
+          {/* Frozen label stub */}
+          <div style={{ width: FROZEN_W, flexShrink: 0, paddingLeft: 34, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 80 + (i % 3) * 24, height: 9, borderRadius: 3, background: 'rgba(197,165,114,0.07)', animation: `gantt-pulse 1.6s ease-in-out infinite ${i * 0.1}s` }} />
+          </div>
+          {/* Bar stub */}
+          <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+            <div style={{
+              position: 'absolute',
+              top: BAR_TOP,
+              left: row.offset,
+              width: row.w,
+              height: BAR_H,
+              borderRadius: 5,
+              background: 'rgba(197,165,114,0.06)',
+              animation: `gantt-pulse 1.6s ease-in-out infinite ${i * 0.15}s`,
+            }} />
+          </div>
+        </div>
+      ))}
+      <style>{`@keyframes gantt-pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }`}</style>
+    </div>
+  );
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ProductionGanttProps {
   projects:         GanttProject[];
@@ -380,13 +427,22 @@ export function ProductionGantt({
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Center on today's column once dates are ready
+  // Smart initial scroll:
+  // • Today in window → centre on today's column.
+  // • Today outside window AND span > MAX_AUTO_COLS → centre on data midpoint
+  //   so the user doesn't land on empty historical space at the far left.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || todayCol === null) return;
-    const todayX = FROZEN_W + todayCol * CELL_W + CELL_W / 2;
-    el.scrollLeft = Math.max(0, todayX - el.clientWidth / 2);
-  }, [todayCol]);
+    if (!el || !dates.length) return;
+    if (todayCol !== null) {
+      const todayX = FROZEN_W + todayCol * CELL_W + CELL_W / 2;
+      el.scrollLeft = Math.max(0, todayX - el.clientWidth / 2);
+    } else if (dates.length > MAX_AUTO_COLS) {
+      const midCol = Math.floor(dates.length / 2);
+      const midX   = FROZEN_W + midCol * CELL_W + CELL_W / 2;
+      el.scrollLeft = Math.max(0, midX - el.clientWidth / 2);
+    }
+  }, [todayCol, dates.length]);
 
   const cardStyle: React.CSSProperties = {
     background: GANTT_CARD_BG,
@@ -396,13 +452,11 @@ export function ProductionGantt({
     marginTop: 28,
   };
 
-  // Loading state
+  // Loading state — shimmer skeleton
   if (loading) {
     return (
-      <div style={{ ...cardStyle, height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: '#8c8478', fontFamily: "'Jost', sans-serif", fontSize: 11, fontWeight: 500, letterSpacing: '2.5px', textTransform: 'uppercase' }}>
-          Loading schedule…
-        </span>
+      <div style={{ ...cardStyle }}>
+        <GanttSkeleton />
       </div>
     );
   }
@@ -410,10 +464,12 @@ export function ProductionGantt({
   // Empty / hidden state
   if (!showSupabase || !projects.length || !dates.length) {
     return (
-      <div style={{ ...cardStyle, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ ...cardStyle, height: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <div style={{ width: 32, height: 1, background: 'rgba(197,165,114,0.2)' }} />
         <span style={{ color: '#6a6258', fontFamily: "'Jost', sans-serif", fontSize: 11, fontWeight: 500, letterSpacing: '2px', textTransform: 'uppercase' }}>
           {!showSupabase ? 'Supabase data hidden' : 'No scheduled rounds found'}
         </span>
+        <div style={{ width: 32, height: 1, background: 'rgba(197,165,114,0.2)' }} />
       </div>
     );
   }
@@ -425,8 +481,12 @@ export function ProductionGantt({
     el.scrollTo({ left: Math.max(0, todayX - el.clientWidth / 2), behavior: 'smooth' });
   }
 
+  // x-offset of the today line within the track (relative to track left edge)
+  const todayLineX = todayCol !== null ? todayCol * CELL_W + Math.floor(CELL_W / 2) : null;
+
   return (
     <div style={{ ...cardStyle, position: 'relative' }}>
+      {/* Jump-to-today button — hidden when today is outside the data window */}
       {todayCol !== null && (
         <button
           onClick={scrollToToday}
@@ -455,216 +515,261 @@ export function ProductionGantt({
           Today
         </button>
       )}
-      <div ref={scrollRef} className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-        <div style={{ width: CONTENT_W_DYN }}>
 
-          {/* ── Date header row ── */}
-          <div style={{ display: 'flex', height: HEADER_H, position: 'sticky', top: 0, zIndex: 8, background: GANTT_HEADER_BG }}>
-            {/* Frozen header left */}
-            <div
-              style={{
-                width: FROZEN_W,
-                height: HEADER_H,
-                background: GANTT_HEADER_BG,
-                position: 'sticky',
-                left: 0,
-                zIndex: 7,
-                borderRight: '1px solid rgba(197,165,114,0.16)',
-                display: 'flex',
-                alignItems: 'flex-end',
-                flexShrink: 0,
-              }}
-            >
-              <div style={{ width: SCENE_COL_W, paddingLeft: 34, paddingBottom: 12, fontSize: 11, fontWeight: 500, fontFamily: "'Jost', sans-serif", letterSpacing: '2.5px', textTransform: 'uppercase', color: '#8c8478' }}>
-                Scene
-              </div>
-              <div style={{ width: MANAGER_COL_W, paddingBottom: 12, fontSize: 11, fontWeight: 500, fontFamily: "'Jost', sans-serif", letterSpacing: '2.5px', textTransform: 'uppercase', color: '#8c8478' }}>
-                Manager
-              </div>
-            </div>
+      {/* Scroll container + right-edge fade affordance */}
+      <div style={{ position: 'relative' }}>
+        <div ref={scrollRef} className="gantt-scroll" style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+          <div style={{ width: CONTENT_W_DYN }}>
 
-            {/* Day columns */}
-            <div style={{ display: 'flex', flexShrink: 0 }}>
-              {dates.map((d, i) => {
-                const isMon   = d.getDay() === 1;
-                const isToday = toDateKey(d) === todayKey;
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      width: CELL_W,
-                      height: HEADER_H,
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      justifyContent: 'center',
-                      paddingBottom: 10,
-                      borderRight: '1px solid rgba(197,165,114,0.05)',
-                      borderLeft: isMon ? '1px solid rgba(197,165,114,0.14)' : undefined,
-                      boxSizing: 'border-box',
-                      background: isToday ? 'rgba(197,165,114,0.07)' : undefined,
-                      borderTop: isToday ? '2px solid rgba(197,165,114,0.40)' : undefined,
-                    }}
-                  >
-                    <span
-                      style={{
-                        writingMode: 'vertical-rl',
-                        transform: 'rotate(180deg)',
-                        fontSize: 10,
-                        fontWeight: isToday ? 600 : 500,
-                        fontFamily: "'Jost', sans-serif",
-                        letterSpacing: '0.8px',
-                        color: isToday ? '#e0c47a' : isMon ? '#c7a06a' : '#8c8478',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {fmtDay(d)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── Projects ── */}
-          {projects.map((proj) => (
-            <div key={proj.id}>
-              {/* Group header row */}
-              <div style={{ display: 'flex', height: GROUP_H, background: GANTT_GROUP_BG }}>
-                <div
-                  style={{
-                    width: FROZEN_W,
-                    height: GROUP_H,
-                    background: GANTT_GROUP_BG,
-                    position: 'sticky',
-                    left: 0,
-                    zIndex: 6,
-                    borderRight: '1px solid rgba(197,165,114,0.16)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingLeft: 22,
-                    flexShrink: 0,
-                  }}
-                >
-                  <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 16, fontWeight: 600, color: '#d8c39a' }}>
-                    {proj.code || proj.name}
-                  </span>
-                  {proj.code && (
-                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15, fontWeight: 400, color: '#a89c86' }}>
-                      {proj.name}
-                    </span>
-                  )}
+            {/* ── Date header row ── */}
+            <div style={{ display: 'flex', height: HEADER_H, position: 'sticky', top: 0, zIndex: 8, background: GANTT_HEADER_BG }}>
+              {/* Frozen header left */}
+              <div
+                style={{
+                  width: FROZEN_W,
+                  height: HEADER_H,
+                  background: GANTT_HEADER_BG,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 7,
+                  borderRight: '1px solid rgba(197,165,114,0.16)',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ width: SCENE_COL_W, paddingLeft: 34, paddingBottom: 12, fontSize: 11, fontWeight: 500, fontFamily: "'Jost', sans-serif", letterSpacing: '2.5px', textTransform: 'uppercase', color: '#8c8478' }}>
+                  Scene
                 </div>
-                <div style={{ width: TRACK_W_DYN, height: GROUP_H, padding: '0 24px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  <div style={{ height: 1, width: '100%', background: 'linear-gradient(90deg, rgba(197,165,114,0.20), rgba(197,165,114,0))' }} />
+                <div style={{ width: MANAGER_COL_W, paddingBottom: 12, fontSize: 11, fontWeight: 500, fontFamily: "'Jost', sans-serif", letterSpacing: '2.5px', textTransform: 'uppercase', color: '#8c8478' }}>
+                  Manager
                 </div>
               </div>
 
-              {/* Scene rows */}
-              {proj.scenes.map((scene) => {
-                const segs = showSupabase
-                  ? scene.rounds.flatMap((r) =>
-                      buildSegsForRound(r, dateMap, productionColor, feedbackColor, showPhaseLabels)
-                    )
-                  : [];
-
-                const oe          = scene.airtableRecordId ? overlayData?.[scene.airtableRecordId] : undefined;
-                const deadlineCol = (showAirtable && oe?.deadline)
-                  ? dateToCol(oe.deadline, dateMap)
-                  : null;
-
-                return (
-                  <div key={scene.id} style={{ display: 'flex', height: SCENE_H }}>
-                    {/* Frozen scene left */}
+              {/* Day columns */}
+              <div style={{ display: 'flex', flexShrink: 0 }}>
+                {dates.map((d, i) => {
+                  const isMon   = d.getDay() === 1;
+                  const isToday = toDateKey(d) === todayKey;
+                  return (
                     <div
+                      key={i}
                       style={{
-                        width: FROZEN_W,
-                        height: SCENE_H,
-                        background: GANTT_CARD_BG,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 5,
-                        borderRight: '1px solid rgba(197,165,114,0.16)',
-                        borderBottom: '1px solid rgba(197,165,114,0.05)',
-                        display: 'flex',
-                        alignItems: 'center',
+                        width: CELL_W,
+                        height: HEADER_H,
                         flexShrink: 0,
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        paddingBottom: 10,
+                        borderRight: '1px solid rgba(197,165,114,0.05)',
+                        borderLeft: isMon ? '1px solid rgba(197,165,114,0.14)' : undefined,
+                        boxSizing: 'border-box',
+                        background: isToday ? 'rgba(197,165,114,0.07)' : undefined,
+                        borderTop: isToday ? '2px solid rgba(197,165,114,0.40)' : undefined,
                       }}
                     >
-                      <div
+                      {/* TODAY label — top of column, only for today */}
+                      {isToday && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 9,
+                            fontSize: 7,
+                            fontFamily: "'Jost', sans-serif",
+                            fontWeight: 600,
+                            letterSpacing: '1.8px',
+                            textTransform: 'uppercase',
+                            color: 'rgba(197,165,114,0.65)',
+                            userSelect: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Today
+                        </span>
+                      )}
+                      <span
                         style={{
-                          width: SCENE_COL_W,
-                          paddingLeft: 34,
-                          fontSize: 12.5,
+                          writingMode: 'vertical-rl',
+                          transform: 'rotate(180deg)',
+                          fontSize: 10,
+                          fontWeight: isToday ? 600 : 500,
                           fontFamily: "'Jost', sans-serif",
-                          color: '#cfc7b8',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.8px',
+                          color: isToday ? '#e0c47a' : isMon ? '#c7a06a' : '#8c8478',
+                          userSelect: 'none',
                         }}
                       >
-                        {scene.name}
-                      </div>
-                      {/* Manager — real name + dot from Airtable overlay; always visible (not toggle-gated) */}
-                      <div style={{ width: MANAGER_COL_W, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8 }}>
-                        {oe?.managerName ? (
-                          <>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: oe.managerColor ?? '#6a6258', flexShrink: 0 }} />
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontFamily: "'Jost', sans-serif",
-                                fontWeight: 500,
-                                letterSpacing: '1.5px',
-                                textTransform: 'uppercase',
-                                color: '#a89e8c',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {oe.managerName}
-                            </span>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 10, fontFamily: "'Jost', sans-serif", color: '#3a332c' }}>—</span>
-                        )}
-                      </div>
+                        {fmtDay(d)}
+                      </span>
                     </div>
-
-                    {/* Track lane */}
-                    <div
-                      style={{
-                        width: TRACK_W_DYN,
-                        height: SCENE_H,
-                        position: 'relative',
-                        borderBottom: '1px solid rgba(197,165,114,0.05)',
-                        flexShrink: 0,
-                        backgroundImage: [
-                          'repeating-linear-gradient(90deg, rgba(197,165,114,0.035) 0 1px, transparent 1px 34px)',
-                          'repeating-linear-gradient(90deg, rgba(197,165,114,0.09)  0 1px, transparent 1px 170px)',
-                        ].join(', '),
-                      }}
-                    >
-                      {todayCol !== null && (
-                        <div style={{
-                          position: 'absolute', top: 0, left: todayCol * CELL_W,
-                          width: CELL_W, height: '100%',
-                          background: 'rgba(197,165,114,0.04)',
-                          pointerEvents: 'none', zIndex: 0,
-                        }} />
-                      )}
-                      {segs.map((seg, i) => renderSeg(seg, i))}
-                      {deadlineCol !== null && renderDeadlinePin(deadlineCol)}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          ))}
 
+            {/* ── Projects ── */}
+            {projects.map((proj) => (
+              <div key={proj.id}>
+                {/* Group header row */}
+                <div style={{ display: 'flex', height: GROUP_H, background: GANTT_GROUP_BG }}>
+                  <div
+                    style={{
+                      width: FROZEN_W,
+                      height: GROUP_H,
+                      background: GANTT_GROUP_BG,
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 6,
+                      borderRight: '1px solid rgba(197,165,114,0.16)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      paddingLeft: 22,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 16, fontWeight: 600, color: '#d8c39a' }}>
+                      {proj.code || proj.name}
+                    </span>
+                    {proj.code && (
+                      <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15, fontWeight: 400, color: '#a89c86' }}>
+                        {proj.name}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ width: TRACK_W_DYN, height: GROUP_H, padding: '0 24px', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{ height: 1, width: '100%', background: 'linear-gradient(90deg, rgba(197,165,114,0.20), rgba(197,165,114,0))' }} />
+                  </div>
+                </div>
+
+                {/* Scene rows */}
+                {proj.scenes.map((scene) => {
+                  const segs = showSupabase
+                    ? scene.rounds.flatMap((r) =>
+                        buildSegsForRound(r, dateMap, productionColor, feedbackColor, showPhaseLabels)
+                      )
+                    : [];
+
+                  const oe          = scene.airtableRecordId ? overlayData?.[scene.airtableRecordId] : undefined;
+                  const deadlineCol = (showAirtable && oe?.deadline)
+                    ? dateToCol(oe.deadline, dateMap)
+                    : null;
+
+                  return (
+                    <div key={scene.id} style={{ display: 'flex', height: SCENE_H }}>
+                      {/* Frozen scene left */}
+                      <div
+                        style={{
+                          width: FROZEN_W,
+                          height: SCENE_H,
+                          background: GANTT_CARD_BG,
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 5,
+                          borderRight: '1px solid rgba(197,165,114,0.16)',
+                          borderBottom: '1px solid rgba(197,165,114,0.05)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: SCENE_COL_W,
+                            paddingLeft: 34,
+                            fontSize: 12.5,
+                            fontFamily: "'Jost', sans-serif",
+                            color: '#cfc7b8',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {scene.name}
+                        </div>
+                        {/* Manager — real name + dot from Airtable overlay; always visible (not toggle-gated) */}
+                        <div style={{ width: MANAGER_COL_W, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8 }}>
+                          {oe?.managerName ? (
+                            <>
+                              <div style={{ width: 7, height: 7, borderRadius: '50%', background: oe.managerColor ?? '#6a6258', flexShrink: 0 }} />
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontFamily: "'Jost', sans-serif",
+                                  fontWeight: 500,
+                                  letterSpacing: '1.5px',
+                                  textTransform: 'uppercase',
+                                  color: '#a89e8c',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {oe.managerName}
+                              </span>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: 10, fontFamily: "'Jost', sans-serif", color: '#3a332c' }}>—</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Track lane */}
+                      <div
+                        style={{
+                          width: TRACK_W_DYN,
+                          height: SCENE_H,
+                          position: 'relative',
+                          borderBottom: '1px solid rgba(197,165,114,0.05)',
+                          flexShrink: 0,
+                          backgroundImage: [
+                            'repeating-linear-gradient(90deg, rgba(197,165,114,0.035) 0 1px, transparent 1px 34px)',
+                            'repeating-linear-gradient(90deg, rgba(197,165,114,0.09)  0 1px, transparent 1px 170px)',
+                          ].join(', '),
+                        }}
+                      >
+                        {/* Today — 1 px vertical gold line centred on today's column */}
+                        {todayLineX !== null && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: todayLineX,
+                            width: 1,
+                            height: '100%',
+                            background: 'rgba(197,165,114,0.40)',
+                            pointerEvents: 'none',
+                            zIndex: 0,
+                          }} />
+                        )}
+                        {segs.map((seg, i) => renderSeg(seg, i))}
+                        {deadlineCol !== null && renderDeadlinePin(deadlineCol)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+          </div>
         </div>
+
+        {/* Right-edge fade — signals horizontal scroll affordance */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 48,
+            background: `linear-gradient(90deg, transparent, ${GANTT_CARD_BG}cc)`,
+            pointerEvents: 'none',
+            zIndex: 10,
+            borderRadius: '0 16px 16px 0',
+          }}
+        />
       </div>
     </div>
   );
