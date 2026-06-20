@@ -431,6 +431,12 @@ Key values: `SB.widthExpanded = "w-64"`, nav label `fontSize: 11, letterSpacing:
 
 ## React component patterns
 
+### DOM-driven hover effects in canvas-style components
+
+When a component needs per-frame updates driven by mouse position (e.g. a column highlight in a Gantt chart), update the DOM directly via a `ref` rather than calling `setState`. `setState` at 60fps triggers a full React re-render per frame, which is unnecessary and janky.
+
+**Pattern**: keep a `ref` pointing to the overlay element; in `onMouseMove`, update `ref.current.style.left` (and `display`) directly. `onMouseLeave` hides it. No state, no re-render. Established in `ProductionGantt.tsx` with `hoverColRef`.
+
 ### Dialogs must be mounted unconditionally
 
 `<Dialog open={state}>` only responds to state changes when mounted. If a Dialog is nested inside a conditional block that can unmount it (e.g. `{!selectedClient && (...)}`) then calling `setDialogOpen(true)` sets state but has no mounted consumer — the trigger button appears to do nothing.
