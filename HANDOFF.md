@@ -2,6 +2,42 @@
 
 ---
 
+# Session — 21 June 2026 (evening)
+
+## Completed this session
+
+- `fb1eaed` — CLAUDE.md: codified two React component rules under "React component patterns". (1) Centre modals with a `fixed inset-0 flex items-center justify-center` wrapper, never `-translate-x/y-1/2` — a framer-motion `animate` writes an inline `transform` that overrides the translate centering classes, dropping the element bottom-right. (2) Effects that `setState` mid-async must not list that state in their own deps — the write tears the effect down (cleanup, `cancelled=true`) and a post-await guard then skips the rest. Both rules were learned the hard way this session (see next two items).
+- `f81fa73` — `TaskDetail` brief panel: centred via flex wrapper (was rendering off bottom-right from the motion-transform-vs-translate bug); fixed a self-cancelling effect that left attached files stuck on "Retrieving files…" forever (the effect depended on state it set mid-flight).
+- `18a267c` — `TaskDetail`: link attached files to their Dropbox shared URL (signed-URL fallback); fixed dead `getPublicUrl` links and a broken image preview.
+- `a319f59` — `Portfolio`: show time-left to delivery on in-production scene cards.
+- `cbca04a` — `TaskDetail`: replaced the requested/delivery text lines with a boarding-pass `RoundTimelineCard` showing live progress.
+- `ac4d3b7` — `RoundTimelineCard`: smaller discreet dates (30px); moved the progress bar below the dates.
+- `874be83` — `NewRoundModal`: intro copy → "Three pieces open the round." (white).
+- `8079a85` — `NewRoundModal`: whole delivery-date row now toggles the calendar; show two months (supersedes the single-month picker collapse from `0ffb008` earlier today).
+
+## In progress / needs verification
+
+- **Vercel deploy of `main` (`8079a85`)** — confirm green in the Vercel dashboard; all evening UI changes live on `portal.silvershadowstudio.com`.
+- **Browser-verify** the boarding-pass `RoundTimelineCard` live progress, the Portfolio time-left readout, and the attached-file Dropbox links (shared URL + signed-URL fallback, image preview).
+
+## Pending
+
+- (Unchanged — see the 21 June daytime block and the 20 June block below for the full backlog.)
+
+## Decisions made
+
+- **Delivery-date picker reverted to two-month layout** (`8079a85`) — the single-month collapse landed earlier today in `0ffb008` was superseded; the whole row is now the toggle target and two months render.
+
+## Open questions / things to watch
+
+- None new this session.
+
+## URGENT next session
+
+- Confirm the evening `main` deploy is green on Vercel before further frontend work.
+
+---
+
 # Session — 21 June 2026
 
 ## Completed this session
