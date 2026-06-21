@@ -1383,6 +1383,20 @@ export default function Portfolio() {
                 const draftBorderStyle = hasDraft
                   ? { borderLeft: "2px solid #8A8070" }
                   : {};
+                // Time left until the in-production round's delivery
+                // (end_date @ 11:00). Coarse days/hours; shown on the card.
+                const productionRound = [...rounds]
+                  .filter((r) => r.status === "in_production" || r.status === "in_progress" || r.status === "pending")
+                  .sort((a, b) => b.round_number - a.round_number)[0];
+                const timeLeftLabel = (() => {
+                  if (!productionRound?.end_date) return null;
+                  const due = new Date(productionRound.end_date);
+                  due.setHours(11, 0, 0, 0);
+                  const ms = due.getTime() - Date.now();
+                  if (ms <= 0) return "Due now";
+                  const totalH = Math.floor(ms / 3_600_000);
+                  return `${Math.floor(totalH / 24)}d ${totalH % 24}h left`;
+                })();
                 return (
                   <button
                     key={scene.id}
@@ -1475,6 +1489,9 @@ export default function Portfolio() {
                           ) : (
                             <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-sans">
                               {rounds.length} round{rounds.length !== 1 ? "s" : ""}
+                              {timeLeftLabel && (
+                                <span style={{ color: "#B89A6A" }}> · {timeLeftLabel}</span>
+                              )}
                             </p>
                           )}
                         </div>
