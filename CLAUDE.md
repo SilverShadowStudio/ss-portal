@@ -205,6 +205,12 @@ For per-frame updates driven by mouse position (e.g. a Gantt column highlight), 
 ### Dialogs must be mounted unconditionally
 `<Dialog open={state}>` only responds to state changes when mounted. If nested inside a conditional that can unmount it (e.g. `{!selectedClient && (...)}`), `setDialogOpen(true)` has no mounted consumer — the trigger appears dead. **Rule**: render Dialogs unconditionally at the component root; convert `DialogTrigger` to plain `<Button onClick={() => setOpen(true)}>` when trigger and Dialog are in different conditional scopes. First suspect whenever a modal button is inert (cost two diagnostic sessions).
 
+### Centre modals with a flex wrapper, never `-translate-x/y-1/2`
+A framer-motion `animate={{ y, scale }}` (or any motion transform) writes an inline `transform`, which **overrides** Tailwind `-translate-x-1/2 -translate-y-1/2` centering classes — the element's top-left lands at the viewport centre and it renders off into the bottom-right. **Rule**: centre overlays with a `fixed inset-0 flex items-center justify-center` wrapper and let the inner `motion.div` animate `opacity`/`y`/`scale` freely; don't centre an animated element with translate classes. (NewRoundModal does this right; TaskDetail's brief panel didn't — bottom-right modal, two sightings.)
+
+### Effects that `setState` mid-async must not depend on that state
+If an async effect calls `setX()` partway through and `X` is in its dependency array, the state change tears the effect down (cleanup fires, `cancelled = true`) and a post-await `if (cancelled) return` guard then skips the rest — e.g. a second fetch never completes and its loading flag stays stuck. **Rule**: don't list state the effect writes mid-flight in its own deps; gate on the trigger (open flag, id) instead. (TaskDetail's brief panel stuck "Retrieving files…" forever from exactly this.)
+
 ## Database key tables
 
 | Table | Purpose |
