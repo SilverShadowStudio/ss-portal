@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
-import { X, FileIcon, MoreHorizontal } from "lucide-react";
+import { X, FileIcon, MoreHorizontal, Check, ChevronDown } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { format, differenceInSeconds } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -129,6 +129,34 @@ interface NewRoundModalProps {
   bookingMode?: 'calendar' | 'calendar_no_quote' | 'delivery' | 'delivery_no_quote';
 }
 
+/** Left-of-row progress marker for the three required rows.
+ *  Empty hairline ring (#2A2820) when incomplete; filled gold with a
+ *  dark check glyph (#1A1814 — same text-on-gold as the selected
+ *  calendar day) when complete. All values already used in this modal. */
+function StateMarker({ complete }: { complete: boolean }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: "50%",
+        flexShrink: 0,
+        marginRight: 14,
+        marginTop: 2,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: complete ? "1px solid var(--brand-gold, #B89A6A)" : "1px solid #2A2820",
+        background: complete ? "var(--brand-gold, #B89A6A)" : "transparent",
+        transition: "all var(--duration-standard) var(--ease-default)",
+      }}
+    >
+      {complete && <Check size={11} strokeWidth={2.5} color="#1A1814" />}
+    </span>
+  );
+}
+
 function UploadItem({
   label,
   files,
@@ -136,6 +164,8 @@ function UploadItem({
   onRemoveFile,
   required,
   goldLabel,
+  accept,
+  showMarker,
 }: {
   label: string;
   files: UploadedFile[];
@@ -143,6 +173,8 @@ function UploadItem({
   onRemoveFile: (index: number) => void;
   required?: boolean;
   goldLabel?: boolean;
+  accept?: string;
+  showMarker?: boolean;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -197,6 +229,7 @@ function UploadItem({
         ref={inputRef}
         type="file"
         multiple
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
@@ -233,6 +266,8 @@ function UploadItem({
           borderRadius: 0,
         }}
       />
+
+      {showMarker && <StateMarker complete={active} />}
 
       <div className="flex-1 min-w-0" style={{ position: "relative" }}>
         <div className="flex items-start justify-between gap-3">
@@ -650,6 +685,21 @@ export function NewRoundModal({
     setFilesByCategory((prev) => ({ ...prev, [category]: [...prev[category], ...newFiles] }));
   };
 
+  // CGI Package is PDF-only. The native picker is filtered via the input's
+  // `accept` attribute, but drag-drop bypasses that — so we filter here too
+  // and toast on any rejected file before delegating to handleFilesAdded.
+  const handleCgiFilesAdded = (fileList: FileList) => {
+    const all = Array.from(fileList);
+    const pdfs = all.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    if (pdfs.length < all.length) {
+      sonnerToast.error("CGI Package must be a PDF.");
+    }
+    if (pdfs.length === 0) return;
+    const dt = new DataTransfer();
+    pdfs.forEach((f) => dt.items.add(f));
+    handleFilesAdded("cgi_package", dt.files);
+  };
+
   const handleRemoveFile = (category: Category, index: number) => {
     const target = filesByCategory[category][index];
     // Optimistic UI removal first — both new and persisted entries.
@@ -777,6 +827,11 @@ export function NewRoundModal({
   const hasFloorPlan  = filesByCategory.floor_plan.length > 0;
   const hasCgiPackage = filesByCategory.cgi_package.length > 0;
   const hasDeliveryDate = !isDelivery || pickerDate !== null;
+
+  // Progress for the three required rows. In booking (non-delivery) mode the
+  // delivery date is auto-computed, so it counts as satisfied — the counter
+  // honestly starts at 1/3 there rather than faking 0/3.
+  const completedCount = [hasFloorPlan, hasCgiPackage, hasDeliveryDate].filter(Boolean).length;
 
   const submissionIndicator = useMemo(() => {
     if (hasFloorPlan && hasCgiPackage && hasDeliveryDate) return null;
@@ -914,7 +969,7 @@ export function NewRoundModal({
                   disabled={!selectable}
                   onClick={() => { if (selectable) { setPickerDate(day); setPickerOpen(false); } }}
                   className={[
-                    "flex h-8 w-7 items-center justify-center border font-serif text-[13px] tabular-nums transition-colors",
+                    "flex h-8 w-7 items-center justify-center border font-serif text-[13px] tabular-nums lining-nums transition-colors",
                     isSelected ? "bg-gold border-gold text-[#1A1814]" : "border-transparent",
                     selectable && !isSelected ? "text-foreground hover:border-[var(--brand-gold,#B89A6A)]" : "",
                     !selectable ? "cursor-default text-foreground" : "",
@@ -931,10 +986,12 @@ export function NewRoundModal({
     );
   };
 
+  // Single-month picker (collapsed by default, expanded via pickerOpen).
+  // Reuses renderPickerMonthGrid; month nav arrows retained.
   const renderDeliveryPicker = () => {
     const canGoPrev = earliestPickerDate != null && pickerDisplayMonth > startOfMonth(earliestPickerDate);
     return (
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex items-start justify-center gap-2">
         <button
           type="button"
           onClick={() => canGoPrev && setPickerDisplayMonth(m => addMonths(m, -1))}
@@ -942,10 +999,7 @@ export function NewRoundModal({
           className="font-serif text-foreground/35 hover:text-foreground transition-colors disabled:opacity-20"
           style={{ fontSize: 18 }}
         >‹</button>
-        <div className="flex gap-5">
-          {renderPickerMonthGrid(pickerDisplayMonth)}
-          {renderPickerMonthGrid(addMonths(pickerDisplayMonth, 1))}
-        </div>
+        {renderPickerMonthGrid(pickerDisplayMonth)}
         <button
           type="button"
           onClick={() => setPickerDisplayMonth(m => addMonths(m, 1))}
@@ -995,14 +1049,24 @@ export function NewRoundModal({
               {/* ── Sections ── */}
               <div className="px-12 pt-8 pb-10">
 
-                {/* Required intro */}
-                <p className="font-sans italic mb-8" style={{ fontSize: 14 }}>
-                  <span style={{ color: "#B89A6A" }}>Required</span>
-                  <span className="text-foreground"> — we need these three before Round 01 can begin.</span>
-                </p>
+                {/* Required intro + progress counter */}
+                <div className="flex items-baseline justify-between gap-4 mb-8">
+                  <p className="font-sans italic" style={{ fontSize: 14 }}>
+                    <span style={{ color: "#B89A6A" }}>Required</span>
+                    <span className="text-foreground"> — we need these three before Round 01 can begin.</span>
+                  </p>
+                  <span
+                    className="font-sans shrink-0 uppercase tracking-[0.2em]"
+                    style={{ fontSize: 11, fontVariantNumeric: "tabular-nums lining-nums" }}
+                    aria-label={`${completedCount} of 3 complete`}
+                  >
+                    <span style={completedCount === 3 ? { color: "#B89A6A" } : undefined} className={completedCount === 3 ? "" : "text-foreground/40"}>{completedCount}</span>
+                    <span className="text-foreground/40"> / 3</span>
+                  </span>
+                </div>
                 <div className="pl-4 border-t border-border/30" style={{ position: "relative" }}>
-                  <UploadItem goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
-                  <UploadItem goldLabel label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={(fl) => handleFilesAdded("cgi_package", fl)} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
+                  <UploadItem showMarker goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
+                  <UploadItem showMarker goldLabel accept="application/pdf" label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={handleCgiFilesAdded} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
 
                   {/* Delivery date — same structural pattern as UploadItem */}
                   <div
@@ -1018,6 +1082,7 @@ export function NewRoundModal({
                       boxShadow: (isDelivery && pickerDate) ? "inset 0 0 0 1px rgba(184,154,106,0.15)" : "none",
                     }}
                   >
+                    <StateMarker complete={isDelivery ? !!pickerDate : true} />
                     <div className="flex-1 min-w-0" style={{ position: "relative" }}>
                       <div className="flex items-start justify-between gap-3">
                         {/* Left: label + date */}
@@ -1032,11 +1097,11 @@ export function NewRoundModal({
                           {isDelivery ? (
                             pickerDate && (
                               <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                <p className="font-serif text-[14px] text-foreground leading-snug truncate">
+                                <p className="font-serif text-[14px] text-foreground leading-snug truncate" style={{ fontVariantNumeric: "tabular-nums lining-nums" }}>
                                   {pickerDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                                 </p>
                                 {deliveryCountdown && (
-                                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                  <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums lining-nums" }}>
                                     {deliveryCountdown}
                                   </p>
                                 )}
@@ -1044,10 +1109,10 @@ export function NewRoundModal({
                             )
                           ) : (
                             <div className="mt-1.5">
-                              <p className="font-serif text-[14px] text-foreground leading-snug">
+                              <p className="font-serif text-[14px] text-foreground leading-snug" style={{ fontVariantNumeric: "tabular-nums lining-nums" }}>
                                 {deliveryDateStr}
                               </p>
-                              <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              <p className="mt-0.5 font-sans text-[9px] uppercase tracking-[0.15em] text-foreground/40" style={{ fontVariantNumeric: "tabular-nums lining-nums" }}>
                                 Order within {deadlineLabel}
                               </p>
                             </div>
@@ -1059,21 +1124,44 @@ export function NewRoundModal({
                             pickerDate ? (
                               <RowActions type="date" onAction={() => setPickerOpen(true)} />
                             ) : (
-                              <span className="text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40">
-                                No date selected
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPickerOpen((o) => !o)}
+                                aria-expanded={pickerOpen}
+                                className="flex items-center gap-1.5 text-[9px] font-sans uppercase tracking-[0.2em] text-foreground/40 hover:text-foreground transition-colors"
+                              >
+                                Select
+                                <ChevronDown
+                                  size={12}
+                                  style={{
+                                    transition: "transform var(--duration-standard) var(--ease-default)",
+                                    transform: pickerOpen ? "rotate(180deg)" : "none",
+                                  }}
+                                />
+                              </button>
                             )
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
-                  {/* Calendar — visible when no date selected or CHANGE clicked */}
-                  {isDelivery && (!pickerDate || pickerOpen) && (
-                    <div className="flex justify-center pb-4">
-                      {renderDeliveryPicker()}
-                    </div>
-                  )}
+                  {/* Calendar — collapsed by default; expands inline (animated max-height) via pickerOpen */}
+                  <AnimatePresence initial={false}>
+                    {isDelivery && pickerOpen && (
+                      <motion.div
+                        key="delivery-picker"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.35, ease: FM_EASE.default }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <div className="flex justify-center pb-4">
+                          {renderDeliveryPicker()}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Buffer between rounds — non-delivery mode only */}
                   {!isDelivery && (
@@ -1323,11 +1411,7 @@ export function NewRoundModal({
                     className="w-full h-12 text-[10px] font-sans uppercase tracking-[0.24em] border border-[var(--brand-gold)] bg-transparent text-gold hover:text-gold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                     style={{ borderRadius: 2 }}
                   >
-                    {isSubmitting
-                      ? "Uploading…"
-                      : isDelivery || deliveryMode === "next"
-                      ? "Submit for Production"
-                      : "Book Production Slot"}
+                    {isSubmitting ? "Uploading…" : "Begin Round 01"}
                   </button>
                 </div>
               </div>
