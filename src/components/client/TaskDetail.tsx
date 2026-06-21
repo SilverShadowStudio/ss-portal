@@ -73,6 +73,12 @@ interface BriefUpload {
   category: string;
   file_name: string;
   storage_path: string;
+  /** Dropbox shared link, persisted by dropbox-save-round-files. Primary
+   *  open/download target when present. */
+  dropbox_shared_url: string | null;
+  /** Supabase signed URL, resolved at fetch time as a fallback (private
+   *  bucket — getPublicUrl returns dead links) and as the inline image src. */
+  signedUrl?: string;
 }
 
 function fmtTimestamp(iso: string): string {
@@ -182,10 +188,23 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         setBriefUploadsLoading(true);
         const { data: uploads } = await supabase
           .from("round_uploads")
-          .select("category, file_name, storage_path")
+          .select("category, file_name, storage_path, dropbox_shared_url")
           .eq("scene_id", fetched.scene_id);
         if (cancelled) return;
-        setBriefUploads(uploads || []);
+        const list = (uploads || []) as BriefUpload[];
+        // Resolve Supabase signed URLs (the bucket is private — getPublicUrl
+        // is dead) as a fallback link target and as the inline image src.
+        // Dropbox shared links, when present, are preferred for open/download.
+        let enriched = list;
+        if (list.length > 0) {
+          const { data: signed } = await supabase.storage
+            .from("round-uploads")
+            .createSignedUrls(list.map((u) => u.storage_path), 3600);
+          if (cancelled) return;
+          const byPath = new Map((signed || []).map((s) => [s.path, s.signedUrl]));
+          enriched = list.map((u) => ({ ...u, signedUrl: byPath.get(u.storage_path) ?? undefined }));
+        }
+        setBriefUploads(enriched);
         setBriefUploadsLoading(false);
       }
     })();
@@ -388,11 +407,24 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                         <p className="text-[11px] text-foreground/45 font-sans">Retrieving files…</p>
                       ) : (
                         <div className="space-y-1.5">
-                          {briefUploads.map((file, i) => (
-                            <p key={i} className="text-xs text-[#8a7c6e] font-sans">
-                              {titleCase(file.category)}: {file.file_name}
-                            </p>
-                          ))}
+                          {briefUploads.map((file, i) => {
+                            const href = file.dropbox_shared_url ?? file.signedUrl;
+                            return href ? (
+                              <a
+                                key={i}
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block text-xs text-[#8a7c6e] hover:text-foreground transition-colors font-sans"
+                              >
+                                {titleCase(file.category)}: {file.file_name}
+                              </a>
+                            ) : (
+                              <p key={i} className="text-xs text-[#8a7c6e] font-sans">
+                                {titleCase(file.category)}: {file.file_name}
+                              </p>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -406,20 +438,21 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                       </p>
                       <div className="grid grid-cols-3 gap-2">
                         {briefUploads.map((file, i) => {
-                          const { data: urlData } = supabase.storage
-                            .from("round-uploads")
-                            .getPublicUrl(file.storage_path);
-                          if (isImageFile(file.file_name)) {
+                          // Open/download → Dropbox shared link when present, else
+                          // the Supabase signed URL. Inline thumbnail uses the
+                          // signed URL (Dropbox raw hotlinks are unreliable).
+                          const href = file.dropbox_shared_url ?? file.signedUrl;
+                          if (isImageFile(file.file_name) && file.signedUrl) {
                             return (
                               <a
                                 key={i}
-                                href={urlData.publicUrl}
+                                href={href}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="group relative aspect-square overflow-hidden bg-[#1a1816]"
                               >
                                 <img
-                                  src={urlData.publicUrl}
+                                  src={file.signedUrl}
                                   alt={file.file_name}
                                   className="w-full h-full object-cover group-hover:opacity-75 transition-opacity"
                                 />
@@ -429,7 +462,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
                           return (
                             <a
                               key={i}
-                              href={urlData.publicUrl}
+                              href={href}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex flex-col items-center justify-center gap-2 aspect-square bg-[#1a1816] hover:bg-[#201e1b] transition-colors p-3"
