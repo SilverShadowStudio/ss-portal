@@ -1051,9 +1051,8 @@ export function NewRoundModal({
 
                 {/* Required intro + progress counter */}
                 <div className="flex items-baseline justify-between gap-4 mb-8">
-                  <p className="font-sans italic" style={{ fontSize: 14 }}>
-                    <span style={{ color: "#B89A6A" }}>Required</span>
-                    <span className="text-foreground"> — we need these three before Round 01 can begin.</span>
+                  <p className="font-sans italic text-foreground" style={{ fontSize: 14 }}>
+                    Three pieces open the round.
                   </p>
                   <span
                     className="font-sans shrink-0 uppercase tracking-[0.2em]"
