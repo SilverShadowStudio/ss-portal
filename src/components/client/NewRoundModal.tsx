@@ -978,16 +978,7 @@ export function NewRoundModal({
             <form onSubmit={handleSubmit}>
 
               {/* ── Header ── */}
-              <div className="px-12 pt-12 pb-7 border-b border-border/30" style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="absolute top-10 right-10 flex items-center justify-center text-foreground/30 hover:text-foreground/60 transition-colors"
-                  aria-label="Close"
-                  style={{ width: 28, height: 28 }}
-                >
-                  <X size={14} />
-                </button>
+              <div className="px-12 pt-12 pb-7 border-b border-border/30">
                 <h2
                   className="font-serif font-normal text-foreground"
                   style={{ fontSize: "1.85rem", letterSpacing: "-0.01em", lineHeight: 1 }}
@@ -1248,9 +1239,7 @@ export function NewRoundModal({
 
               </div>
 
-              {/* ── Footer ── */}
-              {hasFloorPlan && hasCgiPackage && hasDeliveryDate && (
-              <>
+              {/* ── Footer ── always rendered; CANCEL must never be gated behind required fields */}
               <div className="px-12" style={{ marginTop: 24 }}>
                 <div style={{ borderTop: "1px solid #2A2820" }} />
               </div>
@@ -1342,8 +1331,6 @@ export function NewRoundModal({
                   </button>
                 </div>
               </div>
-              </>
-              )}
 
             </form>
           </motion.div>

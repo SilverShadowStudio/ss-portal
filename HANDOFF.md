@@ -2,13 +2,36 @@
 
 ---
 
+# Session — 21 June 2026
+
+## Completed this session
+
+- Deployed `dropbox-create-scene-folder` edge function (fresh token) — download-verified byte-identical to local; `PP_Post-Production` correctly nested inside `VS_Visuals` (`:276`). Clears the carried-over URGENT deploy item.
+- `c9deda4` — CLAUDE.md trimmed from 54,760 → ~33.3k chars (under the 40k context limit, was being silently truncated). All rules preserved; tree-only rules surfaced into prose (`send-transactional-email` legacy, `admin-delete-account` preserves fred@, generator SVG copy-manually, AdminActivity 2000-row limit). Previously-truncated sections (Dropbox path-root header, Airtable boundary rules, Local tooling, Activity log) now load.
+- `64c1d9a` — HANDOFF: absorbed 4 backlog items that lived only in the old CLAUDE.md Pending section (Brief field in Airtable, quotation/invoice PDF generation, sidebar nav customisation, email from-address verification).
+- `ebd5c4b` — CLAUDE.md: codified two linked modal rules under Design system → Rules: (1) modals close via CANCEL + ESC, never a top-right X; (2) CANCEL is always available, never gated behind form completion. The CANCEL-only convention was real intent but had never been written down — that gap is why the X slipped in on 20 June.
+
+## In progress / needs verification
+
+- **`NewRoundModal` X revert + CANCEL ungate** — branch `fix/newround-cancel-ungate`, awaiting visual approval on Vercel preview before merge to main. Diagnostic confirmed the trap was real: the entire footer (incl. Cancel) was gated behind `hasFloorPlan && hasCgiPackage && hasDeliveryDate` (`NewRoundModal.tsx:1252` pre-edit), so a mouse-only user with incomplete fields had no visible exit (ESC worked; click-outside disabled per 19 June). Fix: removed the header X (reverting `ec530e6`; lucide `X` import kept — still used by the file-remove button at `:294`) and removed the footer wrapper gate so the footer always renders. Submit stays disabled via its own `isSubmitDisabled` + `submissionIndicator` tooltip; Save Draft now reachable before completion (correct for a draft). ESC (`:816`) and the no-onClick backdrop (`:963-969`) unchanged. `npm run build` green. **Verify on preview**: open the modal in its incomplete state → CANCEL is visible/reachable, Submit reads as properly disabled with its "what's missing" tooltip.
+
+## Pending
+
+(See 20 June block below — unchanged.)
+
+## Decisions made
+
+- **CANCEL-only modal close is the standing convention**, now codified in CLAUDE.md. The 20 June `NewRoundModal` X button (`ec530e6`) is reverted as superseded — it fixed a real trap, but the correct fix is ungating CANCEL, not adding an X.
+
+---
+
 # Session — 20 June 2026
 
 ## Completed this session
 
 - `912cd8a` — Timeline Gantt: today marker (1px gold vertical line), "Today" label in date header, smart initial scroll (`MAX_AUTO_COLS=130`), shimmer skeleton loading state, empty state rule lines, right-edge fade affordance (Stage 4 of 4)
 - `79440eb` — Remove `ReservationBasket` from `ClientLayout` (deferred — component preserved, just unmounted)
-- `ec530e6` — `NewRoundModal`: add X close button to header — always visible, not gated behind the three required fields (Cancel was invisible until all three filled)
+- `ec530e6` — `NewRoundModal`: add X close button to header — always visible, not gated behind the three required fields (Cancel was invisible until all three filled). **⚠️ REVERTED 21 June (branch `fix/newround-cancel-ungate`)** — superseded by the codified CANCEL-only + ungated-CANCEL design rules; the X solved a real trap (Cancel was gated), but the correct fix is ungating CANCEL, not adding an X. See 21 June notes below.
 - `a2dc2f2` — Timeline Gantt: full-column hover highlight, top to bottom including date header; DOM-driven (no React re-render per mousemove)
 
 All four commits are on branch `stage4/timeline-polish` — **not yet merged to main**. Awaiting Fred's visual approval on the Vercel preview before merging.
@@ -43,7 +66,7 @@ All four commits are on branch `stage4/timeline-polish` — **not yet merged to 
 
 - **Stage 4 Gantt on preview branch** — convention confirmed: all Gantt polish work stays on `stage4/timeline-polish` until Fred approves visually on Vercel.
 - **Hover highlight is DOM-driven** — `hoverColRef` updated via direct `.style` writes in `onMouseMove`, not React state, to avoid re-renders at 60fps.
-- **`NewRoundModal` X button always visible** — overrides the previous design where Cancel was gated behind completing all three required fields. Escape still works as secondary exit.
+- **`NewRoundModal` X button always visible** — overrides the previous design where Cancel was gated behind completing all three required fields. Escape still works as secondary exit. **⚠️ SUPERSEDED 21 June** — see below.
 
 ## Open questions / things to watch
 
