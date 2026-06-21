@@ -6,6 +6,7 @@ import { Clock, X, Paperclip, ExternalLink, File } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
+import { RoundTimelineCard } from "./RoundTimelineCard";
 import { differenceInSeconds, format } from "date-fns";
 import { deliverRoundAndStartReview } from "@/lib/reviewWindow";
 import { logActivity } from "@/lib/activityLog";
@@ -601,23 +602,10 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             In Production
           </p>
           <div className="h-px bg-[#2A2820] mb-4" />
-          {roundCreatedAt && (
-            <p className="text-[11px] text-foreground/50 font-sans mb-1.5">
-              Requested {fmtTimestamp(roundCreatedAt)}
-            </p>
-          )}
-          {endDate && (() => {
-            const d = new Date(endDate);
-            d.setHours(11, 0, 0, 0);
-            const dateStr = d.toLocaleDateString("en-GB", {
-              weekday: "long", day: "numeric", month: "long", year: "numeric",
-            });
-            return (
-              <p className="text-[12px] text-foreground/80 font-sans">
-                Delivery scheduled for {dateStr} at 11:00am
-              </p>
-            );
-          })()}
+          <RoundTimelineCard
+            requestedAt={roundCreatedAt}
+            deliveryAt={endDate ? (() => { const d = new Date(endDate); d.setHours(11, 0, 0, 0); return d; })() : null}
+          />
         </div>
 
         <div className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-3">
