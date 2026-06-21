@@ -34,6 +34,10 @@ All four commits are on branch `stage4/timeline-polish` — **not yet merged to 
 - **Airtable inbound webhook** — `pull-status` is manual only.
 - **Pre-launch ghost mode test** — walk full client flow before invites go out.
 - **`ReservationBasket`** — preserved in `src/components/client/ReservationBasket.tsx`, deferred.
+- **Brief field in Airtable** — Kieran needs to add a `Brief` field to the Tasks table for instructions sync to work. _(migrated from CLAUDE.md Pending)_
+- **Quotation + invoice PDF generation** — edge functions using `_shared/pdfUtils.ts` design config not yet built; PDFs currently client-side only. _(migrated from CLAUDE.md Pending)_
+- **Sidebar nav customisation** — finalise which nav items appear per user type; hide admin-only/unbuilt routes from clients. _(migrated from CLAUDE.md Pending)_
+- **Email from-address** — confirm `portal@silvershadowstudio.com` (used by `airtable-auto-sync`) is verified in Resend. _(migrated from CLAUDE.md Pending)_
 
 ## Decisions made
 
