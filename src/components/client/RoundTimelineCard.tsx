@@ -75,7 +75,9 @@ export function RoundTimelineCard({
   // Shared inline styles (token-driven).
   const labelGold: CSSProperties = { color: GOLD, fontSize: 11, letterSpacing: "0.38em", textTransform: "uppercase" };
   const faintMeta: CSSProperties = { color: FAINT, fontSize: 11, letterSpacing: "0.34em", textTransform: "uppercase" };
-  const heroDate: CSSProperties = { color: PRIMARY, fontSize: 52, fontWeight: 500, lineHeight: 1.05, whiteSpace: "nowrap", marginTop: 14 };
+  // Deliberately smaller than the page's "Round NN" title (48px) so the dates
+  // read as a discreet sub-element rather than competing heroes.
+  const heroDate: CSSProperties = { color: PRIMARY, fontSize: 30, fontWeight: 500, lineHeight: 1.1, whiteSpace: "nowrap", marginTop: 12 };
   const subLine: CSSProperties = { color: MUTED, fontSize: 13, letterSpacing: "0.28em", marginTop: 12 };
 
   return (
@@ -113,46 +115,46 @@ export function RoundTimelineCard({
       </p>
       <div style={{ height: 1, background: HEADER_DIVIDER, marginTop: 14 }} />
 
-      {/* Three-column boarding pass */}
-      <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 24, marginTop: 26 }}>
-        {/* Left — REQUESTED (departure) */}
+      {/* Dates row — Requested (departure, left) · Delivery (arrival, right) */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 24, marginTop: 26 }}>
+        {/* Left — REQUESTED */}
         <div style={{ minWidth: 210 }}>
           <p className="font-sans" style={labelGold}>Requested</p>
           <p className="font-serif" style={heroDate}>{fmtHeroDate(requested)}</p>
           <p className="font-sans" style={subLine}>{fmtSubLine(requested)}</p>
         </div>
 
-        {/* Middle — progress */}
-        <div style={{ flex: 1, minWidth: 200, padding: "14px 30px 0" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <span className="font-sans" style={faintMeta}>{pct}% Elapsed</span>
-            <span className="font-sans" style={faintMeta}>{remainingLabel}</span>
-          </div>
-          <div style={{ position: "relative", height: 1, background: TRACK, marginTop: 18 }}>
-            <div style={{ position: "absolute", left: 0, top: 0, height: 1, width: `${pct}%`, background: GOLD }} />
-            <span
-              style={{
-                position: "absolute",
-                left: `${elapsedFraction * 100}%`,
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: GOLD,
-                boxShadow: `0 0 0 4px ${HALO}`,
-              }}
-            />
-          </div>
-          <p className="font-sans" style={{ ...faintMeta, textAlign: "center", marginTop: 18 }}>{totalLabel}</p>
-        </div>
-
-        {/* Right — DELIVERY (arrival) */}
-        <div style={{ minWidth: 210, marginLeft: "auto", textAlign: "right" }}>
+        {/* Right — DELIVERY */}
+        <div style={{ minWidth: 210, textAlign: "right" }}>
           <p className="font-sans" style={labelGold}>Delivery</p>
           <p className="font-serif" style={heroDate}>{fmtHeroDate(delivery)}</p>
           <p className="font-sans" style={subLine}>{fmtSubLine(delivery)}</p>
         </div>
+      </div>
+
+      {/* Progress — full width, below the dates */}
+      <div style={{ marginTop: 34 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span className="font-sans" style={faintMeta}>{pct}% Elapsed</span>
+          <span className="font-sans" style={faintMeta}>{remainingLabel}</span>
+        </div>
+        <div style={{ position: "relative", height: 1, background: TRACK, marginTop: 16 }}>
+          <div style={{ position: "absolute", left: 0, top: 0, height: 1, width: `${pct}%`, background: GOLD }} />
+          <span
+            style={{
+              position: "absolute",
+              left: `${elapsedFraction * 100}%`,
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: GOLD,
+              boxShadow: `0 0 0 4px ${HALO}`,
+            }}
+          />
+        </div>
+        <p className="font-sans" style={{ ...faintMeta, textAlign: "center", marginTop: 16 }}>{totalLabel}</p>
       </div>
     </div>
   );
