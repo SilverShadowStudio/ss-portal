@@ -10,18 +10,23 @@
 - `c9deda4` — CLAUDE.md trimmed from 54,760 → ~33.3k chars (under the 40k context limit, was being silently truncated). All rules preserved; tree-only rules surfaced into prose (`send-transactional-email` legacy, `admin-delete-account` preserves fred@, generator SVG copy-manually, AdminActivity 2000-row limit). Previously-truncated sections (Dropbox path-root header, Airtable boundary rules, Local tooling, Activity log) now load.
 - `64c1d9a` — HANDOFF: absorbed 4 backlog items that lived only in the old CLAUDE.md Pending section (Brief field in Airtable, quotation/invoice PDF generation, sidebar nav customisation, email from-address verification).
 - `ebd5c4b` — CLAUDE.md: codified two linked modal rules under Design system → Rules: (1) modals close via CANCEL + ESC, never a top-right X; (2) CANCEL is always available, never gated behind form completion. The CANCEL-only convention was real intent but had never been written down — that gap is why the X slipped in on 20 June.
+- `73215a8` — `NewRoundModal`: reverted the header X (`ec530e6`) and ungated the footer so CANCEL always renders. Diagnostic confirmed the trap was real — the entire footer (incl. Cancel) was gated behind `hasFloorPlan && hasCgiPackage && hasDeliveryDate`, so a mouse-only user with incomplete fields had no visible exit (ESC worked; click-outside disabled per 19 June). lucide `X` import kept (still used by the file-remove button at `:294`); Submit stays disabled via `isSubmitDisabled` + tooltip; Save Draft now reachable before completion. ESC + no-onClick backdrop unchanged. Visually approved on preview, merged to main.
+- `0ffb008` — `NewRoundModal` intake refactor: (1) collapsed the delivery-date field to a single "Select ⌄" row that expands a single-month picker inline (animated height ~0.35s, reuses `renderPickerMonthGrid`, drops the two-month layout, lining+tabular numerals) — scoped to delivery mode only, booking/buffer/Monday-grid untouched; (2) added a mode-aware `N/3` progress counter beside the (unchanged) "Required —…" intro + ring→check `StateMarker` on each of the three required rows; (3) PDF-only enforcement on the CGI row (`accept="application/pdf"` + drag-drop filter with toast); (4) relabeled the Submit primary action to "Begin Round 01" (same handler, same `isSubmitDisabled` gating, same tooltip). Zero new hex/colour/font (verified: only pre-existing `#1A1814`/`#2A2820`/`#B89A6A`, `font-sans`/`font-serif`); two new lucide icon imports (`Check`, `ChevronDown`). `npm run build` green. Visually approved on preview, merged to main.
 
 ## In progress / needs verification
 
-- **`NewRoundModal` X revert + CANCEL ungate** — branch `fix/newround-cancel-ungate`, awaiting visual approval on Vercel preview before merge to main. Diagnostic confirmed the trap was real: the entire footer (incl. Cancel) was gated behind `hasFloorPlan && hasCgiPackage && hasDeliveryDate` (`NewRoundModal.tsx:1252` pre-edit), so a mouse-only user with incomplete fields had no visible exit (ESC worked; click-outside disabled per 19 June). Fix: removed the header X (reverting `ec530e6`; lucide `X` import kept — still used by the file-remove button at `:294`) and removed the footer wrapper gate so the footer always renders. Submit stays disabled via its own `isSubmitDisabled` + `submissionIndicator` tooltip; Save Draft now reachable before completion (correct for a draft). ESC (`:816`) and the no-onClick backdrop (`:963-969`) unchanged. `npm run build` green. **Verify on preview**: open the modal in its incomplete state → CANCEL is visible/reachable, Submit reads as properly disabled with its "what's missing" tooltip.
+- **Vercel deploy of `main` (`0ffb008`)** — confirm green in the Vercel dashboard; both NewRoundModal changes are now live on `portal.silvershadowstudio.com`.
 
 ## Pending
 
-(See 20 June block below — unchanged.)
+- **Possible follow-up: divider inset + tighter vertical trim in `NewRoundModal`** — deferred from the intake refactor by design. The required rows use full-bleed negative margins (`-3rem`) to bleed the active-row gold fill to the modal edge; insetting the hairline dividers fights that fill, so it was left for a focused follow-up after seeing it rendered. Fred to decide on preview whether the inset is even wanted.
+- (See 20 June block below for the rest — unchanged.)
 
 ## Decisions made
 
 - **CANCEL-only modal close is the standing convention**, now codified in CLAUDE.md. The 20 June `NewRoundModal` X button (`ec530e6`) is reverted as superseded — it fixed a real trap, but the correct fix is ungating CANCEL, not adding an X.
+- **"Begin Round 01" replaces (relabels) the existing Submit button** — not a second primary, not an inline-below-rows action. This keeps CANCEL ungated automatically and avoids two competing submit actions.
+- **Landed as two clean commits on a linear history** (`73215a8` then `0ffb008`, fast-forward, no merge commits) so each change reads separately in `main`'s log. Branch stacking (`feat` on `fix`) resolved by fast-forwarding `fix` first, then `feat`. Both branches deleted local + remote.
 
 ---
 
