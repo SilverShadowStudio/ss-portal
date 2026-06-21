@@ -986,8 +986,8 @@ export function NewRoundModal({
     );
   };
 
-  // Single-month picker (collapsed by default, expanded via pickerOpen).
-  // Reuses renderPickerMonthGrid; month nav arrows retained.
+  // Two-month picker (collapsed by default, expanded via pickerOpen).
+  // Reuses renderPickerMonthGrid; month nav arrows step the pair.
   const renderDeliveryPicker = () => {
     const canGoPrev = earliestPickerDate != null && pickerDisplayMonth > startOfMonth(earliestPickerDate);
     return (
@@ -999,7 +999,10 @@ export function NewRoundModal({
           className="font-serif text-foreground/35 hover:text-foreground transition-colors disabled:opacity-20"
           style={{ fontSize: 18 }}
         >‹</button>
-        {renderPickerMonthGrid(pickerDisplayMonth)}
+        <div className="flex gap-6">
+          {renderPickerMonthGrid(pickerDisplayMonth)}
+          {renderPickerMonthGrid(addMonths(pickerDisplayMonth, 1))}
+        </div>
         <button
           type="button"
           onClick={() => setPickerDisplayMonth(m => addMonths(m, 1))}
@@ -1067,14 +1070,25 @@ export function NewRoundModal({
                   <UploadItem showMarker goldLabel label="Floor plan" files={filesByCategory.floor_plan} onFilesAdded={(fl) => handleFilesAdded("floor_plan", fl)} onRemoveFile={(i) => handleRemoveFile("floor_plan", i)} />
                   <UploadItem showMarker goldLabel accept="application/pdf" label="CGI Package (PDF)" files={filesByCategory.cgi_package} onFilesAdded={handleCgiFilesAdded} onRemoveFile={(i) => handleRemoveFile("cgi_package", i)} />
 
-                  {/* Delivery date — same structural pattern as UploadItem */}
+                  {/* Delivery date — same structural pattern as UploadItem.
+                      In delivery mode the whole row toggles the calendar; inner
+                      controls (Select button, RowActions, the set-date display)
+                      stop propagation so they don't double-fire. */}
                   <div
                     className="group flex items-start py-4"
+                    onClick={isDelivery ? () => setPickerOpen((o) => !o) : undefined}
+                    role={isDelivery ? "button" : undefined}
+                    aria-expanded={isDelivery ? pickerOpen : undefined}
+                    tabIndex={isDelivery ? 0 : undefined}
+                    onKeyDown={isDelivery ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPickerOpen((o) => !o); }
+                    } : undefined}
                     style={{
                       marginLeft: "-3rem", marginRight: "-3rem",
                       paddingLeft: (isDelivery && pickerDate) ? "calc(3rem - 3px)" : "3rem",
                       paddingRight: "3rem",
                       position: "relative",
+                      cursor: isDelivery ? "pointer" : undefined,
                       transition: "background var(--duration-standard) var(--ease-default)",
                       background: (isDelivery && pickerDate) ? "#252018" : "transparent",
                       borderLeft: (isDelivery && pickerDate) ? "3px solid var(--brand-gold, #B89A6A)" : "3px solid transparent",
