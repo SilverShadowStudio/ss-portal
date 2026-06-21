@@ -191,6 +191,8 @@ Single focused view; exactly one state per client at a time:
 - No `rounded-full` buttons · No bullet points in UI copy · No emojis in UI · No bold in prose.
 - Gold for active states and key highlights only. Sharp rectangular components (`rounded-sm` at most).
 - All design tokens in `src/lib/design.ts` — import from there, never hardcode.
+- Modals close via a CANCEL action (and ESC), never a top-right X button.
+- CANCEL is always available and never gated behind form completion or required fields — a user must always be able to abandon a modal.
 
 ### Sidebar constants
 Both `AdminSidebar` and `ClientSidebar` import from `src/lib/sidebarConstants.ts` (the `SB` object). Never hardcode sidebar widths, nav font sizes, or account row styles — use `SB.*`. Key values: `SB.widthExpanded = "w-64"`, nav label `fontSize: 11, letterSpacing: "0.24em"`, account name `12px text-foreground`.
