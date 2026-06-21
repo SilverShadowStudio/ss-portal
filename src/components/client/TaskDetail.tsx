@@ -156,7 +156,11 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
 
   // Lazy-load instructions + uploads on first open.
   useEffect(() => {
-    if (!briefOpen || brief !== null) return;
+    // Refetch on each open. `brief` must NOT be a dependency: setBrief() runs
+    // mid-async below, and if `brief` were a dep that state change would tear
+    // down this effect (cancelled = true) before the upload fetch resolves,
+    // leaving "Retrieving files…" stuck forever.
+    if (!briefOpen) return;
     let cancelled = false;
     setBriefLoading(true);
     (async () => {
@@ -186,7 +190,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
       }
     })();
     return () => { cancelled = true; };
-  }, [briefOpen, brief, roundId]);
+  }, [briefOpen, roundId]);
 
   if (loading) {
     return (
@@ -322,12 +326,18 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
             className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
             onClick={() => setBriefOpen(false)}
           />
+          {/* Flex-centred wrapper. Framer-motion writes an inline `transform`
+              for the y/scale animation, which would override Tailwind
+              `-translate-*` centering — so centre with flex, not translate.
+              Wrapper is pointer-events-none so clicks in the gutter fall
+              through to the backdrop (close); panel re-enables pointer events. */}
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none">
           <motion.div
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
-            className="fixed left-1/2 top-1/2 z-[70] w-[min(620px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 bg-[#111113] border border-[#222020] rounded-sm shadow-2xl overflow-hidden"
+            className="pointer-events-auto w-[min(620px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)] bg-[#111113] border border-[#222020] rounded-sm shadow-2xl overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Round instructions"
@@ -438,6 +448,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
               )}
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>,
