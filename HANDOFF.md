@@ -14,6 +14,25 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 22 June 2026 (evening — tooling)
+
+## Completed this session
+
+- `6b57d31` — HANDOFF.md: added permanent **Resume (permanent, do not edit)** block immediately under the `# Handoff Log` title and above the first `---`. Contains the session-startup recipe: `cd`, `git pull`, `claude --dangerously-skip-permissions`, first command `cat HANDOFF.md && git status`, then ask for the state summary before acting. The block is fixed — never edit, reword, or remove it. End-of-session updates only rewrite content below the divider. (Memory entry `feedback_handoff_resume_block.md` codifies this for future sessions.)
+- `4698059` — Added `.claude/commands/stop.md` (project-scoped slash command). `/stop` rewrites the session section below the first `---` (leaving the Resume block alone), commits as `Session <date>: <summary>`, pushes to `origin main`, and verifies the working tree is clean and `main` is level with origin.
+
+## Current state
+
+- Working tree clean; only pre-existing untracked items (`deno.lock`, `design-refs/`) — both unchanged since the start of the day.
+- Local `main` is level with `origin/main` after this commit pushes.
+- **The earlier-today Charles Zana Airtable onboarding remains URGENT / IN PROGRESS** — see the block immediately below. Nothing in that workstream changed this session.
+
+## Next step to resume from
+
+- Pick up the Charles Zana Airtable onboarding exactly where it was paused. Concretely: pull a fresh **Supabase access token** and the **Airtable PAT** from the password manager, then run the three read-only Airtable GETs described in the URGENT block below to decide *link vs. create*. Re-enable `AIRTABLE_WRITES_ENABLED=true` only with the digest-flip confirmation (`b5bea41b…12b`), re-trigger the sync, then re-pause. Do **not** trust `secrets set` without digest proof.
+
+---
+
 # Session — 22 June 2026
 
 ## URGENT / IN PROGRESS — Charles Zana Airtable onboarding (half-done)
