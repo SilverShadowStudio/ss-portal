@@ -1,5 +1,17 @@
 # Handoff Log
 
+## Resume (permanent, do not edit)
+
+    cd ~/code/ss-portal
+    git pull origin main
+    claude --dangerously-skip-permissions
+
+First command inside Claude Code:
+
+    cat HANDOFF.md && git status
+
+Then ask for the state summary before acting.
+
 ---
 
 # Session — 22 June 2026
