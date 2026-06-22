@@ -2,6 +2,30 @@
 
 ---
 
+# Session — 22 June 2026
+
+## URGENT / IN PROGRESS — Charles Zana Airtable onboarding (half-done)
+
+Client onboarded **portal-side only**: account `ZAN` (`22db25ac`), project Mas d'Artigny / `CP115` (`d7b6f104`). Both `airtable_client_id` and `airtable_project_id` are **NULL** — the Airtable write was **SKIPPED** because `AIRTABLE_WRITES_ENABLED` was `false` the whole time (an earlier flag-flip silently failed on an expired Supabase token). Flag currently **CONFIRMED false** (live digest = `sha256('false')` = `fcbcf165…f8aa`).
+
+**NEXT STEPS, in order:**
+1. With the **Airtable PAT**, run the three read-only GETs to confirm whether a Charles Zana client/contact **ALREADY exists** in Kieran's Airtable — the Add-Client matcher suggested one ("Charles Zana, no projects").
+2. **If he exists:** link the portal account to his existing Airtable client id **before** syncing (`airtable-sync-project` blind-creates — must not duplicate). **If absent:** clean create.
+3. **Controlled re-enable:** set `AIRTABLE_WRITES_ENABLED=true`, then **CONFIRM** the digest changed to `sha256('true')` = `b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b`. Do **not** trust `secrets set` without digest proof — that's what silently failed.
+4. **Re-trigger** the Charles Zana sync; verify **one clean** Users/Clients row + **one** Projects row, no duplicate.
+5. **Re-pause:** set `AIRTABLE_WRITES_ENABLED=false`.
+
+**CREDENTIALS NEEDED** (both from password manager — both expire / aren't on disk): fresh **Supabase access token**, **Airtable PAT**.
+
+**Also pending:** team-member invite (separate, Airtable-clean) still to send — not started.
+
+### Reference — verified this session (read-only, no writes, no flag change)
+- `airtable-sync-contact` **upserts** Users by email (`findUserByEmail` → PATCH if found, POST if not) — safe against duplicates, **except** the email match lowercases (`:303`) while Airtable `filterByFormula =` is case-sensitive; a mixed-case stored email would still duplicate. Use `LOWER({Email})` when checking.
+- `airtable-sync-project` is **match-or-link for the company/Clients record** (stored-id-first via `airtable_client_id`, then by-name search-or-create) but **BLIND-CREATES the Projects row** (unconditional POST, never reads `airtable_project_id`) — same flaw as `push-scene`. One clean create only if not already in Airtable.
+- Flipping `AIRTABLE_WRITES_ENABLED` does **NOT** replay skipped writes — all paths early-return/skip-in-place, nothing is queued. No backlog flood; conversely, paused events are gone and won't auto-appear.
+
+---
+
 # Session — 21 June 2026 (evening)
 
 ## Completed this session
