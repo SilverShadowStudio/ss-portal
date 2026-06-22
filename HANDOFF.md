@@ -14,6 +14,24 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 22 June 2026 (late evening — /stop refinement)
+
+## Completed this session
+
+- `47f1ade` — `.claude/commands/stop.md`: replaced the "update HANDOFF.md" instruction. `/stop` now **prepends** a new dated session entry at the top of the area below the first `---` (rather than replacing the session section), **explicitly preserves** any section marked URGENT / IN PROGRESS or otherwise unfinished (carry forward unchanged), and updates the **"Next step to resume from"** to reflect the true current priority. Commit-message convention (`Session <date>: <summary>`) and the clean/level git verification step are unchanged.
+
+## Current state
+
+- Working tree clean; only pre-existing untracked items (`deno.lock`, `design-refs/`) — unchanged.
+- Local `main` will be level with `origin/main` after this commit pushes.
+- **Charles Zana Airtable onboarding remains the active URGENT / IN PROGRESS item** — block preserved unchanged below.
+
+## Next step to resume from
+
+- Charles Zana Airtable onboarding (see URGENT block below). Pull a fresh **Supabase access token** and the **Airtable PAT** from the password manager, run the three read-only Airtable GETs to decide *link vs. create*, then a controlled re-enable of `AIRTABLE_WRITES_ENABLED=true` with digest verification (`b5bea41b…12b`) before re-triggering the sync; re-pause after.
+
+---
+
 # Session — 22 June 2026 (evening — tooling)
 
 ## Completed this session
