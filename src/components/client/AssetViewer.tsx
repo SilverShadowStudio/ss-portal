@@ -3767,7 +3767,22 @@ async function downloadWithComments(args: {
     const logoW = Math.min(LEGEND_W - PADDING * 2, Math.round(LEGEND_W * 0.55));
     const logoH = Math.round((logo.naturalHeight / logo.naturalWidth) * logoW);
     const logoX = legendX + (LEGEND_W - logoW) / 2;
-    ctx.drawImage(logo, logoX, PADDING, logoW, logoH);
+    // The PNG wordmark is dark; tint it white so it reads on the near-black
+    // (#0b0b0b) legend panel. Offscreen source-in keeps the glyph alpha and
+    // recolours the opaque pixels white (no ctx.filter dependency).
+    const tint = document.createElement("canvas");
+    tint.width = logoW;
+    tint.height = logoH;
+    const tctx = tint.getContext("2d");
+    if (tctx) {
+      tctx.drawImage(logo, 0, 0, logoW, logoH);
+      tctx.globalCompositeOperation = "source-in";
+      tctx.fillStyle = "#ffffff";
+      tctx.fillRect(0, 0, logoW, logoH);
+      ctx.drawImage(tint, logoX, PADDING, logoW, logoH);
+    } else {
+      ctx.drawImage(logo, logoX, PADDING, logoW, logoH);
+    }
     headerOffset = PADDING + logoH + PADDING;
   } catch {
     // If the logo fails to load, fall back to plain header position.
