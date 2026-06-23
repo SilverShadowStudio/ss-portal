@@ -14,6 +14,53 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 23 June 2026 (agreement gate fix + Thomas onboarding)
+
+## Completed this session
+
+- **CP116 cleanup** — orphan portal project "Mas d'Artigny" (`7f24c46e-…`, `account_id NULL`, `airtable_project_id NULL`, created 19 June) deleted; two-phase: full FK cascade chart verified first, then single-UUID `DELETE FROM projects WHERE id = '7f24c46e-…'`. **14 rows total removed**: 1 projects + 6 scenes (test data, names like `dfsgdfg`, `fghdj`) + 7 scene_rounds (2× SC01 reserved, 5× SCxx pending; zero assets). CP115 / ZAN untouched. Dropbox folder `CP116_Mas-dArtigny` left intact on disk. 15 orphan refs remain in `activity_log` by design (no FK from activity_log to projects.id; immutable production log).
+- **Thomas Zana onboarding (portal-side)** — manual `account_members` INSERT (id `d9f187d8-…`) on the ZAN account, profile linked (`profiles.account_id` set), active invitation `10acd5cd-…` marked accepted. Role originally `'user'` (schema default), then flipped to `'client_invitee'` per the invitation's intent. `pin_colour` still **NULL** — see Pending.
+- **Agreement gate — two-phase fix, both live** —
+  - `23a8d2f` — Extracted `checkAccountAgreementForUser` (`src/lib/agreementStatus.ts`) as the single source of truth and swapped all three setters of `hasSignedAgreement` / gate status (`AuthContext` initial fetch, `refreshAgreementStatus`, `useAgreementGate`). Made `ProtectedRoute`'s per-user check agree with `AgreementGate`'s account-scoped check — fixes the Manager-not-personally-signed redirect loop case. **No-op for client_invitees** in production, see phase two.
+  - `fc83c80` — Migration `20260623000001_account_has_signed_agreement_rpc.sql` applied to production DB. New `SECURITY DEFINER` RPC `public.account_has_signed_agreement(p_account_id uuid) → boolean`, `STABLE`, `search_path=public`, hardened with internal `is_account_member()` guard so arbitrary accounts cannot be probed; returns boolean only, never row contents. `agreementStatus.ts` now calls the RPC via `supabase.rpc()`. **Verified under Thomas's JWT** (not service_role): RPC returns `true` for him on ZAN, `false` for a random uuid, `false` for anon. Production live, bundle flipped to `index-Cn9hv7Xl.js`.
+- **Diagnosed why phase one was not enough**: `public.agreements` SELECT policy is `(auth.uid() = user_id OR is_account_manager(account_id))`. A client_invitee whose Manager signed cannot SELECT the row — every prior gate trace this session that returned Virgile's row had used service_role and bypassed RLS. **Lesson codified**: always verify gate / RLS-touching behaviour under the real caller's JWT before declaring a fix done.
+
+## In progress / needs verification
+
+- **Live smoke test on production**: sign in as Thomas (`thomas@zana.fr`) fresh on `portal.silvershadowstudio.com` and confirm he lands on `/`, not `/sign-agreement`. Preview branch was verified by Fred before the merge; this is the final prod confirmation. ~1 minute.
+
+## Pending
+
+- **Thomas `pin_colour`** — still NULL on `account_members.d9f187d8-…`. Falls back to gold via `Team.tsx:278` (`m.pin_colour || GOLD`), which clashes with the Manager-gold convention now that he's an Invitee. Next free palette colour `#5B7C99` (cool blue, since Virgile's NULL is Manager-by-role). One-liner: `update account_members set pin_colour = '#5B7C99', updated_at = now() where id = 'd9f187d8-673c-41b7-beea-2d6f888d6628';` — pending Fred's go.
+- **`SignAgreement.tsx` (legacy, unrouted)** — `src/pages/SignAgreement.tsx` is dead code per the `App.tsx:103` comment, but still contains the old per-user `if signed → navigate("/")` pattern. Worth deleting in a focused cleanup PR — both because it's dead and because keeping it around invites someone to wire it back up.
+- **`AdminClientProfile.tsx:201`** — admin "Resend invitation" button visibility checks per-owner-user agreement state (`where user_id = account.owner_user_id`). Same drift shape as the gate but on a different state variable (`hasSigned`, not `hasSignedAgreement`); admin sees "not signed" if the owner hasn't personally signed even when a Manager has. Out of scope tonight; needs its own decision (probably switch to the same RPC, account-scoped).
+- **`REVOKE EXECUTE … FROM anon`** on `account_has_signed_agreement` — Supabase's default `ALTER DEFAULT PRIVILEGES` auto-granted EXECUTE to `anon`. The function defends in depth via `is_account_member()` (returns false because `auth.uid()` is null for anon — verified in check D), but a clean explicit `REVOKE` is the right hygiene. One-line follow-up migration.
+- **Version-string duplication ledger** — `'SSS-CA-PROJECT-v3.0'` / `'SSS-CA-PARTNERSHIP-v3.0'` are now in two places: `src/lib/agreements/index.ts` constants (single TS source of truth, picked up by `accept-agreement/index.ts:24` via import) AND `supabase/migrations/20260623000001_account_has_signed_agreement_rpc.sql` literal strings. When v3.1 ships, BOTH must be bumped. Documented in the migration comment block ("DUPLICATION — change together").
+- **Charles Zana Airtable onboarding** — UNCHANGED. Still URGENT (preserved block below). Mid-session, `airtable-find-matching-clients` was invoked server-side as fred (via magic-link → verify dance, fully cleaned up afterwards: session globally signed out, `/tmp/*.json` deleted with `rm -P`, grep-verified no token residue on disk). **Confirmed match**: exactly one Airtable Clients row for "Charles Zana" — `recXuTLCE9Sq16b1G`, address `13 Rue De Seine · Paris · 75006`, no client_representative, has_projects = 0. The "link vs. create" decision is now mostly answered: **link to `recXuTLCE9Sq16b1G`** rather than blind-create. Still requires fresh Airtable PAT + controlled `AIRTABLE_WRITES_ENABLED` flip per the URGENT plan.
+- **Team-member invite** (separate, Airtable-clean) — UNCHANGED. Still pending.
+- (Earlier-session backlog from 21 / 20 / 19 / 18 June blocks below — unchanged.)
+
+## Decisions made
+
+- **Option B over A or C** for the agreement-gate invitee bug (Fred's call after critical RLS finding): a `SECURITY DEFINER` RPC for the boolean check, not loosening RLS on the table and not rolling back. Privacy preserved (only boolean leaves the DB; signatory_name / contents stay restricted to the existing policy).
+- **Branch + preview**, not main-direct, for any change involving a DB migration. Even though the migration was applied to prod *first* (so the RPC call would not 404), the code change still went through `fix/agreement-gate-rpc` preview before Fred verified Thomas's flow and authorised the merge.
+- **Always verify under the real caller's JWT** (not service_role) before declaring an RLS-touching fix done. This session's first deploy (`23a8d2f`) was technically green-on-bundle-flip but semantically a no-op for invitees because every diagnostic had been service_role. Codified above.
+- **Manual `account_members` INSERT for Thomas** (rather than invoking `accept-invitation`) was the chosen tradeoff — it skipped the function's pin_colour assignment but avoided clobbering the `accepted_at` timestamp. The pin_colour follow-up is logged in Pending.
+
+## Current state
+
+- Working tree clean; only pre-existing untracked items (`deno.lock`, `design-refs/`).
+- Local `main` will be level with `origin/main` after this commit pushes.
+- Production serves `fc83c80` — agreement gate + RPC live; verified live by bundle flip + Thomas-JWT RPC check.
+- **Charles Zana Airtable onboarding remains the active URGENT / IN PROGRESS item** — block preserved unchanged below.
+
+## Next step to resume from
+
+- **First**, the 1-min prod smoke test of Thomas on `portal.silvershadowstudio.com` (covered in "In progress").
+- **Then**, the **Charles Zana Airtable onboarding** (URGENT block below). The Clients-table candidate is now known (`recXuTLCE9Sq16b1G`) so the decision is mostly resolved: **link, don't create**. Pull a fresh **Supabase access token** and the **Airtable PAT** from the password manager, flip `AIRTABLE_WRITES_ENABLED=true` with digest verification (`b5bea41b…12b`), update `accounts.airtable_client_id = 'recXuTLCE9Sq16b1G'` for ZAN before triggering, re-trigger the project sync, verify one clean Projects row created (no duplicate Clients row), then re-pause the flag.
+
+---
+
 # Session — 22 June 2026 (late evening — /stop refinement)
 
 ## Completed this session
