@@ -14,6 +14,19 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 23 June 2026 (round-uploads storage RLS drift fix)
+
+## Completed this session
+
+- **round-uploads storage RLS drift fixed** — `e87996b` (merge of `fix/round-uploads-member-storage-read`, migration `20260623000002_round_uploads_storage_member_select.sql`). The `round_uploads` TABLE SELECT was re-scoped to `is_account_member` in `20260424104042`, but `storage.objects` was never re-scoped — so client_invitees could read the file list (table rows) yet not `createSignedUrl` for manager-uploaded objects (image thumbnails fell back to a generic file icon in `TaskDetail.tsx`). Added a THIRD, additive `storage.objects` SELECT policy `"Members can view account round files"` (`bucket_id = 'round-uploads'` AND `is_account_member` via object→scene→project→account, keyed on `(storage.foldername(name))[2]` = sceneId, text-equality join to avoid uuid-cast errors on malformed paths). Existing `"Users can view their own round files"` (uploader) and `"Admins can view all round files"` policies left untouched. **Migration applied to prod DB and merged to main** (DB and `supabase/migrations/` now in sync). Verified under real JWTs (NOT service_role): Thomas (client_invitee `871ad934…`) 0→5 visible limestone objects; Virgile (owner/uploader `f319ba48…`) 5 unchanged; non-member 0. Confirmed live by Fred (thumbnails render for Thomas).
+
+## Pending — AUDIT CLASS (do NOT action tonight; logged 23 June)
+
+- **Table-vs-storage RLS drift audit (whole class).** This is the THIRD table-vs-policy drift surfaced today (agreements RLS account-scope, per-user vs account-scoped gate check, now storage-vs-table on round-uploads). **One deliberate pass: audit EVERY account-scoped re-scoping migration for a matching `storage.objects` policy, and vice versa.** Other buckets likely carry the same latent gap — check at minimum `agreements`, and any `documents` / `avatars` / `freelancer-*` / `scene-*` / `pin-attachments` buckets: does each have a SELECT policy consistent with the account-scope of its backing table? Close the class in one sweep rather than per-incident.
+- **Surface swallowed signed-URL RLS denials.** `TaskDetail.tsx` (signed-URL enrichment ~`:201–206`) discards the `createSignedUrls` error and sets `signedUrl: undefined` → generic icon, with no log. Add logging (and ideally lightweight monitoring) for denied signed-URL attempts so the NEXT storage-RLS gap surfaces in telemetry instead of via a client noticing missing thumbnails.
+
+---
+
 # Session — 23 June 2026 (agreement gate fix + Thomas onboarding)
 
 ## Completed this session
