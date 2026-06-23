@@ -18,7 +18,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { SUPPORTED_AGREEMENT_VERSIONS } from "@/lib/agreements";
+import { checkAccountAgreementForUser } from "@/lib/agreementStatus";
 
 export type AgreementGateStatus = "loading" | "bypass" | "ok" | "needs_signature";
 
@@ -79,33 +79,14 @@ export function useAgreementGate(): AgreementGateStatus {
         return;
       }
 
-      // Client path — look up the active agreement row for this user's
-      // account membership. Querying by `user_id` is sufficient because
-      // a client is bound to one account in `account_members`.
+      // Client path — single source of truth for account-scoped agreement
+      // status (see src/lib/agreementStatus.ts). "no_account" still maps
+      // to needs_signature so the user lands on /sign-agreement, which
+      // shows the polite "couldn't load your account" message.
       try {
-        const { data: membership } = await supabase
-          .from("account_members")
-          .select("account_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        const result = await checkAccountAgreementForUser(user.id);
         if (cancelled) return;
-        const accountId = (membership as { account_id: string } | null)?.account_id ?? null;
-        if (!accountId) {
-          // No account membership found — treat as needs_signature so
-          // they're routed to /sign-agreement, which shows the polite
-          // "We couldn't load your account" message.
-          setStatus("needs_signature");
-          return;
-        }
-
-        const { data: rows } = await supabase
-          .from("agreements")
-          .select("id, agreement_version")
-          .eq("account_id", accountId)
-          .in("agreement_version", SUPPORTED_AGREEMENT_VERSIONS as unknown as string[])
-          .limit(1);
-        if (cancelled) return;
-        setStatus((rows && rows.length > 0) ? "ok" : "needs_signature");
+        setStatus(result === "signed" ? "ok" : "needs_signature");
       } catch (err) {
         console.warn("[useAgreementGate] check failed:", err);
         // Fail-open for clients: render the route rather than locking

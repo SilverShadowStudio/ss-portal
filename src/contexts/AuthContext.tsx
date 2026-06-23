@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { clearSessionId, insertClientActivity } from "@/lib/clientActivity";
+import { checkAccountAgreementForUser } from "@/lib/agreementStatus";
 
 const GHOST_KEY = "ss-ghost-mode";
 const GHOST_BACKUP_KEY = "ss-ghost-admin-backup";
@@ -246,17 +247,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         // Fetch account type, signed agreement, and freelancer profile in parallel.
-        const [{ data: member }, { data: agreements }, { data: fpRow }] = await Promise.all([
+        const [{ data: member }, agreementResult, { data: fpRow }] = await Promise.all([
           supabase
             .from("account_members")
             .select("role, accounts(account_type)")
             .eq("user_id", authUser.id)
             .maybeSingle(),
-          supabase
-            .from("agreements")
-            .select("id")
-            .eq("user_id", authUser.id)
-            .limit(1),
+          checkAccountAgreementForUser(authUser.id),
           supabase
             .from("freelancer_profiles")
             .select("id")
@@ -269,7 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccountType(resolvedType);
         setMemberRole((member as any)?.role ?? null);
         // Team users sign the freelancer agreement, not the SSS-CA — skip that gate.
-        setHasSignedAgreement(resolvedType === 'team' ? true : Array.isArray(agreements) && agreements.length > 0);
+        setHasSignedAgreement(resolvedType === 'team' ? true : agreementResult === "signed");
         setHasFreelancerProfile(resolvedType === 'team' ? !!fpRow : null);
       } catch {
         if (!cancelled) {
@@ -387,12 +384,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshAgreementStatus = async () => {
     if (!authUser) return;
     try {
-      const { data: agreements } = await supabase
-        .from("agreements")
-        .select("id")
-        .eq("user_id", authUser.id)
-        .limit(1);
-      setHasSignedAgreement(Array.isArray(agreements) && agreements.length > 0);
+      const result = await checkAccountAgreementForUser(authUser.id);
+      setHasSignedAgreement(result === "signed");
     } catch {
       // best-effort
     }
