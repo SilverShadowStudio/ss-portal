@@ -38,7 +38,15 @@ Then ask for the state summary before acting.
 
 ## Watch — shared DB / Maybourne exposure
 
-- Backfill is LIVE on prod and the **already-deployed** frontend filters `is_current=true`, so prod clients now see only the published (highest) version. Headline image is UNCHANGED (highest version == newest `created_at`, incl. SC08) — no content regression, only the strip of old iterations collapsed. Admin controls + final visual sign-off happen on the preview branch before merge.
+- Backfill is LIVE on prod and the **already-deployed** frontend filters `is_current=true`, so prod clients now see only the published (highest) version. Headline image is UNCHANGED (highest version == newest `created_at`, incl. SC08) — no content regression, only the strip of old iterations collapsed. Verified on prod by Fred (660 Madison headline renders correct incl. SC08 R01 + the four single-row groups; no stale renders to client). Admin controls + final visual sign-off happen on the preview branch before merge.
+
+## Gap — admin republish UI is branch-only; client filter is already live on prod
+
+- The client `is_current` filter ships with the **already-deployed** prod frontend, but the **admin republish UI** (publish control + "client sees this" badge) is only on `feat/round-asset-publish-flag`, NOT merged. **Until merge, republishing a prod group requires `set_current_round_asset` (or the equivalent SQL UPDATE) run directly against the prod DB — not the UI.** Path is confirmed working (the exact group-scoped single UPDATE was exercised on prod in a rolled-back txn this session): identify the target asset id (by filename), then atomically set it current and flip its `(scene_round_id, scene_token)` siblings false.
+
+## Standing decision needed — prod-apply vs preview/merge gate
+
+- **THREE DB changes went live to the shared prod DB ahead of the preview/merge gate today**: (1) `account_has_signed_agreement` RPC, (2) round-uploads storage member SELECT policy, (3) this `round_assets` publish-flag backfill + `scene_token` + RPC. Each was applied to prod *before* the corresponding frontend was verified/merged, because there is one shared DB and preview cannot isolate data. This is now a **pattern, not a one-off** — it needs a conscious policy, not per-change judgement: either (a) accept "direct-apply-to-prod, then branch+merge to record the migration in history" as the standing workflow, or (b) require prod applies to wait for preview/merge (which needs a staging DB or a feature-flag/dark-launch mechanism, since the live frontend reads prod immediately). Decide deliberately.
 
 ## is_current reader audit (now meaningful — each must handle the zero-row case)
 
