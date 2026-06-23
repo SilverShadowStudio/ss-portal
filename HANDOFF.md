@@ -14,6 +14,44 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 23 June 2026 (round_assets publish flag — is_current given real meaning)
+
+## Completed (DB LIVE on prod; frontend on branch `feat/round-asset-publish-flag`, NOT merged)
+
+- **Migrations 20260623000003/4 applied to prod:**
+  - `scene_token` — STORED GENERATED column parsed from filename (regex 126/126), auto-populated on every insert/update. Publish group key = `(scene_round_id, scene_token)`. Falls back to full filename if unparsed (keeps it non-null for the planned index).
+  - `is_current` backfilled: highest version per group → true. **37 published / 89 not.** Default flipped `true → false` (new uploads no longer auto-publish).
+  - `set_current_round_asset(uuid)` — SECURITY DEFINER, admin-only (`is_admin()`), **reads the stored token (no regex)**, single atomic UPDATE = one-current-per-group invariant. `anon` execute revoked. Invariant verified in a rolled-back txn.
+- **AssetViewer (branch, build green):** client + ghost-as-client see only published; selection guarded so strip/lightbox never land on an unpublished asset; clean **pending state** when renders exist but none published; **real admin** sees every version + gold dot on published + "Publish this version to client" (RPC) + "Client sees this version" badge + "Newer vN not yet published" hint. Role gate = `isAdmin && !isGhostModeActive()`.
+- **660 Madison backfill choices signed off by Fred** (incl. 16 sync-gap anomalies; SC08 R01 → v3). To be visually re-verified on preview before merge.
+
+## URGENT next — COUPLED step, deliberately NOT done
+
+- **Partial unique index + edge-function rework MUST ship together.** Add
+  `CREATE UNIQUE INDEX ... ON round_assets (scene_round_id, scene_token) WHERE is_current`
+  **only after** the four insert paths stop writing `is_current=true`:
+  - `dropbox-scan-visuals:312` (true→false)
+  - `dropbox-api:447,460` (true→false) + remove auto-publish flip `435-447`
+  - `dropbox-webhook:462,477` (true→false) + remove "mark old false"+insert-true `448-463`; **and** change the `is_current`-based version/dedup lookups (`423-438`) to look up by file_id/path (not is_current) and parse version from the filename like scan-visuals.
+  - `import-legacy-rounds:235,282` (true→false)
+  Adding the index before this rework would make the next auto-publishing insert violate it and **silently drop a delivered render.** Interim: until the rework, NEW uploads still auto-publish.
+
+## Watch — shared DB / Maybourne exposure
+
+- Backfill is LIVE on prod and the **already-deployed** frontend filters `is_current=true`, so prod clients now see only the published (highest) version. Headline image is UNCHANGED (highest version == newest `created_at`, incl. SC08) — no content regression, only the strip of old iterations collapsed. Admin controls + final visual sign-off happen on the preview branch before merge.
+
+## is_current reader audit (now meaningful — each must handle the zero-row case)
+
+- Client: `AssetViewer` (fetch/strip/selection), `TaskDetail:148`, `Portfolio:352`, `Index:500`, `Timeline:406`, `NewTask:128`
+- Admin/thumbnails: `AdminScenes:140`, `AdminProjects:469`, `SceneCard:104`, `useSceneThumbnail:34`
+- Most resolve to the published version; thumbnail readers render nothing for an unpublished round → need a pending/placeholder, not a broken image.
+
+## Round-filename regex — now centralised
+
+- The stored `scene_token` column means the set-current RPC and the client path **no longer parse filenames.** Remaining parse sites: insert-time `scene_token` generation (in SQL) + the two Deno edge regexes (`dropbox-scan-visuals` parseFilename:38, `dropbox-webhook` round/version). Cross-reference when the naming convention changes (CLAUDE.md "change together").
+
+---
+
 # Session — 23 June 2026 (round-uploads storage RLS drift fix)
 
 ## Completed this session
