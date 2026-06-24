@@ -14,6 +14,48 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 24 June 2026 (late afternoon — viewer-branch merge sweep: logo-white + zoom-jank IN, render-viewer-perf merged-then-reverted)
+
+Three of the four viewer branches taken to main per the merge map. **render-viewer-perf reverted same-session** after Fred saw CP115/SC01/R01 visuals stuck on the wing-logo loading state on the live admin viewer right before a meeting — production is back to the post-zoom-jank state (`index-ZlylWlyP.js`).
+
+## Completed
+
+- **Merged `fix/export-logo-white`** — `beccd71` via merge commit `964b18e`. Vercel production deploy `5178384227` ✓ success @ 08:52:38 UTC. Live bundle flipped baseline `index-Cn9hv7Xl.js` → `index-eZydco68.js`.
+- **Merged `fix/zoom-jank`** — `febc1b7` via merge commit `45ab7c8`, with an empty-commit `b20b2b3` to wake Vercel (see next bullet). Production deploy `5178785056` ✓ success @ 09:26:43 UTC. Live bundle flipped `index-eZydco68.js` → `index-ZlylWlyP.js`. **This is the current live bundle.** Auto-merge with logo-white's AssetViewer change resolved cleanly (ort).
+- **Diagnosed + worked around Vercel webhook silent miss on `45ab7c8`.** Push went to GitHub at 08:57 UTC; ~23 min later, no Vercel deployment had been registered (GitHub Deployments API returned no entry for that SHA, while merge #1 had registered within ~90s). Logged the problem to Fred rather than force-trigger blindly; on Fred's go pushed empty commit `b20b2b3 chore: trigger deploy for 45ab7c8 (zoom-jank)` to wake the webhook — deploy queued immediately and succeeded. **New failure class to watch**: Vercel can silently skip a push without surfacing anything in GitHub. **Detection signal that worked**: GitHub Deployments API (`/repos/.../deployments?per_page=N`) — if a merge commit doesn't appear there within ~5 min of push, the webhook missed it.
+- **Merged `feat/render-viewer-perf`** — `a5b7c94` via merge commit `c9a5a30`. Production deploy `5178808625` ✓ success @ 09:28:46 UTC. Live bundle flipped to `index-BstX2z4i.js`. **REVERTED — see next bullet.**
+- **Reverted render-viewer-perf** — `9f22349 Revert "Merge feat/render-viewer-perf: …"` (revert of merge commit `c9a5a30`, parent `-m 1`). Production deploy `5178914756` ✓ success @ 09:37:41 UTC. Live bundle back to `index-ZlylWlyP.js`. **Reason**: Fred opened CP115/SC01/R01 in the admin viewer immediately after the deploy and the inline image stayed on the wing-logo loading frame with progress bar — Dropbox showed all 4 visual files present, chips rendered in the round bar, but the main viewer never resolved an image. Meeting imminent, so reverted first, debug later. `origin/feat/render-viewer-perf` untouched on GitHub, ready to investigate.
+
+## In progress / needs verification
+
+- **publish-flag preview sign-off** — UNCHANGED from earlier today's session block below. Fred's mid-test on `b5d7df-…vercel.app`; still the highest-priority next step. Not touched this session.
+- **render-viewer-perf inline-image regression debug** — origin branch (`a5b7c94`) intact. The change "inline image at Dropbox 2048, lightbox stays native" introduced the 2048 tier + `PREVIEW_2048_CACHE` (cap 24) + `fetchPreview2048` / `previewUrl` / `w2048h1536`. On CP115/SC01/R01 the inline render never appeared on the live admin viewer; needs reproduction on the existing preview deploy of that branch to confirm the regression is in the branch and not in the post-merge resolution with zoom-jank. Touched regions per the earlier merge map (main-relative): 163, 255–292, 322–342, 423–430, 816 in `AssetViewer.tsx`.
+
+## Decisions made
+
+- **Revert immediately, diagnose after.** Visuals broken on the admin viewer with a meeting starting is a live-production incident, not a sign-off failure — `git revert -m 1 c9a5a30` then push, before the meeting. No attempt to forward-fix or debug while clients were waiting.
+- **Use empty-commit to wake a missed Vercel webhook**, only after confirming via Fred's dashboard that the deploy was genuinely missing (not just queued/building). Empty commit changes no bundle content but reissues the push event.
+- **Bundle-hash change on `portal.silvershadowstudio.com/` is the authoritative green signal** when neither `vercel` nor `gh` CLI is installed. Vercel's local-vs-prod hashes diverge (different build env), so only the *change* relative to the previous live bundle is reliable — not a match with local. Confirmed by curling the SPA index and grepping `assets/index-[A-Za-z0-9_-]+\.js`.
+
+## Open questions / things to watch
+
+- **Why did Vercel's webhook silently miss `45ab7c8`?** It accepted the immediately-preceding `964b18e` and the immediately-following empty commit. Worth a quick check whether anything is logged on the Vercel side (project → Git → recent events) — if this is a one-off it's noise; if it recurs, the GitHub Deployments API poll becomes a required post-push check.
+- **render-viewer-perf rollback is code-only.** No DB delta, no env var, no edge function deploy involved — safe to re-merge once the regression is understood and patched on the branch.
+- **Merge order downstream of this session** (per the earlier merge map, still valid): flick-cache is still blocked on render-viewer-perf landing; until render-viewer-perf is re-merged, flick-cache cannot branch from main.
+
+## Production state at session close
+
+- **Live commit on `main`**: `9f22349` (revert of c9a5a30). Bundle `index-ZlylWlyP.js`.
+- **Effective merged branches**: `fix/export-logo-white` ✓, `fix/zoom-jank` ✓. `feat/render-viewer-perf` reverted (revert lives in main; original feature branch untouched on origin).
+- **No DB changes, no edge function deploys, no migrations this session.** All work was code-only on `main` plus reverts.
+
+## Next step to resume from
+
+- **First** — finish `publish-flag` preview sign-off (carried forward from earlier today's session block, still URGENT/IN PROGRESS). On Fred's "merge it": `git checkout main && git merge --ff-only origin/feat/round-asset-publish-flag && git push origin main`, then proceed with Task #2 (four-path `is_current=false` flip), Task #3 (index migration — explicit migration go required), Task #4 (scanner collapse removal), Task #5 (client lock).
+- **Then** — debug `feat/render-viewer-perf` against CP115/SC01/R01 on its existing preview deploy. Goal: identify why the inline 2048 preview never resolved on the admin viewer despite all 4 files being present in Dropbox. Once fixed and signed off, re-merge to main — the revert in `9f22349` will not interfere (a forward merge of a fixed branch supersedes it).
+
+---
+
 # Session — 24 June 2026 (afternoon — publish-flag sign-off in progress + 5-task stack queued)
 
 No merges to main this session. publish-flag preview sign-off is mid-test on Fred's machine; the stack of follow-on work is queued (TaskList #1–#5) gated on his explicit go.
