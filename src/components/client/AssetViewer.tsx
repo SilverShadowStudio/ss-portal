@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { createPortal } from "react-dom";
@@ -1083,6 +1083,87 @@ export function Lightbox({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
 
+  // ── Zoom/pan are driven by direct DOM writes during a gesture ────────────
+  // A per-wheel-tick / per-pan-move setState reconciles every stroke polyline
+  // and every pin's counter-scale — that reconcile is the jank. Instead we
+  // mutate the transformed surface's `transform` (and a `--pin-cs` CSS var
+  // that counter-scales all pins in a single write) imperatively during the
+  // gesture, then commit the final scale/tx/ty to React state exactly once,
+  // on gesture end (debounced for the wheel, pointer-up for a pan). React owns
+  // these values at rest; the refs are the live source of truth mid-gesture.
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef(1);
+  const txRef = useRef(0);
+  const tyRef = useRef(0);
+  const panningRef = useRef(false);
+  const commitTimerRef = useRef<number | null>(null);
+
+  // Write the live transform + pin counter-scale straight to the DOM. The CSS
+  // var inherits to every pin, so one write keeps all pins screen-constant —
+  // and strokes, children of the same surface, aligned — DURING the gesture.
+  const applyTransform = useCallback((s: number, x: number, y: number) => {
+    const el = surfaceRef.current;
+    if (!el) return;
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${s})`;
+    el.style.setProperty("--pin-cs", String(1 / s));
+  }, []);
+
+  // Enter gesture mode: kill the CSS transition (so transform and --pin-cs
+  // move in lockstep per tick — pins never lag the image) and promote the
+  // surface to its own GPU layer.
+  const beginGesture = useCallback(() => {
+    const el = surfaceRef.current;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.willChange = "transform";
+  }, []);
+
+  // Restore the at-rest transition (so double-click reset still animates) and
+  // drop the GPU-layer hint when fully zoomed out. Called on gesture end even
+  // when the committed value is unchanged (a no-op setState wouldn't re-run
+  // the sync effect, which would otherwise leave transition stuck at "none").
+  const endGesture = useCallback(() => {
+    const el = surfaceRef.current;
+    if (!el) return;
+    el.style.transition = "transform var(--duration-quick) var(--ease-default)";
+    el.style.willChange = scaleRef.current > 1 ? "transform" : "auto";
+  }, []);
+
+  // Debounced commit of a wheel gesture to React state.
+  const scheduleCommit = useCallback(() => {
+    if (commitTimerRef.current != null) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = window.setTimeout(() => {
+      commitTimerRef.current = null;
+      endGesture();
+      setScale(scaleRef.current);
+      setTx(txRef.current);
+      setTy(tyRef.current);
+    }, 140);
+  }, [endGesture]);
+
+  // Sync the DOM to React's committed values at rest (mount, reset, round
+  // change, post-gesture commit). Owning transform/transition/willChange here
+  // — not via inline style — means an unrelated re-render (e.g. the crosshair's
+  // cursor-position state during a pan) can never clobber a mid-gesture DOM
+  // write, since React no longer reapplies a stale inline transform.
+  useLayoutEffect(() => {
+    scaleRef.current = scale;
+    txRef.current = tx;
+    tyRef.current = ty;
+    const el = surfaceRef.current;
+    if (!el) return;
+    el.style.transition = "transform var(--duration-quick) var(--ease-default)";
+    el.style.willChange = scale > 1 ? "transform" : "auto";
+    applyTransform(scale, tx, ty);
+  }, [scale, tx, ty, applyTransform]);
+
+  useEffect(
+    () => () => {
+      if (commitTimerRef.current != null) clearTimeout(commitTimerRef.current);
+    },
+    [],
+  );
+
   const [isPanning, setIsPanning] = useState(false);
   // Progressive-load fade: src starts at opacity 0 and flips to 1 once
   // <img> onLoad fires. While that's happening, placeholderSrc (if any)
@@ -1839,41 +1920,45 @@ export function Lightbox({
       // Smooth exponential zoom — feels natural across the full 1×–20× range.
       const zoomFactor = Math.exp(-e.deltaY * 0.0015);
 
-      // Current on-screen image size (= base size × current scale); used to
-      // derive the pan bounds at the new scale.
+      const prevScale = scaleRef.current;
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prevScale * zoomFactor));
+      if (next === prevScale) return;
+
+      // Pan bounds at the NEW scale — image is centred, so the max translate
+      // per axis is half the overflow (scaled image minus viewport), 0 when the
+      // image is smaller than the viewport on that axis. Re-clamping here stops
+      // a zoom-out (tighter bounds) from leaving an edge gap. getBoundingClientRect
+      // reflects the live DOM scale (we write transform imperatively each tick).
       const ir = imgRef.current?.getBoundingClientRect();
+      let maxTx = Infinity, maxTy = Infinity;
+      if (ir) {
+        const baseW = ir.width / prevScale;
+        const baseH = ir.height / prevScale;
+        maxTx = Math.max(0, (baseW * next - rect.width) / 2);
+        maxTy = Math.max(0, (baseH * next - rect.height) / 2);
+      }
+      const clamp = (v: number, m: number) => Math.min(m, Math.max(-m, v));
 
-      setScale((prevScale) => {
-        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prevScale * zoomFactor));
-        if (next === prevScale) return prevScale;
-
-        // Pan bounds at the NEW scale — image is centred, so the max translate
-        // per axis is half the overflow (scaled image minus viewport), 0 when
-        // the image is smaller than the viewport on that axis. Re-clamping here
-        // stops a zoom-out (tighter bounds) from leaving an edge gap.
-        let maxTx = Infinity, maxTy = Infinity;
-        if (ir) {
-          const baseW = ir.width / prevScale;
-          const baseH = ir.height / prevScale;
-          maxTx = Math.max(0, (baseW * next - rect.width) / 2);
-          maxTy = Math.max(0, (baseH * next - rect.height) / 2);
-        }
-        const clamp = (v: number, m: number) => Math.min(m, Math.max(-m, v));
-
-        // Anchor zoom at the cursor: keep the image point under the cursor fixed.
-        // Image-space coord under cursor before zoom: (cx - tx) / prevScale.
-        // After zoom we want the same image point at the same screen point, so:
-        //   cx = nextTx + imgX * next  →  nextTx = cx - imgX * next.
-        setTx((prevTx) => clamp(cx - ((cx - prevTx) / prevScale) * next, maxTx));
-        setTy((prevTy) => clamp(cy - ((cy - prevTy) / prevScale) * next, maxTy));
-
+      let nextTx: number, nextTy: number;
+      if (next === MIN_SCALE) {
         // When fully zoomed out, recenter so the image fits cleanly.
-        if (next === MIN_SCALE) {
-          setTx(0);
-          setTy(0);
-        }
-        return next;
-      });
+        nextTx = 0;
+        nextTy = 0;
+      } else {
+        // Anchor zoom at the cursor: keep the image point under the cursor
+        // fixed. Image-space coord under cursor before zoom: (cx - tx) / prevScale.
+        // After zoom we want it at the same screen point: nextTx = cx - imgX * next.
+        nextTx = clamp(cx - ((cx - txRef.current) / prevScale) * next, maxTx);
+        nextTy = clamp(cy - ((cy - tyRef.current) / prevScale) * next, maxTy);
+      }
+
+      // Imperative write — no setState per tick, so strokes/pins don't reconcile.
+      beginGesture();
+      scaleRef.current = next;
+      txRef.current = nextTx;
+      tyRef.current = nextTy;
+      applyTransform(next, nextTx, nextTy);
+      scheduleCommit();
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -1886,7 +1971,7 @@ export function Lightbox({
       // the image (pin drop) and the backdrop (close).
       didPan.current = false;
       if (drawMode) return;
-      if (scale <= MIN_SCALE) return;
+      if (scaleRef.current <= MIN_SCALE) return;
       // Don't intercept clicks on interactive elements (close button, pin
       // markers, toolbar buttons). preventDefault on pointerdown suppresses
       // the subsequent click event, making those controls unresponsive when
@@ -1894,48 +1979,66 @@ export function Lightbox({
       if ((e.target as HTMLElement).closest("button")) return;
       e.preventDefault();
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      panningRef.current = true;
       setIsPanning(true);
-      panStart.current = { x: e.clientX, y: e.clientY, tx, ty };
+      beginGesture();
+      panStart.current = { x: e.clientX, y: e.clientY, tx: txRef.current, ty: tyRef.current };
     },
-    [scale, tx, ty, drawMode]
+    [drawMode, beginGesture]
   );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      // Track pointer for the custom blended crosshair cursor.
-      setCursorPos({ x: e.clientX, y: e.clientY });
-      if (!isPanning || !panStart.current) return;
-      const dx = e.clientX - panStart.current.x;
-      const dy = e.clientY - panStart.current.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) didPan.current = true;
-      let nextTx = panStart.current.tx + dx;
-      let nextTy = panStart.current.ty + dy;
-      // Clamp so the zoomed image always covers the viewport — never reveal the
-      // black backdrop at an edge. The image is centred, so the maximum
-      // translate per axis is half the overflow (scaled image minus viewport);
-      // when the image is smaller than the viewport on an axis it stays centred
-      // (max 0). getBoundingClientRect on the image gives the on-screen scaled
-      // size, matching the rect the pin/draw logic already relies on.
-      const img = imgRef.current;
-      const cont = containerRef.current;
-      if (img && cont) {
-        const ir = img.getBoundingClientRect();
-        const cr = cont.getBoundingClientRect();
-        const maxTx = Math.max(0, (ir.width - cr.width) / 2);
-        const maxTy = Math.max(0, (ir.height - cr.height) / 2);
-        nextTx = Math.min(maxTx, Math.max(-maxTx, nextTx));
-        nextTy = Math.min(maxTy, Math.max(-maxTy, nextTy));
+      if (panningRef.current && panStart.current) {
+        const dx = e.clientX - panStart.current.x;
+        const dy = e.clientY - panStart.current.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) didPan.current = true;
+        let nextTx = panStart.current.tx + dx;
+        let nextTy = panStart.current.ty + dy;
+        // Clamp so the zoomed image always covers the viewport — never reveal the
+        // black backdrop at an edge. The image is centred, so the maximum
+        // translate per axis is half the overflow (scaled image minus viewport);
+        // when the image is smaller than the viewport on an axis it stays centred
+        // (max 0). getBoundingClientRect on the image gives the on-screen scaled
+        // size, matching the rect the pin/draw logic already relies on.
+        const img = imgRef.current;
+        const cont = containerRef.current;
+        if (img && cont) {
+          const ir = img.getBoundingClientRect();
+          const cr = cont.getBoundingClientRect();
+          const maxTx = Math.max(0, (ir.width - cr.width) / 2);
+          const maxTy = Math.max(0, (ir.height - cr.height) / 2);
+          nextTx = Math.min(maxTx, Math.max(-maxTx, nextTx));
+          nextTy = Math.min(maxTy, Math.max(-maxTy, nextTy));
+        }
+        // Imperative write — no setState per move, so nothing reconciles while
+        // panning. We also skip the crosshair's setCursorPos here (the crosshair
+        // is hidden during a pan), so no re-render can clobber this DOM write.
+        txRef.current = nextTx;
+        tyRef.current = nextTy;
+        applyTransform(scaleRef.current, nextTx, nextTy);
+        return;
       }
-      setTx(nextTx);
-      setTy(nextTy);
+      // Not panning — track the pointer for the custom blended crosshair cursor.
+      setCursorPos({ x: e.clientX, y: e.clientY });
     },
-    [isPanning]
+    [applyTransform]
   );
 
   const endPan = useCallback(() => {
+    if (!panningRef.current) return;
+    panningRef.current = false;
     setIsPanning(false);
     panStart.current = null;
-  }, []);
+    // Commit the pan to React state so HUD / cursor / bounds read the final
+    // value; endGesture restores the at-rest transition even when the
+    // committed value is unchanged (a no-op setState wouldn't re-run the sync
+    // effect that otherwise restores it).
+    endGesture();
+    setScale(scaleRef.current);
+    setTx(txRef.current);
+    setTy(tyRef.current);
+  }, [endGesture]);
 
   const reset = useCallback(() => {
     setScale(1);
@@ -2014,18 +2117,19 @@ export function Lightbox({
       aria-label="Full size image"
       style={{
         cursor:
-          // Annotate / draw modes always keep their target cursor over the
-          // image, even after zooming in — otherwise the user loses the
-          // crosshair the moment they magnify and can't place pins
-          // accurately.
-          isOverImage && drawMode
+          // While actively panning, always show the grab cursor (the
+          // pin-placement crosshair is hidden for the duration). Otherwise
+          // annotate / draw modes keep their target cursor over the image,
+          // even after zooming in — so the user never loses the crosshair the
+          // moment they magnify and can't place pins accurately.
+          isPanning
+            ? "grabbing"
+            : isOverImage && drawMode
             ? "crosshair"
             : isOverImage && annotateMode
             ? "none"
             : scale > MIN_SCALE
-            ? isPanning
-              ? "grabbing"
-              : "grab"
+            ? "grab"
             : isOverImage
             ? "zoom-in"
             : "default",
@@ -2673,15 +2777,17 @@ export function Lightbox({
       {/* Centered, transformed image */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div
+          ref={surfaceRef}
           className="relative"
           style={{
-            // Only promote to a GPU compositor layer while actively panning or
-            // zoomed — at scale=1 idle, this div is full image size (~26 MB GPU
-            // texture on 4K) and every cursor move forces recomposition.
-            willChange: isPanning || scale > 1 ? "transform" : "auto",
-            transform: `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`,
+            // transform / transition / willChange are written imperatively
+            // (see applyTransform + the sync layout effect) so wheel-zoom and
+            // pan don't reconcile React per frame. transformOrigin is static;
+            // the --pin-cs custom prop (pin counter-scale) is set in the same
+            // effect and defaults to 1 via the var() fallback before then.
+            // willChange is still dropped to "auto" at scale 1 to avoid holding
+            // a ~26 MB GPU texture for an idle full-size image.
             transformOrigin: "center center",
-            transition: isPanning ? "none" : "transform var(--duration-quick) var(--ease-default)",
           }}
         >
           {/* Low-res placeholder is in-flow (block) while the full-res streams.
@@ -3010,7 +3116,10 @@ export function Lightbox({
                     // Anchor the SW-pointing tail tip at the click location.
                     // The marker SVG is designed so its tail point sits at the
                     // bottom-left corner of the SVG.
-                    transform: `translate(0, -100%) scale(${1 / scale})`,
+                    // Counter-scale via the inherited --pin-cs var (= 1/scale),
+                    // written imperatively on the surface during a gesture, so
+                    // all pins stay screen-constant without a per-pin re-render.
+                    transform: `translate(0, -100%) scale(var(--pin-cs, 1))`,
                     transformOrigin: "bottom left",
                   }}
                 >
@@ -3076,7 +3185,7 @@ export function Lightbox({
           stays constant regardless of image zoom. mix-blend-mode: difference
           inverts the backdrop so it reads black on light areas and white on
           dark areas. No shadow. */}
-      {annotateMode && cursorPos && isOverImage && !openPinId && (
+      {annotateMode && cursorPos && isOverImage && !openPinId && !isPanning && (
         <BlendedCrosshair x={cursorPos.x} y={cursorPos.y} />
       )}
       {/* Confirm dialog for single-click erases when the safety toggle is
