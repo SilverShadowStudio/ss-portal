@@ -93,6 +93,12 @@ interface AssetViewerProps {
   siblingRounds?: { id: string; round_number: number; status?: string; is_legacy?: boolean }[];
   isLegacy?: boolean;
   onSelectRound?: (roundId: string) => void;
+  /**
+   * Admin render path (AdminProjects → TaskDetail → here). When true the asset
+   * strip keeps raw filenames (admins rely on them); the client/non-admin path
+   * shows friendly "Version 0N" labels. Defaults to the client experience.
+   */
+  isAdmin?: boolean;
 }
 
 type Tab = "preview" | "files";
@@ -238,7 +244,7 @@ function ImageLoadOverlay({
   );
 }
 
-export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber, onClose, onRequestNextRound, nextRoundNumber, deliveredAt, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, isLegacy = false }: AssetViewerProps) {
+export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber, onClose, onRequestNextRound, nextRoundNumber, deliveredAt, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, isLegacy = false, isAdmin = false }: AssetViewerProps) {
   const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
@@ -785,6 +791,10 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-1">
               {assets
                 .filter((a) => a.is_current)
+                // Explicit ascending sort by the integer version column —
+                // lowest version left, highest right — independent of the
+                // created_at insert order the rows arrive in.
+                .sort((a, b) => a.version - b.version)
                 .map((asset) => (
                   <button
                     key={asset.id}
@@ -797,9 +807,14 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
                         : "border-border text-muted-foreground hover:border-gold/50"
                     )}
                   >
-                    {asset.filename.length > 22
-                      ? asset.filename.slice(0, 19) + "…"
-                      : asset.filename}
+                    {/* Client/non-admin path shows a friendly version label
+                        derived from the version column; the admin path keeps
+                        the raw filename. */}
+                    {isAdmin
+                      ? asset.filename.length > 22
+                        ? asset.filename.slice(0, 19) + "…"
+                        : asset.filename
+                      : `Version ${String(asset.version).padStart(2, "0")}`}
                   </button>
                 ))}
             </div>

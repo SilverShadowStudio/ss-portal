@@ -677,6 +677,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           siblingRounds={siblingRounds}
           onSelectRound={onSelectRound}
           isLegacy={isLegacy}
+          isAdmin={isAdmin}
         />
       </div>
       {dropboxPanel}
