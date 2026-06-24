@@ -807,14 +807,10 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
                         : "border-border text-muted-foreground hover:border-gold/50"
                     )}
                   >
-                    {/* Client/non-admin path shows a friendly version label
-                        derived from the version column; the admin path keeps
-                        the raw filename. */}
-                    {isAdmin
-                      ? asset.filename.length > 22
-                        ? asset.filename.slice(0, 19) + "…"
-                        : asset.filename
-                      : `Version ${String(asset.version).padStart(2, "0")}`}
+                    {/* Friendly version label derived from the version column,
+                        on both the client and admin paths. The download control
+                        still saves the real filename. */}
+                    {`Version ${String(asset.version).padStart(2, "0")}`}
                   </button>
                 ))}
             </div>
