@@ -14,6 +14,58 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 24 June 2026 (late evening — CP115/SC01/R01 reconciliation Phases 2+3 executed; folder_mappings inserted scene-only after CHECK pre-flight)
+
+Completed the data reconciliation that was paused at the Phase 1 boundary in the previous block. CP115/SC01/R01 canonical scene_round now carries exactly `_01`–`_04` (versions 1/2/3/4, all `is_current=true`, all `source='dropbox'`); the duplicate empty scene_round is gone; the `folder_mappings` row for this scene is in place. End-to-end 8/8 = 200 verified via deployed `dropbox-api` under Thomas's JWT (4 assets × `get-thumbnail` + `get-temporary-link`). No code changes — DB writes only.
+
+## Completed
+
+- **Phase 2 executed in 4 ordered steps, with pre/post checks bracketing each write.** Predicted vs actual:
+  - **DELETE** 3 phantom `round_assets` by id (`1c7871a6-…` _05, `155b0def-…` _06, `1ff4b269-…` _07) — predicted 3, actual 3 ✓.
+  - **INSERT** 2 `round_assets` for `_02` (v2, size 11128136) and `_03` (v3, size 10689260), mirroring `_01`/`_04` shape exactly — predicted 2, actual 2 ✓ (`dfde25cd-…`, `62757feb-…`).
+  - **DELETE** duplicate `scene_rounds.id = 3b8169a4-…` with `NOT EXISTS` precondition on `round_assets` — precondition passed, predicted 1, actual 1 ✓.
+  - **INSERT** `folder_mappings` (scene-only, after Fred's go) — predicted 1, actual 1 ✓ (`d37d691d-f6ba-425f-9d72-957eb1168b4f`).
+
+- **Two schema surprises discovered + resolved cleanly mid-execution:**
+  - `round_assets.scene_token` is **`GENERATED ALWAYS`** (`COALESCE((regexp_match(filename, '^(.+?)-(SC[0-9]+…)…'))[2], filename)`). First INSERT was rejected (`cannot insert a non-DEFAULT value into column "scene_token"`); retried without it. Generated value resolves to the full filename (`CP115_SC01-VS_R01_02.jpg`, `…_03.jpg`) — byte-identical to the existing `_01`/`_04` rows for Fred's filename convention (regex expects a hyphen between project and SC; Fred's files use an underscore, so the regex fall-through path applies).
+  - `folder_mappings.folder_mapping_target` is a CHECK constraint requiring **exactly one** of `project_id` / `scene_id`: `((project_id IS NOT NULL) AND (scene_id IS NULL)) OR ((project_id IS NULL) AND (scene_id IS NOT NULL))`. Phase 1 plan had both set — would have been rejected. Per the directive "do not force a constraint violation", **did NOT attempt the insert with the planned shape**; stopped, reported the constraint, and waited. On Fred's "scene-only OK" reply, inserted with `project_id=NULL`, `scene_id=5ccd9759-…`, `dropbox_folder_path=/00_Production/PRD01_Client-Projects/CP115_Mas-dArtigny/SC01_Bedroom` (the scene folder — `dropbox-webhook/index.ts:261,346-347` lowercases on compare and appends `/vs_visuals`).
+
+- **Phase 3 verified end-to-end** via the deployed `dropbox-api` under Thomas's JWT — minted via `generate_link → verify`, used for the run, then logged out (`HTTP 204`) and `/tmp/thomas_jwt.txt` removed:
+  - `_01.jpg`/`_02.jpg`/`_03.jpg`/`_04.jpg` × `get-thumbnail` + `get-temporary-link` = **8/8 = 200**. Zero non-200.
+
+## In progress / needs verification
+
+- **publish-flag preview sign-off** — UNCHANGED from prior session blocks. Fred mid-test on `b5d7df-…vercel.app`; still highest-priority URGENT carry-over. Not touched this session.
+- **render-viewer-perf inline-image regression debug** — UNCHANGED. Origin branch (`a5b7c94`) intact; still needs reproduction on its existing preview deploy.
+
+## Decisions made
+
+- **Inserted folder_mappings scene-only, not project-only.** Project-only would be schema-valid but the webhook's `mappedPath + "/vs_visuals"` matcher (`dropbox-webhook/index.ts:346-347`) needs the mapped path to be the scene folder, not the project root. Scene-only is the only schema-valid form that actually wires this scene to the webhook. Side effect: `matchedMapping.projectName` lands as `null` in `round_created` / `dropbox_file_received` activity-log rows for this scene (the function tolerates with `?? null`). Acceptable cosmetic cost.
+- **Stopped at the constraint, did not silently switch shapes.** Even though the scene-only form is the only viable resolution, mid-execution autonomous deviation from a documented plan is exactly what Fred told me not to do for inserts ("do not force it"). Routed the call back through Fred → got explicit "scene-only OK" → executed.
+- **No commit recorded for the data changes** — DB-only operations don't produce a git diff. The HANDOFF block in this commit is the durable record.
+
+## Open questions / things to watch
+
+- **`folder_mappings` is still empty for every other scene project-wide.** Only CP115/SC01 has a row now. Every other scene without a row will silently drop future Dropbox file events. Worth a sweep: insert a scene-only row for each `scenes` with a `dropbox_folder` populated. Not done this session.
+- **`dropbox-webhook/index.ts:282-297` still has the silent-fallback namespace pattern** that the previous session fixed in `dropbox-api`. Same risk class, lower hit rate. Folding the persisted-namespace pattern into the webhook is the obvious follow-up; not done this session.
+- **`activity_log` for CP115/SC01 will carry `project_name=NULL`** on auto-generated rows (`round_created`, `dropbox_file_received`) until either: (a) `folder_mappings.project_id` becomes settable alongside `scene_id`, which requires relaxing the CHECK constraint (migration, schema change — explicit go required), or (b) the webhook is patched to resolve project info via the scene's FK (`scenes.project_id`) instead of `folder_mappings.project_id`. Option (b) is cleaner.
+- **Filename convention drift** — carry-over. `scene_token` generation regex requires a hyphen between project and SC codes; Fred's actual files use an underscore, so the regex falls through and `scene_token` equals the full filename. This makes each file its own publish-group for Task #5 (client lock) purposes. Confirmed by inspection of the generated values on the new `_02`/`_03` rows.
+
+## Production state at session close
+
+- **Live commit on `main`**: `06d321d` (the previous session's HANDOFF entry). No code changes this session.
+- **DB writes this session**: 3 phantom `round_assets` deleted, 2 `round_assets` inserted, 1 duplicate `scene_rounds` deleted, 1 `folder_mappings` inserted. All on CP115/SC01.
+- **Edge function unchanged from the previous session.** `dropbox-api` still serving `c885f10`'s code.
+- **CP115/SC01/R01 client viewer state**: 4 assets `_01`–`_04`, all is_current=true, all resolve to real Dropbox files via the deployed function with the persisted-namespace fix. Portal will render this round cleanly.
+
+## Next step to resume from
+
+- **First** — `publish-flag` preview sign-off completion (carry-over, still URGENT/IN PROGRESS). On Fred's "merge it": `git checkout main && git merge --ff-only origin/feat/round-asset-publish-flag && git push origin main`. Then proceed straight into Task #2 (four-path `is_current=false` flip) → Task #3 (partial unique index migration — explicit migration go required) → Task #4 (scanner collapse removal) → Task #5 (client lock).
+- **Then** — debug `feat/render-viewer-perf` against CP115/SC01/R01 (now that data + namespace are healthy, the inline 2048 regression can be reproduced cleanly on the existing branch preview).
+- **Lower-priority follow-ups** — apply the persisted-namespace pattern to `dropbox-webhook` (same fault class as the `dropbox-api` fix); sweep `folder_mappings` to add a scene-only row for every scene with a `dropbox_folder` (prevents the silent-drop class of bug from biting other scenes); consider patching the webhook to read project info from `scenes.project_id` instead of `folder_mappings.project_id` so scene-only mappings don't lose `project_name` in activity logs.
+
+---
+
 # Session — 24 June 2026 (evening — dropbox-api namespace-persist fix shipped; CP115/SC01/R01 reconciliation Phase 1 verified, Phases 2+3 paused)
 
 Fixed the intermittent client-viewer blanking on CP115/SC01/R01 (and structurally everywhere else). Root cause was `dropbox-api`'s per-request namespace detection silently dropping the `Dropbox-API-Path-Root` header on any transient `get_current_account` glitch, resolving paths in the personal namespace and 404/500ing for files that exist in the team namespace. The function now persists `root_namespace_id` in `app_settings`, only calls `get_current_account` on cache miss, and fails closed with HTTP 503 + `Retry-After` rather than silent header-less degradation. Merged via fast-forward to main and verified live. Data reconciliation paused at the Phase 1 boundary — verify-only complete; Phase 2 writes await Fred's "proceed".
