@@ -14,6 +14,66 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 24 June 2026 (afternoon — publish-flag sign-off in progress + 5-task stack queued)
+
+No merges to main this session. publish-flag preview sign-off is mid-test on Fred's machine; the stack of follow-on work is queued (TaskList #1–#5) gated on his explicit go.
+
+## Completed
+
+- **Diagnosed CP115/SC01 VS_Visuals scanning gap.** Files in `/CP115_Mas-dArtigny/SC01_Bedroom/VS_Visuals` weren't appearing in the portal. Two filters in `dropbox-scan-visuals/index.ts` both rejected the files:
+  - Round/version regex (`:39`) requires `_R{N}_{V}.{ext}` at end → `CP115_SC01_R01_02_View01.jpg` fails (`_View01.jpg` suffix).
+  - VS-segment filter (`:258`) requires `[-]VS\d*_` → `CP115_SC01_R01_01.jpg` fails (no `-VS` marker, underscores between codes).
+  Fred renamed files to `CP115_SC01-VS_R01_01..04.jpg` to match. After rename, only 2 of 4 surface in the portal — explained below.
+- **Diagnosed why only 2 of 4 chips appear after rename.** Two disagreeing ingestion paths:
+  - `dropbox-scan-visuals` (`:270–277`) collapses to highest version per round → inserts 1 row only.
+  - `dropbox-webhook` (`:363–369`) inserts 1 per file but skips files whose `dropbox_file_id` it has seen (Dropbox preserves file_id across renames).
+  Net: 2 chips from mixed-path race. Real fix is downstream — Task #4 (remove scanner collapse), gated on the publish/flip/index chain landing first.
+- **Reframed publish/lock design onto existing `feat/round-asset-publish-flag` branch.** Fred articulated the model:
+  - Admin sees all versions of all rounds.
+  - Admin picks which version(s) the client sees (1, some, or all).
+  - Client picks one by a structured "this is the one" action — locks future rounds to that version.
+  Maps directly onto the branch's `is_current`/`scene_token`/`set_current_round_asset` design.
+- **Queued 5-task stack (TaskList).** Each blocking the next:
+  1. publish-flag visual sign-off + merge (Fred's per-branch go).
+  2. Flip 4 insert paths to `is_current=false` (`dropbox-scan-visuals:312`, `dropbox-api:447,460` + lookup `435-447`, `dropbox-webhook:462,477` + lookup rework `423-463`, `import-legacy-rounds:235,282`); deploy + download-verify each.
+  3. Partial unique index `(scene_round_id, scene_token) WHERE is_current` migration (Fred's explicit migration go).
+  4. Remove version-collapse in `dropbox-scan-visuals` so admin sees all versions.
+  5. Design + build "I choose this one" client lock (new — likely `chosen_asset_id` on `scene_rounds` + RPC + activity_log entry).
+- **Confirmed publish-flag branch state.** 3 commits ahead of main (`467323f` code + 2 HANDOFF docs). Both migrations (`20260623000003`, `20260623000004`) already applied on prod DB — merge is now code-only, no DB delta. Single frontend file changes (`src/components/client/AssetViewer.tsx`): admin sees all versions (gated `isAdmin && !isGhostModeActive()`), per-chip publish button, "Client sees this version" / "Client currently sees v[N]" / "Newer v[N] not yet published" labels.
+- **Observed scene_token regex fall-through for Fred's naming.** The stored `scene_token` regex requires hyphen between project code and SC (`CP107-SC05-...`). Fred's files use `_` (`CP115_SC01-VS_...`), so the regex doesn't match → `scene_token` = full filename. **Practical effect**: each file is its own publish group, so multiple versions can be published simultaneously without unpublishing each other. The planned unique index becomes structurally trivial for this convention but still correct. Worth Fred deciding whether to standardise on the hyphen convention (true shot-grouping) or accept filename-as-token (every file independent).
+
+## In progress / needs verification
+
+- **publish-flag preview sign-off** (`b5d7df-...vercel.app`). Fred is mid-test on CP115/SC01/Round 01 — has the preview open, hit confusion when he clicked the already-published chip (no publish button — by design, the chip is already current). Test plan: click each unpublished chip → "Publish this version" button appears → click; repeat for both chips; then ghost-mode as Virgile Louis (Charles Zana) and confirm both versions are visible client-side with no admin controls. On pass → say "merge it" → run `git checkout main && git merge --ff-only origin/feat/round-asset-publish-flag && git push origin main` (no co-author, no force, no `--no-verify`).
+
+## Pending — gated on publish-flag merge
+
+Stack (strict order, each blocks the next — see TaskList for IDs):
+1. Flip 4 insert paths to `is_current=false`.
+2. Partial unique index migration.
+3. Remove scanner version-collapse.
+4. Design + build client "I choose this one" lock.
+
+Optional UX follow-up once stack lands: "Publish all" / multi-select shortcut on the admin AssetViewer (today is per-chip clicks). Not a blocker.
+
+## Decisions made
+
+- **Publish/unpublish is per `scene_token`, NOT per round.** The branch's unique index, RPC, and UI all assume `(scene_round_id, scene_token)` grouping. For Fred's current filename convention, scene_token = full filename = each file is its own group.
+- **"I choose this one" = structured action, not comment-as-side-effect.** Fred's explicit call. New button surfaces when multiple versions are published; clicking it locks the round to that version for future work. Data model still to design.
+- **Stack ordering is strict.** Index can only ship after the four-path flip — otherwise the next auto-publishing insert violates the index and silently drops a delivered render (per the 24 June morning HANDOFF note).
+- **Sign-off testing uses existing 2 rows on CP115/SC01/R01 — no fresh upload needed.** Both rows are legitimate; the publish toggle is independent of how they got there.
+
+## Open questions / things to watch
+
+- Filename convention drift: CLAUDE.md codifies `CP107-SC05-VS_R01_01.jpg` (hyphens between project/SC). Fred's actual files use `CP115_SC01-VS_R01_01.jpg` (underscore between project/SC). The scene_token regex only matches the former. Either standardise the convention or accept filename-as-token semantics. **No action this session.**
+- The 2 chips for CP115/SC01/R01 are legitimate, but after Task #4 lands and a re-scan runs, expect them to become 4. The publish state on the existing 2 will persist (they keep their `is_current` values).
+
+## Next step to resume from
+
+- **publish-flag preview sign-off completion.** Fred resumes by publishing each unpublished chip on the preview, ghost-mode-verifying client view, and saying "merge it". On his go, run the fast-forward merge + push, then immediately start Task #2 (four-path `is_current=false` flip — own PR, no migration). That unblocks Task #3 (index migration, needs explicit migration go) → Task #4 (scanner collapse removal) → Task #5 (client lock design).
+
+---
+
 # Session — 24 June 2026 (viewer-branch reconciliation + zoom-jank built)
 
 No merges to main this session except this HANDOFF. All viewer work is on branches awaiting Fred's per-branch sign-off. Nothing uncommitted.
