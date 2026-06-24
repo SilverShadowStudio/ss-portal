@@ -14,6 +14,67 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 24 June 2026 (evening — dropbox-api namespace-persist fix shipped; CP115/SC01/R01 reconciliation Phase 1 verified, Phases 2+3 paused)
+
+Fixed the intermittent client-viewer blanking on CP115/SC01/R01 (and structurally everywhere else). Root cause was `dropbox-api`'s per-request namespace detection silently dropping the `Dropbox-API-Path-Root` header on any transient `get_current_account` glitch, resolving paths in the personal namespace and 404/500ing for files that exist in the team namespace. The function now persists `root_namespace_id` in `app_settings`, only calls `get_current_account` on cache miss, and fails closed with HTTP 503 + `Retry-After` rather than silent header-less degradation. Merged via fast-forward to main and verified live. Data reconciliation paused at the Phase 1 boundary — verify-only complete; Phase 2 writes await Fred's "proceed".
+
+## Completed
+
+- **Diagnosed CP115/SC01/R01 viewer blanking — two distinct faults.**
+  - **Data drift.** Canonical scene_round `35288d32-d30f-45e3-a7e3-d588c4d5e3fa` carries 5 `is_current=true` `round_assets` (versions 1/4/5/6/7) but Dropbox holds only `_01`..`_04`. `_05/_06/_07` are phantom rows left by past `dropbox-scan-visuals` runs; `_02/_03` were never recorded because `dropbox-webhook` silently drops files for any scene with no `folder_mappings` row (and CP115/SC01 had none — table empty project-wide). Plus a duplicate empty scene_round `3b8169a4-9f2f-4604-8381-abe572dade43` created ~120ms after the canonical row's `delivered_at`.
+  - **Namespace fault.** Even the legitimate `_01`/`_04` failed in the portal because `dropbox-api` was issuing `get_temporary_link` / `get_thumbnail_v2` without `Dropbox-API-Path-Root`. Proved by replicating both calls with and without the header against the same path/token: with → 200, without → 409 `path/not_found/` (then translated by the function to 404/500). Verified `get_metadata` independently confirms `_01`..`_04` exist (`id:gmhQ5gc4SSEAAAAAABDtJA` etc.) and `_05`..`_07` are gone.
+
+- **Shipped `fix/dropbox-namespace-persist` (commit `c885f10`)** — fast-forward merged to main (`2b29d02..c885f10`); Vercel `Deployment has completed` ✓ success (`5eXNnnzy2n4xhafbQz8X8owebvn2`).
+  - One file changed: `supabase/functions/dropbox-api/index.ts` (+74/-17). New helpers `readStoredNamespaceId` / `storeNamespaceId` / `fetchFreshNamespaceId`. Replaced the silent try/catch detection with read-cache → lazy-populate → fail-closed 503 (`Retry-After: 2`). All 7 Dropbox file-API call sites in the function still spread the same `pathRootHeader`, uniformly.
+  - Cache lives in `app_settings` key `dropbox_root_namespace` (value `{namespace_id, updated_at}`). **No DB migration** — `app_settings` is the pre-existing jsonb K/V table; revert is code-only.
+  - Steady-state requests no longer call `get_current_account` at all; the lazy populate runs once per cache miss (currently: once total since deploy).
+
+- **Verified live on the deployed function (Thomas's JWT, real client path):**
+  - 10/10 `get-thumbnail` for `_01.jpg` → 200.
+  - 10/10 `get-temporary-link` for `_01.jpg` → 200.
+  - First call lazy-populated `app_settings.dropbox_root_namespace = {"namespace_id":"3242807155"}`.
+  - 503 path proven via controlled simulation: cleared cache + invalidated `dropbox_connections.access_token` → function returned `503 {"error":"Dropbox namespace unavailable, retry shortly"}` with `Retry-After: 2`. Token + cache restored in the same Bash invocation (~sub-second prod degradation); post-restore call returned 200 and rebuilt the cache. Thomas's session logged out (`204`), temp JWT file removed.
+
+- **Phase 1 of CP115/SC01/R01 data reconciliation — verify only, no writes.** Plan documented in-thread, awaiting "proceed":
+  - **DELETE 3 phantom `round_assets`** on `35288d32`: `1c7871a6-…` (_05), `155b0def-…` (_06), `1ff4b269-…` (_07).
+  - **INSERT 2 `round_assets`** mirroring `_01`/`_04` shape (lowercase `dropbox_path` + same string in `dropbox_file_id`, `content_hash=null`, `source='dropbox'`, `is_current=true`, `scene_round_id='35288d32-d30f-45e3-a7e3-d588c4d5e3fa'`): `_02.jpg` (version 2, file_size 11128136) and `_03.jpg` (version 3, file_size 10689260).
+  - **DELETE `scene_rounds.id = 3b8169a4-…`** (duplicate empty round) after re-confirming `asset_count=0` immediately before; abort if non-zero.
+  - **INSERT `folder_mappings`** row: project_id=`d7b6f104-13cb-411f-88cb-35941d0e5548`, scene_id=`5ccd9759-3133-477c-9246-e65f35112a46`, dropbox_folder_path=`/00_Production/PRD01_Client-Projects/CP115_Mas-dArtigny/SC01_Bedroom` (scene folder, not VS_Visuals — `dropbox-webhook/index.ts:261,346-347` lowercases on compare and appends `/vs_visuals` at match time).
+
+## In progress / needs verification
+
+- **CP115/SC01/R01 reconciliation Phases 2 + 3 paused awaiting Fred's "proceed".** Phase 2 = the 4 DELETEs + 3 INSERTs above. Phase 3 = re-verify all 4 assets return 200 for both `get-thumbnail` and `get-temporary-link` via the deployed function under Thomas's JWT (then logout + remove temp file). **Execute exactly the documented plan — do not improvise.**
+- **publish-flag preview sign-off** — UNCHANGED from earlier session blocks. Fred mid-test on `b5d7df-…vercel.app`; still highest-priority URGENT carry-over. Not touched this session.
+- **render-viewer-perf inline-image regression debug** — UNCHANGED from earlier today's revert. Origin branch (`a5b7c94`) intact; still needs reproduction on the existing preview deploy.
+
+## Decisions made
+
+- **Persist namespace in `app_settings`, not on `dropbox_connections`.** Fred offered either; picked `app_settings` because no schema change on shared prod DB → smallest blast radius, trivial revert. Team `root_namespace_id` is stable across token rotations and reconnects-to-same-team, so caching indefinitely is correct; if the team is ever migrated, manually `DELETE FROM app_settings WHERE key='dropbox_root_namespace'` to force re-detect.
+- **Fail closed with 503, not 404.** The prior silent header-less fall-through was the actual root cause of the intermittency. Returning a retryable 503 + `Retry-After: 2` when both cache and live detection are unavailable forces a retry rather than reporting a real file as missing.
+- **Reconciliation paused at Phase 1 boundary.** Even with the namespace fix shipped, the canonical scene_round still carries 3 phantoms + 2 missing rows + a duplicate empty round + a missing `folder_mappings`. Fred wants a hard stop between verify and write — phased approach respected.
+
+## Open questions / things to watch
+
+- **`dropbox-webhook/index.ts:282-297` still has the same silent-fallback pattern** as the old `dropbox-api`. It also calls `get_current_account` per invocation and silently degrades on failure. Far less hot (only fires on change events), but the same fault would surface during a Dropbox event in a hiccup window. Worth applying the same persisted-namespace pattern in a follow-up; not in scope this session.
+- **`folder_mappings` is empty project-wide.** Only CP115/SC01 is being inserted in the planned Phase 2. Every other scene without a row will silently drop future Dropbox events — separate audit task.
+- **The intermittent `get_current_account` failure itself remains uncharacterised.** Fix removes its blast radius (steady-state never calls it), but the lazy-populate path still does on first miss. Acceptable trade-off.
+- **Filename convention drift** — carry-over from earlier session. `scene_token` regex requires hyphen between project/SC codes; Fred's actual files use underscore. No action this session.
+
+## Production state at session close
+
+- **Live commit on `main`**: `c885f10` (namespace-persist fix). Frontend bundle unchanged from previous session (no `src/` diff in this commit).
+- **Edge function deployed**: `dropbox-api`. `npx supabase functions download dropbox-api` + `git diff` = empty.
+- **DB writes this session**: only `app_settings.dropbox_root_namespace` (populated by first call, wiped + restored across the 503 sim). **No data reconciliation writes** — Phase 2 explicitly paused.
+- **Branch `fix/dropbox-namespace-persist`** still exists locally (head `c885f10`, merged to main); can be deleted at Fred's discretion.
+
+## Next step to resume from
+
+- **First** — Reply "proceed" to execute Phase 2 of the CP115/SC01/R01 reconciliation (4 DELETEs + 3 INSERTs, plan above), then Phase 3 (4 assets × `get-thumbnail` + `get-temporary-link` = 8 × 200 via deployed `dropbox-api` under Thomas's JWT, then logout + cleanup).
+- **Then** — Resume the carry-over: `publish-flag` preview sign-off → on Fred's "merge it" fast-forward to main → Task #2 (four-path `is_current=false` flip) → Task #3 (index migration, explicit migration go required) → Task #4 (scanner collapse removal) → Task #5 (client lock design).
+- **Watch** — Apply the persisted-namespace pattern to `dropbox-webhook` in a follow-up branch if it shows the same silent-fallback symptom; sweep `folder_mappings` project-wide for other empty scenes.
+
+---
+
 # Session — 24 June 2026 (late afternoon — viewer-branch merge sweep: logo-white + zoom-jank IN, render-viewer-perf merged-then-reverted)
 
 Three of the four viewer branches taken to main per the merge map. **render-viewer-perf reverted same-session** after Fred saw CP115/SC01/R01 visuals stuck on the wing-logo loading state on the live admin viewer right before a meeting — production is back to the post-zoom-jank state (`index-ZlylWlyP.js`).
