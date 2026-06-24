@@ -169,6 +169,109 @@ function useStreamedImage(url: string | null | undefined) {
   return { src, loadedBytes, totalBytes, fetchFailed };
 }
 
+// ---------------------------------------------------------------------------
+// Resolved-URL cache for round assets. Dropbox get-temporary-link mints a fresh
+// signed URL on every call (and the full-res is ~10MB), so without a cache every
+// tab revisit pays both edge calls again and re-streams the bytes — nothing is
+// instant. We key by dropbox_path and store the low-res placeholder, the
+// full-res link, and the mint time. The Map is module-level so it survives
+// remounts within a session, mirroring SmartImage's loadedSrcs Set.
+//
+// TTL is deliberately well under Dropbox's signed-link expiry (~4h): a stale
+// entry must RE-MINT via get-temporary-link, never be served as-is — a stale
+// link 404s, the same expiry/namespace failure class we just fixed. 3h leaves
+// a comfortable hour of margin.
+const ASSET_URL_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
+
+interface CachedAssetUrls {
+  lowResUrl: string | null;
+  fullResUrl: string;
+  mintedAt: number;
+}
+
+const assetUrlCache = new Map<string, CachedAssetUrls>();
+const assetUrlInflight = new Map<string, Promise<CachedAssetUrls | null>>();
+
+function getFreshCachedUrls(path: string): CachedAssetUrls | null {
+  const entry = assetUrlCache.get(path);
+  if (entry && Date.now() - entry.mintedAt < ASSET_URL_TTL_MS) return entry;
+  return null;
+}
+
+/**
+ * Resolve a dropbox asset's placeholder + full-res URLs — served from cache when
+ * fresh, re-minted when absent or stale. De-dupes concurrent requests for the
+ * same path via an in-flight map so the selected-asset load and the neighbour
+ * prefetch never mint the same link twice. `onLowRes` lets the caller paint the
+ * low-res placeholder progressively on the cold path (and fires immediately on
+ * a cache hit) so the visible asset keeps its current two-step fade-in.
+ */
+async function resolveAssetUrls(
+  path: string,
+  token: string,
+  onLowRes?: (low: string | null) => void,
+): Promise<CachedAssetUrls | null> {
+  const fresh = getFreshCachedUrls(path);
+  if (fresh) {
+    if (onLowRes) onLowRes(fresh.lowResUrl);
+    return fresh;
+  }
+  const inflight = assetUrlInflight.get(path);
+  if (inflight) {
+    const entry = await inflight;
+    if (onLowRes) onLowRes(entry?.lowResUrl ?? null);
+    return entry;
+  }
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const p = (async (): Promise<CachedAssetUrls | null> => {
+    // Thumbnail is best-effort and painted progressively; full-res is required.
+    let lowRes: string | null = null;
+    const thumbDone = fetch(`${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ path, size: "w640h480" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        lowRes = d?.thumbnail ?? null;
+        if (lowRes && onLowRes) onLowRes(lowRes);
+      })
+      .catch(() => { /* best-effort placeholder */ });
+
+    const full = await fetch(`${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ path }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.link ?? null)
+      .catch(() => null);
+
+    if (!full) return null;
+    await thumbDone; // capture lowRes for the cache (usually already settled)
+    const entry: CachedAssetUrls = { lowResUrl: lowRes, fullResUrl: full, mintedAt: Date.now() };
+    assetUrlCache.set(path, entry);
+    return entry;
+  })();
+  assetUrlInflight.set(path, p);
+  try {
+    return await p;
+  } finally {
+    assetUrlInflight.delete(path);
+  }
+}
+
+/** Run an async fn over items in fixed-size concurrent batches. */
+async function runInBatches<T>(
+  items: T[],
+  size: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(fn));
+  }
+}
+
 /**
  * Loading treatment shown over an image while it streams: a glowing (pulsing)
  * Silvershadow logo, a thin gold progress bar, and a "X.X / Y.Y MB" readout.
@@ -349,6 +452,71 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     return () => { cancelled = true; };
   }, [selectedAsset, siblingRounds, sceneRoundId]);
 
+  // Within-round version prefetch: after the selected version loads, warm the
+  // resolved-URL cache for its immediate neighbours in the ascending strip so
+  // switching to an adjacent tab — and opening the lightbox, which shares the
+  // same full-res link — is instant. Eager prefetch is hard-capped at 5 current
+  // versions total (selected + up to 4 neighbours); any beyond that load on
+  // demand when their tab is clicked. Dropbox links are minted at most 2 at a
+  // time to stay gentle on the API.
+  useEffect(() => {
+    if (!selectedAsset) return;
+    const current = assets
+      .filter((a) => a.is_current)
+      .sort((a, b) => a.version - b.version);
+    if (current.length <= 1) return;
+    const idx = current.findIndex((a) => a.id === selectedAsset.id);
+    if (idx < 0) return;
+
+    // Neighbour ring ordered nearest-first (±1, then ±2, …) so the adjacent
+    // tabs warm before the far ones when the cap trims the list.
+    const ring: Asset[] = [];
+    for (let d = 1; d < current.length; d++) {
+      if (current[idx - d]) ring.push(current[idx - d]);
+      if (current[idx + d]) ring.push(current[idx + d]);
+    }
+    const EAGER_TOTAL_CAP = 5;
+    const eager = ring.slice(0, EAGER_TOTAL_CAP - 1); // -1 reserves the selected slot
+
+    let cancelled = false;
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) return;
+
+      // Selected version first: it is already in flight from fetchAssetUrls, so
+      // awaiting the shared in-flight/cache entry simply sequences the
+      // neighbours to start after the visible asset has resolved.
+      if (selectedAsset.source === "dropbox" && selectedAsset.dropbox_path) {
+        await resolveAssetUrls(selectedAsset.dropbox_path, token);
+      }
+      if (cancelled) return;
+
+      // Uploads have stable public URLs (no minting/expiry) — warm the browser
+      // image cache directly, no edge call.
+      for (const a of eager) {
+        if (a.source === "upload" && a.storage_path) {
+          const { data } = supabase.storage
+            .from("scene-assets")
+            .getPublicUrl(a.storage_path.replace(/^\/+/, ""));
+          if (data.publicUrl) preloadImages([data.publicUrl]);
+        }
+      }
+
+      // Dropbox neighbours: mint into the cache (max 2 concurrent), then warm
+      // the browser cache so the tab switch and lightbox are both instant.
+      const dropboxNeighbours = eager.filter(
+        (a) => a.source === "dropbox" && a.dropbox_path,
+      );
+      await runInBatches(dropboxNeighbours, 2, async (a) => {
+        if (cancelled) return;
+        const entry = await resolveAssetUrls(a.dropbox_path as string, token);
+        if (!cancelled && entry) preloadImages([entry.fullResUrl]);
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [selectedAsset, assets]);
+
   async function fetchAssets() {
     try {
       const { data, error } = await supabase
@@ -404,40 +572,17 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   }
 
   async function fetchAssetUrls(path: string) {
-    // Two-step progressive load: thumbnail first (small, likely already in
-    // browser cache from the grid view), then full-resolution temporary link.
-    // Once the full-res image fires onLoad, fullResLoaded flips and we fade
-    // from the thumbnail to the full-res frame.
+    // Two-step progressive load via the resolver: a fresh cache entry is served
+    // instantly with zero edge calls; otherwise the thumbnail settles the
+    // low-res frame first (progressively, via onLowRes) and the full-resolution
+    // temporary link fades in on top once <img> loads. Once the full-res image
+    // fires onLoad, fullResLoaded flips and we fade from thumbnail to full-res.
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
       if (!token) return;
-      const headers = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      };
-
-      // 1) Thumbnail — settle the low-res frame as fast as possible.
-      fetch(`${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ path, size: "w640h480" }),
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.thumbnail) setLowResUrl(data.thumbnail);
-        })
-        .catch(() => { /* best-effort */ });
-
-      // 2) Full-resolution link — fades in on top once <img> loads.
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
-        { method: "POST", headers, body: JSON.stringify({ path }) },
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setThumbnailUrl(data.link);
-      }
+      const entry = await resolveAssetUrls(path, token, (low) => setLowResUrl(low));
+      if (entry) setThumbnailUrl(entry.fullResUrl);
     } catch (err) {
       console.error("Error fetching asset urls:", err);
     }
