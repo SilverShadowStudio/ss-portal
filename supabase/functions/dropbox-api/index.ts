@@ -127,25 +127,37 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Detect team namespace. Dropbox Business accounts store files in a team
-    // namespace; without Dropbox-API-Path-Root every path call returns
-    // path/not_found. Mirrors the pattern in dropbox-scan-visuals + dropbox-webhook.
-    let rootNamespaceId: string | null = null;
-    try {
-      const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (accountRes.ok) {
-        const accountData = await accountRes.json();
-        rootNamespaceId = accountData?.root_info?.root_namespace_id ?? null;
+    // Resolve team root_namespace_id with the persisted-then-lazy-populate
+    // pattern. The previous design called get_current_account per request and
+    // silently fell back to an empty path-root header when that call hiccuped
+    // — producing 404/500 instead of the right answer. Now we read the id from
+    // app_settings (key `dropbox_root_namespace`), only call
+    // get_current_account when the cache is empty, and fail closed with 503
+    // when neither path can resolve the value.
+    let rootNamespaceId = await readStoredNamespaceId(supabase);
+    if (!rootNamespaceId) {
+      rootNamespaceId = await fetchFreshNamespaceId(accessToken);
+      if (rootNamespaceId) {
+        await storeNamespaceId(supabase, rootNamespaceId);
       }
-    } catch (e) {
-      console.warn("[dropbox-api] namespace detection failed (non-fatal):", (e as Error).message);
     }
-    const pathRootHeader: Record<string, string> = rootNamespaceId
-      ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }) }
-      : {};
+    if (!rootNamespaceId) {
+      console.error("[dropbox-api] namespace unresolved — no stored value and get_current_account did not return one");
+      return new Response(
+        JSON.stringify({ error: "Dropbox namespace unavailable, retry shortly" }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": "2",
+          },
+        }
+      );
+    }
+    const pathRootHeader: Record<string, string> = {
+      "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }),
+    };
 
     switch (action) {
       case "get-temporary-link": {
@@ -718,6 +730,51 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// app_settings key for the persisted team root_namespace_id. The team root
+// namespace for a Dropbox Business workspace is stable across token rotations
+// and across reconnects to the same team, so we cache it indefinitely. If the
+// team is ever migrated, manually delete this row to force re-detection.
+const NS_SETTINGS_KEY = "dropbox_root_namespace";
+
+async function readStoredNamespaceId(supabase: any): Promise<string | null> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", NS_SETTINGS_KEY)
+    .maybeSingle();
+  const id = data?.value?.namespace_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+async function storeNamespaceId(supabase: any, namespaceId: string): Promise<void> {
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({
+      key: NS_SETTINGS_KEY,
+      value: { namespace_id: namespaceId, updated_at: new Date().toISOString() },
+    });
+  if (error) console.warn("[dropbox-api] storeNamespaceId upsert error:", error.message);
+}
+
+async function fetchFreshNamespaceId(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.warn("[dropbox-api] get_current_account non-OK:", res.status);
+      return null;
+    }
+    const data = await res.json();
+    const id = data?.root_info?.root_namespace_id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch (e) {
+    console.warn("[dropbox-api] get_current_account threw:", (e as Error).message);
+    return null;
+  }
+}
 
 async function refreshToken(connection: any, supabase: any): Promise<string | null> {
   const dropboxAppKey = Deno.env.get("DROPBOX_APP_KEY")!;
