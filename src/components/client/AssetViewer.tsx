@@ -108,14 +108,29 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "files", label: "Brief" },
 ];
 
+// Shared blob: URL cache keyed by the source URL (the resolved temporary-link).
+// The strip pane and the lightbox feed useStreamedImage the SAME full-res URL,
+// so once the strip has streamed a version into a Blob we keep that object-URL
+// here and the lightbox reuses it — no re-fetch, no second Blob, and the
+// browser reuses the already-decoded bitmap (same blob: URL ⇒ same image
+// resource), making the lightbox open instant.
+//
+// Ownership: the CACHE owns the blob's lifetime, NOT the hook. useStreamedImage
+// never revokes a cached blob on unmount/src-change — otherwise closing the
+// lightbox would revoke the URL out from under the still-mounted strip pane.
+// Blobs are revoked only when their owning URL is evicted (a stale re-mint in
+// resolveAssetUrls rotates the temporary-link), so neither pane can be holding
+// the old URL at that point.
+const blobUrlCache = new Map<string, string>();
+
 /**
  * Streams an image URL via fetch + a stream reader so callers can report real
  * bytes received vs total. Returns the URL to feed an <img> — a blob: URL once
- * fully downloaded, or the original URL as a fallback on any fetch/CORS error
- * so the image still loads (the lightbox / preview never breaks) — plus the
- * byte counters. `fetchFailed` (or a missing Content-Length) ⇒ indeterminate
- * progress (no numbers). Pass null/undefined to disable. The blob URL is
- * revoked on src change / unmount.
+ * fully downloaded (cached + shared via blobUrlCache), or the original URL as a
+ * fallback on any fetch/CORS error so the image still loads (the lightbox /
+ * preview never breaks) — plus the byte counters. `fetchFailed` (or a missing
+ * Content-Length) ⇒ indeterminate progress (no numbers). Pass null/undefined to
+ * disable. The blob URL is owned by blobUrlCache, never revoked here.
  */
 function useStreamedImage(url: string | null | undefined) {
   const [loadedBytes, setLoadedBytes] = useState(0);
@@ -129,7 +144,16 @@ function useStreamedImage(url: string | null | undefined) {
     setBlobUrl(null);
     setFetchFailed(false);
     if (!url) return;
-    let objectUrl: string | null = null;
+
+    // Reuse an already-built blob for this exact URL — instant, no network, no
+    // re-decode. This is what makes a lightbox open over the current strip
+    // version (and any revisit to an already-streamed version) instant.
+    const cached = blobUrlCache.get(url);
+    if (cached) {
+      setBlobUrl(cached);
+      return; // no fetch, nothing to revoke — the cache owns it
+    }
+
     let cancelled = false;
     const controller = new AbortController();
     (async () => {
@@ -152,8 +176,17 @@ function useStreamedImage(url: string | null | undefined) {
           }
         }
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(new Blob(chunks));
-        setBlobUrl(objectUrl);
+        // Hand the blob to the shared cache. If a concurrent consumer of the
+        // same URL beat us to it, drop ours and reuse theirs (avoids an orphan
+        // leak) so there is exactly one blob per URL.
+        const existing = blobUrlCache.get(url);
+        if (existing) {
+          setBlobUrl(existing);
+        } else {
+          const objectUrl = URL.createObjectURL(new Blob(chunks));
+          blobUrlCache.set(url, objectUrl);
+          setBlobUrl(objectUrl);
+        }
       } catch {
         if (!cancelled) setFetchFailed(true);
       }
@@ -161,12 +194,37 @@ function useStreamedImage(url: string | null | undefined) {
     return () => {
       cancelled = true;
       controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      // No revoke: blobUrlCache owns the blob (see note above).
     };
   }, [url]);
 
   const src = url ? (fetchFailed ? url : (blobUrl ?? undefined)) : undefined;
   return { src, loadedBytes, totalBytes, fetchFailed };
+}
+
+// How long an image may stay unresolved before the loader is allowed to appear.
+// A cached/instant version resolves well inside this window, so the wing-logo
+// loader never flashes; a genuinely pending load (cold ~10MB fetch) crosses it
+// and the loader fades in as before.
+const LOADER_DELAY_MS = 200;
+
+/**
+ * Gate a boolean so it only reads `true` after `active` has stayed true for
+ * `delayMs` continuously. Goes false immediately when `active` clears. Used to
+ * keep the loader honest: bound to real load state, but suppressed for fast/
+ * cached loads that finish inside the delay window.
+ */
+function useDelayedFlag(active: boolean, delayMs: number): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShown(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShown(true), delayMs);
+    return () => window.clearTimeout(t);
+  }, [active, delayMs]);
+  return shown;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +307,17 @@ async function resolveAssetUrls(
 
     if (!full) return null;
     await thumbDone; // capture lowRes for the cache (usually already settled)
+    // Evict the previous (stale) entry's shared blob now that its URL is being
+    // rotated — at a re-mint neither pane is still referencing the old URL, so
+    // this is the one safe moment to revoke it.
+    const prev = assetUrlCache.get(path);
+    if (prev && prev.fullResUrl !== full) {
+      const staleBlob = blobUrlCache.get(prev.fullResUrl);
+      if (staleBlob) {
+        URL.revokeObjectURL(staleBlob);
+        blobUrlCache.delete(prev.fullResUrl);
+      }
+    }
     const entry: CachedAssetUrls = { lowResUrl: lowRes, fullResUrl: full, mintedAt: Date.now() };
     assetUrlCache.set(path, entry);
     return entry;
@@ -365,6 +434,9 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   // because the grid view already fetched the same path's thumbnail).
   const [lowResUrl, setLowResUrl] = useState<string | null>(null);
   const [fullResLoaded, setFullResLoaded] = useState(false);
+  // Loader only appears if the full-res isn't ready within LOADER_DELAY_MS —
+  // cached/instant versions never flash it.
+  const showStripLoader = useDelayedFlag(!fullResLoaded, LOADER_DELAY_MS);
   // Byte-progress stream for the preview's full-res image (shared with the lightbox).
   const thumbStream = useStreamedImage(thumbnailUrl);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -878,7 +950,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
               )}
               {/* Byte-progress overlay: glowing logo + gold bar + MB readout. */}
               <ImageLoadOverlay
-                visible={!fullResLoaded}
+                visible={showStripLoader}
                 loadedBytes={thumbStream.loadedBytes}
                 totalBytes={thumbStream.totalBytes}
                 indeterminate={thumbStream.fetchFailed}
@@ -1331,10 +1403,15 @@ export function Lightbox({
   // re-trigger the fade.
   const [fullResLoaded, setFullResLoaded] = useState(false);
   useEffect(() => { setFullResLoaded(false); }, [src]);
+  // Loader only appears if the full-res isn't ready within LOADER_DELAY_MS — a
+  // reused/cached blob resolves instantly, so opening over a loaded version
+  // never flashes the loader.
+  const showLoader = useDelayedFlag(!fullResLoaded, LOADER_DELAY_MS);
 
   // Byte-progress streaming for the full-res image, shared with the preview
-  // card (see useStreamedImage): blob: URL on success, direct-URL fallback on
-  // any fetch/CORS error so the lightbox never breaks.
+  // card (see useStreamedImage): a reused blob: URL when the strip already
+  // streamed this version, else a fresh stream; direct-URL fallback on any
+  // fetch/CORS error so the lightbox never breaks.
   const fullRes = useStreamedImage(src);
 
   // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
@@ -2927,7 +3004,7 @@ export function Lightbox({
           with the preview card). onDark = always light-on-black for the
           lightbox's fixed black surface. */}
       <ImageLoadOverlay
-        visible={!fullResLoaded}
+        visible={showLoader}
         loadedBytes={fullRes.loadedBytes}
         totalBytes={fullRes.totalBytes}
         indeterminate={fullRes.fetchFailed}
