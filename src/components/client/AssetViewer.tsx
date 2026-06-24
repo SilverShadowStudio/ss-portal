@@ -164,45 +164,6 @@ function useStreamedImage(url: string | null | undefined) {
 }
 
 /**
- * Bounded cache of mid-res (2048) preview data URIs, keyed by Dropbox path.
- * The inline viewer reads it and the sibling-round prefetch warms it, so
- * navigating to an adjacent round shows the 2048 image without re-hitting the
- * edge function. Bounded because a 2048 JPEG data URI is ~0.6-1MB each and an
- * unbounded store would leak across a long browsing session. LRU via re-insert.
- */
-const PREVIEW_2048_CACHE = new Map<string, string>();
-const PREVIEW_2048_CAP = 24;
-async function fetchPreview2048(path: string, token: string): Promise<string | null> {
-  const hit = PREVIEW_2048_CACHE.get(path);
-  if (hit) {
-    PREVIEW_2048_CACHE.delete(path);
-    PREVIEW_2048_CACHE.set(path, hit); // bump to most-recent
-    return hit;
-  }
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/dropbox-api?action=get-thumbnail`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ path, size: "w2048h1536" }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const uri: string | null = data?.thumbnail ?? null;
-    if (uri) {
-      PREVIEW_2048_CACHE.set(path, uri);
-      while (PREVIEW_2048_CACHE.size > PREVIEW_2048_CAP) {
-        const oldest = PREVIEW_2048_CACHE.keys().next().value;
-        if (oldest === undefined) break;
-        PREVIEW_2048_CACHE.delete(oldest);
-      }
-    }
-    return uri;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Loading treatment shown over an image while it streams: a glowing (pulsing)
  * Silvershadow logo, a thin gold progress bar, and a "X.X / Y.Y MB" readout.
  * Indeterminate (pulsing bar, no numbers) when bytes are unknown. `onDark`
@@ -294,13 +255,9 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   // loads. Populated from dropbox-api/get-thumbnail (cached by the browser
   // because the grid view already fetched the same path's thumbnail).
   const [lowResUrl, setLowResUrl] = useState<string | null>(null);
-  // Mid-res 2048 image for the INLINE viewer. The native original (thumbnailUrl)
-  // is reserved for the lightbox + download, so the inline path stays light.
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fullResLoaded, setFullResLoaded] = useState(false);
-  // Byte-progress stream for the inline preview image (2048; the lightbox streams
-  // the native original itself).
-  const thumbStream = useStreamedImage(previewUrl);
+  // Byte-progress stream for the preview's full-res image (shared with the lightbox).
+  const thumbStream = useStreamedImage(thumbnailUrl);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
@@ -329,10 +286,6 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
           .from("scene-assets")
           .getPublicUrl(path);
         setLowResUrl(null);
-        // Uploads have no Dropbox thumbnail; inline and lightbox both use the
-        // full Supabase URL (unchanged from prior behaviour). See note below —
-        // there are currently zero upload-source assets in production.
-        setPreviewUrl(data.publicUrl);
         setThumbnailUrl(data.publicUrl);
       }
     }
@@ -369,10 +322,20 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             .getPublicUrl(a.storage_path.replace(/^\/+/, ""));
           if (data.publicUrl) urls.push(data.publicUrl);
         } else if (a.source === "dropbox" && a.dropbox_path && token) {
-          // Pre-warm the bounded 2048 cache (NOT the native original, which was
-          // ~10MB+ per neighbour). Clicking to an adjacent round then shows the
-          // mid-res image with no edge round-trip.
-          await fetchPreview2048(a.dropbox_path, token);
+          try {
+            const res = await fetch(
+              `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ path: a.dropbox_path }),
+              }
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.link) urls.push(data.link);
+            }
+          } catch { /* swallow — best-effort preload */ }
         }
       }
       if (!cancelled) preloadImages(urls);
@@ -460,13 +423,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
         })
         .catch(() => { /* best-effort */ });
 
-      // 1b) Mid-res 2048 — the inline review image (strict = aspect-preserving,
-      //     a fraction of the native bytes). Path-cached so the sibling-round
-      //     prefetch can pre-warm it and navigation skips the edge round-trip.
-      fetchPreview2048(path, token).then((uri) => { if (uri) setPreviewUrl(uri); });
-
-      // 2) Full-resolution link — for the LIGHTBOX (annotation/zoom surface) and
-      //     download only; no longer streamed by the inline preview.
+      // 2) Full-resolution link — fades in on top once <img> loads.
       const response = await fetch(
         `${SUPABASE_URL}/functions/v1/dropbox-api?action=get-temporary-link`,
         { method: "POST", headers, body: JSON.stringify({ path }) },
@@ -859,10 +816,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       {lightboxOpen && thumbnailUrl && (
         <Lightbox
           src={thumbnailUrl}
-          // Show the already-loaded 2048 instantly while the native original
-          // streams behind it; src (native) is unchanged so the annotation/zoom
-          // surface stays full quality.
-          placeholderSrc={previewUrl ?? lowResUrl ?? undefined}
+          placeholderSrc={lowResUrl ?? undefined}
           alt={selectedAsset?.filename ?? ""}
           assetId={selectedAsset?.id ?? null}
           sceneRoundId={sceneRoundId}
