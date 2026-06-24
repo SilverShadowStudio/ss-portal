@@ -14,6 +14,58 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 24 June 2026 (viewer-branch reconciliation + zoom-jank built)
+
+No merges to main this session except this HANDOFF. All viewer work is on branches awaiting Fred's per-branch sign-off. Nothing uncommitted.
+
+## Completed
+
+- **zoom-jank built + pushed** — `febc1b7` on `fix/zoom-jank` (off main `b76565a`, build green, NOT merged). Lightbox zoom/pan jank was per-wheel-tick / per-pan-move `setState` reconciling every stroke polyline + every pin's counter-scale — NOT GPU compositing. Fix: wheel + pan write the surface `transform` imperatively during the gesture and commit `scale/tx/ty` to React state once on gesture end (debounced ~140ms for wheel, pointer-up for pan). Pin counter-scale moved from per-pin inline `scale(1/scale)` to one inherited `--pin-cs` CSS var (one write → all pins). `transform`/`transition`/`willChange` owned imperatively + reconciled at rest via `useLayoutEffect`, so the crosshair's cursor-pos state during a pan can't clobber a mid-gesture DOM write; crosshair hidden + grab cursor shown while panning. Annotation coords, resolution, full-res surface, zoom math, pan-bound clamping all unchanged.
+- **Viewer-branch confusion reconciled.** Earlier "no 2048 tier / no PREVIEW_2048_CACHE in the repo" was a branch-scoping error — that investigation read `fix/export-logo-white` (= main + logo tint), not `feat/render-viewer-perf`. render-perf **does** contain the 2048 inline tier + bounded cache (`PREVIEW_2048_CACHE` cap 24, `fetchPreview2048`, `previewUrl`, `w2048h1536`). Confirmed by grep on that branch.
+
+## Viewer branch MERGE MAP (all four off main `b76565a`, independent — none built on another)
+
+| Branch | State | AssetViewer regions (main-relative) | Migrations |
+|---|---|---|---|
+| `feat/render-viewer-perf` (`a5b7c94`) | pushed, awaiting sign-off | 163, 255–292, 322–342, 423–430, 816 | none |
+| `feat/round-asset-publish-flag` (`467323f`+2) | pushed, awaiting approvals | 36, 47, 263–275, 585–591, 780–810 | **2 (live on prod)** |
+| `fix/zoom-jank` (`febc1b7`) | pushed, awaiting feel-test | 1080–3190 (gesture/transform only) | none |
+| `fix/export-logo-white` (`beccd71`) | pushed (separate, logo tint) | none | none |
+
+- **Merge order:** render-perf → publish-flag → flick-cache (after render-perf) → zoom-jank (isolated, mergeable anytime).
+- **Overlaps:** render-perf ↔ publish-flag collide only at the state/effect block **~255–292** (resolve at whichever merges 2nd). flick-cache overlaps render-perf heavily (same loading path) → must sit downstream. **zoom-jank is isolated** (gesture region 1080+, touched by no other branch) → conflict-free.
+
+## Pending sign-offs (per-branch, Fred)
+
+- **render-perf** — visual sign-off on its existing preview: click-through speed, 2048 quality, pins aligned, no swap-twitch. On pass → merge to main.
+- **publish-flag** — needs BOTH DB approval AND the 37-group visual sign-off. Merge when both done; resolve the ~255–292 overlap with render-perf at whichever merges second.
+- **zoom-jank** — feel-test on preview: smooth zoom+pan with many pins/strokes, pins screen-constant + strokes aligned DURING the gesture, placement accuracy unchanged.
+- **Standing rule reaffirmed:** do not merge any branch to main without Fred's explicit go, per branch.
+
+## flick-cache (queued, NOT started — gated on render-perf merging)
+
+- After render-perf merges: branch from main, **native/lightbox blob cache only** (render-perf already solved the inline tier), **reuse the `PREVIEW_2048_CACHE` Map/cap/LRU idiom** (one cache pattern, not two), and **fix the misleading `dropbox-api` Cache-Control comment** (it claims POST temp-link responses are browser-cached "so repeat lightbox opens skip the round-trip" — browsers don't cache POST, so it's a no-op). Review as its own piece. Combined memory ceiling if both land: 2048 cache ~14–24 MB + native cache (cap 6) ~108 MB ≈ ~132 MB; different resolutions, no double-hold.
+
+## Operational items (concrete pending actions)
+
+1. **Thomas `pin_colour`** — still NULL on `account_members.d9f187d8-…`; set to `#5B7C99` (cool blue, Invitee). One-liner pending Fred's go: `update account_members set pin_colour = '#5B7C99', updated_at = now() where id = 'd9f187d8-673c-41b7-beea-2d6f888d6628';`
+2. **`REVOKE EXECUTE … FROM anon`** on `account_has_signed_agreement` — one-line follow-up migration (defends in depth already via `is_account_member()`; this is hygiene).
+3. **publish-flag COUPLED step** (URGENT, deliberately not done): add the partial unique index `ON round_assets (scene_round_id, scene_token) WHERE is_current` **only after** the four insert paths stop writing `is_current=true` (`dropbox-scan-visuals:312`, `dropbox-api:447,460`+flip `435-447`, `dropbox-webhook:462,477`+lookup rework `423-463`, `import-legacy-rounds:235,282`). Index-before-rework would make the next auto-publishing insert violate it and silently drop a delivered render. Until then, NEW uploads still auto-publish.
+4. **flick-cache Cache-Control comment fix** — see flick-cache block above (fold into that PR).
+
+## Prod state (shared DB — read before touching prod)
+
+- **Thomas Zana is IN** — `account_members` on ZAN (client_invitee), agreement gate RPC live; final prod smoke-test (lands on `/` not `/sign-agreement`) still the one open verification from the 23 June block.
+- **publish-flag backfill is LIVE on prod** — `scene_token` + `is_current` backfill applied (37 published / 89 not), default flipped to `false`. The **already-deployed** prod frontend filters `is_current=true`, so prod clients already see only the published (highest) version. Headline images unchanged — no content regression (verified by Fred on 660 Madison).
+- **Admin republish UI is BRANCH-ONLY** — the publish control + "client sees this" badge live only on `feat/round-asset-publish-flag`, NOT merged. **Until merge, republishing a prod group requires `set_current_round_asset(uuid)` (or the equivalent group-scoped single UPDATE) run directly against the prod DB — not the UI.** Path confirmed working in a rolled-back txn this session.
+
+## Close-out integrity (24 June)
+
+- Working tree clean; no stashes; no untracked files.
+- All six local branches in sync with their `origin/*` upstreams — nothing unpushed, nothing will be lost on close.
+
+---
+
 # Session — 23 June 2026 (round-uploads storage RLS drift fix)
 
 ## Completed this session
