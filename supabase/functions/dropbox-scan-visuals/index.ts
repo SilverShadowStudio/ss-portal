@@ -1,20 +1,23 @@
 // dropbox-scan-visuals/index.ts
 //
-// Scans the VS_Visuals folder for a scene and returns the highest version
-// per round. project_code and scene_code (e.g. CP107, SC05) are stored in
-// the DB. The function searches Dropbox for any folder beginning with
-// CP107_ inside /00_Production/PRD01_Client-Projects/, then inside that
-// for any folder beginning with SC05_, and uses whatever it finds.
+// Scans the VS_Visuals folder for a scene and ingests EVERY version file
+// found as its own round_assets row. The admin chooses which version(s)
+// the client sees via the publish-flag mechanism — the scan never makes
+// that decision except as a fallback when a round would otherwise be
+// dark (see "no-current fallback" below).
 //
 // For Dropbox Business/Team accounts, files live in a team namespace.
 // We detect this via /2/users/get_current_account and set the
 // Dropbox-API-Path-Root header on all subsequent API calls.
 //
-// File naming convention: CP107-SC05-VS_R01_01.jpg
-//   R01 = round number  |  01 = version within round
+// File naming: ...R{N}_{V}.{ext} suffix is required (e.g.
+// CP115_SC02-VS_R01_03.jpg or CP107_SC05_R01_03.jpg — the VS_Visuals
+// folder location already gates the file class, so the `-VS` marker is
+// not enforced).
 //
 // Returns: array of { round, version, filename, path, modified_at, link }
-// One entry per round — the highest version only.
+// One entry per round (highest version) — preserves the admin Dropbox
+// preview UI shape; the full version set is reflected in round_assets.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enqueueDeliveryNotification } from "../_shared/deliveryNotification.ts";
@@ -255,8 +258,8 @@ Deno.serve(async (req) => {
       const parsed = parseFilename(entry.name);
       if (!parsed) continue;
 
-      if (!/[-]VS\d*_/i.test(entry.name as string)) continue;
-
+      // The VS_Visuals folder already gates "this is a visual" — accept
+      // both `-VS`-marked names and the bare `CPxxx_SCxx_R0N_0V` form.
       allFiles.push({
         round: parsed.round,
         version: parsed.version,
@@ -267,7 +270,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Group by round, keep highest version per round
+    // Keep one entry per round (highest version) for the response shape —
+    // preserves the admin Dropbox preview UI. The full version set is
+    // ingested into round_assets below.
     const byRound = new Map<number, VisualFile>();
     for (const file of allFiles) {
       const existing = byRound.get(file.round);
@@ -275,7 +280,6 @@ Deno.serve(async (req) => {
         byRound.set(file.round, file);
       }
     }
-
     const rounds = Array.from(byRound.values()).sort((a, b) => a.round - b.round);
 
     // Sync round_assets + deliver rounds — runs with service role, so no RLS issues.
@@ -287,32 +291,77 @@ Deno.serve(async (req) => {
       .eq("kind", "production");
 
     if (sceneRoundsData && sceneRoundsData.length > 0) {
-      const roundByNumber = new Map(sceneRoundsData.map((r: any) => [r.round_number, r]));
+      const roundByNumber = new Map<number, any>(
+        sceneRoundsData.map((r: any) => [r.round_number, r]),
+      );
 
-      for (const visual of rounds) {
-        const dbRound = roundByNumber.get(visual.round);
-        if (!dbRound) continue; // no DB round for this Dropbox file — skip
+      const visualsByRoundId = new Map<string, VisualFile[]>();
+      for (const v of allFiles) {
+        const dbRound = roundByNumber.get(v.round);
+        if (!dbRound) continue;
+        const arr = visualsByRoundId.get(dbRound.id) ?? [];
+        arr.push(v);
+        visualsByRoundId.set(dbRound.id, arr);
+      }
 
-        // Upsert round_assets row if not already present
-        const { data: existing } = await supabase
+      for (const [roundId, visuals] of visualsByRoundId) {
+        const dbRound = roundByNumber.get(visuals[0].round);
+        if (!dbRound) continue;
+
+        const { data: existingAssets } = await supabase
           .from("round_assets")
-          .select("id")
-          .eq("scene_round_id", dbRound.id)
-          .eq("dropbox_path", visual.path)
-          .maybeSingle();
+          .select("id, dropbox_path, version, is_current")
+          .eq("scene_round_id", roundId);
 
-        if (!existing) {
+        const existingByPath = new Map(
+          (existingAssets ?? []).map((a: any) => [a.dropbox_path, a]),
+        );
+
+        // Insert every Dropbox version not yet in the DB. New rows default
+        // to is_current=false — admin picks what the client sees via the
+        // publish-flag UI. Existing rows are never modified here, so any
+        // prior publish choice is preserved.
+        for (const v of visuals) {
+          if (existingByPath.has(v.path)) continue;
           const { error: insErr } = await supabase.from("round_assets").insert({
-            scene_round_id: dbRound.id,
-            dropbox_path: visual.path,
-            dropbox_file_id: visual.path,
-            filename: visual.filename,
-            file_size: visual.size,
-            version: visual.version,
-            is_current: true,
+            scene_round_id: roundId,
+            dropbox_path: v.path,
+            dropbox_file_id: v.path,
+            filename: v.filename,
+            file_size: v.size,
+            version: v.version,
+            is_current: false,
             source: "dropbox",
           });
-          if (insErr) console.error("[scan-visuals] round_assets insert error:", insErr.message, { path: visual.path, round: visual.round });
+          if (insErr) {
+            console.error("[scan-visuals] round_assets insert error:", insErr.message, {
+              path: v.path, round: v.round, version: v.version,
+            });
+          }
+        }
+
+        // No-current fallback: if NO row in this round is is_current=true
+        // (fresh ingest, or admin un-published everything), promote the
+        // highest version so the client viewer never sees a dark round.
+        const { data: roundAssetsAfter } = await supabase
+          .from("round_assets")
+          .select("id, version, is_current")
+          .eq("scene_round_id", roundId);
+
+        const hasCurrent = (roundAssetsAfter ?? []).some((a: any) => a.is_current);
+        if (!hasCurrent && (roundAssetsAfter ?? []).length > 0) {
+          const top = (roundAssetsAfter as any[])
+            .slice()
+            .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+          const { error: upErr } = await supabase
+            .from("round_assets")
+            .update({ is_current: true })
+            .eq("id", top.id);
+          if (upErr) {
+            console.error("[scan-visuals] no-current fallback error:", upErr.message, {
+              roundId, topId: top.id, version: top.version,
+            });
+          }
         }
 
         // Deliver the round if it hasn't been delivered yet
