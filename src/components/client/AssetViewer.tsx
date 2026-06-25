@@ -3551,6 +3551,22 @@ export function Lightbox({
  * size. The bulb radius and shoulder curves are tuned to match the
  * reference vector while keeping the apex at (0, H).
  */
+/** WCAG relative luminance (0=black … 1=white) for a #rrggbb colour.
+ *  Returns null for non-hex inputs (e.g. `hsl(var(--gold))`). */
+function relativeLuminance(colour: string): number | null {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(colour.trim());
+  if (!m) return null;
+  const int = parseInt(m[1], 16);
+  const toLinear = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const r = toLinear((int >> 16) & 0xff);
+  const g = toLinear((int >> 8) & 0xff);
+  const b = toLinear(int & 0xff);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 function PinMarker({
   number,
   active,
@@ -3637,7 +3653,14 @@ function PinMarker({
   //   for callers but no longer drives the bulb colour.
   void mine;
   const fillColor = active ? "#7a1f2b" : (colour || "hsl(var(--gold))");
-  const textColor = "#ffffff";
+  // Auto-contrast initials: dark text on light/high-luminance fills (fluo green,
+  // cyan, yellow…), white on dark fills. Standard WCAG relative-luminance split
+  // at 0.5; non-hex fills (the gold fallback) keep white. The legibility outline
+  // is flipped to complement the text so it stays effective either way.
+  const lum = relativeLuminance(fillColor);
+  const isLightFill = lum !== null && lum > 0.5;
+  const textColor = isLightFill ? "#1A1814" : "#ffffff";
+  const textOutline = isLightFill ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.45)";
 
   return (
     <div className="relative cursor-pointer group">
@@ -3668,7 +3691,7 @@ function PinMarker({
           fontWeight={700}
           fontSize={(initial || "?").length > 1 ? 11 : 14}
           fill={textColor}
-          stroke="rgba(0,0,0,0.45)"
+          stroke={textOutline}
           strokeWidth={0.6}
           paintOrder="stroke"
           style={{ strokeLinejoin: "round" }}
