@@ -36,6 +36,42 @@ export function computeReviewWindow(deliveredAt: Date = new Date()): {
   return { start, end: friday };
 }
 
+/**
+ * Minimum lead time between a round's request date and its delivery date.
+ * A delivery on or before the request — or inside this lead — produces an
+ * impossible timeline window (the "0D 0H total / 0% elapsed" card).
+ */
+export const MIN_DELIVERY_LEAD_MS = 24 * 60 * 60 * 1000; // 1 day
+
+/**
+ * Guard a proposed delivery date against the round's request date.
+ *
+ * Rule: delivery must be strictly after the request, with at least one full
+ * day of lead. Used by the admin delivery-date editor and by the round-create
+ * write paths so a backwards/zero-length window can never be persisted.
+ *
+ * When `requestDate` is invalid (e.g. created_at not yet loaded) there is no
+ * reference to compare against, so we only reject an outright-invalid delivery.
+ */
+export function validateDeliveryDate(
+  deliveryDate: Date,
+  requestDate: Date,
+): { ok: boolean; error?: string } {
+  if (!(deliveryDate instanceof Date) || isNaN(deliveryDate.getTime())) {
+    return { ok: false, error: "Pick a valid delivery date." };
+  }
+  if (!(requestDate instanceof Date) || isNaN(requestDate.getTime())) {
+    return { ok: true };
+  }
+  if (deliveryDate.getTime() <= requestDate.getTime()) {
+    return { ok: false, error: "Delivery must be after the request date." };
+  }
+  if (deliveryDate.getTime() < requestDate.getTime() + MIN_DELIVERY_LEAD_MS) {
+    return { ok: false, error: "Delivery must be at least one day after the request date." };
+  }
+  return { ok: true };
+}
+
 import { supabase } from "@/integrations/supabase/client";
 import { logActivity } from "@/lib/activityLog";
 

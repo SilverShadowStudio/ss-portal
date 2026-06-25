@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AssetViewer } from "./AssetViewer";
 import { RoundTimelineCard } from "./RoundTimelineCard";
 import { differenceInSeconds, format } from "date-fns";
-import { deliverRoundAndStartReview } from "@/lib/reviewWindow";
+import { deliverRoundAndStartReview, validateDeliveryDate } from "@/lib/reviewWindow";
 import { logActivity } from "@/lib/activityLog";
 import { cn } from "@/lib/utils";
 import {
@@ -94,6 +94,27 @@ function titleCase(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** ISO timestamp → "yyyy-mm-dd" in local time for an <input type="date">. */
+function toDateInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** "yyyy-mm-dd" → local Date pinned to 11:00, matching the stored delivery
+ *  convention (computeRoundSchedule delivery + the timeline's forced 11:00). */
+function parseDateInputAt11(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  d.setHours(11, 0, 0, 0);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName, roundNumber, roundStatus, deliveredAt, startDate, endDate, isAdmin = false, onUploaded, onRequestNextRound, nextRoundNumber, isLocked = false, successorRoundNumber, siblingRounds, onSelectRound, onReschedule, isLegacy = false }: TaskDetailProps) {
   // Strict status → UI mapping:
   //   in_production / in_progress / pending → "Production in Progress" (no image)
@@ -119,6 +140,60 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   const [briefUploads, setBriefUploads] = useState<BriefUpload[]>([]);
   const [briefUploadsLoading, setBriefUploadsLoading] = useState(false);
   const [roundCreatedAt, setRoundCreatedAt] = useState<string | null>(null);
+
+  // Admin delivery-date editor. `endDateState` mirrors the endDate prop so an
+  // admin edit re-renders the timeline immediately without waiting for the
+  // parent re-fetch; the draft/error/saving fields drive the inline editor.
+  const [endDateState, setEndDateState] = useState<string | null>(endDate);
+  const [deliveryDraft, setDeliveryDraft] = useState<string>(toDateInputValue(endDate));
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [savingDelivery, setSavingDelivery] = useState(false);
+  useEffect(() => {
+    setEndDateState(endDate);
+    setDeliveryDraft(toDateInputValue(endDate));
+    setDeliveryError(null);
+  }, [endDate, roundId]);
+
+  async function saveDeliveryDate() {
+    setDeliveryError(null);
+    const parsed = parseDateInputAt11(deliveryDraft);
+    if (!parsed) {
+      setDeliveryError("Pick a valid delivery date.");
+      return;
+    }
+    const requestDate = roundCreatedAt ? new Date(roundCreatedAt) : new Date(NaN);
+    const verdict = validateDeliveryDate(parsed, requestDate);
+    if (!verdict.ok) {
+      setDeliveryError(verdict.error ?? "Delivery must be after the request date.");
+      return;
+    }
+    setSavingDelivery(true);
+    const previous = endDateState;
+    const iso = parsed.toISOString();
+    const { error } = await supabase
+      .from("scene_rounds")
+      .update({ end_date: iso })
+      .eq("id", roundId);
+    setSavingDelivery(false);
+    if (error) {
+      console.error("Delivery-date update failed:", error);
+      setDeliveryError("Could not save. Please try again.");
+      return;
+    }
+    setEndDateState(iso);
+    await logActivity({
+      action: "round_rescheduled",
+      actorRole: "admin",
+      description: `Delivery date set to ${format(parsed, "d MMM yyyy")}`,
+      entityType: "scene_round",
+      entityId: roundId,
+      roundId,
+      roundNumber,
+      sceneName,
+      metadata: { from: previous, to: iso },
+    });
+    onUploaded?.();
+  }
 
   // Validate the temporal window once.
   const window = useMemo(() => {
@@ -332,6 +407,44 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
         })}
       </div>
     )
+  ) : null;
+
+  // Admin-only delivery-date editor. Unlike the client RescheduleRoundModal
+  // (locked to future Mondays + a +7-day floor), this lets an admin correct a
+  // round to ANY date that passes validateDeliveryDate — its purpose is fixing
+  // mistakes (e.g. a delivery stored before the request date). Stored at 11:00
+  // local to match the delivery convention used elsewhere.
+  const adminDeliveryEditor = isAdmin && !isDraftRound ? (
+    <div className="mt-8">
+      <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
+        Delivery date · Admin
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          value={deliveryDraft}
+          onChange={(e) => {
+            setDeliveryDraft(e.target.value);
+            setDeliveryError(null);
+          }}
+          disabled={savingDelivery}
+          className="h-9 px-3 bg-transparent border border-border/50 text-[12px] text-foreground font-sans focus:outline-none focus:border-foreground/40 disabled:opacity-50"
+          style={{ borderRadius: 2, colorScheme: "dark" }}
+        />
+        <button
+          type="button"
+          onClick={saveDeliveryDate}
+          disabled={savingDelivery || toDateInputValue(endDateState) === deliveryDraft}
+          className="h-9 px-4 text-[10px] font-sans uppercase tracking-[0.2em] border border-[var(--brand-gold)] bg-transparent text-gold transition-all disabled:opacity-25 disabled:cursor-not-allowed"
+          style={{ borderRadius: 2 }}
+        >
+          {savingDelivery ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {deliveryError && (
+        <p className="mt-2 text-[11px] text-red-400 font-sans">{deliveryError}</p>
+      )}
+    </div>
   ) : null;
 
   const briefModal = createPortal(
@@ -604,8 +717,9 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           <div className="h-px bg-[#2A2820] mb-4" />
           <RoundTimelineCard
             requestedAt={roundCreatedAt}
-            deliveryAt={endDate ? (() => { const d = new Date(endDate); d.setHours(11, 0, 0, 0); return d; })() : null}
+            deliveryAt={endDateState ? (() => { const d = new Date(endDateState); d.setHours(11, 0, 0, 0); return d; })() : null}
           />
+          {adminDeliveryEditor}
         </div>
 
         <div className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-3">

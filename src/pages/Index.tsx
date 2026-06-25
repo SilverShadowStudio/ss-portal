@@ -23,6 +23,7 @@ import { NewRoundModal } from "@/components/client/NewRoundModal";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { logActivity } from "@/lib/activityLog";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
+import { validateDeliveryDate } from "@/lib/reviewWindow";
 import { toast as sonnerToast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -573,6 +574,14 @@ export default function Index() {
   async function handleCreateCorrections(instructions: string, deliveryDate?: Date, startDate?: Date) {
     if (focus.kind !== "review") return;
     const round = focus.round;
+    const requestDate = startDate ?? new Date();
+    if (deliveryDate) {
+      const verdict = validateDeliveryDate(deliveryDate, requestDate);
+      if (!verdict.ok) {
+        sonnerToast.error(verdict.error ?? "Delivery must be after the request date.");
+        return;
+      }
+    }
     try {
       const { error } = await supabase
         .from("scene_rounds")
@@ -580,7 +589,7 @@ export default function Index() {
           scene_id: round.scene_id,
           round_number: round.round_number + 1,
           status: "pending",
-          start_date: (startDate ?? new Date()).toISOString(),
+          start_date: requestDate.toISOString(),
           instructions,
           ...(deliveryDate ? { end_date: deliveryDate.toISOString() } : {}),
         });
@@ -617,6 +626,11 @@ export default function Index() {
     const round = focus.round;
     try {
       const schedule = computeRoundSchedule(new Date());
+      const verdict = validateDeliveryDate(schedule.delivery, schedule.start);
+      if (!verdict.ok) {
+        sonnerToast.error(verdict.error ?? "Delivery must be after the request date.");
+        return;
+      }
       const previousLabel = String(round.round_number).padStart(2, "0");
       const nextRoundNumber = round.round_number + 1;
       const nextLabel = String(nextRoundNumber).padStart(2, "0");
