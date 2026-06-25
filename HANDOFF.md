@@ -14,6 +14,57 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 25 June 2026 (later — admin delivery-date editor + per-account pin colours/tooltip shipped; Management-API token fixed; round-status-derivation diagnosed)
+
+Two frontend-only features built, previewed, signed off, and merged to main; one diagnose-only investigation. Also fixed the stale Supabase Management-API token that had been blocking all live DB diagnosis. No migrations, no DB writes (only read-only diagnostic queries).
+
+## Completed (all merged to main, live)
+
+- **Supabase Management-API token refreshed.** The `Unauthorized` blocker from prior sessions was a stale token hardcoded in `~/.zshrc:3` (`sbp_…c30525`) that re-sourced on every shell and overrode interactive exports. Updated `~/.zshrc` to the valid token (`sbp_…fcf9`, verified `200` on `/v1/projects` and the `database/query` endpoint). **Caveat:** the Bash tool subshell still inherits the *old* `c30525` from the parent Claude process env, so `scripts/sql.sh` must be run with an inline override `SUPABASE_ACCESS_TOKEN=sbp_…fcf9 ./scripts/sql.sh "…"` until the session is relaunched. Token also belongs in the password manager; revoke `…c30525` if dead. (`scripts/sql.sh` still carries its own stale hardcoded fallback — env override wins.)
+
+- **`feat/admin-delivery-date` → merged `6d8e4ea` (ff). Prod bundle `Bfmjq4e5` → `index-17Pnxcg9.js`.** Admin-only delivery-date editor + impossible-date validation. 3 files (+167/−3): new `validateDeliveryDate(deliveryDate, requestDate)` + `MIN_DELIVERY_LEAD_MS` (1 day) in `reviewWindow.ts`; editor in `TaskDetail.tsx` in-production view (where the buggy `RoundTimelineCard` renders) — native date input, **direct `update({ end_date }).eq("id", roundId)`** scoped to one round, stored at **11:00 local** (matches `computeRoundSchedule` + display), local `endDateState` re-renders the timeline instantly, logs `round_rescheduled` (actorRole admin). Guard also wired into `Index.handleCreateCorrections` (vs new round start_date, only when a delivery date is given) and `Index.handleRequestNextRoundDirect` (vs schedule.start). Fixed CP115/SC02/R01 delivery (corrected to 26 Jun) on preview before merge.
+
+- **`feat/pin-colours-tooltip` → merged `44e818b` (ff, 2 commits). Prod bundle `17Pnxcg9` → `index-BVF1ebQ0.js` (current live).** Lightbox per-account pin colours + reliable author tooltip + auto-contrast initials. 3 files: new `src/lib/accountPinColours.ts` (fixed fluo palette + read-only `fetchAccountPinColourMap`), `AssetViewer.tsx`, `PinChat.tsx`.
+  - **Colours now assigned by per-account member ORDER** (`account_members.created_at` ASC → `ACCOUNT_PIN_COLOURS`): 1st=green `#00E676`, 2nd=blue `#2979FF`, 3rd=red `#FF1744`, 4th+ orange/violet/cyan/yellow/pink. Deterministic for all viewers, **no DB write** — diagnosed that ZAN's two members (Virgile owner, Thomas invitee) both had `pin_colour = NULL`, so the old stored-column scheme rendered everyone gold. Stored `pin_colour` now ignored by the lightbox (left intact for `Team.tsx`). Same map applied to pins, strokes, and `PinChat` author dots.
+  - **Reliable tooltip:** each pin wrapped in a radix `Tooltip` (portaled to body, hover+focus, transform-safe) showing the author's full name — replaces the absent author tooltip (only `aria-label`/`title="Delete pin"` existed; identity was conveyed solely by colour+initials that popped in late).
+  - **Auto-contrast initials:** WCAG relative-luminance split at 0.5 → dark initials on light fills (green/cyan/yellow), white on dark; outline flipped to complement the text.
+
+## Diagnoses delivered this session (no fix applied)
+
+- **Round status model → DERIVED (diagnose-only, no code/writes).** Mapped the full blast radius of making `scene_rounds.status` derived rather than admin-set, plus a separate stored "Approved":
+  - **Schema:** status CHECK = 9 values (`draft, reserved, pending, in_production, delivered, approved, client_review, awaiting_review, cancelled`); columns `delivered_at` + `approved_at` already exist. Live data: `delivered_at` is **not reliably set** (2 of 7 `client_review` rounds lack it); `approved_at` written **only** by `import-legacy-rounds` (no live app writer/reader — dormant column).
+  - **Writers (11):** admin pills (`TaskDetail`), Index correction/next-round paths, `reviewWindow.deliverRoundAndStartReview`, R01 creation, `BookingModal` (reserved), + edge: `dropbox-webhook`/`-scan-visuals`/`-api` (delivered/client_review/in_production), `airtable-sync` pull-status (`🟢 DONE→approved` etc.), `stripe-booking-webhook`, `expire-reservations`, `import-legacy-rounds`.
+  - **Readers:** `Index:487` review-hero `.in("status",[client_review,awaiting_review,delivered])`; `Portfolio` `canRequestNext`/`hasRoundInProduction`; Dropbox `DELIVERED_STATES` idempotency gate; **Airtable push/pull mapping**; `scenePhase.ts` already derives the phase label. RLS does **not** reference status, but a `airtable_status_changed` trigger fires `net.http_post` on **every** status change.
+  - **Signals:** "delivered" → `round_assets.is_current` exists is most authoritative (delivered_at unreliable); "next round requested" → a `kind='production'` row with `round_number+1` whose status ∉ {draft,reserved,cancelled}.
+  - **Approved conflict:** `approved` is **bidirectionally Airtable-coupled** — a client button writing `status='approved'` fires the Airtable trigger AND fights `pull-status` (round-trip can revert it). Recommended keeping Approved as a **separate stored flag** (`approved_at`/`is_approved`, gated by a net-new admin "For Approval" toggle that doesn't exist yet), out of the synced `status` literal.
+  - **Recommendation:** render-derive In-Production/Awaiting-Review from the signals above (low risk; extend `scenePhase.ts` + migrate the operational readers to one shared helper) rather than writing the column back (fires the trigger, fights pull-status). Nothing built — awaiting scope decision.
+
+## Decisions made
+
+- **Direct `update` over a reschedule handler** for the admin delivery editor — smallest blast radius, scoped to one round id.
+- **Compute pin colours by member order, no DB write** — chosen over backfilling the null `pin_colour` column, so colours are deterministic without a migration.
+- **No code for the round-status change** — diagnose-only as requested; surfaced the Airtable bidirectional-`approved` conflict before any implementation.
+
+## Open questions / things to watch
+
+- **Round-status derivation scope** is the open product decision: render-derive (recommended) vs write-back; and how to model the client "Approved" button + admin "For Approval" toggle without colliding with Airtable `pull-status`.
+- **`scripts/sql.sh` inline-token caveat** (above) until the CLI session is relaunched with the refreshed `~/.zshrc`.
+- Standing carry-overs below remain unchanged: publish-flag preview sign-off (URGENT), pin-delete own-only RLS migration (drafted, not applied), `render-viewer-perf` inline-image regression, and the unmerged viewer branches (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`).
+
+## Production state at session close
+
+- **Live commit on main:** `44e818b`. **Live bundle:** `index-BVF1ebQ0.js`. Edge functions unchanged this session.
+- **DB:** no writes (read-only diagnostic queries only).
+
+## Next step to resume from
+
+- **Round-status model — get the scope decision, then build.** Default to the diagnosed low-risk path: render-derive In-Production/Awaiting-Review from `round_assets.is_current` + successor-row existence, routing the operational readers (Index review-hero filter, Portfolio `canRequestNext`, `scenePhase.ts`) through one shared helper; keep Approved as a separate stored flag behind a new admin "For Approval" toggle, decoupled from the Airtable-synced `status`. Do NOT write derived status back (fires `airtable_status_changed`, fights `pull-status`).
+- **Pin-delete own-only RLS** is now unblocked (token fixed): read the LIVE `asset_pins` DELETE policies and repro as Thomas/Virgile; with Fred's go, apply the own-only DELETE migration drafted earlier.
+- **Sign-off + merge decisions still open:** `feat/admin-version-tab-labels` (admin Version-0N labels) and timer-loader vs `feat/cached-blob-reuse`.
+- **Standing carry-overs (unchanged, still live below):** `publish-flag` preview sign-off (URGENT) → its Task #2–#5 chain; `render-viewer-perf` inline-image regression debug.
+
+---
+
 # Session — 25 June 2026 (round-viewer performance stack shipped: Version-0N labels, URL cache + neighbour prefetch, shared-blob instant lightbox, honest loader; pin-delete diagnosed as already-built)
 
 A frontend-only viewer session: relabelled asset tabs, then layered three performance fixes onto the client/admin round viewer and merged the stack to main. Closed with two diagnose-only investigations (Request-Round button, pin delete). No DB writes, no migrations.
