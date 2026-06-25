@@ -14,6 +14,57 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 25 June 2026 (round-viewer performance stack shipped: Version-0N labels, URL cache + neighbour prefetch, shared-blob instant lightbox, honest loader; pin-delete diagnosed as already-built)
+
+A frontend-only viewer session: relabelled asset tabs, then layered three performance fixes onto the client/admin round viewer and merged the stack to main. Closed with two diagnose-only investigations (Request-Round button, pin delete). No DB writes, no migrations.
+
+## Completed (all merged to main, live)
+
+- **`feat/client-version-tab-labels` → merged `a2f0888`.** Asset strip tabs now render `Version 01`..`Version 0N` (zero-padded `version` column, not filename) and sort ascending by `version`. Gated to the client/non-admin render path via the `isAdmin` prop threaded `TaskDetail → AssetViewer`. Prod bundle flipped `ZlylWlyP` → `CwHOiovj`.
+- **`feat/round-version-preload` (`0d58cfc`) + `feat/lightbox-blob-reuse` (`f7d5b47`) → fast-forward merged to main (`a2f0888..f7d5b47`).** Brought BOTH commits (linear chain). Prod bundle flipped `CwHOiovj` → **`Bfmjq4e5`** (current live). Contents:
+  - **URL cache + neighbour prefetch** — `assetUrlCache` (keyed by dropbox_path, 3h TTL, fail-safe re-mint) so tab selection serves resolved URLs with zero edge calls; after the selected version loads, immediate strip neighbours prefetch (max 2 concurrent `get-temporary-link`, hard cap 5 eager total).
+  - **Shared decoded blob** — `blobUrlCache` (keyed by source URL); the lightbox reuses the strip pane's already-streamed blob (no re-fetch/re-stream/re-decode), so opening is instant. Cache owns blob lifetime; `useStreamedImage` never revokes on unmount (closing the lightbox can't pull the URL from under the strip pane); blobs revoked only on stale re-mint.
+  - **Honest delayed loader** — `useDelayedFlag(!fullResLoaded, 200ms)`; cached/instant versions never flash the wing-logo loader, genuine cold loads still show it with real byte progress.
+  - All scoped to `AssetViewer.tsx`; labels/sort/DELIVERED/dimensions/size/JPG badge/download untouched. Applies to admin + client.
+
+## In progress / needs verification (carried forward)
+
+- **`feat/admin-version-tab-labels` (`ebf49a9`) — PUSHED, NOT merged.** Drops the `isAdmin` label branch so admin asset tabs also show `Version 0N` (ascending). Build green, preview pushed; awaiting Fred's sign-off before merge. Admin download still saves the real filename (verified in code).
+- **`feat/cached-blob-reuse` (`67662e5`) — PUSHED, NOT merged. Genuine alternative, do NOT delete.** The no-timer twin of the merged blob-reuse fix: instead of the 200ms `useDelayedFlag`, it skips the `fullResLoaded` reset entirely when a decoded blob is already in hand (short-circuits `useStreamedImage` on `blob:` URLs; lightbox starts `fullResLoaded=true` for cached blobs). Confirmed via read-only diff that it contains real changes NOT in main (and removes `useDelayedFlag`), so it was NOT deleted. Open decision: keep main's timer approach, or swap to this one.
+
+## Diagnoses delivered this session (no fix applied)
+
+- **"Request Round" button missing.** Render block (`AssetViewer.tsx` NextRoundCTA, lightbox-only, `bottom-6` bar) and `Portfolio.tsx` `canRequestNext` are BOTH unchanged since the initial commit — not a code regression. Cause is data/state: `canRequestNext = isLatestRound && (status ∈ {delivered,approved}) && !hasRoundInProduction` — it EXCLUDES `client_review`. A round under active review carries `client_review` → button hidden on the Portfolio path. (Index path passes `onRequestNextRound` unconditionally.) Could not read CP115/SC01/R01 live status — Management-API token Unauthorized.
+- **Round status lifecycle.** Two `scene_rounds` rows per round_number: production row (`pending`→`in_production`→`delivered`, `approved` only via Airtable sync/legacy import) + sibling `kind='review'` row at `client_review`. KEY: `client_review` is set at DELIVERY (window opens, `reviewWindow.ts`), NOT on client submit. **There is NO status value meaning "client submitted feedback for review"** — submit and request-next are fused (Index flips current→`in_production` + inserts next `pending`; Portfolio/BookingModal inserts next as `reserved`). Client feedback artifacts live in `asset_approvals` / `asset_pins` / `asset_drawings`, not on `scene_rounds.status`.
+- **Pin delete — already fully built, not missing.** `deletePinById` (optimistic + 8s Undo + confirm dialog), ownership gate `canDeletePin = isAdmin || (own && !resolved_at)`, × badge on `PinMarker`, and a delete control in `PinChat` are all wired in the lightbox. RLS per committed migrations ("Members can delete account pins", unchanged by the latest gate migration) lets a `client_invitee` delete — but checks only `is_account_member`, NOT `created_by`, so it does NOT enforce own-only server-side (UI hides others' × but a crafted delete would pass). Could not verify LIVE policy (token Unauthorized) — if live drifted to a missing/restrictive DELETE policy, deletes would be a silent no-op that reappears on reload (matches the symptom). Proposed own-only DELETE migration written to SHOW (not applied). No redundant UI added.
+
+## Decisions made
+
+- **Merged the timer-based blob-reuse branch (`f7d5b47`), kept the no-timer alternative (`feat/cached-blob-reuse`) unmerged** rather than deleting it — it is a distinct implementation, not a duplicate.
+- **Did not implement pin-delete UI** — it already exists; the real lever is server-side RLS, which is a migration to show, not apply. Surfaced the contradiction instead of building redundant code.
+- **No migration applied** for the pin-delete own-only tightening — awaiting Fred's confirmation per the hard rule.
+
+## Open questions / things to watch
+
+- **Management-API token (`scripts/sql.sh` hardcoded `sbp_…`) is `Unauthorized`.** Blocks ALL live DB diagnosis (round status, live RLS, client-vantage repro). Fred to refresh (Dashboard → Account → Access tokens). This gates pin-delete verification and the Request-Round status confirmation.
+- **`asset_pins` DELETE policy is permissive** (any account member can delete any teammate's pin). Own-only enforcement needs the proposed migration.
+- **"Request Round" gate** needs a product decision: should the gate accept `client_review`, or should a new "feedback submitted" signal be introduced (none exists today)?
+- Several local viewer branches remain unmerged (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`, plus older `feat/render-viewer-perf`, `feat/round-asset-publish-flag`).
+
+## Production state at session close
+
+- **Live commit on main:** `f7d5b47`. **Live bundle:** `index-Bfmjq4e5.js`. Edge functions unchanged this session.
+- **DB:** no writes this session.
+
+## Next step to resume from
+
+- **First — refresh the Supabase Management-API token** (`scripts/sql.sh` / `SUPABASE_ACCESS_TOKEN`). It's the blocker for pin-delete live verification, the Request-Round status confirmation, and any client-vantage repro.
+- **Then — pin delete:** with a working token, read the LIVE `asset_pins` policies + repro as Thomas/Virgile. If live RLS is the cause, apply (with Fred's go) the own-only DELETE migration already drafted in this session's diagnosis.
+- **Then — sign-off + merge decisions:** `feat/admin-version-tab-labels` (admin Version-0N labels), and choose between the merged timer loader vs `feat/cached-blob-reuse`'s no-timer approach.
+- **Standing carry-overs (unchanged, still live below):** `publish-flag` preview sign-off (URGENT) → its Task #2–#5 chain; `render-viewer-perf` inline-image regression debug.
+
+---
+
 # Session — 24 June 2026 (late evening — CP115/SC01/R01 reconciliation Phases 2+3 executed; folder_mappings inserted scene-only after CHECK pre-flight)
 
 Completed the data reconciliation that was paused at the Phase 1 boundary in the previous block. CP115/SC01/R01 canonical scene_round now carries exactly `_01`–`_04` (versions 1/2/3/4, all `is_current=true`, all `source='dropbox'`); the duplicate empty scene_round is gone; the `folder_mappings` row for this scene is in place. End-to-end 8/8 = 200 verified via deployed `dropbox-api` under Thomas's JWT (4 assets × `get-thumbnail` + `get-temporary-link`). No code changes — DB writes only.
