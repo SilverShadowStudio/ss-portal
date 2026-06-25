@@ -32,6 +32,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { computeReviewWindow } from "@/lib/reviewWindow";
+import {
+  fetchAccountPinColourMap,
+  ACCOUNT_PIN_FALLBACK_COLOUR,
+} from "@/lib/accountPinColours";
 import { buildAssetDownloadName } from "@/lib/scenePhase";
 import { logActivity } from "@/lib/activityLog";
 import { toast as sonnerToast } from "sonner";
@@ -1467,9 +1471,12 @@ export function Lightbox({
   const [userId, setUserId] = useState<string | null>(null);
   // Map of user_id -> first-name initial, used inside the pin bubble.
   const [pinInitials, setPinInitials] = useState<Record<string, string>>({});
-  // Map of user_id -> assigned pin colour (account_members.pin_colour:
-  // Manager = brand gold, Invitee = palette). Drives per-author pin + stroke
-  // colour. Unresolved authors fall back to gold at render time.
+  // Map of user_id -> full display name, surfaced in the per-pin hover tooltip.
+  const [pinNames, setPinNames] = useState<Record<string, string>>({});
+  // Map of user_id -> pin colour, assigned by per-account member ORDER
+  // (account_members.created_at ASC) via the fixed ACCOUNT_PIN_COLOURS palette —
+  // deterministic and identical for every viewer, no DB write. Authors with no
+  // account membership (studio/admin) fall back to gold at render time.
   const [pinColours, setPinColours] = useState<Record<string, string>>({});
   const [annotateMode, setAnnotateMode] = useState(!isLocked);
   const { toast } = useToast();
@@ -1929,6 +1936,7 @@ export function Lightbox({
         .select("user_id, first_name, last_name, full_name")
         .in("user_id", ids);
       if (cancelled || error || !data) return;
+      const names: Record<string, string> = {};
       setPinInitials((prev) => {
         const next = { ...prev };
         for (const row of data as any[]) {
@@ -1943,9 +1951,18 @@ export function Lightbox({
             initials = `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`;
           }
           next[row.user_id] = initials ? initials.toUpperCase() : "?";
+          // Full display name for the hover tooltip.
+          const fullName = [first, last].filter(Boolean).join(" ").trim()
+            || (row.full_name ? String(row.full_name).trim() : "");
+          names[row.user_id] = fullName || "Member";
         }
         // Mark any unresolved id as "?" so we don't refetch each render.
         for (const id of ids) if (!(id in next)) next[id] = "?";
+        return next;
+      });
+      setPinNames((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = names[id] ?? next[id] ?? "Member";
         return next;
       });
     })();
@@ -1954,9 +1971,12 @@ export function Lightbox({
     };
   }, [pins, pinInitials]);
 
-  // Resolve each pin/stroke author's assigned colour from account_members.
+  // Resolve each pin/stroke author's colour by PER-ACCOUNT MEMBER ORDER
+  // (account_members.created_at ASC → fixed ACCOUNT_PIN_COLOURS palette), so
+  // every viewer sees the same colour for the same member without relying on the
+  // stored pin_colour column (which can be null) and without any DB write.
   // Covers pin authors, stroke authors, and the current user (their in-flight
-  // drawing). Unresolved ids are marked gold so we don't refetch every render.
+  // drawing). The full account map is rebuilt whenever a new author appears.
   useEffect(() => {
     const ids = Array.from(
       new Set(
@@ -1970,17 +1990,12 @@ export function Lightbox({
     if (ids.length === 0) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("account_members")
-        .select("user_id, pin_colour")
-        .in("user_id", ids);
-      if (cancelled || error) return;
+      const map = await fetchAccountPinColourMap(ids);
+      if (cancelled) return;
       setPinColours((prev) => {
-        const next = { ...prev };
-        for (const row of (data ?? []) as { user_id: string; pin_colour: string | null }[]) {
-          if (row.pin_colour) next[row.user_id] = row.pin_colour;
-        }
-        for (const id of ids) if (!(id in next)) next[id] = "#B89A6A";
+        const next = { ...prev, ...map };
+        // Mark any author not in the account (studio/admin) so we don't refetch.
+        for (const id of ids) if (!(id in next)) next[id] = ACCOUNT_PIN_FALLBACK_COLOUR;
         return next;
       });
     })();
@@ -3360,37 +3375,51 @@ export function Lightbox({
                     transformOrigin: "bottom left",
                   }}
                 >
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenPinId(isOpen ? null : p.id);
-                    }}
-                    className="block focus:outline-none"
-                    aria-label={`Pin ${idx + 1}`}
-                  >
-                    <PinMarker
-                      number={idx + 1}
-                      active={isOpen}
-                      initial={pinInitials[p.created_by] ?? ""}
-                      mine={!!userId && p.created_by === userId}
-                      colour={pinColours[p.created_by] ?? "#B89A6A"}
-                      canDelete={canDeletePin}
-                      onRequestDelete={async (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (skipDeleteConfirm) {
-                          // User opted out of confirmations this session —
-                          // delete immediately. The Undo toast is still
-                          // shown by deletePinById as a safety net.
-                          await deletePinById(p.id);
-                          return;
-                        }
-                        setPendingDeletePinId(p.id);
-                      }}
-                    />
-                  </button>
+                  {/* Author tooltip. Radix portals the content to <body> and
+                      positions via floating-ui off the trigger's rendered rect,
+                      so the pin's scale()/transform never breaks placement and
+                      there is no z-index/stacking race — it shows reliably on
+                      hover AND keyboard focus. */}
+                  <TooltipProvider delayDuration={120} skipDelayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenPinId(isOpen ? null : p.id);
+                          }}
+                          className="block focus:outline-none"
+                          aria-label={`Pin ${idx + 1}${pinNames[p.created_by] ? ` — ${pinNames[p.created_by]}` : ""}`}
+                        >
+                          <PinMarker
+                            number={idx + 1}
+                            active={isOpen}
+                            initial={pinInitials[p.created_by] ?? ""}
+                            mine={!!userId && p.created_by === userId}
+                            colour={pinColours[p.created_by] ?? ACCOUNT_PIN_FALLBACK_COLOUR}
+                            canDelete={canDeletePin}
+                            onRequestDelete={async (e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (skipDeleteConfirm) {
+                                // User opted out of confirmations this session —
+                                // delete immediately. The Undo toast is still
+                                // shown by deletePinById as a safety net.
+                                await deletePinById(p.id);
+                                return;
+                              }
+                              setPendingDeletePinId(p.id);
+                            }}
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" sideOffset={6} className="z-[120]">
+                        {pinNames[p.created_by] ?? "Member"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   {/* Per-pin chat popover — anchored to the marker, sized to
                       its content. Inherits the counter-scale from the parent
                       so it stays visually constant regardless of zoom. */}
@@ -3639,6 +3668,10 @@ function PinMarker({
           fontWeight={700}
           fontSize={(initial || "?").length > 1 ? 11 : 14}
           fill={textColor}
+          stroke="rgba(0,0,0,0.45)"
+          strokeWidth={0.6}
+          paintOrder="stroke"
+          style={{ strokeLinejoin: "round" }}
         >
           {(initial || "?").toUpperCase()}
         </text>

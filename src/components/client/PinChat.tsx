@@ -4,6 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
+  fetchAccountPinColourMap,
+  ACCOUNT_PIN_FALLBACK_COLOUR,
+} from "@/lib/accountPinColours";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -119,8 +123,9 @@ export function PinChat({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
-  // Resolve initials (profiles) + colour (account_members.pin_colour) for each
-  // message author so the thread mirrors the on-image pin/stroke colours.
+  // Resolve initials (profiles) + colour (per-account member ORDER, the same
+  // scheme as the on-image pins/strokes) for each message author so the thread
+  // mirrors the pin colours exactly.
   useEffect(() => {
     const ids = Array.from(new Set(messages.map((m) => m.user_id))).filter(
       (id) => id && !(id in authorMeta),
@@ -128,15 +133,11 @@ export function PinChat({
     if (ids.length === 0) return;
     let cancelled = false;
     (async () => {
-      const [{ data: profs }, { data: members }] = await Promise.all([
+      const [{ data: profs }, colourById] = await Promise.all([
         supabase.from("profiles").select("user_id, first_name, last_name, full_name").in("user_id", ids),
-        supabase.from("account_members").select("user_id, pin_colour").in("user_id", ids),
+        fetchAccountPinColourMap(ids),
       ]);
       if (cancelled) return;
-      const colourById: Record<string, string> = {};
-      for (const r of (members ?? []) as { user_id: string; pin_colour: string | null }[]) {
-        if (r.pin_colour) colourById[r.user_id] = r.pin_colour;
-      }
       setAuthorMeta((prev) => {
         const next = { ...prev };
         for (const r of (profs ?? []) as { user_id: string; first_name: string | null; last_name: string | null; full_name: string | null }[]) {
@@ -145,9 +146,9 @@ export function PinChat({
           let initials = first || last
             ? `${first[0] ?? ""}${last[0] ?? ""}`
             : (r.full_name?.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("") ?? "");
-          next[r.user_id] = { initials: (initials || "?").toUpperCase(), colour: colourById[r.user_id] ?? "#B89A6A" };
+          next[r.user_id] = { initials: (initials || "?").toUpperCase(), colour: colourById[r.user_id] ?? ACCOUNT_PIN_FALLBACK_COLOUR };
         }
-        for (const id of ids) if (!(id in next)) next[id] = { initials: "?", colour: colourById[id] ?? "#B89A6A" };
+        for (const id of ids) if (!(id in next)) next[id] = { initials: "?", colour: colourById[id] ?? ACCOUNT_PIN_FALLBACK_COLOUR };
         return next;
       });
     })();
