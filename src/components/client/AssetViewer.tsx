@@ -108,14 +108,30 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "files", label: "Brief" },
 ];
 
+// Shared blob: URL cache keyed by source URL (the resolved temporary-link). The
+// strip pane and the lightbox feed the SAME full-res URL, so once a version is
+// streamed into a Blob we keep that object-URL here and every later consumer —
+// a tab revisit or the lightbox — reuses it: no re-fetch, no second Blob, and
+// the browser reuses the already-decoded bitmap (same blob: URL ⇒ same image
+// resource), so opening is instant with no re-decode.
+//
+// Ownership: the CACHE owns each blob's lifetime, never the hook. useStreamedImage
+// does not revoke on unmount/src-change — otherwise closing the lightbox would
+// revoke the URL out from under the still-mounted strip pane. A blob is revoked
+// only when its URL is rotated by a stale re-mint in resolveAssetUrls, the one
+// moment neither pane references the old URL.
+const blobUrlCache = new Map<string, string>();
+
 /**
  * Streams an image URL via fetch + a stream reader so callers can report real
  * bytes received vs total. Returns the URL to feed an <img> — a blob: URL once
- * fully downloaded, or the original URL as a fallback on any fetch/CORS error
- * so the image still loads (the lightbox / preview never breaks) — plus the
- * byte counters. `fetchFailed` (or a missing Content-Length) ⇒ indeterminate
- * progress (no numbers). Pass null/undefined to disable. The blob URL is
- * revoked on src change / unmount.
+ * fully downloaded (cached + shared via blobUrlCache), or the original URL as a
+ * fallback on any fetch/CORS error so the image still loads (the lightbox /
+ * preview never breaks) — plus the byte counters. `fetchFailed` (or a missing
+ * Content-Length) ⇒ indeterminate progress (no numbers). Pass null/undefined to
+ * disable. A passed-in blob: URL (or one already cached for the source URL) is
+ * used immediately with no stream. Blobs are owned by blobUrlCache, never
+ * revoked here.
  */
 function useStreamedImage(url: string | null | undefined) {
   const [loadedBytes, setLoadedBytes] = useState(0);
@@ -129,7 +145,24 @@ function useStreamedImage(url: string | null | undefined) {
     setBlobUrl(null);
     setFetchFailed(false);
     if (!url) return;
-    let objectUrl: string | null = null;
+
+    // Already an in-memory blob: URL (a cached blob handed to us by the call
+    // site) — use it as-is. No fetch, no stream, no re-decode, and nothing to
+    // revoke: the cache owns it.
+    if (url.startsWith("blob:")) {
+      setBlobUrl(url);
+      return;
+    }
+
+    // A blob was already built for this exact source URL earlier (strip pane,
+    // a prior open, or the other pane) — reuse it instantly rather than
+    // re-streaming the ~10MB body and rebuilding a second Blob.
+    const reused = blobUrlCache.get(url);
+    if (reused) {
+      setBlobUrl(reused);
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
     (async () => {
@@ -152,8 +185,17 @@ function useStreamedImage(url: string | null | undefined) {
           }
         }
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(new Blob(chunks));
-        setBlobUrl(objectUrl);
+        // Hand the blob to the shared cache (one blob per source URL). If a
+        // concurrent consumer beat us to it, drop ours and reuse theirs to
+        // avoid an orphaned, never-revoked object-URL.
+        const existing = blobUrlCache.get(url);
+        if (existing) {
+          setBlobUrl(existing);
+        } else {
+          const objectUrl = URL.createObjectURL(new Blob(chunks));
+          blobUrlCache.set(url, objectUrl);
+          setBlobUrl(objectUrl);
+        }
       } catch {
         if (!cancelled) setFetchFailed(true);
       }
@@ -161,7 +203,8 @@ function useStreamedImage(url: string | null | undefined) {
     return () => {
       cancelled = true;
       controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      // No revoke here: blobUrlCache owns the blob's lifetime so a shared blob
+      // is never pulled out from under the other pane on unmount/src-change.
     };
   }, [url]);
 
@@ -249,6 +292,17 @@ async function resolveAssetUrls(
 
     if (!full) return null;
     await thumbDone; // capture lowRes for the cache (usually already settled)
+    // Evict the previous (stale) entry's shared blob now that its URL is being
+    // rotated — at a re-mint neither pane still references the old URL, so this
+    // is the one safe moment to revoke it (cache-owned lifetime, see blobUrlCache).
+    const prev = assetUrlCache.get(path);
+    if (prev && prev.fullResUrl !== full) {
+      const staleBlob = blobUrlCache.get(prev.fullResUrl);
+      if (staleBlob) {
+        URL.revokeObjectURL(staleBlob);
+        blobUrlCache.delete(prev.fullResUrl);
+      }
+    }
     const entry: CachedAssetUrls = { lowResUrl: lowRes, fullResUrl: full, mintedAt: Date.now() };
     assetUrlCache.set(path, entry);
     return entry;
@@ -386,10 +440,24 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
       // thumbnailUrl here: keeping the previous frame visible until the new
       // one resolves avoids a black flash when hopping between rounds.
       setImgDimensions(null);
-      setFullResLoaded(false);
       if (selectedAsset.source === "dropbox" && selectedAsset.dropbox_path) {
-        fetchAssetUrls(selectedAsset.dropbox_path);
+        // Fast path: a decoded blob for this version is already in hand. Hand
+        // the blob: URL straight to the <img> and keep fullResLoaded TRUE — the
+        // image is immediately decodable, so the wing-logo loader must not flash
+        // and we skip the fetch/stream entirely. Only fall to the cold path
+        // (resetting fullResLoaded) when there is genuinely no usable blob yet.
+        const cached = getFreshCachedUrls(selectedAsset.dropbox_path);
+        const cachedBlob = cached ? blobUrlCache.get(cached.fullResUrl) : undefined;
+        if (cached && cachedBlob) {
+          setLowResUrl(cached.lowResUrl);
+          setThumbnailUrl(cachedBlob);
+          setFullResLoaded(true);
+        } else {
+          setFullResLoaded(false);
+          fetchAssetUrls(selectedAsset.dropbox_path);
+        }
       } else if (selectedAsset.source === "upload" && selectedAsset.storage_path) {
+        setFullResLoaded(false);
         const path = selectedAsset.storage_path.replace(/^\/+/, "");
         const { data } = supabase.storage
           .from("scene-assets")
@@ -1330,11 +1398,18 @@ export function Lightbox({
   // is visible underneath. Reset on src change so round-to-round swaps
   // re-trigger the fade.
   const [fullResLoaded, setFullResLoaded] = useState(false);
-  useEffect(() => { setFullResLoaded(false); }, [src]);
+  // Start READY when src is an in-memory blob: URL, or a blob is already cached
+  // for it — the bytes are decodable immediately, so the lightbox loader never
+  // runs for a cached version. Only a genuinely cold src starts false and shows
+  // the loader until <img> onLoad fires.
+  useEffect(() => {
+    setFullResLoaded(!!src && (src.startsWith("blob:") || blobUrlCache.has(src)));
+  }, [src]);
 
   // Byte-progress streaming for the full-res image, shared with the preview
-  // card (see useStreamedImage): blob: URL on success, direct-URL fallback on
-  // any fetch/CORS error so the lightbox never breaks.
+  // card (see useStreamedImage): a reused blob: URL when this version was
+  // already streamed (no re-fetch/re-decode), else a fresh stream; direct-URL
+  // fallback on any fetch/CORS error so the lightbox never breaks.
   const fullRes = useStreamedImage(src);
 
   // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
