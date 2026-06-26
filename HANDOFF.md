@@ -14,6 +14,67 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 26 June 2026 (scan-visuals fixed to ingest all versions; CP115/SC02/R01 reconciled via scan; branch pushed, NOT merged)
+
+Edge-function-only session. Identified why CP115/SC02/R01 showed only v04 in the client viewer (and previously SC01) — `dropbox-scan-visuals` was collapsing to the highest version per round and silently dropping the rest. Patched, deployed live, verified across SC02 + SC01 + a prod-wide safety sweep. Branch `fix/scan-all-versions` (`450d210`) pushed but NOT merged — awaiting Fred's sign-off per the stated stop.
+
+## Completed (function deployed live, source branch unmerged)
+
+- **Diagnosis.** Collapse lived at `dropbox-scan-visuals/index.ts:270–277` — a Map keyed by round_number kept only the highest-version `VisualFile` and dropped every other version before the ingest loop ever ran. Compounded by a separate `[-]VS\d*_` filename filter (line 258) that rejected the bare `CPxxx_SCxx_R0N_0V.jpg` form even though `parseFilename` would accept it. The downstream insert was hard-coded `is_current: true`, which is why the lone surviving row appeared at all. `folder_mappings` is still empty for CP115/SC02 (and project-wide for most scenes that weren't part of the SC01 reconciliation) — the **`dropbox-webhook` path silently drops file events** for any scene without a mapping, so the scan was the only ingest route for SC02.
+
+- **`fix/scan-all-versions` → `450d210`. One file changed: `supabase/functions/dropbox-scan-visuals/index.ts` (+81/-32). DEPLOYED live; download + grep verified deployed source matches branch.**
+  - Removed the highest-version collapse Map (the bug).
+  - Removed the `[-]VS\d*_` filename filter — VS_Visuals folder location is the gate; `parseFilename`'s trailing `_R{N}_{V}.{ext}` requirement is sufficient. Now accepts `CP115_SC02-VS_R01_03.jpg`, the documented `CP107-SC05-VS_R01_03.jpg`, AND the bare `CP115_SC02_R01_03.jpg` (previously rejected).
+  - Per-`round_id` ingest loop: builds `visualsByRoundId: Map<string, VisualFile[]>` from every parsed file; per round, loads existing assets once into `existingByPath`, inserts every Dropbox version not already in the DB. Idempotency lookup `(scene_round_id, dropbox_path)` preserved — same matching semantics, just batched (one SELECT per round instead of one per file).
+  - New inserts default `is_current = false`. **Existing rows never modified by the ingest loop** — any prior publish choice is preserved across re-scans.
+  - **No-current fallback** (per round): after inserts, if no row in the round has `is_current = true`, promote the highest-version row so the client viewer never sees a dark round. Fires only on a freshly ingested round or if every row was manually un-published — to hide a round, use round status, not `is_current`.
+  - Delivery branch (status→delivered, sibling review round upsert, `round_delivered` activity_log, `enqueueDeliveryNotification`) preserved verbatim — still gated by `!DELIVERED_STATES.includes(dbRound.status)`.
+  - Response shape preserved (one entry per round, highest version) so the admin Dropbox preview UI in `DropboxVisualsPanel` is unchanged.
+
+- **Verified live on the deployed function** (Fred's JWT minted via admin `generate_link` + OTP verify, then `/auth/v1/logout` → 204, all `/tmp/*` removed):
+  - **SC02** (round `8ab69d5f-…`): BEFORE 1 row (v04, is_current=true). AFTER 1st scan: 4 rows — v04 untouched (`f90079df…` `created_at 2026-06-25 15:50:21` preserved) + v01/v02/v03 inserted with is_current=false. AFTER 2nd scan: identical ids and created_at; no dupes. **Idempotent.**
+  - **SC01** (round `35288d32-…`, 4 rows from 24 Jun reconciliation): scan = no-op. All `created_at` from 2026-06-24, all `is_current=true` preserved.
+  - **Dropbox `get-temporary-link` round-trip** via deployed `dropbox-api` for all 4 SC02 versions: 4/4 = 200, `link` returned each time. Namespace persist still working.
+
+- **Pre-merge safety sweep across the whole prod DB** (read-only): zero `round_assets` rows created on any scene other than SC02 since deploy; zero existing rows had `is_current` or any other field flipped as a side effect (the fallback correctly skipped every round that already had an `is_current=true` asset); zero production rounds anywhere have assets-but-no-`is_current` (no "dark rounds" anywhere). Branch diff scope: ONLY `dropbox-scan-visuals/index.ts` — empty diff for everything else.
+
+- **Supabase Management-API token rotated again.** Working token in this session ends `…35241` (Fred pasted in-session). Both stored locations are stale: `~/.zshrc:3` carries `…c13d`, the `ss-portal-supabase` keychain entry carries `…99bd` — both return 401. The HANDOFF block from 25 June recorded `…fcf9`, also dead. **`scripts/sql.sh` only works in this session via inline `SUPABASE_ACCESS_TOKEN=sbp_…35241 ./scripts/sql.sh "…"`; otherwise it inherits a stale token from the parent shell env.**
+
+## Decisions made
+
+- **`is_current = false` for new ingests + no-current safety net** — chosen over auto-publishing the highest version, because (a) it matches the unmerged `feat/round-asset-publish-flag` model where admin picks what the client sees, and (b) the fallback guarantees a round is never dark on the client even on a fresh ingest.
+- **`-VS` filter dropped, not enforced on export.** The VS_Visuals folder location is the real gate; the trailing `_R{N}_{V}` regex is enough on its own. Avoids forcing a naming-convention change on Kieran's exports.
+- **Response shape preserved** (one entry per round, highest version) — admin Dropbox preview UI not in scope; the `round_assets` table is the source of truth for the viewer.
+- **Phase 2 manual insert for SC02 (planned earlier in the day) superseded by the scan fix.** The scan inserted v01-v03 with `is_current=false` (effectively Option A). If Option B (all is_current=true) is wanted, flip the 3 rows manually later or use the publish-flag UI when it merges.
+- **No merge to main** — per Fred's stated stop. Branch pushed and verified; merge gated on his go.
+
+## In progress / needs verification
+
+- **`fix/scan-all-versions` (`450d210`) — PUSHED, NOT merged.** Awaiting Fred's sign-off + `merge it`. On his go: `git checkout main && git merge --ff-only origin/fix/scan-all-versions && git push origin main`. No DB delta on merge (changes are code-only, function already deployed). Source on main will then reflect the live deployed function.
+- **Standing carry-overs (unchanged below):** `publish-flag` preview sign-off (URGENT) → Task #2–#5 chain; pin-delete own-only RLS migration (drafted, not applied); `render-viewer-perf` inline-image regression debug; viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`); round-status derivation product decision.
+
+## Open questions / things to watch
+
+- **`folder_mappings` is still empty for CP115/SC02** (and project-wide for most scenes that weren't part of the SC01 reconciliation). The scan path doesn't depend on it, but the **`dropbox-webhook` path still silently drops file events** for any scene without a mapping. Worth a sweep to insert scene-only `folder_mappings` rows for every `scenes` row with a `dropbox_folder` populated.
+- **`dropbox-webhook` still has the silent-fallback namespace pattern** (`dropbox-webhook/index.ts:282–297`) — same fault class as the 24 June `dropbox-api` fix. Folding the persisted-namespace pattern into the webhook is the obvious follow-up.
+- **Supabase Management-API token persistence** — the working `…35241` token needs to be written into `~/.zshrc:3` and into the `ss-portal-supabase` keychain entry, otherwise the same 401 blocker bites next session. (Even when zshrc is correct, the parent Claude process env can shadow it; the inline override is the reliable form during a running session.)
+- **SC02 v01-v03 are currently `is_current=false`** — client sees only v04. If Fred wants Option B (all visible), the flip is one `UPDATE round_assets SET is_current=true WHERE id IN (...)`.
+
+## Production state at session close
+
+- **Live commit on main:** unchanged code-wise from session start (`d2e48b2`). This closing commit only updates `HANDOFF.md`. Live frontend bundle: `index-BVF1ebQ0.js` (unchanged).
+- **Edge function `dropbox-scan-visuals` deployed live** with `fix/scan-all-versions` source (`450d210`) — verified by download + grep. Branch source not yet merged to main, so `main` and the live function diverge until merge.
+- **DB writes this session:** 3 `round_assets` inserts on SC02 (v01-v03, is_current=false) via the deployed scan. No other writes. No migrations.
+
+## Next step to resume from
+
+- **First — Fred reviews `fix/scan-all-versions`** on the deployed function (admin viewer + ghost-mode client view on SC02 — confirm v04 is still the only version the client sees; decide whether to leave v01-v03 unpublished or flip them via SQL/publish-flag UI). On his `merge it`: `git checkout main && git merge --ff-only origin/fix/scan-all-versions && git push origin main`. Function already deployed; merge is source-truth-on-main only.
+- **Then — persist the working `…35241` Supabase Management-API token** into `~/.zshrc:3` (replace stale `…c13d`) and the `ss-portal-supabase` keychain entry (replace stale `…99bd`). Otherwise the next session repeats today's 401 blocker on every read-only diagnostic query.
+- **Then — apply the same persisted-namespace pattern to `dropbox-webhook`** (`index.ts:282–297`) — same fault class as `dropbox-api` from 24 June; lower hit rate but same silent-fallback risk. Sweep `folder_mappings` for empty scenes in the same pass so the webhook can actually fire for them.
+- **Standing carry-overs (unchanged, still live below):** `publish-flag` preview sign-off (URGENT) → Task #2–#5 chain; pin-delete own-only RLS migration; `render-viewer-perf` inline-image regression debug; viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`); round-status derivation product decision.
+
+---
+
 # Session — 25 June 2026 (later — admin delivery-date editor + per-account pin colours/tooltip shipped; Management-API token fixed; round-status-derivation diagnosed)
 
 Two frontend-only features built, previewed, signed off, and merged to main; one diagnose-only investigation. Also fixed the stale Supabase Management-API token that had been blocking all live DB diagnosis. No migrations, no DB writes (only read-only diagnostic queries).
