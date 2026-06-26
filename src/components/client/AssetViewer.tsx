@@ -3342,6 +3342,11 @@ export function Lightbox({
                 ? "none"
                 : scale > MIN_SCALE
                 ? "grab"
+                : openPinId
+                ? // Pin chat open: clicking the image is a no-op (the chat
+                  // owns the interaction), so suppress the zoom-in lens —
+                  // it implies an action that isn't currently available.
+                  "default"
                 : "zoom-in",
             }}
           />
