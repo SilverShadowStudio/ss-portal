@@ -1530,41 +1530,76 @@ export function Lightbox({
   // fetch/CORS error so the lightbox never breaks.
   const fullRes = useStreamedImage(src);
 
-  // ── Opt-in OS-level fullscreen ───────────────────────────────────────────
-  // Auto-fullscreen on open was removed: it placed the top-right controls
-  // (top-5 right-5) inside the browser's fullscreen chrome-reveal zone, so
-  // moving the cursor up to the close X intermittently surfaced the
-  // browser's exit-fullscreen indicator and intercepted the click. The in-app
-  // fixed inset-0 z-[100] cover already gives a full-viewport experience;
-  // users who want the whole monitor can opt in via the toolbar toggle.
-  // The :fullscreen CSS rule still fires when toggled, forcing 100vw×100vh
-  // and clearing any transform residue for position:fixed descendants.
+  // ── OS-level fullscreen ──────────────────────────────────────────────────
+  // High-end CGI review wants the image on the whole monitor, so the lightbox
+  // auto-enters browser fullscreen on open (desktop only — mobile browsers
+  // are already ~fullscreen). The click that opened the lightbox is the user
+  // gesture, still active when this effect runs. Falls back silently to the
+  // in-app fixed overlay if the request is denied or unsupported. The
+  // click-intercept that auto-FS caused on the top-right controls is
+  // solved positionally (top-16 toolbar, below the browser chrome-reveal
+  // zone), not by removing auto-FS.
+  //
+  // Esc / OS-gesture exit of an auto-entered fullscreen also closes the
+  // lightbox — matches the original Escape UX. The opt-in toggle takes
+  // ownership of FS state when used: once the user toggles, subsequent
+  // FS exits no longer auto-close (so the toggle isn't equivalent to X).
   const [isFullscreen, setIsFullscreen] = useState(false);
   const supportsFullscreen =
     typeof document !== "undefined" &&
     typeof document.documentElement.requestFullscreen === "function";
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const autoCloseOnFsExitRef = useRef(false);
   useEffect(() => {
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 768px)").matches;
+
+    // Auto-enter fullscreen on the lightbox container itself so the
+    // :fullscreen CSS rule (.lightbox-fullscreen-target:fullscreen) fires and
+    // forces 100vw×100vh. Fullscreening document.documentElement instead
+    // caused Safari to shift the fixed inset-0 containing block in ways that
+    // left the image off-centre.
+    if (!isMobile && supportsFullscreen) {
+      const el = containerRef.current;
+      if (el) {
+        el.requestFullscreen()
+          .then(() => {
+            autoCloseOnFsExitRef.current = true;
+          })
+          .catch(() => {});
+      }
+    }
+
     const onFsChange = () => {
-      setIsFullscreen(
+      const fsNow =
         !!containerRef.current &&
-          document.fullscreenElement === containerRef.current
-      );
+        document.fullscreenElement === containerRef.current;
+      setIsFullscreen(fsNow);
+      // OS/Esc-initiated exit of an auto-entered FS closes the lightbox
+      // (original UX). Skipped after the user has touched the toggle, since
+      // the toggle clears autoCloseOnFsExitRef to take ownership of FS state.
+      if (!fsNow && autoCloseOnFsExitRef.current) {
+        autoCloseOnFsExitRef.current = false;
+        onCloseRef.current();
+      }
     };
     document.addEventListener("fullscreenchange", onFsChange);
     return () => {
       document.removeEventListener("fullscreenchange", onFsChange);
-      // If the lightbox is unmounting while still fullscreen (e.g. user
-      // clicked Close X without exiting first), release fullscreen so the
-      // page underneath isn't left in an inconsistent OS state.
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
     };
-  }, []);
+  }, [supportsFullscreen]);
   const toggleFullscreen = useCallback(() => {
     if (!supportsFullscreen) return;
     const el = containerRef.current;
     if (!el) return;
+    // Once the user opts in or out via the toggle, they own FS state — Esc
+    // should just exit FS without also closing the lightbox.
+    autoCloseOnFsExitRef.current = false;
     if (document.fullscreenElement === el) {
       document.exitFullscreen().catch(() => {});
     } else {
@@ -2507,7 +2542,10 @@ export function Lightbox({
     >
       {/* Top-right controls */}
       <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-      <div className="absolute top-5 right-5 z-30 flex items-center gap-1 rounded-full border border-white/10 bg-black/50 backdrop-blur-md px-2 py-1.5 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.75)]">
+      {/* top-16 (was top-5): keeps the bar below the browser's fullscreen
+          chrome-reveal zone (top ~64px) so the X / download / Review-Brief
+          aren't intercepted when the cursor approaches the top edge. */}
+      <div className="absolute top-16 right-5 z-30 flex items-center gap-1 rounded-full border border-white/10 bg-black/50 backdrop-blur-md px-2 py-1.5 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.75)]">
         {/* ───────────── Tools ───────────── */}
         {/* Pin tool */}
         <Tooltip>
@@ -3133,7 +3171,7 @@ export function Lightbox({
       {/* Zoom indicator — top-left, vertically aligned with top-right toolbar */}
       <div
         className={cn(
-          "pointer-events-none absolute top-5 left-5 z-30 flex h-9 items-center px-2 text-[11px] font-medium text-white transition-opacity font-sans tracking-wide",
+          "pointer-events-none absolute top-16 left-5 z-30 flex h-9 items-center px-2 text-[11px] font-medium text-white transition-opacity font-sans tracking-wide",
           scale > MIN_SCALE ? "opacity-60" : "opacity-25"
         )}
       >
@@ -3528,7 +3566,20 @@ export function Lightbox({
                       so the pin's scale()/transform never breaks placement and
                       there is no z-index/stacking race — it shows reliably on
                       hover AND keyboard focus. */}
-                  <TooltipProvider delayDuration={120} skipDelayDuration={0}>
+                  {/* disableHoverableContent: Radix's default mode dismisses
+                      a tooltip when the cursor leaves the trigger UNLESS it
+                      enters the content (grace period). With pointer-events
+                      :none on content (set below to prevent click-swallow),
+                      content-enter can never fire, so the tooltip flashes
+                      and closes the moment the cursor drifts off the small
+                      pin button. disableHoverableContent tells Radix the
+                      content is decorative — tooltip stays open exactly
+                      while the trigger is hovered, no grace required. */}
+                  <TooltipProvider
+                    delayDuration={120}
+                    skipDelayDuration={0}
+                    disableHoverableContent
+                  >
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
