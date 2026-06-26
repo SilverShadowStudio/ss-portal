@@ -14,6 +14,58 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 26 June 2026 (evening — webhook namespace+dedup fixes shipped; folder_mappings sweep; admin version-selector + multi-select publish; scene_token regex + toggle RPC applied to prod; editable delivery time)
+
+Large frontend + edge + DB session, all on the working Management-API token Fred pasted in-conversation (`sbp_1812…0319f` — verified 200, used inline with `scripts/sql.sh`). Closes the asymmetric-ingest gap (webhook now safe + all scenes mapped), ships the admin version-selector through to a multi-select "show to client" model, and makes the admin delivery editor time-aware. Five merges to main, two prod migrations applied (Fred-authorised), one data collapse + a publish/restore verification cycle. Live bundle now `index-C4dVbx5-.js`.
+
+## Completed (all merged to main + live unless noted)
+
+- **`dropbox-webhook` silent-namespace fallback fixed → merged `1b76ce1`, deployed live.** Adopted `dropbox-api`'s persisted-then-lazy pattern: read `app_settings.dropbox_root_namespace` first, call `get_current_account` only on cache miss, **fail closed** (log loud + `return` before `list_folder`/cursor advance) so a re-trigger retries instead of silently listing the empty personal namespace. Helpers replicated verbatim. Download+grep verified live == source. (Branch rebased onto the remote's intervening `fix/scan-all-versions` merge; clean, no conflict.)
+- **`dropbox-webhook` ingest dedup `is_current` hazard fixed → merged `1151352`, deployed live.** Dedup matched existing assets with `.eq(is_current,true)`, so after scan-all-versions left lower versions `is_current=false`, a re-event created duplicate rows + spurious `dropbox_file_received` logs. Now matches by file identity (`dropbox_file_id`, then `dropbox_path`+round) **regardless of is_current**, with `order(version desc).limit(1)` for multi-row safety; NULL-safe "unchanged" so scan-reconciled NULL-hash rows don't version-bump. Verified against live SC02 (old logic would have duplicated 3 of 4 files; new finds all 4).
+- **`folder_mappings` sweep — 40 scene-only rows inserted (total now 41).** Every active-project scene with a populated `dropbox_folder` is now mapped (scene-only form: `project_id NULL`, `scene_id` set, `dropbox_folder_path` = `dropbox_folder` verbatim). 4 NULL-folder placeholder stubs correctly skipped. Webhook no longer silently drops events for any real scene. CHECK satisfied for all 40; spot-checked 3.
+- **Admin version-selector + scene_token regex fix + multi-select → merged `8500bae` (branch `feat/admin-version-selector`).** Three stacked pieces:
+  - Admin (own session, `isAdmin && !isGhostModeActive()`) sees ALL versions in the strip with gold dots on shown ones; clients/ghost see only `is_current` as tabs.
+  - **`scene_token` regex migration `20260626000001` APPLIED to prod** (PG17 `SET EXPRESSION`, re-derives all rows): regex now accepts `[-_]` between project and scene code, so CP115's underscore filenames resolve to `SC01`/`SC02` instead of the full filename. 8 CP115 rows corrected, 126 unchanged; CP106 hyphenated sub-scene tokens (`SC01A`/`SC01B`) byte-identical. Replaced an earlier (rejected) group-by-`scene_round_id` migration that would have broken 15 CP106 multi-sub-scene rounds.
+  - **Multi-select model:** `is_current` is now a per-version "show to client" toggle — multiple versions can be shown at once. **`toggle_round_asset_visible(p_asset_id, p_visible)` RPC migration `20260626000002` APPLIED to prod** (additive; old `set_current_round_asset` left intact, dead but harmless). UI = per-version Show/Hide toggle + "Client sees v2, v4" summary; no-zero-shown guard shows a "No version published yet" placeholder (recommended over fall-back-to-highest). Verified at the data layer on CP115/SC02 (toggle 2 on → both shown; off → one) and CP106/SC01A (2 shown within sub-scene, SC01B untouched), all restored.
+  - **CP115/SC01/R01 collapsed** from 4 `is_current=true` (old-bug artifact) to v04 only via a single round-scoped UPDATE.
+- **Editable admin delivery TIME (default 11:00) → merged `f91e46d`, live (bundle `index-C4dVbx5-.js`).** Added a `type="time"` input beside the date in `TaskDetail`'s admin editor; `parseDateTimeInput` combines date+time into `end_date` (replaces hard-forced 11:00). `validateDeliveryDate` already compares full datetimes — unchanged. Display de-forced 11:00 in `TaskDetail` RoundTimelineCard + `Portfolio` "time left" countdown. 2 files only.
+
+## DB writes / prod changes this session
+
+- Migrations APPLIED to prod (Fred-authorised, per the hard rule): `20260626000001_scene_token_accept_underscore` (SET EXPRESSION, 8 rows re-derived), `20260626000002_toggle_round_asset_visible` (new RPC).
+- `folder_mappings`: +40 rows.
+- `round_assets` data: CP115/SC01/R01 collapsed to v04-only; CP115/SC02 + CP106/SC01A toggle-verification writes (all restored to captured baseline).
+- Edge functions redeployed: `dropbox-webhook` (twice — namespace, then dedup).
+
+## Decisions made
+
+- **Rejected group-by-`scene_round_id` RPC fix; fixed the `scene_token` regex instead** — the round-grouping approach would have un-published a sub-scene in 15 legitimate CP106 multi-sub-scene rounds. Root cause was the hyphen-only regex, not the grouping.
+- **`toggle_round_asset_visible` added new, `set_current_round_asset` left in place** — purely additive, smallest blast radius; confirmed no remaining caller (src/edge/DB).
+- **No-zero-shown → placeholder, not fall-back-to-highest** — never leak a version the admin deliberately withheld.
+
+## In progress / needs verification — OUTSTANDING
+
+- **CP115/SC02/R01 published-version choice DEFERRED — needs Fred's pick.** The `/stop`-style instruction to set SC02 arrived with the placeholder `[v04 / v02 / both — per Fred]` unfilled. Live state is **v02 only** (likely left from a preview publish-v02 test; it was v04 at a prior session close). I did NOT change live client-visible content on a guess. **Fred: say v04 / v02 (current) / both, and it's one `toggle_round_asset_visible` call.**
+
+## Open questions / things to watch
+
+- **Working token is in-session only.** `sbp_1812…0319f` works (200) but lives only in this conversation. `~/.zshrc:3` + the `ss-portal-supabase` keychain entry still carry stale tokens (401). Persist it next session or the read-only diagnostics blocker returns. (Supersedes the older `…35241` note below — different token, same unpersisted situation.)
+- **Local feature branches now merged** (`feat/admin-version-selector`, `feat/delivery-time-picker`) and `feat/webhook-*` are safe to delete at Fred's discretion.
+- Older carry-overs below partly superseded: the publish-flag/version-selector trajectory is now SHIPPED (multi-select). Genuinely still-open: pin-delete own-only RLS migration (drafted, not applied), `render-viewer-perf` inline-image regression, viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`), round-status derivation product decision.
+
+## Production state at session close
+
+- **Live commit on main:** `f91e46d`. **Live bundle:** `index-C4dVbx5-.js` (verified 200; flipped from `index-BVF1ebQ0.js` earlier this session). Edge functions `dropbox-webhook` redeployed (namespace + dedup); source == main verified.
+- Working tree clean, main level with origin at close (this HANDOFF commit excepted).
+
+## Next step to resume from
+
+- **First — Fred's CP115/SC02 version pick** (v04 / v02 / both) → one `toggle_round_asset_visible` call, confirm the client-visible set. Only explicit pending decision.
+- **Then — persist the working Management-API token** (`sbp_1812…0319f`) into `~/.zshrc:3` + the `ss-portal-supabase` keychain entry, replacing the stale 401 tokens.
+- **Then — genuinely-open carry-overs:** pin-delete own-only RLS migration (drafted, not applied) → `render-viewer-perf` inline-image regression → viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`) → round-status derivation product decision. (The publish-flag preview sign-off chain referenced in older blocks is now effectively closed by the shipped multi-select model.)
+
+---
+
 # Session — 26 June 2026 (later — fix/scan-all-versions merged to main; deployed source on-disk == main)
 
 Short follow-up to the earlier 26 June block. After Fred's pre-merge safety check came back clean (no collateral, no `is_current` flips, no dark rounds, only `dropbox-scan-visuals/index.ts` changed), merged `fix/scan-all-versions` (`450d210`) into main via merge commit `0539313` and pushed. Verified the live deployed function source matches `main` byte-for-byte. No DB writes, no function redeploy (function was already live from the earlier block).
