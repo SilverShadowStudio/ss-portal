@@ -2173,7 +2173,7 @@ export function Lightbox({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (openPinId) setOpenPinId(null);
+        if (openPinId) closeChatDeleteIfEmptyRef.current(openPinId);
         else onClose();
         return;
       }
@@ -2186,6 +2186,17 @@ export function Lightbox({
           target.tagName === "TEXTAREA" ||
           target.isContentEditable)
       ) {
+        return;
+      }
+      // Space-to-pan: scoped AFTER the textarea bail so typing space in the
+      // chat input still inserts a space. preventDefault stops a possible
+      // page scroll on Space if the viewport ever becomes scrollable.
+      if (e.key === " " || e.code === "Space") {
+        if (!spaceHeldRef.current) {
+          e.preventDefault();
+          spaceHeldRef.current = true;
+          setSpaceHeld(true);
+        }
         return;
       }
       const k = e.key.toLowerCase();
@@ -2231,8 +2242,20 @@ export function Lightbox({
         onClose();
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " " || e.code === "Space") {
+        if (spaceHeldRef.current) {
+          spaceHeldRef.current = false;
+          setSpaceHeld(false);
+        }
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [onClose, openPinId]);
 
   // Disable native page scroll while the lightbox is open.
@@ -2321,6 +2344,49 @@ export function Lightbox({
     [pins, openPinId, assetId, toast]
   );
 
+  // Close a pin chat from a "discard intent" path (click-outside, Esc, draw-
+  // mode-enter) and, if no committed messages exist for that pin, delete the
+  // pin row — the just-placed pin is discarded. Only attempts the delete when
+  // the user owns the pin (admin or original creator), so RLS won't reject
+  // and toast a misleading error for someone else's empty pin.
+  const closeChatDeleteIfEmpty = useCallback(
+    async (pinId: string) => {
+      setOpenPinId(null);
+      const pin = pins.find((p) => p.id === pinId);
+      if (!pin) return;
+      const ownsPin =
+        isAdmin || (!!userId && pin.created_by === userId && !pin.resolved_at);
+      if (!ownsPin) return;
+      const { count } = await supabase
+        .from("asset_pin_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("pin_id", pinId);
+      if ((count ?? 0) === 0) {
+        await deletePinById(pinId);
+      }
+    },
+    [pins, isAdmin, userId, deletePinById]
+  );
+  // Ref mirror so a stable identity can be read from effects/handlers without
+  // re-triggering them when `closeChatDeleteIfEmpty` re-creates.
+  const closeChatDeleteIfEmptyRef = useRef(closeChatDeleteIfEmpty);
+  closeChatDeleteIfEmptyRef.current = closeChatDeleteIfEmpty;
+
+  // Space-to-pan. Held → click-drag pans (overrides draw mode, allowed at any
+  // zoom). Released → back to normal. State drives cursor; ref drives handlers
+  // synchronously so a pointerdown sees the right value without a render.
+  const spaceHeldRef = useRef(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+
+  // Close the open pin chat (and discard if empty) when entering draw mode.
+  // Fires when either drawMode flips to true while a chat is open OR a chat
+  // is opened while drawMode is already on.
+  useEffect(() => {
+    if (drawMode && openPinId) {
+      closeChatDeleteIfEmptyRef.current(openPinId);
+    }
+  }, [drawMode, openPinId]);
+
   // Wheel handler. We attach it as a non-passive listener so we can preventDefault
   // (React's onWheel is passive by default in modern browsers).
   useEffect(() => {
@@ -2384,11 +2450,13 @@ export function Lightbox({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      // Pan only kicks in when zoomed; otherwise we leave click handling to
-      // the image (pin drop) and the backdrop (close).
+      // Pan kicks in when zoomed, OR when Space is held (Space-to-pan, allowed
+      // at any zoom and overrides draw mode — img onPointerDown bails on space
+      // so it doesn't stopPropagation our pan path). Otherwise we leave click
+      // handling to the image (pin drop) and the backdrop (close).
       didPan.current = false;
-      if (drawMode) return;
-      if (scaleRef.current <= MIN_SCALE) return;
+      if (drawMode && !spaceHeldRef.current) return;
+      if (!spaceHeldRef.current && scaleRef.current <= MIN_SCALE) return;
       // Don't intercept clicks on interactive elements (close button, pin
       // markers, toolbar buttons). preventDefault on pointerdown suppresses
       // the subsequent click event, making those controls unresponsive when
@@ -2464,10 +2532,16 @@ export function Lightbox({
   }, []);
 
   // Click on the backdrop (outside the image) closes — but only when not zoomed
-  // and not in the middle of a pan gesture.
+  // and not in the middle of a pan gesture. If a pin chat is open, ANY bubbled
+  // click reaching the container is a click-outside (chat / toolbar buttons /
+  // pin markers all stopPropagation), so close the chat instead of the lightbox.
   const onBackdropClick = (e: React.MouseEvent) => {
     if (didPan.current) return;
-    if (e.target === e.currentTarget && scale <= MIN_SCALE && !openPinId) {
+    if (openPinId) {
+      closeChatDeleteIfEmpty(openPinId);
+      return;
+    }
+    if (e.target === e.currentTarget && scale <= MIN_SCALE) {
       onClose();
     }
   };
@@ -2480,6 +2554,14 @@ export function Lightbox({
     if (drawMode) return;
     if (!annotateMode) return;
     if (ephemeral) return; // No DB-backed pins in ephemeral mode (no chat target).
+    // If a pin chat is already open, this click closes it instead of placing
+    // a new pin. Stop propagation so onBackdropClick doesn't also re-run the
+    // same close path (discarding the just-placed pin would double-fire).
+    if (openPinId) {
+      e.stopPropagation();
+      await closeChatDeleteIfEmpty(openPinId);
+      return;
+    }
     if (!assetId || !userId) return;
     const img = imgRef.current;
     if (!img) return;
@@ -2541,6 +2623,8 @@ export function Lightbox({
         // chat is open. See the img inline style below.
         cursor: isPanning
           ? "grabbing"
+          : spaceHeld
+          ? "grab"
           : scale > MIN_SCALE
           ? "grab"
           : "default",
@@ -3273,6 +3357,10 @@ export function Lightbox({
             onPointerDown={(e) => {
               if (isLocked) return;
               if (!drawMode) return;
+              // Space-to-pan: when Space is held during a drag, defer to the
+              // container's pan handler instead of starting a stroke. Don't
+              // stopPropagation — the container needs the event to start pan.
+              if (spaceHeldRef.current) return;
               e.stopPropagation();
               e.preventDefault();
               const img = imgRef.current;
@@ -3336,6 +3424,10 @@ export function Lightbox({
               // even if the pointer is still over the image.
               cursor: isPanning
                 ? "grabbing"
+                : spaceHeld
+                ? // Space held = pan affordance; overrides mode cursors so the
+                  // user sees they can drag-pan even in draw/annotate mode.
+                  "grab"
                 : drawMode && !openPinId
                 ? "crosshair"
                 : annotateMode && !openPinId
@@ -3691,7 +3783,7 @@ export function Lightbox({
           stays constant regardless of image zoom. mix-blend-mode: difference
           inverts the backdrop so it reads black on light areas and white on
           dark areas. No shadow. */}
-      {annotateMode && cursorPos && isOverImage && !openPinId && !isPanning && (
+      {annotateMode && cursorPos && isOverImage && !openPinId && !isPanning && !spaceHeld && (
         <BlendedCrosshair x={cursorPos.x} y={cursorPos.y} />
       )}
       {/* Confirm dialog for single-click erases when the safety toggle is
