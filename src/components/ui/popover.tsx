@@ -7,11 +7,19 @@ const Popover = PopoverPrimitive.Root;
 
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
+// `container` is an opt-in escape hatch (see alert-dialog.tsx for the why):
+// re-anchors the Radix Portal away from document.body, used by the lightbox so
+// the menu lands inside the browser-fullscreen subtree.
+type PopoverContentProps =
+  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+    container?: React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Portal>["container"];
+  };
+
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
+  PopoverContentProps
+>(({ className, align = "center", sideOffset = 4, container, ...props }, ref) => (
+  <PopoverPrimitive.Portal container={container}>
     <PopoverPrimitive.Content
       ref={ref}
       align={align}

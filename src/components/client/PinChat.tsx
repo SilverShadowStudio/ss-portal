@@ -51,6 +51,9 @@ interface PinChatProps {
   canResolve?: boolean;
   onDelete?: () => void | Promise<void>;
   canDelete?: boolean;
+  /** Re-anchor the delete-confirm AlertDialog portal to the lightbox /
+   *  fullscreen container; defaults to document.body via Radix if unset. */
+  portalContainer?: HTMLElement | null;
 }
 
 export function PinChat({
@@ -62,6 +65,7 @@ export function PinChat({
   canResolve,
   onDelete,
   canDelete,
+  portalContainer,
 }: PinChatProps) {
   const [messages, setMessages] = useState<PinMessage[]>([]);
   // Per-author initials + assigned colour (Manager gold, Invitee palette),
@@ -465,7 +469,7 @@ export function PinChat({
 
       {/* Custom delete confirmation */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent container={portalContainer ?? undefined}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this pin?</AlertDialogTitle>
             <AlertDialogDescription>

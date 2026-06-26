@@ -25,11 +25,21 @@ const AlertDialogOverlay = React.forwardRef<
 ));
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
+// `container` is an opt-in escape hatch: Radix Portal defaults to document.body,
+// which is OUTSIDE the browser-fullscreen subtree (the lightbox auto-enters
+// fullscreen on open). Passing a node inside the FS root re-anchors the portal
+// so the dialog renders inside the composited subtree. Unset = unchanged
+// (body) for every other call site in the app.
+type AlertDialogContentProps =
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> & {
+    container?: React.ComponentPropsWithoutRef<typeof AlertDialogPortal>["container"];
+  };
+
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <AlertDialogPortal>
+  AlertDialogContentProps
+>(({ className, container, ...props }, ref) => (
+  <AlertDialogPortal container={container}>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content
       ref={ref}
