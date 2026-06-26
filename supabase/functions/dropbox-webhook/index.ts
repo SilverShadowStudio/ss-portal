@@ -274,27 +274,33 @@ async function processChanges(
       });
     }
 
-    // Detect team namespace. Dropbox Business stores files in a team
-    // namespace; without Dropbox-API-Path-Root the initial root-recursive
-    // list_folder targets the user's empty personal home. Mirrors the fix
-    // applied to dropbox-api in commit 4bf5c53 and the existing pattern in
-    // dropbox-scan-visuals.
-    let rootNamespaceId: string | null = null;
-    try {
-      const accountRes = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (accountRes.ok) {
-        const accountData = await accountRes.json();
-        rootNamespaceId = accountData?.root_info?.root_namespace_id ?? null;
+    // Resolve team root_namespace_id with the persisted-then-lazy-populate
+    // pattern shipped in dropbox-api. Dropbox Business stores files in a team
+    // namespace; without Dropbox-API-Path-Root the root-recursive list_folder
+    // targets the user's empty personal home and silently "finds" 0 entries.
+    // Read the id from app_settings (key `dropbox_root_namespace`), only call
+    // get_current_account on a cache miss, then store it. FAIL CLOSED: if the
+    // namespace can't be resolved we abort the run loudly WITHOUT advancing the
+    // cursor or marking anything processed (this returns before list_folder and
+    // before the cursor update), so the next webhook trigger re-runs from the
+    // same cursor and can succeed once the namespace is resolvable again.
+    let rootNamespaceId = await readStoredNamespaceId(supabase);
+    if (!rootNamespaceId) {
+      rootNamespaceId = await fetchFreshNamespaceId(accessToken);
+      if (rootNamespaceId) {
+        await storeNamespaceId(supabase, rootNamespaceId);
       }
-    } catch (e) {
-      console.warn("[dropbox-webhook] namespace detection failed (non-fatal):", (e as Error).message);
     }
-    const pathRootHeader: Record<string, string> = rootNamespaceId
-      ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }) }
-      : {};
+    if (!rootNamespaceId) {
+      console.error(
+        "[dropbox-webhook] namespace unresolved — no stored value and get_current_account did not return one; aborting run without advancing cursor so a re-trigger can retry"
+      );
+      return;
+    }
+    console.log(`[dropbox-webhook] using root_namespace_id ${rootNamespaceId}`);
+    const pathRootHeader: Record<string, string> = {
+      "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", "namespace_id": rootNamespaceId }),
+    };
 
     // Get list of changes from Dropbox
     const listUrl = cursor
@@ -523,5 +529,52 @@ async function processChanges(
     }
   } catch (error) {
     console.error("Error processing changes:", error);
+  }
+}
+
+// app_settings key for the persisted team root_namespace_id. Mirrors the
+// helpers in dropbox-api (same key, same shape) so the two functions never
+// diverge. The team root namespace for a Dropbox Business workspace is stable
+// across token rotations and reconnects to the same team, so we cache it
+// indefinitely. If the team is ever migrated, manually delete this row to force
+// re-detection.
+const NS_SETTINGS_KEY = "dropbox_root_namespace";
+
+async function readStoredNamespaceId(supabase: any): Promise<string | null> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", NS_SETTINGS_KEY)
+    .maybeSingle();
+  const id = data?.value?.namespace_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+async function storeNamespaceId(supabase: any, namespaceId: string): Promise<void> {
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({
+      key: NS_SETTINGS_KEY,
+      value: { namespace_id: namespaceId, updated_at: new Date().toISOString() },
+    });
+  if (error) console.warn("[dropbox-webhook] storeNamespaceId upsert error:", error.message);
+}
+
+async function fetchFreshNamespaceId(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.warn("[dropbox-webhook] get_current_account non-OK:", res.status);
+      return null;
+    }
+    const data = await res.json();
+    const id = data?.root_info?.root_namespace_id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch (e) {
+    console.warn("[dropbox-webhook] get_current_account threw:", (e as Error).message);
+    return null;
   }
 }
