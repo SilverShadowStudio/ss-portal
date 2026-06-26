@@ -454,7 +454,7 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [imgDimensions, setImgDimensions] = useState<{ w: number; h: number } | null>(null);
   const { toast } = useToast();
-  const [publishing, setPublishing] = useState(false);
+  const [toggling, setToggling] = useState(false);
   // A real admin in their own session sees EVERY version + publish controls.
   // A real client — and an admin previewing as a client via ghost mode — sees
   // only the admin-published (is_current) version. The ghost guard guarantees a
@@ -475,20 +475,23 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     }
   }, [showAllVersions, selectedAsset, assets]);
 
-  // Admin publish control: set exactly one version as the client-visible one via
-  // the existing set_current_round_asset RPC (grouped by scene_round_id), then
-  // refetch so the strip dots + badge reflect the new published version.
-  async function publishAsset(assetId: string) {
-    setPublishing(true);
+  // Admin visibility toggle: flip ONE version's is_current (show/hide to client)
+  // without touching siblings, so multiple versions in a round / sub-scene can be
+  // shown at once. Refetch so the strip dots + summary reflect the new state.
+  async function toggleAssetVisible(assetId: string, visible: boolean) {
+    setToggling(true);
     // Cast: the RPC post-dates the generated supabase types. Signature is
-    // (p_asset_id uuid) returns void.
-    const { error } = await (supabase as any).rpc("set_current_round_asset", { p_asset_id: assetId });
-    setPublishing(false);
+    // (p_asset_id uuid, p_visible boolean) returns void.
+    const { error } = await (supabase as any).rpc("toggle_round_asset_visible", {
+      p_asset_id: assetId,
+      p_visible: visible,
+    });
+    setToggling(false);
     if (error) {
-      toast({ title: "Publish failed", description: error.message, variant: "destructive" });
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Published", description: "The client now sees this version." });
+    toast({ title: visible ? "Shown to client" : "Hidden from client" });
     await fetchAssets();
   }
 
@@ -850,6 +853,20 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
     );
   }
 
+  // No-zero-shown guard. Under multi-select an admin may have toggled every
+  // version off. A client (and an admin in ghost mode) then sees an explicit
+  // "not published yet" placeholder rather than leaking a hidden version —
+  // recommended over silently falling back to the highest, which would defeat
+  // the admin's deliberate choice to withhold. Real admins keep the full view
+  // so they can show versions.
+  if (!showAllVersions && !assets.some((a) => a.is_current)) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-8 text-center">
+        <p className="text-muted-foreground font-sans text-sm">No version published yet</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Tabs row — sibling-round picker on the left, view tabs + download on the right. */}
@@ -1045,9 +1062,10 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             </div>
           )}
 
-          {/* Version strip. Admins (own session) see EVERY version with a gold
-              dot on the published one; clients — and admins in ghost mode — see
-              only the published version(s). */}
+          {/* Version strip. Admins (own session) see EVERY version, each with a
+              gold dot when it is shown to the client (multiple may be lit under
+              the multi-select model); clients — and admins in ghost mode — see
+              only the shown (is_current) version(s) as switchable tabs. */}
           {(showAllVersions ? assets.length : assets.filter((a) => a.is_current).length) > 1 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-1">
               {(showAllVersions ? assets : assets.filter((a) => a.is_current))
@@ -1093,43 +1111,44 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             </div>
           )}
 
-          {/* Admin-only publish control + "client sees this" badge + a hint when
-              a newer version exists that hasn't been published. Scoped to the
-              selected version's publish group — (scene_round_id, scene_token) —
-              matching the set_current_round_asset RPC, so a round with multiple
-              sub-scenes (e.g. CP106 SC01A + SC01B) labels each independently
-              instead of bleeding one sub-scene's published version into another. */}
+          {/* Admin-only visibility control. is_current is a per-version
+              "show to client" toggle: MULTIPLE versions in a publish group —
+              (scene_round_id, scene_token) — can be shown at once. The summary
+              lists every shown version in the selected version's group; the
+              button shows/hides the selected one without touching the rest.
+              Sub-scenes (e.g. CP106 SC01A + SC01B) stay independent. */}
           {showAllVersions && selectedAsset && (() => {
             const tok = selectedAsset.scene_token ?? selectedAsset.filename;
             const group = assets.filter((a) => (a.scene_token ?? a.filename) === tok);
-            const published = group.find((a) => a.is_current) ?? null;
-            const maxV = group.reduce((m, a) => Math.max(m, a.version), 0);
-            const newerUnpublished = published != null && maxV > published.version;
+            const shown = group
+              .filter((a) => a.is_current)
+              .sort((a, b) => a.version - b.version);
+            const shownLabel = shown.length
+              ? `Client sees ${shown.map((a) => `v${a.version}`).join(", ")}`
+              : "Client sees nothing yet";
             return (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-[#161412] px-3 py-2 text-xs font-sans">
-                {selectedAsset.is_current ? (
-                  <span className="inline-flex items-center gap-1.5 text-gold">
-                    <span className="h-1.5 w-1.5 rounded-full bg-gold" />
-                    Client sees this version
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-muted-foreground">
-                      {published ? `Client currently sees v${published.version}` : "Nothing published yet"}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={publishing}
-                      onClick={() => publishAsset(selectedAsset.id)}
-                    >
-                      {publishing ? "Publishing…" : "Publish this version to client"}
-                    </Button>
-                  </>
-                )}
-                {newerUnpublished && (
-                  <span className="text-amber-400/80">Newer v{maxV} not yet published</span>
-                )}
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5",
+                    shown.length ? "text-gold" : "text-muted-foreground"
+                  )}
+                >
+                  {shown.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-gold" />}
+                  {shownLabel}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={toggling}
+                  onClick={() => toggleAssetVisible(selectedAsset.id, !selectedAsset.is_current)}
+                >
+                  {toggling
+                    ? "Saving…"
+                    : selectedAsset.is_current
+                      ? "Hide this version from client"
+                      : "Show this version to client"}
+                </Button>
               </div>
             );
           })()}
