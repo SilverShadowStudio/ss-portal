@@ -424,13 +424,24 @@ async function processChanges(
         continue;
       }
 
-      // Check if asset already exists — first by file ID, then by path (handles
-      // rows pre-inserted by DropboxVisualsPanel which uses path as surrogate ID).
+      // Check whether a row for THIS file already exists in the round —
+      // REGARDLESS of is_current. A hidden (is_current=false) lower version
+      // still counts as already-ingested and must NOT be re-inserted as a
+      // brand-new asset; filtering on is_current=true here (the prior bug)
+      // missed those rows and dropped through to the duplicate-insert branch
+      // below. scan-all-versions now leaves lower versions is_current=false,
+      // so without this every Dropbox event for such a file would create a
+      // duplicate round_assets row plus a spurious dropbox_file_received log.
+      // Match by Dropbox file id first, then by path within the round. Order by
+      // version desc + limit 1 so a prior content-bump (which leaves multiple
+      // rows sharing a file id / path) resolves to the latest deterministically
+      // rather than tripping maybeSingle()'s multiple-rows error.
       const { data: existingByFileId } = await supabase
         .from("round_assets")
         .select("id, content_hash, version")
         .eq("dropbox_file_id", entry.id)
-        .eq("is_current", true)
+        .order("version", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       const { data: existingByPath } = !existingByFileId
@@ -439,16 +450,25 @@ async function processChanges(
             .select("id, content_hash, version")
             .eq("dropbox_path", entry.path_lower)
             .eq("scene_round_id", sceneRoundId)
-            .eq("is_current", true)
+            .order("version", { ascending: false })
+            .limit(1)
             .maybeSingle()
         : { data: null };
 
       const existingAsset = existingByFileId ?? existingByPath;
 
       if (existingAsset) {
-        // Check if content changed
-        if (existingAsset.content_hash === entry.content_hash) {
-          console.log("File unchanged:", entry.name);
+        // Treat as a NEW version only when both hashes are known and differ. A
+        // NULL stored hash (legacy / scan-reconciled rows carry no content_hash)
+        // cannot prove a change, so default to "unchanged" — bumping a version
+        // off an unknown hash would re-create the very duplicate this fix
+        // prevents. Genuine webhook re-renders (both hashes present) still bump.
+        if (
+          !existingAsset.content_hash ||
+          !entry.content_hash ||
+          existingAsset.content_hash === entry.content_hash
+        ) {
+          console.log("File unchanged (already ingested):", entry.name);
         } else {
           // Mark old version as not current
           await supabase
