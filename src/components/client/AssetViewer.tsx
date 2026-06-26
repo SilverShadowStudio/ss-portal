@@ -2250,11 +2250,28 @@ export function Lightbox({
         }
       }
     };
+    // Safety nets: keyup can be missed if focus moves outside our document
+    // mid-pan (browser-chrome interaction, alt-tab, Radix portal mount, etc.)
+    // — without these, spaceHeld stays armed and click-drag keeps panning
+    // instead of drawing after the user releases Space.
+    const clearSpaceHeld = () => {
+      if (spaceHeldRef.current) {
+        spaceHeldRef.current = false;
+        setSpaceHeld(false);
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) clearSpaceHeld();
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", clearSpaceHeld);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", clearSpaceHeld);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [onClose, openPinId]);
 

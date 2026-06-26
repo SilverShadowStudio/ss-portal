@@ -80,7 +80,16 @@ export function PinChat({
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  // Autofocus the message input on mount so the user can type immediately
+  // when a chat opens (whether just-placed or opening an existing pin).
+  // The lightbox's space-to-pan keydown handler has a textarea bail at the
+  // top, so typing space here still inserts a space (doesn't arm pan).
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
 
   const fetchMessages = useCallback(async () => {
     const { data, error } = await supabase
@@ -443,6 +452,7 @@ export function PinChat({
             }}
           />
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
