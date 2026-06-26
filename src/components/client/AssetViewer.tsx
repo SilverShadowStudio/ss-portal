@@ -52,6 +52,10 @@ interface Asset {
   is_current: boolean;
   file_size: number | null;
   created_at: string;
+  // Generated stored column — the publish-group key (sub-scene within a round).
+  // Optional at the type level because supabase/types.ts isn't regenerated;
+  // present at runtime via fetchAssets' select("*").
+  scene_token?: string | null;
 }
 
 interface Comment {
@@ -1090,12 +1094,16 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
           )}
 
           {/* Admin-only publish control + "client sees this" badge + a hint when
-              a newer version exists that hasn't been published. Grouping is the
-              whole round (one scene per round = one publish group), matching the
-              set_current_round_asset RPC which now groups by scene_round_id. */}
+              a newer version exists that hasn't been published. Scoped to the
+              selected version's publish group — (scene_round_id, scene_token) —
+              matching the set_current_round_asset RPC, so a round with multiple
+              sub-scenes (e.g. CP106 SC01A + SC01B) labels each independently
+              instead of bleeding one sub-scene's published version into another. */}
           {showAllVersions && selectedAsset && (() => {
-            const published = assets.find((a) => a.is_current) ?? null;
-            const maxV = assets.reduce((m, a) => Math.max(m, a.version), 0);
+            const tok = selectedAsset.scene_token ?? selectedAsset.filename;
+            const group = assets.filter((a) => (a.scene_token ?? a.filename) === tok);
+            const published = group.find((a) => a.is_current) ?? null;
+            const maxV = group.reduce((m, a) => Math.max(m, a.version), 0);
             const newerUnpublished = published != null && maxV > published.version;
             return (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-[#161412] px-3 py-2 text-xs font-sans">
