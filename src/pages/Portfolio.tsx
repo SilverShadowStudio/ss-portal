@@ -1390,8 +1390,9 @@ export default function Portfolio() {
                   .sort((a, b) => b.round_number - a.round_number)[0];
                 const timeLeftLabel = (() => {
                   if (!productionRound?.end_date) return null;
+                  // Use the stored delivery datetime as-is (admins can set a
+                  // specific time; no longer forced to 11:00).
                   const due = new Date(productionRound.end_date);
-                  due.setHours(11, 0, 0, 0);
                   const ms = due.getTime() - Date.now();
                   if (ms <= 0) return "Due now";
                   const totalH = Math.floor(ms / 3_600_000);

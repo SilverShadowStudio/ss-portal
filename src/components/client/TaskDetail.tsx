@@ -105,13 +105,25 @@ function toDateInputValue(iso: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
-/** "yyyy-mm-dd" → local Date pinned to 11:00, matching the stored delivery
- *  convention (computeRoundSchedule delivery + the timeline's forced 11:00). */
-function parseDateInputAt11(value: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  d.setHours(11, 0, 0, 0);
+/** ISO timestamp → "HH:mm" in local time for an <input type="time">. Defaults
+ *  to "11:00" (the historical delivery convention) when there is no stored time. */
+function toTimeInputValue(iso: string | null): string {
+  if (!iso) return "11:00";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "11:00";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "yyyy-mm-dd" + "HH:mm" → local Date. The time defaults to 11:00 when not
+ *  supplied, preserving the prior delivery convention; a chosen time is honoured
+ *  exactly so the lead-time guard and display reflect it. */
+function parseDateTimeInput(dateValue: string, timeValue: string): Date | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  if (!dm) return null;
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(timeValue || "11:00");
+  const hh = tm ? Number(tm[1]) : 11;
+  const mm = tm ? Number(tm[2]) : 0;
+  const d = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), hh, mm, 0, 0);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -146,17 +158,19 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
   // parent re-fetch; the draft/error/saving fields drive the inline editor.
   const [endDateState, setEndDateState] = useState<string | null>(endDate);
   const [deliveryDraft, setDeliveryDraft] = useState<string>(toDateInputValue(endDate));
+  const [timeDraft, setTimeDraft] = useState<string>(toTimeInputValue(endDate));
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [savingDelivery, setSavingDelivery] = useState(false);
   useEffect(() => {
     setEndDateState(endDate);
     setDeliveryDraft(toDateInputValue(endDate));
+    setTimeDraft(toTimeInputValue(endDate));
     setDeliveryError(null);
   }, [endDate, roundId]);
 
   async function saveDeliveryDate() {
     setDeliveryError(null);
-    const parsed = parseDateInputAt11(deliveryDraft);
+    const parsed = parseDateTimeInput(deliveryDraft, timeDraft);
     if (!parsed) {
       setDeliveryError("Pick a valid delivery date.");
       return;
@@ -184,7 +198,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     await logActivity({
       action: "round_rescheduled",
       actorRole: "admin",
-      description: `Delivery date set to ${format(parsed, "d MMM yyyy")}`,
+      description: `Delivery set to ${format(parsed, "d MMM yyyy 'at' HH:mm")}`,
       entityType: "scene_round",
       entityId: roundId,
       roundId,
@@ -409,15 +423,15 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
     )
   ) : null;
 
-  // Admin-only delivery-date editor. Unlike the client RescheduleRoundModal
+  // Admin-only delivery date + time editor. Unlike the client RescheduleRoundModal
   // (locked to future Mondays + a +7-day floor), this lets an admin correct a
-  // round to ANY date that passes validateDeliveryDate — its purpose is fixing
-  // mistakes (e.g. a delivery stored before the request date). Stored at 11:00
-  // local to match the delivery convention used elsewhere.
+  // round to ANY datetime that passes validateDeliveryDate — its purpose is fixing
+  // mistakes (e.g. a delivery stored before the request date). The time defaults
+  // to 11:00 (the historical convention) but is fully editable.
   const adminDeliveryEditor = isAdmin && !isDraftRound ? (
     <div className="mt-8">
       <p className="text-[9px] font-sans uppercase tracking-[0.28em] text-foreground/40 mb-2">
-        Delivery date · Admin
+        Delivery date &amp; time · Admin
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -431,10 +445,25 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           className="h-9 px-3 bg-transparent border border-border/50 text-[12px] text-foreground font-sans focus:outline-none focus:border-foreground/40 disabled:opacity-50"
           style={{ borderRadius: 2, colorScheme: "dark" }}
         />
+        <input
+          type="time"
+          value={timeDraft}
+          onChange={(e) => {
+            setTimeDraft(e.target.value);
+            setDeliveryError(null);
+          }}
+          disabled={savingDelivery}
+          className="h-9 px-3 bg-transparent border border-border/50 text-[12px] text-foreground font-sans focus:outline-none focus:border-foreground/40 disabled:opacity-50"
+          style={{ borderRadius: 2, colorScheme: "dark" }}
+        />
         <button
           type="button"
           onClick={saveDeliveryDate}
-          disabled={savingDelivery || toDateInputValue(endDateState) === deliveryDraft}
+          disabled={
+            savingDelivery ||
+            (toDateInputValue(endDateState) === deliveryDraft &&
+              toTimeInputValue(endDateState) === timeDraft)
+          }
           className="h-9 px-4 text-[10px] font-sans uppercase tracking-[0.2em] border border-[var(--brand-gold)] bg-transparent text-gold transition-all disabled:opacity-25 disabled:cursor-not-allowed"
           style={{ borderRadius: 2 }}
         >
@@ -717,7 +746,7 @@ export function TaskDetail({ roundId, sceneId, projectId, projectName, sceneName
           <div className="h-px bg-[#2A2820] mb-4" />
           <RoundTimelineCard
             requestedAt={roundCreatedAt}
-            deliveryAt={endDateState ? (() => { const d = new Date(endDateState); d.setHours(11, 0, 0, 0); return d; })() : null}
+            deliveryAt={endDateState ? new Date(endDateState) : null}
           />
           {adminDeliveryEditor}
         </div>
