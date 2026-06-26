@@ -40,6 +40,7 @@ import { buildAssetDownloadName } from "@/lib/scenePhase";
 import { logActivity } from "@/lib/activityLog";
 import { toast as sonnerToast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
+import { isGhostModeActive } from "@/contexts/AuthContext";
 
 interface Asset {
   id: string;
@@ -449,10 +450,43 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [imgDimensions, setImgDimensions] = useState<{ w: number; h: number } | null>(null);
   const { toast } = useToast();
+  const [publishing, setPublishing] = useState(false);
+  // A real admin in their own session sees EVERY version + publish controls.
+  // A real client — and an admin previewing as a client via ghost mode — sees
+  // only the admin-published (is_current) version. The ghost guard guarantees a
+  // client vantage NEVER exposes hidden versions, even on the admin route.
+  const showAllVersions = isAdmin && !isGhostModeActive();
 
   useEffect(() => {
     fetchAssets();
   }, [sceneRoundId]);
+
+  // Never let a client's selection rest on an unpublished version (e.g. if the
+  // initial pick fell back to a hidden asset because nothing is_current, or the
+  // published version changed under them). Admins keep their free selection.
+  useEffect(() => {
+    if (showAllVersions) return;
+    if (selectedAsset && !selectedAsset.is_current) {
+      setSelectedAsset(assets.find((a) => a.is_current) ?? null);
+    }
+  }, [showAllVersions, selectedAsset, assets]);
+
+  // Admin publish control: set exactly one version as the client-visible one via
+  // the existing set_current_round_asset RPC (grouped by scene_round_id), then
+  // refetch so the strip dots + badge reflect the new published version.
+  async function publishAsset(assetId: string) {
+    setPublishing(true);
+    // Cast: the RPC post-dates the generated supabase types. Signature is
+    // (p_asset_id uuid) returns void.
+    const { error } = await (supabase as any).rpc("set_current_round_asset", { p_asset_id: assetId });
+    setPublishing(false);
+    if (error) {
+      toast({ title: "Publish failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Published", description: "The client now sees this version." });
+    await fetchAssets();
+  }
 
   useEffect(() => {
     if (selectedAsset) {
@@ -1007,14 +1041,16 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
             </div>
           )}
 
-          {/* Thumbnail strip when multiple current assets */}
-          {assets.filter((a) => a.is_current).length > 1 && (
+          {/* Version strip. Admins (own session) see EVERY version with a gold
+              dot on the published one; clients — and admins in ghost mode — see
+              only the published version(s). */}
+          {(showAllVersions ? assets.length : assets.filter((a) => a.is_current).length) > 1 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-1">
-              {assets
-                .filter((a) => a.is_current)
+              {(showAllVersions ? assets : assets.filter((a) => a.is_current))
                 // Explicit ascending sort by the integer version column —
                 // lowest version left, highest right — independent of the
                 // created_at insert order the rows arrive in.
+                .slice()
                 .sort((a, b) => a.version - b.version)
                 .map((asset) => (
                   <button
@@ -1028,18 +1064,67 @@ export function AssetViewer({ sceneRoundId, projectName, sceneName, roundNumber,
                         : "border-border text-muted-foreground hover:border-gold/50"
                     )}
                   >
-                    {/* Client/non-admin path shows a friendly version label
-                        derived from the version column; the admin path keeps
-                        the raw filename. */}
-                    {isAdmin
-                      ? asset.filename.length > 22
-                        ? asset.filename.slice(0, 19) + "…"
-                        : asset.filename
-                      : `Version ${String(asset.version).padStart(2, "0")}`}
+                    <span className="flex items-center gap-2">
+                      {/* Admin-only published indicator: gold dot = the version
+                          the client currently sees, dim dot = a hidden version. */}
+                      {showAllVersions && (
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 shrink-0 rounded-full",
+                            asset.is_current ? "bg-gold" : "bg-muted-foreground/30"
+                          )}
+                        />
+                      )}
+                      {/* Client/non-admin path shows a friendly version label
+                          derived from the version column; the admin path keeps
+                          the raw filename. */}
+                      {isAdmin
+                        ? asset.filename.length > 22
+                          ? asset.filename.slice(0, 19) + "…"
+                          : asset.filename
+                        : `Version ${String(asset.version).padStart(2, "0")}`}
+                    </span>
                   </button>
                 ))}
             </div>
           )}
+
+          {/* Admin-only publish control + "client sees this" badge + a hint when
+              a newer version exists that hasn't been published. Grouping is the
+              whole round (one scene per round = one publish group), matching the
+              set_current_round_asset RPC which now groups by scene_round_id. */}
+          {showAllVersions && selectedAsset && (() => {
+            const published = assets.find((a) => a.is_current) ?? null;
+            const maxV = assets.reduce((m, a) => Math.max(m, a.version), 0);
+            const newerUnpublished = published != null && maxV > published.version;
+            return (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-[#161412] px-3 py-2 text-xs font-sans">
+                {selectedAsset.is_current ? (
+                  <span className="inline-flex items-center gap-1.5 text-gold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+                    Client sees this version
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-muted-foreground">
+                      {published ? `Client currently sees v${published.version}` : "Nothing published yet"}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={publishing}
+                      onClick={() => publishAsset(selectedAsset.id)}
+                    >
+                      {publishing ? "Publishing…" : "Publish this version to client"}
+                    </Button>
+                  </>
+                )}
+                {newerUnpublished && (
+                  <span className="text-amber-400/80">Newer v{maxV} not yet published</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
