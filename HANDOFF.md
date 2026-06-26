@@ -14,6 +14,44 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 26 June 2026 (later — fix/scan-all-versions merged to main; deployed source on-disk == main)
+
+Short follow-up to the earlier 26 June block. After Fred's pre-merge safety check came back clean (no collateral, no `is_current` flips, no dark rounds, only `dropbox-scan-visuals/index.ts` changed), merged `fix/scan-all-versions` (`450d210`) into main via merge commit `0539313` and pushed. Verified the live deployed function source matches `main` byte-for-byte. No DB writes, no function redeploy (function was already live from the earlier block).
+
+## Completed
+
+- **`fix/scan-all-versions` (`450d210`) merged to main** via `--no-ff` merge commit **`0539313`** (`Merge fix/scan-all-versions: ingest all versions per round (450d210)`). Fast-forward wasn't possible because the closing HANDOFF commit (`6d93373`) had already moved main forward — merge commit preserves the `450d210` SHA Fred approved on main's lineage without rewriting it. Matches the repo's established pattern (`964b18e`, `45ab7c8`).
+- Merge diff scope (`6d93373..0539313`): only `supabase/functions/dropbox-scan-visuals/index.ts` (+81/-32). No other files touched.
+- `npx supabase functions download dropbox-scan-visuals` → `git diff -- supabase/functions/dropbox-scan-visuals/` empty. **Live deployed function source matches main byte-for-byte.**
+- Pushed `6d93373..0539313` to `origin/main`. Working tree clean; main level with origin (0 ahead / 0 behind) at session close (pre-this-block).
+
+## Decisions made
+
+- **`--no-ff` merge commit, not rebase.** Preserves the exact `450d210` SHA Fred approved in the pre-merge safety sweep on main's lineage. A rebase would have rewritten the SHA. Merge-commit shape matches `964b18e` / `45ab7c8` precedent.
+
+## In progress / needs verification
+
+- **Standing carry-overs (unchanged below):** publish-flag preview sign-off (URGENT) → Task #2–#5 chain; pin-delete own-only RLS migration (drafted, not applied); `render-viewer-perf` inline-image regression debug; viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`); round-status derivation product decision. Nothing new in flight from this closing turn.
+
+## Open questions / things to watch
+
+- **`fix/scan-all-versions` branch** still exists locally and at `origin/fix/scan-all-versions` (head `450d210`); safe to delete at Fred's discretion. The merge commit `0539313` is the durable anchor on main.
+- **Token persistence still pending.** Working Management-API token (`…35241`) is in-session only; `~/.zshrc:3` and the `ss-portal-supabase` keychain entry both still carry stale tokens that return 401.
+- Other items from the earlier 26 June block remain unchanged: `folder_mappings` sweep, `dropbox-webhook` namespace persistence, SC02 v01-v03 still `is_current=false` (client sees only v04).
+
+## Production state at session close
+
+- **Live commit on main:** `0539313` (merge of `450d210` + earlier HANDOFF `6d93373`). Live frontend bundle: `index-BVF1ebQ0.js` (unchanged). Edge function `dropbox-scan-visuals` deployed live + main source now in sync.
+- **DB writes in this turn:** none.
+
+## Next step to resume from
+
+- **First — persist the working `…35241` Supabase Management-API token** into `~/.zshrc:3` (replace stale `…c13d`) and the `ss-portal-supabase` keychain entry (replace stale `…99bd`). Otherwise the next session repeats the 401 blocker on every read-only diagnostic query.
+- **Then — `dropbox-webhook` namespace-persist + `folder_mappings` sweep.** Apply the same persisted-namespace pattern used in `dropbox-api` (24 June) to `dropbox-webhook` (`index.ts:282–297`), and insert scene-only `folder_mappings` rows for every scene with a `dropbox_folder` populated (CP115/SC02 included — webhook is silently dropping its events). Closes the last asymmetric ingest path; scan now ingests all versions but the webhook still doesn't.
+- **Then — Fred's earlier-stated trajectory:** `publish-flag` preview sign-off (URGENT) → Task #2–#5 chain → pin-delete own-only RLS migration → `render-viewer-perf` regression debug → viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`) → round-status derivation product decision.
+
+---
+
 # Session — 26 June 2026 (scan-visuals fixed to ingest all versions; CP115/SC02/R01 reconciled via scan; branch pushed, NOT merged)
 
 Edge-function-only session. Identified why CP115/SC02/R01 showed only v04 in the client viewer (and previously SC01) — `dropbox-scan-visuals` was collapsing to the highest version per round and silently dropping the rest. Patched, deployed live, verified across SC02 + SC01 + a prod-wide safety sweep. Branch `fix/scan-all-versions` (`450d210`) pushed but NOT merged — awaiting Fred's sign-off per the stated stop.
