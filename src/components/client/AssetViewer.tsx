@@ -2533,23 +2533,17 @@ export function Lightbox({
       aria-modal="true"
       aria-label="Full size image"
       style={{
-        cursor:
-          // While actively panning, always show the grab cursor (the
-          // pin-placement crosshair is hidden for the duration). Otherwise
-          // annotate / draw modes keep their target cursor over the image,
-          // even after zooming in — so the user never loses the crosshair the
-          // moment they magnify and can't place pins accurately.
-          isPanning
-            ? "grabbing"
-            : isOverImage && drawMode
-            ? "crosshair"
-            : isOverImage && annotateMode
-            ? "none"
-            : scale > MIN_SCALE
-            ? "grab"
-            : isOverImage
-            ? "zoom-in"
-            : "default",
+        // Container only handles GLOBAL cursor states (panning / zoomed).
+        // Mode-specific cursors (crosshair in drawMode, hidden in annotateMode
+        // for the BlendedCrosshair replacement) live on the <img> itself —
+        // putting cursor:none here would cascade to toolbar/chat/dialogs and
+        // leave the cursor invisible everywhere in the lightbox while a pin
+        // chat is open. See the img inline style below.
+        cursor: isPanning
+          ? "grabbing"
+          : scale > MIN_SCALE
+          ? "grab"
+          : "default",
       }}
     >
       {/* Top-right controls */}
@@ -3333,6 +3327,23 @@ export function Lightbox({
                   ? "absolute inset-0 m-auto opacity-0"
                   : "block opacity-0",
             )}
+            style={{
+              // Cursor is scoped to the img element so cursor:none in
+              // annotate mode never cascades to chat/toolbar/dialogs (the
+              // bug that left the cursor invisible everywhere once a pin
+              // chat opened). All conditions are also gated on !openPinId
+              // so the cursor reappears the moment a pin chat is open,
+              // even if the pointer is still over the image.
+              cursor: isPanning
+                ? "grabbing"
+                : drawMode && !openPinId
+                ? "crosshair"
+                : annotateMode && !openPinId
+                ? "none"
+                : scale > MIN_SCALE
+                ? "grab"
+                : "zoom-in",
+            }}
           />
 
           {/* Drawing overlay — fluo green strokes anchored to the image */}
