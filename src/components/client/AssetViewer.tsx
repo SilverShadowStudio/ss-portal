@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { createPortal } from "react-dom";
-import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare } from "lucide-react";
+import { Download, Check, Send, History, X, MousePointer2, Paperclip, ExternalLink, Pencil, Eraser, ImageDown, Undo2, Redo2, Scissors, Eye, EyeOff, ShieldQuestion, MessageSquare, Maximize2, Minimize2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import ssIcon from "@/assets/ss-icon.png";
 import { preloadImages } from "@/components/ui/SmartImage";
@@ -1530,41 +1530,47 @@ export function Lightbox({
   // fetch/CORS error so the lightbox never breaks.
   const fullRes = useStreamedImage(src);
 
-  // ── Monitor (OS-level) fullscreen on open ────────────────────────────────
-  // High-end CGI review wants the image on the whole monitor, not just the
-  // browser viewport. Request fullscreen on the lightbox container as it
-  // mounts — the click that opened the lightbox is the user gesture, still
-  // active when this effect runs. Desktop only (mobile browsers are already
-  // ~fullscreen). Falls back silently to the in-app fixed overlay if the
-  // request is denied or unsupported. Exiting fullscreen (Escape / OS
-  // gesture) also closes the lightbox, matching the existing Escape UX.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // ── Opt-in OS-level fullscreen ───────────────────────────────────────────
+  // Auto-fullscreen on open was removed: it placed the top-right controls
+  // (top-5 right-5) inside the browser's fullscreen chrome-reveal zone, so
+  // moving the cursor up to the close X intermittently surfaced the
+  // browser's exit-fullscreen indicator and intercepted the click. The in-app
+  // fixed inset-0 z-[100] cover already gives a full-viewport experience;
+  // users who want the whole monitor can opt in via the toolbar toggle.
+  // The :fullscreen CSS rule still fires when toggled, forcing 100vw×100vh
+  // and clearing any transform residue for position:fixed descendants.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const supportsFullscreen =
+    typeof document !== "undefined" &&
+    typeof document.documentElement.requestFullscreen === "function";
   useEffect(() => {
-    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-    if (isMobile || typeof document.documentElement.requestFullscreen !== "function") return;
-
-    // Fullscreen the lightbox container itself so the :fullscreen CSS rule
-    // (.lightbox-fullscreen-target:fullscreen) fires and forces 100vw×100vh.
-    // Fullscreening document.documentElement instead caused Safari to shift
-    // the fixed inset-0 containing block in ways that left the image off-centre
-    // (a large black void on the left, image pushed right). The :fullscreen rule
-    // also clears any residual transform so position:fixed children (crosshair)
-    // anchor against the true screen coordinates.
-    const el = containerRef.current;
-    if (!el) return;
-    let entered = false;
-    el.requestFullscreen().then(() => { entered = true; }).catch(() => {});
-
     const onFsChange = () => {
-      if (entered && !document.fullscreenElement) onCloseRef.current();
+      setIsFullscreen(
+        !!containerRef.current &&
+          document.fullscreenElement === containerRef.current
+      );
     };
     document.addEventListener("fullscreenchange", onFsChange);
     return () => {
       document.removeEventListener("fullscreenchange", onFsChange);
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      // If the lightbox is unmounting while still fullscreen (e.g. user
+      // clicked Close X without exiting first), release fullscreen so the
+      // page underneath isn't left in an inconsistent OS state.
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
     };
   }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (!supportsFullscreen) return;
+    const el = containerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      el.requestFullscreen().catch(() => {});
+    }
+  }, [supportsFullscreen]);
   const didPan = useRef(false);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
     null
@@ -3063,6 +3069,36 @@ export function Lightbox({
           </Tooltip>
         )}
 
+        {/* Fullscreen toggle (opt-in). Auto-fullscreen was removed because the
+            top-right controls sat in the browser's chrome-reveal zone; users
+            who want the whole monitor can request it deliberately. */}
+        {supportsFullscreen && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFullscreen();
+                }}
+                className="rounded-full bg-white/10 p-2 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="end"
+              collisionPadding={12}
+              avoidCollisions
+              className="font-sans text-xs"
+            >
+              {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Close */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -3527,7 +3563,14 @@ export function Lightbox({
                           />
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="top" sideOffset={6} className="z-[120]">
+                      <TooltipContent
+                        side="top"
+                        sideOffset={6}
+                        // pointer-events-none so a tooltip overlapping the
+                        // toolbar (pin near the top edge, hovered) can't
+                        // swallow clicks meant for the close X / download.
+                        className="z-[120] pointer-events-none"
+                      >
                         {pinNames[p.created_by] ?? "Member"}
                       </TooltipContent>
                     </Tooltip>
