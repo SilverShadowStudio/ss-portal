@@ -14,6 +14,67 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 3 July 2026 (lightbox click-intercept saga: intermittent-click diagnosis → auto-FS-off shipped → portal-in-FS rework on new branch, 5 commits ready for sign-off + merge)
+
+Frontend-only session, one file cluster (lightbox/AssetViewer + PinChat + two forked shadcn wrappers). Diagnosed the long-standing "top-right lightbox controls sometimes don't click" intermittent report, shipped a narrow first fix (**merged to main**), then reworked the whole approach on a new branch after Fred asked to preserve auto-fullscreen. New branch is preview-verified end-to-end but **NOT merged** — Fred's explicit "STOP for sign-off" gate at each turn was honoured. No DB writes, no edge deploys, no migrations.
+
+## Completed — merged to main + live
+
+- **`fix/lightbox-fullscreen-controls` (`b608e69`) → ff-merged to main, live.** Live bundle flipped `index-C4dVbx5-.js` → **`index-CVr9l1bG.js`** (still current at session close). Single file (`AssetViewer.tsx`), +72/−29. Removed the auto-`requestFullscreen()` on lightbox open, added a `Maximize2`/`Minimize2` opt-in toggle button in the toolbar; added `pointer-events: none` on the pin author `TooltipContent` so a tooltip overlapping the toolbar can't swallow clicks. Diagnosis had identified the FS **chrome-reveal band** at the screen top as the intermittent interceptor; removing auto-FS removed the trigger.
+
+## Completed — on `fix/lightbox-portals-in-fs`, PUSHED, NOT merged (awaiting Fred's sign-off)
+
+**Branch context:** after `b608e69` shipped, Fred asked to restore auto-fullscreen (the CGI-review UX) and solve the click-intercept positionally instead. First rework attempt (`711db37` on branch `fix/lightbox-fullscreen-controls`) added `top-16` reposition + auto-FS restore + `disableHoverableContent` — but **regressed** (toolbar + pin-DELETE dead in FS, chat typing + pin placement worked). Re-diagnosis identified **Radix portals rendering to `document.body`, OUTSIDE the browser-FS subtree** as the true cause: Popover/AlertDialog content became invisible + unclickable in FS. New branch `fix/lightbox-portals-in-fs` was cut **off `b608e69`** (NOT off the broken 711db37) and now carries five commits, each preview-verified by Fred at the point it landed:
+
+- **`d047b37` — portals routed into FS subtree + auto-FS restored + toolbar top-24.** Forked `src/components/ui/alert-dialog.tsx` and `src/components/ui/popover.tsx` to accept an optional `container` prop forwarded to Radix's `Portal` (default unchanged for every other call site in the app — non-breaking). AssetViewer sets up a state-backed mirror of `containerRef` via a ref callback + `useState` (so portals resolve to the actual node after first render, not `null`). Passed `container={containerEl}` to: eye/visibility Popover, both `AlertDialog`s in AssetViewer (erase + pin delete), and forwarded down to `PinChat`'s delete-confirm dialog AND `NextRoundCTA`'s request-round dialog. Auto-FS restored with `autoCloseOnFsExitRef` decoupling — Esc/OS-exit of auto-entered FS closes lightbox (original UX), but once the toggle button is used, it clears the flag so toggle-out doesn't equal Close X. Toolbar bumped `top-5` → `top-24` (96 px) to clear the ~70–110 px macOS/Chrome FS chrome-reveal band; zoom indicator moved symmetrically. `disableHoverableContent` added on the pin-author TooltipProvider so Radix doesn't dismiss the tooltip when the `pointer-events: none` content can't fire the hover-grace enter event.
+- **`f9d0719` — cursor scoped to img element.** After d047b37 the container's `cursor: none` (in `isOverImage && annotateMode`) cascaded to every descendant. Once a pin chat opened, the BlendedCrosshair (gated on `!openPinId`) stopped rendering but the container's `cursor: none` did not — invisible cursor everywhere. Moved cursor logic off the container onto the `<img>` element only; container keeps global states (`grabbing` / `grab` / `default`). Chat/toolbar/dialogs now inherit browser default, textarea shows caret.
+- **`8ef5a23` — default cursor over image while chat open.** Cosmetic follow-up: added `openPinId → "default"` branch after `scale > MIN_SCALE → "grab"` so a zoomed pan still shows grab, and the zoom-in lens is suppressed only when clicking-the-image is no-op (chat owns interaction).
+- **`c90ac40` — click-outside closes chat + empty-pin discard + space-to-pan.** New `closeChatDeleteIfEmpty(pinId)` helper: closes chat, queries `asset_pin_messages` count, calls existing `deletePinById` if zero — gated on user ownership (isAdmin ‖ userId === pin.created_by && !resolved_at) so RLS won't error-toast someone else's empty pin. Uses the user-auth `supabase` client, not service role (confirmed). Wired to `handleImageClick` (top bail + `e.stopPropagation()`), `onBackdropClick` (any bubbled click reaching container while chat open is click-outside), Esc key, AND a `useEffect([drawMode, openPinId])` that closes the chat when entering draw mode (covers both toolbar Draw button and the `d` shortcut without touching either). Space-to-pan: `spaceHeldRef` + `spaceHeld` state, set in the keydown handler **after** the existing textarea/input bail (so typing space in the chat still types a space). Container `onPointerDown` allows pan when space is held at any zoom AND overrides the drawMode bail; img `onPointerDown` bails on space so it doesn't `stopPropagation` the container's pan path. Cursor shows grab on both container + img while space held; BlendedCrosshair suppressed to avoid a double cursor.
+- **`aa0e89c` — space-release safety nets + PinChat autofocus.** Diagnosed post-c90ac40 stuck-in-pan-after-space-release: state clearing was correct in code; the actual failure was that `window.keyup` for Space was **missed** whenever focus moved outside the document mid-pan (pointer-capture, alt-tab, Radix portal mount briefly stealing focus). Added `window` `blur` + `document` `visibilitychange` listeners that clear `spaceHeld`/`spaceHeldRef` — a missed keyup can't survive the round-trip back to the window. Second fix: PinChat now autofocuses its textarea on mount (`useEffect([])` + `textareaRef`), so the user can type immediately when a chat opens; the keydown handler's textarea bail already short-circuits before the space-pan branch, so this doesn't compromise space-to-pan.
+
+**Branch state at close:** 5 commits on `origin/fix/lightbox-portals-in-fs` (tip `aa0e89c`), all preview-verified by Fred at the point each landed. 4 files touched in aggregate: `AssetViewer.tsx`, `PinChat.tsx`, `ui/alert-dialog.tsx`, `ui/popover.tsx`. `npm run build` green at every commit. Working tree clean on main after switching back for HANDOFF.
+
+**Also on origin (abandoned):** `fix/lightbox-fullscreen-controls` — carries `b608e69` (merged) + `711db37` (the failed top-16 attempt that regressed). Safe to delete at Fred's discretion; `b608e69` lives on main independently.
+
+## DB writes / prod changes this session
+
+- **None.** No DB writes, no migrations, no edge functions redeployed. Only frontend + one merge to main.
+
+## Decisions made
+
+- **Merged the narrow first fix (`b608e69`) before the rework.** The opt-in-FS + tooltip-pointer-events change was orthogonal to the auto-FS-vs-portal-container question and independently correct; shipping it means the ORIGINAL intermittent-click bug is already off prod, regardless of when Fred signs off on the rework branch.
+- **New branch off `b608e69`, NOT off `711db37`.** After 711db37 regressed, cutting a fresh branch off the last-known-good base and hand-picking only auto-FS + `disableHoverableContent` was cleaner than reverting a broken tip. `fix/lightbox-fullscreen-controls` is now abandoned.
+- **Forked shadcn wrappers with an OPT-IN `container` prop, not rebuilt Portal at call sites.** Adds a backdoor to the UI components that defaults to Radix's `body` behaviour when unset — non-breaking for every other Popover/AlertDialog in the app. Only the lightbox call sites pass `container={containerEl}`.
+- **Toolbar `top-24` (96 px), not `top-16` (which regressed in 711db37).** Diagnosis put the macOS/Chrome FS chrome-reveal band at 70–110 px; 96 px clears typical setups. Flagged in the commit message that a deeper chrome setup (persistent bookmark bar, other browser) may still touch top-24 — bump to `top-28`/`top-32` if Fred reports interception after merge.
+- **Empty-pin discard gated on ownership, uses `deletePinById` (user-auth client, RLS-enforced).** Not service role. Won't error-toast for someone else's empty pin.
+- **Marker delete X badge on top-of-letterboxed-image edge case flagged, NOT fixed.** Geometry-coupled to the bulb; only bites for pins near the top of letterboxed images. Flagged for follow-up if Fred sees it in practice.
+
+## In progress / needs verification — OUTSTANDING
+
+- **`fix/lightbox-portals-in-fs` — Fred sign-off + merge decision.** The full manual test plan from `aa0e89c`'s summary is the resume prompt: place-pin autofocus, empty-pin discard on outside-click / Esc / draw-mode, Space-to-pan in draw mode + release recovers, chat typing still inserts spaces. On Fred's `merge it`: this is a linear chain off main, so `git checkout main && git merge --ff-only origin/fix/lightbox-portals-in-fs && git push origin main`. No DB delta on merge (all frontend).
+- **CP115/SC02/R01 published-version choice DEFERRED — needs Fred's pick.** Carried forward unchanged from the 26 June session: live state is **v02 only** (likely leftover from a preview publish-v02 test; it was v04 at a prior close). Fred: say v04 / v02 (current) / both, and it's one `toggle_round_asset_visible` call. NOT touched this session.
+
+## Open questions / things to watch
+
+- **Working Supabase Management-API token (`sbp_1812…0319f`) still in-session-only.** `~/.zshrc:3` + the `ss-portal-supabase` keychain entry still carry stale 401 tokens. Not persisted this session (no DB diagnostics were needed). Persist next session or the read-only diagnostics blocker returns.
+- **`fix/lightbox-fullscreen-controls` branch (with the broken `711db37` on top) still on origin.** Safe to delete at Fred's discretion; the good commit `b608e69` is on main.
+- **Genuinely-open older carry-overs, unchanged this session:** pin-delete own-only RLS migration (drafted, not applied) — note this became partly relevant to the empty-pin-discard flow but the discard uses ownership-gated user-auth delete, so the RLS tightening is still a separate work item. `render-viewer-perf` inline-image regression. Viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`). Round-status derivation product decision.
+
+## Production state at session close
+
+- **Live commit on main:** `b608e69`. **Live bundle:** `index-CVr9l1bG.js` (verified 200). Edge functions unchanged. DB unchanged.
+- Working tree clean; main level with origin at close (this HANDOFF commit excepted).
+
+## Next step to resume from
+
+- **First — Fred's sign-off + merge of `fix/lightbox-portals-in-fs`** (tip `aa0e89c`). This is the top of the queue: 5 commits ready, all preview-verified, ff-mergeable off main. Full test plan is documented in the branch's last commit body. On Fred's `merge it`: `git checkout main && git merge --ff-only origin/fix/lightbox-portals-in-fs && git push origin main`. New live bundle expected; capture the hash post-Vercel-deploy.
+- **Then — Fred's CP115/SC02/R01 version pick** (v04 / v02 (current) / both). One `toggle_round_asset_visible` call once he picks. Same deferred item since 26 June.
+- **Then — clean-up decisions:** delete `fix/lightbox-fullscreen-controls` from origin (broken tip `711db37`, good commit `b608e69` already on main).
+- **Then — persist the working `sbp_1812…0319f` Supabase Management-API token** into `~/.zshrc:3` + the `ss-portal-supabase` keychain entry, replacing the stale 401 tokens.
+- **Then — genuinely-open carry-overs:** pin-delete own-only RLS migration → `render-viewer-perf` inline-image regression → viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`) → round-status derivation product decision.
+
+---
+
 # Session — 26 June 2026 (evening — webhook namespace+dedup fixes shipped; folder_mappings sweep; admin version-selector + multi-select publish; scene_token regex + toggle RPC applied to prod; editable delivery time)
 
 Large frontend + edge + DB session, all on the working Management-API token Fred pasted in-conversation (`sbp_1812…0319f` — verified 200, used inline with `scripts/sql.sh`). Closes the asymmetric-ingest gap (webhook now safe + all scenes mapped), ships the admin version-selector through to a multi-select "show to client" model, and makes the admin delivery editor time-aware. Five merges to main, two prod migrations applied (Fred-authorised), one data collapse + a publish/restore verification cycle. Live bundle now `index-C4dVbx5-.js`.
