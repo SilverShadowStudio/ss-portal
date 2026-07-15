@@ -14,6 +14,62 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 15 July 2026 (read-only client_code uniqueness diagnostic; invoice-generator client + bank picker feature request queued, not started)
+
+Short read-only session. Answered a definitive "can two clients share a client code" question from the applied schema; received a new admin-invoices-generator feature request (real-client dropdown + bank-account picker) and stopped before touching code. No writes, no code changes, no migrations, no edge deploys, no branch created.
+
+## Completed — read-only
+
+- **`accounts.client_code` uniqueness confirmed from schema.** Table `public.accounts`, column `client_code TEXT` (nullable, no `NOT NULL`, no default). Uniqueness enforced by partial unique index in migration `20260513000001_client_codes.sql:5-7`:
+  ```sql
+  CREATE UNIQUE INDEX IF NOT EXISTS accounts_client_code_unique_idx
+    ON public.accounts(client_code)
+    WHERE client_code IS NOT NULL;
+  ```
+  **Definitive answer:** two accounts CANNOT share the same non-null `client_code` — the partial index rejects it at insert/update time. Multiple accounts CAN share `NULL` (partial index deliberately excludes nulls; quotation numbering only fires when a code is present).
+- **Live duplicate check + null-count NOT run** — Management-API token blocker unresolved. `~/.zshrc:3` = `sbp_…fc13d` (401), keychain `ss-portal-supabase` = `sbp_…99bd` (401); the working `sbp_1812…0319f` from 3 July was never persisted and isn't recoverable. Structural guarantee (partial unique index) means `GROUP BY client_code HAVING count > 1 AND client_code IS NOT NULL` is provably empty as long as the index is intact. Actual `NULL` count needs a fresh token to answer.
+
+## New feature request received (NOT started this session)
+
+- **Admin invoice generator — wire real-client dropdown + bank-account picker.** At `/admin/invoices` → Generator tab, the "Select a client…" dropdown currently doesn't populate the form. Fred wants it to (a) list real accounts in memory (from `accounts` table) and (b) autofill Client Name / Address / Contact / Project / Invoice Number on selection. Same pattern for the bank block on the right: the current single hardcoded option (Revolut / 04-00-75 / 75 91 35 42 / REVO GB21 / GB91 REVO 0099 6974 0692 71) should become a picker; other bank accounts to be added.
+- **Not investigated yet:** which file holds the generator page (candidates: `public/generator/index.html` per CLAUDE.md standalone generator section, or `src/pages/admin/AdminInvoices.tsx`'s Generator tab per CLAUDE.md admin structure) — needs a quick look at start of next session to disambiguate. Where bank accounts should be sourced from is an open question (new `app_settings` key vs a new small table vs hardcoded array); no schema decision made.
+- **Session stopped at /stop before code touched.** No branch, no commit, no changes to any generator file this session.
+
+## DB writes / prod changes this session
+
+- **None.** Read-only diagnostic queries only (all failed 401 at the API layer; schema answer came from the migration file, not the live DB).
+
+## Decisions made
+
+- **Reported client-code uniqueness as `NO — cannot collide` on structural grounds** rather than blocking on token to run the live GROUP BY. Migration is timestamped `20260513000001`, well before the latest applied per prior HANDOFFs (`20260626000002`), so it is definitely live; the schema answer is authoritative.
+- **Did not start the invoice-generator work** despite the request arriving before the `/stop` — /stop takes precedence, and starting a real client-dropdown + bank-picker without first identifying whether the target is `public/generator/*.html` (static, standalone, no Supabase client) or `src/pages/admin/AdminInvoices.tsx` (React, has session) would have been guesswork. The two paths have very different data-fetch stories.
+
+## In progress / needs verification — carried forward unchanged from 3 July
+
+- **`fix/lightbox-portals-in-fs` — Fred sign-off + merge decision.** Tip `aa0e89c`, 5 commits on `origin/fix/lightbox-portals-in-fs`, all preview-verified at the point each landed. Cut off `b608e69` (which is on main). Restores auto-fullscreen + routes Radix portals into the FS subtree via forked `ui/alert-dialog.tsx` + `ui/popover.tsx` (opt-in `container` prop, non-breaking for every other call site). Toolbar `top-24`, cursor scoped to `<img>`, click-outside closes chat + empty-pin discard, Space-to-pan with blur/visibilitychange safety nets, PinChat autofocus. `npm run build` green at every commit. Full manual test plan in `aa0e89c`'s commit body. On `merge it`: ff-mergeable off main → `git checkout main && git merge --ff-only origin/fix/lightbox-portals-in-fs && git push origin main`. Frontend-only, no DB delta.
+- **CP115/SC02/R01 published-version choice DEFERRED — needs Fred's pick.** Live state is **v02 only** (likely leftover from a preview publish-v02 test; was v04 at a prior close). Fred: say v04 / v02 (current) / both, one `toggle_round_asset_visible` call.
+
+## Open questions / things to watch
+
+- **Working Supabase Management-API token still in-session-only from 3 July** (`sbp_1812…0319f` — verified 200 that day but never written to disk). `~/.zshrc:3` + `ss-portal-supabase` keychain both still 401. Persist next session or the read-only diagnostics blocker keeps biting (it bit again this session on the duplicate check).
+- **`fix/lightbox-fullscreen-controls` branch (with broken `711db37` on top) still on origin.** Safe to delete at Fred's discretion; good commit `b608e69` is on main.
+- **Genuinely-open older carry-overs, unchanged this session:** pin-delete own-only RLS migration (drafted, not applied). `render-viewer-perf` inline-image regression. Viewer-branch merge decisions (`feat/admin-version-tab-labels`, `feat/cached-blob-reuse`). Round-status derivation product decision.
+
+## Production state at session close
+
+- **Live commit on main:** `85e2bb6` (this session's HANDOFF commit will move it forward by one; no code change). **Live bundle:** `index-CVr9l1bG.js` (unchanged since 3 July). Edge functions unchanged. DB unchanged.
+- Working tree clean pre-HANDOFF; `deno.lock` + `design-refs/` still untracked (pre-existing, unchanged).
+
+## Next step to resume from
+
+- **First — invoice-generator client + bank picker (top of queue: new stated Fred priority).** Start by identifying the target file: check `src/pages/admin/AdminInvoices.tsx` Generator-tab render vs `public/generator/index.html` — the URL is `/admin/invoices` so the React path is far more likely (static generator would live at `/generator/*`). Then: (a) client dropdown → query `accounts` (`company_name`, `address_line_1`, `city`, `postcode`, `country`, `contact_first_name` + `contact_last_name`, `client_code`) and autofill the six client-block fields on selection; keep manual edit as fallback; (b) bank picker — decide sourcing (recommend a small `app_settings` key `bank_accounts` = jsonb array of `{name, sort_code, account_number, swift, iban}`, seeded with the current Revolut record so nothing regresses on first load; new bank accounts editable via a small admin surface later). Do NOT touch the two paid-invoice pipelines (`create-invoice-checkout`, `stripe-webhook`) — this is generator-only.
+- **Then — Fred's sign-off + merge of `fix/lightbox-portals-in-fs`** (tip `aa0e89c`). Ready to merge whenever Fred green-lights; full test plan in the branch's last commit body.
+- **Then — Fred's CP115/SC02/R01 version pick** (v04 / v02 (current) / both). One `toggle_round_asset_visible` call.
+- **Then — clean-up:** delete `fix/lightbox-fullscreen-controls` from origin; persist the working `sbp_1812…0319f` token into `~/.zshrc:3` + `ss-portal-supabase` keychain (both still 401).
+- **Then — genuinely-open carry-overs:** pin-delete own-only RLS migration → `render-viewer-perf` inline-image regression → viewer-branch merge decisions → round-status derivation product decision.
+
+---
+
 # Session — 3 July 2026 (lightbox click-intercept saga: intermittent-click diagnosis → auto-FS-off shipped → portal-in-FS rework on new branch, 5 commits ready for sign-off + merge)
 
 Frontend-only session, one file cluster (lightbox/AssetViewer + PinChat + two forked shadcn wrappers). Diagnosed the long-standing "top-right lightbox controls sometimes don't click" intermittent report, shipped a narrow first fix (**merged to main**), then reworked the whole approach on a new branch after Fred asked to preserve auto-fullscreen. New branch is preview-verified end-to-end but **NOT merged** — Fred's explicit "STOP for sign-off" gate at each turn was honoured. No DB writes, no edge deploys, no migrations.
