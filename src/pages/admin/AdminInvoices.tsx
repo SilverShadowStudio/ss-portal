@@ -126,14 +126,17 @@ export default function AdminInvoices() {
     async function fetchGenAccounts() {
       const { data, error } = await supabase
         .from("accounts")
-        .select("id, company_name, building_number, street_name, postcode, city, country, registration_number, account_members(profiles(first_name, last_name))")
+        .select("id, company_name, building_number, street_name, postcode, city, country, registration_number, profiles(first_name, last_name)")
         .order("company_name");
-      if (error || !data) return;
+      if (error || !data) {
+        console.error("[AdminInvoices] fetchGenAccounts failed:", error);
+        return;
+      }
       setGenAccounts(
         (data as any[]).map((a) => {
-          const profile = a.account_members?.[0]?.profiles;
+          const profile = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
           const contact_name = profile
-            ? [profile.first_name, profile.last_name].filter(Boolean).join(" ")
+            ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") || null
             : null;
           return {
             id: a.id,
