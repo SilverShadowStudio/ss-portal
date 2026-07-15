@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     var params = new URLSearchParams(window.location.search);
-    ['client', 'address', 'contact'].forEach(function (key) {
+    ['client', 'address', 'contact', 'bank', 'sortCode', 'accountNumber', 'swift', 'iban'].forEach(function (key) {
         var val = params.get(key);
         if (val) {
             var el = document.getElementById(key);

@@ -4,13 +4,35 @@ interface AccountForGenerator {
   id: string;
   company_name: string | null;
   building_number: string | null;
-  street: string | null;
+  street_name: string | null;
   postcode: string | null;
   city: string | null;
   country: string | null;
   registration_number: string | null;
   contact_name: string | null;
 }
+
+interface BankAccount {
+  id: string;
+  label: string;
+  bankName: string;
+  sortCode: string;
+  accountNumber: string;
+  swift: string;
+  iban: string;
+}
+
+const BANK_ACCOUNTS: BankAccount[] = [
+  {
+    id: "revolut",
+    label: "Revolut",
+    bankName: "REVOLUT",
+    sortCode: "04 - 00 - 75",
+    accountNumber: "75 91 35 42",
+    swift: "REVO GB21",
+    iban: "GB91 REVO 0099 6974 0692 71",
+  },
+];
 import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -70,6 +92,7 @@ export default function AdminInvoices() {
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
   const [genAccountId, setGenAccountId] = useState<string>("");
+  const [genBankId, setGenBankId] = useState<string>(BANK_ACCOUNTS[0].id);
   const [genDesign, setGenDesign] = useState<"2027" | "classic">("2027");
   const { toast } = useToast();
 
@@ -103,7 +126,7 @@ export default function AdminInvoices() {
     async function fetchGenAccounts() {
       const { data, error } = await supabase
         .from("accounts")
-        .select("id, company_name, building_number, street, postcode, city, country, registration_number, account_members(profiles(first_name, last_name))")
+        .select("id, company_name, building_number, street_name, postcode, city, country, registration_number, account_members(profiles(first_name, last_name))")
         .order("company_name");
       if (error || !data) return;
       setGenAccounts(
@@ -116,7 +139,7 @@ export default function AdminInvoices() {
             id: a.id,
             company_name: a.company_name,
             building_number: a.building_number,
-            street: a.street,
+            street_name: a.street_name,
             postcode: a.postcode,
             city: a.city,
             country: a.country,
@@ -135,13 +158,19 @@ export default function AdminInvoices() {
     const acc = genAccounts.find((a) => a.id === genAccountId);
     if (acc) {
       if (acc.company_name) params.set("client", acc.company_name);
-      const addressParts = [acc.building_number, acc.street, acc.postcode, acc.city, acc.country].filter(Boolean);
+      const addressParts = [acc.building_number, acc.street_name, acc.postcode, acc.city, acc.country].filter(Boolean);
       if (addressParts.length) params.set("address", addressParts.join(", "));
       if (acc.contact_name) params.set("contact", acc.contact_name);
       if (acc.registration_number) params.set("registration", acc.registration_number);
     }
+    const bank = BANK_ACCOUNTS.find((b) => b.id === genBankId) ?? BANK_ACCOUNTS[0];
+    params.set("bank", bank.bankName);
+    params.set("sortCode", bank.sortCode);
+    params.set("accountNumber", bank.accountNumber);
+    params.set("swift", bank.swift);
+    params.set("iban", bank.iban);
     return `/generator/index.html?${params.toString()}`;
-  }, [genAccountId, genAccounts, genDesign]);
+  }, [genAccountId, genAccounts, genBankId, genDesign]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -451,6 +480,16 @@ export default function AdminInvoices() {
               <SelectContent>
                 {genAccounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>{a.company_name || a.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={genBankId} onValueChange={setGenBankId}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select a bank…" />
+              </SelectTrigger>
+              <SelectContent>
+                {BANK_ACCOUNTS.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
