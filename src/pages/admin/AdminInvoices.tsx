@@ -127,6 +127,7 @@ export default function AdminInvoices() {
       const { data, error } = await supabase
         .from("accounts")
         .select("id, company_name, building_number, street_name, postcode, city, country, registration_number, profiles(first_name, last_name)")
+        .in("account_type", ["partnership", "project"])
         .order("company_name");
       if (error || !data) {
         console.error("[AdminInvoices] fetchGenAccounts failed:", error);
