@@ -2,18 +2,39 @@ import { formatCurrency, type Quarter } from "@/lib/finance";
 
 interface FinanceSummaryProps {
   moneyOut: { outstanding: number; paidThisQuarter: number; totalThisQuarter: number };
+  payables: {
+    outstanding: number;
+    paidThisQuarter: number;
+    totalThisQuarter: number;
+    partialCount: number;
+  };
   moneyIn: { outstanding: number; paidThisQuarter: number };
   vat: { netEstimate: number };
   currentQuarter: Quarter;
 }
 
-export function FinanceSummary({ moneyOut, moneyIn, vat, currentQuarter }: FinanceSummaryProps) {
+export function FinanceSummary({
+  moneyOut,
+  payables,
+  moneyIn,
+  vat,
+  currentQuarter,
+}: FinanceSummaryProps) {
   return (
-    <div className="mb-10 grid grid-cols-3 gap-8 border-y border-divider py-6">
+    <div className="mb-10 grid grid-cols-2 xl:grid-cols-4 gap-6 border-y border-divider py-6">
       <Panel title="Money out">
         <Row label="Outstanding" value={formatCurrency(moneyOut.outstanding)} />
         <Row label={`Paid ${currentQuarter.label}`} value={formatCurrency(moneyOut.paidThisQuarter)} />
         <Row label={`Total ${currentQuarter.label}`} value={formatCurrency(moneyOut.totalThisQuarter)} />
+      </Panel>
+      <Panel title="Payables">
+        <Row label="Outstanding" value={formatCurrency(payables.outstanding)} />
+        <Row label={`Paid ${currentQuarter.label}`} value={formatCurrency(payables.paidThisQuarter)} />
+        <Row label={`Total ${currentQuarter.label}`} value={formatCurrency(payables.totalThisQuarter)} />
+        <p className="mt-2 text-[10px] uppercase tracking-[0.24em] text-gold-muted">
+          Not part of your VAT return
+          {payables.partialCount > 0 && ` · ${payables.partialCount} partial`}
+        </p>
       </Panel>
       <Panel title="Money in">
         <Row label="Outstanding" value={formatCurrency(moneyIn.outstanding)} />

@@ -145,6 +145,108 @@ export function dateInQuarter(dateStr: string | null | undefined, quarter: Quart
   return d >= quarter.start && d <= quarter.end;
 }
 
+// ---- Payables (Kieran's Airtable, read-only mirror) ---------------------
+// Payables live in a completely separate DB table (payables_snapshot) with
+// its own admin RLS. They are NEVER summed into computeQuarterVat's input
+// VAT — payables are excluded from cash-basis VAT by design.
+
+export type PayableSource =
+  | "modeller_invoices"
+  | "scene_manager_invoice"
+  | "photographer_invoice"
+  | "partner_studios_monthly"
+  | "partner_studios_contract";
+
+export const PAYABLE_SOURCE_ORDER: PayableSource[] = [
+  "modeller_invoices",
+  "scene_manager_invoice",
+  "photographer_invoice",
+  "partner_studios_monthly",
+  "partner_studios_contract",
+];
+
+export const PAYABLE_SOURCE_LABELS: Record<PayableSource, string> = {
+  modeller_invoices: "Modeller",
+  scene_manager_invoice: "Scene Manager",
+  photographer_invoice: "Photographer",
+  partner_studios_monthly: "Partner Studios (Monthly)",
+  partner_studios_contract: "Partner Studios (Contract)",
+};
+
+// The two Partner Studios tables have no month/year fields — the mirror
+// stores Date Created in period_date. Callers surface this as an
+// approximation ("≈ created") so it isn't read as a real invoice date.
+export const APPROX_PERIOD_SOURCES: ReadonlySet<PayableSource> = new Set([
+  "partner_studios_contract",
+]);
+
+export type PayablePaidStatus = "paid" | "unpaid" | "partial" | "unknown";
+
+export interface Payable {
+  airtable_record_id: string;
+  source_table: PayableSource;
+  payee_airtable_user_id: string | null;
+  payee_name: string | null;
+  payee_email: string | null;
+  invoice_total: number;
+  amount_paid: number | null;
+  balance_remaining: number | null;
+  period_date: string | null;
+  period_year: number | null;
+  period_month: number | null;
+  paid_status: PayablePaidStatus;
+  payment_stage: string | null;
+  invoice_number: string | null;
+  vat_registered: boolean;
+  raw: unknown;
+  synced_at: string;
+  updated_at: string;
+}
+
+// Outstanding math per Pass 1 comment on payables_snapshot.balance_remaining:
+//   COALESCE(balance_remaining, CASE WHEN paid_status='paid' THEN 0 ELSE invoice_total END)
+// Never invoice_total for a partially-paid freelancer — that would
+// overstate what is owed.
+export function outstandingFor(row: Payable): number {
+  if (row.balance_remaining != null) return Number(row.balance_remaining) || 0;
+  if (row.paid_status === "paid") return 0;
+  return Number(row.invoice_total) || 0;
+}
+
+export function payablePeriodDate(row: Payable): string | null {
+  if (row.period_date) return row.period_date;
+  if (row.period_year && row.period_month) {
+    return `${row.period_year}-${String(row.period_month).padStart(2, "0")}-01`;
+  }
+  return null;
+}
+
+export interface QuarterPayables {
+  outstanding: number; // outstanding across ALL rows regardless of period
+  paidThisQuarter: number; // invoice_total for paid rows whose period ∈ quarter
+  totalThisQuarter: number; // invoice_total for rows whose period ∈ quarter
+  partialCount: number; // number of rows currently in 'partial' state
+}
+
+export function computeQuarterPayables(
+  rows: Payable[],
+  quarter: Quarter,
+): QuarterPayables {
+  const outstanding = rows.reduce((s, r) => s + outstandingFor(r), 0);
+  const rowsThisQ = rows.filter((r) =>
+    dateInQuarter(payablePeriodDate(r), quarter),
+  );
+  const totalThisQuarter = rowsThisQ.reduce(
+    (s, r) => s + Number(r.invoice_total ?? 0),
+    0,
+  );
+  const paidThisQuarter = rowsThisQ
+    .filter((r) => r.paid_status === "paid")
+    .reduce((s, r) => s + Number(r.invoice_total ?? 0), 0);
+  const partialCount = rows.filter((r) => r.paid_status === "partial").length;
+  return { outstanding, paidThisQuarter, totalThisQuarter, partialCount };
+}
+
 // UK VAT return + payment deadline: 1 month + 7 days after the quarter end.
 // Q1 (Jan-Mar) → 7 May, Q2 (Apr-Jun) → 7 Aug, Q3 (Jul-Sep) → 7 Nov, Q4 (Oct-Dec) → 7 Feb.
 export function getHmrcDeadline(quarter: Quarter): Date {
