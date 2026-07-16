@@ -248,7 +248,7 @@ export function OverheadForm({
                 <SelectTrigger className="rounded-sm">
                   <SelectValue placeholder="Choose…" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   {categories
                     .filter((c) => c.active)
                     .map((c) => (
@@ -290,7 +290,7 @@ export function OverheadForm({
                 <SelectTrigger className="rounded-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[200]">
                   {VAT_TREATMENT_ORDER.map((t) => (
                     <SelectItem key={t} value={t}>
                       {VAT_TREATMENT_LABELS[t]}
