@@ -153,12 +153,13 @@ export function generateAgreementPdfV3(
   writePartyLine(doc.cover.studio);
   writeMetaLabel("Client", { afterGap: 4 });
   writePartyLine(doc.cover.client);
+  // Agreement Version is internal compliance metadata — hidden from the
+  // cover and rendered in the document footer instead (matches the
+  // on-screen acceptance gate). See the footer block below.
   writeMetaLabel("Effective Date", { afterGap: 4 });
   writeBody(doc.cover.effectiveDate, { afterGap: 4 });
   writeMetaLabel("Engagement Model", { afterGap: 4 });
-  writeBody(doc.cover.engagementModel, { afterGap: 4 });
-  writeMetaLabel("Agreement Version", { afterGap: 4 });
-  writeBody(doc.version, { afterGap: 10 });
+  writeBody(doc.cover.engagementModel, { afterGap: 10 });
 
   ensureSpace(10);
   pdf.setDrawColor(muted[0], muted[1], muted[2]);
@@ -168,35 +169,109 @@ export function generateAgreementPdfV3(
   writeBody(doc.cover.footer, { italic: true, size: 9.5, rgb: muted, afterGap: 4 });
 
   // ── Notice block ─────────────────────────────────────────────────────────
-  ensureSpace(20);
-  y += 8;
-  pdf.setDrawColor(gold[0], gold[1], gold[2]);
-  pdf.setLineWidth(0.25);
-  pdf.line(marginX, y, pageWidth - marginX, y);
-  y += 6;
-  writeMetaLabel(doc.notice.heading, { afterGap: 5 });
-  writeBody(doc.notice.intro, { afterGap: 4 });
-  for (const item of doc.notice.items) {
-    ensureSpace(7);
+  // Cream-tinted background matching the on-screen acceptance gate. Filled
+  // rect drawn first (so text renders on top), bracketed by the existing
+  // gold rules above and below.
+  {
+    const tint = hexToRgb("#E5DFD4");
+    const padMM = 8; // ≈24px at 72dpi
+    const textX = marginX + padMM;
+    const textWidth = contentWidth - padMM * 2;
+    const lineGapMM = 6.5;
+    const itemGapMM = 6;
+
+    // Pre-compute block height so the fill rectangle can be sized before
+    // text is drawn. splitTextToSize is deterministic for a given font +
+    // size + width, so the line counts here match the render pass below.
+    const heightMM = (() => {
+      let h = padMM;
+      h += 6; // eyebrow heading row
+      pdf.setFontSize(10.5);
+      pdf.setFont(bodyFont, "normal");
+      const introLines = pdf.splitTextToSize(doc.notice.intro, textWidth) as string[];
+      h += introLines.length * lineGapMM + 4;
+      for (const item of doc.notice.items) {
+        pdf.setFontSize(10.5);
+        pdf.setFont(bodyFont, "bold");
+        const labelW = pdf.getTextWidth(`Clause ${item.clauseRef} —`) + 2;
+        pdf.setFont(bodyFont, "normal");
+        const lines = pdf.splitTextToSize(item.text, textWidth - labelW) as string[];
+        h += Math.max(lines.length, 1) * itemGapMM;
+      }
+      h += 4;
+      pdf.setFontSize(10.5);
+      pdf.setFont(bodyFont, "normal");
+      const closingLines = pdf.splitTextToSize(doc.notice.closing, textWidth) as string[];
+      h += closingLines.length * lineGapMM;
+      h += padMM;
+      return h;
+    })();
+
+    ensureSpace(heightMM + 8);
+    y += 8;
+
+    // Top gold rule
+    pdf.setDrawColor(gold[0], gold[1], gold[2]);
+    pdf.setLineWidth(0.25);
+    pdf.line(marginX, y, pageWidth - marginX, y);
+
+    // Tint fill — drawn first so text appears on top.
+    pdf.setFillColor(tint[0], tint[1], tint[2]);
+    pdf.rect(marginX, y, contentWidth, heightMM, "F");
+
+    // Render content inside the tint.
+    let ny = y + padMM;
+    // Heading (tracked eyebrow)
+    pdf.setFontSize(7.5);
+    pdf.setFont(metaFont, "normal");
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text(doc.notice.heading.toUpperCase().split("").join(" "), textX, ny);
+    ny += 6;
+
+    // Intro
     pdf.setFontSize(10.5);
-    pdf.setFont(bodyFont, "bold");
-    pdf.setTextColor(gold[0], gold[1], gold[2]);
-    const label = `Clause ${item.clauseRef} —`;
-    pdf.text(label, marginX, y);
-    const labelWidth = pdf.getTextWidth(label) + 2;
     pdf.setFont(bodyFont, "normal");
     pdf.setTextColor(ink[0], ink[1], ink[2]);
-    const lines = pdf.splitTextToSize(item.text, contentWidth - labelWidth);
-    for (let i = 0; i < lines.length; i++) {
-      pdf.text(lines[i], marginX + labelWidth, y + i * 6);
+    const introLines = pdf.splitTextToSize(doc.notice.intro, textWidth) as string[];
+    for (const line of introLines) {
+      pdf.text(line, textX, ny);
+      ny += lineGapMM;
     }
-    y += Math.max(lines.length, 1) * 6;
+    ny += 4;
+
+    // Items
+    for (const item of doc.notice.items) {
+      pdf.setFontSize(10.5);
+      pdf.setFont(bodyFont, "bold");
+      pdf.setTextColor(gold[0], gold[1], gold[2]);
+      const label = `Clause ${item.clauseRef} —`;
+      pdf.text(label, textX, ny);
+      const labelW = pdf.getTextWidth(label) + 2;
+      pdf.setFont(bodyFont, "normal");
+      pdf.setTextColor(ink[0], ink[1], ink[2]);
+      const lines = pdf.splitTextToSize(item.text, textWidth - labelW) as string[];
+      for (let i = 0; i < lines.length; i++) {
+        pdf.text(lines[i], textX + labelW, ny + i * itemGapMM);
+      }
+      ny += Math.max(lines.length, 1) * itemGapMM;
+    }
+    ny += 4;
+
+    // Closing
+    pdf.setFontSize(10.5);
+    pdf.setFont(bodyFont, "normal");
+    pdf.setTextColor(ink[0], ink[1], ink[2]);
+    const closingLines = pdf.splitTextToSize(doc.notice.closing, textWidth) as string[];
+    for (const line of closingLines) {
+      pdf.text(line, textX, ny);
+      ny += lineGapMM;
+    }
+
+    // Advance master y past the tint and draw the bottom gold rule.
+    y += heightMM;
+    pdf.line(marginX, y, pageWidth - marginX, y);
+    y += 4;
   }
-  y += 4;
-  writeBody(doc.notice.closing, { afterGap: 4 });
-  ensureSpace(4);
-  pdf.line(marginX, y, pageWidth - marginX, y);
-  y += 4;
 
   // ── Clauses ──────────────────────────────────────────────────────────────
   for (const clause of doc.clauses) {
