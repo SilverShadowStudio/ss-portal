@@ -93,6 +93,18 @@ function toNumber(v: unknown): number | null {
   return null;
 }
 
+// Constant-time equality on two strings' UTF-8 bytes. Returns false if
+// lengths differ; otherwise scans every byte with XOR-accumulation so the
+// comparison time depends only on length, not on where the strings diverge.
+function constantTimeEqual(a: string, b: string): boolean {
+  const ae = new TextEncoder().encode(a);
+  const be = new TextEncoder().encode(b);
+  if (ae.length !== be.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ae.length; i++) diff |= ae[i] ^ be[i];
+  return diff === 0;
+}
+
 function normalizePaidStatus(value: unknown): PaidStatus {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return "unknown";
@@ -211,17 +223,31 @@ Deno.serve(async (req) => {
 
   try {
     const startedAt = new Date();
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    if (!token) return json({ error: "Unauthorized" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Two accepted callers: pg_cron (service-role bearer) and admin JWT.
-    const isCron = token === serviceRoleKey;
+    // Two accepted callers:
+    //   * pg_cron — sends X-Cron-Secret header matching the
+    //     PAYABLES_CRON_SECRET function env var. Constant-time compare
+    //     to avoid timing attacks. Decoupled from the service-role key so
+    //     rotating service_role doesn't break cron and leaking the cron
+    //     secret grants only "run this function", not database access.
+    //   * Admin JWT — manual refresh from /admin/finance/pnl. Existing
+    //     auth path preserved; only .trim() added on the extracted bearer
+    //     as a belt-and-suspenders defence against stray whitespace.
+    const cronSecret = Deno.env.get("PAYABLES_CRON_SECRET") ?? "";
+    const providedCronSecret = req.headers.get("x-cron-secret") ?? "";
+    const isCron =
+      !!cronSecret &&
+      !!providedCronSecret &&
+      constantTimeEqual(cronSecret, providedCronSecret);
+
     if (!isCron) {
+      const authHeader = req.headers.get("Authorization") ?? "";
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+      if (!token) return json({ error: "Unauthorized" }, 401);
       const authed = createClient(supabaseUrl, supabaseAnon, {
         global: { headers: { Authorization: authHeader } },
       });
