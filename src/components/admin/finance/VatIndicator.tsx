@@ -8,9 +8,16 @@ import {
 interface VatIndicatorProps {
   current: QuarterVat;
   closed: QuarterVat;
+  currentSeries?: number[];
+  closedSeries?: number[];
 }
 
-export function VatIndicator({ current, closed }: VatIndicatorProps) {
+export function VatIndicator({
+  current,
+  closed,
+  currentSeries,
+  closedSeries,
+}: VatIndicatorProps) {
   return (
     <section className="mb-10">
       <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-4">
@@ -21,12 +28,14 @@ export function VatIndicator({ current, closed }: VatIndicatorProps) {
           title={`Current · ${current.quarter.label}`}
           stateLabel="Estimate · in progress"
           vat={current}
+          series={currentSeries}
           deadlineLabel={`Filing window opens ${formatHmrcDeadline(current.quarter)}`}
         />
         <QuarterCard
           title={`Just closed · ${closed.quarter.label}`}
           stateLabel="Estimate · final — file via Xero"
           vat={closed}
+          series={closedSeries}
           deadlineLabel={`Next HMRC deadline: ${formatHmrcDeadline(closed.quarter)}`}
           deadlineAccent
         />
@@ -35,16 +44,54 @@ export function VatIndicator({ current, closed }: VatIndicatorProps) {
   );
 }
 
+// Sparkline — pure SVG. Uses text-gold + currentColor so it reads the
+// design token; no hex. Sharp corners on stroke. Height fixed, width fluid.
+function Sparkline({ series }: { series: number[] }) {
+  if (!series || series.length < 2) return null;
+  const width = 200;
+  const height = 32;
+  const min = Math.min(...series, 0);
+  const max = Math.max(...series, 0);
+  const range = max - min || 1;
+  const points = series
+    .map((v, i) => {
+      const x = (i / (series.length - 1)) * width;
+      const y = height - ((v - min) / range) * (height - 2) - 1;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+  return (
+    <svg
+      className="w-full text-gold/70"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      style={{ height }}
+      aria-hidden
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function QuarterCard({
   title,
   stateLabel,
   vat,
+  series,
   deadlineLabel,
   deadlineAccent,
 }: {
   title: string;
   stateLabel: string;
   vat: QuarterVat;
+  series?: number[];
   deadlineLabel: string;
   deadlineAccent?: boolean;
 }) {
@@ -53,7 +100,13 @@ function QuarterCard({
       <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">{title}</p>
       <p className="mt-1 text-[10px] uppercase tracking-[0.24em] text-gold-muted">{stateLabel}</p>
 
-      <div className="mt-6 grid grid-cols-3 gap-4 border-t border-divider pt-5">
+      {series && series.length >= 2 && (
+        <div className="mt-4">
+          <Sparkline series={series} />
+        </div>
+      )}
+
+      <div className="mt-5 grid grid-cols-3 gap-4 border-t border-divider pt-5">
         <Metric label="Output VAT" value={formatCurrency(vat.outputVat)} />
         <Metric label="Input VAT" value={formatCurrency(vat.inputVat)} />
         <Metric label="Net VAT" value={formatCurrency(vat.netVat)} accent />

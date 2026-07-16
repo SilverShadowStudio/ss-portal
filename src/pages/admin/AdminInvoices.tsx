@@ -375,7 +375,7 @@ export default function AdminInvoices() {
                     <div onClick={(e) => e.stopPropagation()}>
                       <Select value={r.status} onValueChange={(v) => updateStatus(r.id, v)}>
                         <SelectTrigger
-                          className={`h-7 w-auto min-w-[110px] gap-1 rounded-full border-0 px-2.5 py-0.5 text-xs font-medium focus:ring-0 focus:ring-offset-0 ${statusBadgeClasses(r.status)}`}
+                          className={`h-7 w-auto min-w-[110px] gap-1 rounded-none border-0 bg-transparent px-1 py-0.5 text-xs focus:ring-0 focus:ring-offset-0 ${statusBadgeClasses(r.status)}`}
                         >
                           <SelectValue>{statusLabel(r.status)}</SelectValue>
                         </SelectTrigger>

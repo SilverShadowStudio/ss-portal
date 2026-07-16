@@ -310,6 +310,48 @@ export interface QuarterVat {
 //   Output VAT = Σ invoices.vat_amount WHERE status='paid' AND paid_at ∈ quarter
 //   Input  VAT = Σ overheads.vat_amount WHERE payment_status='paid' AND payment_date ∈ quarter AND NOT is_reverse_charge
 //   Reverse-charge items surfaced separately (excluded from Input VAT sum).
+// Cumulative net-VAT series across a quarter, bucketed for a sparkline.
+// Same math as computeQuarterVat but running-total by cutoff date. For an
+// in-progress quarter, buckets past today have no new events so the line
+// flattens naturally at the current cumulative value — honest, no
+// projection.
+export function computeCumulativeVatSeries(
+  invoices: MoneyInInvoice[],
+  overheads: Overhead[],
+  quarter: Quarter,
+  buckets = 13,
+): number[] {
+  const startMs = quarter.start.getTime();
+  const endMs = quarter.end.getTime();
+  const totalMs = endMs - startMs;
+  const series: number[] = [];
+
+  for (let i = 1; i <= buckets; i++) {
+    const cutoff = new Date(startMs + (totalMs * i) / buckets);
+    const outputToDate = invoices
+      .filter(
+        (inv) =>
+          inv.status === "paid" &&
+          inv.paid_at &&
+          new Date(inv.paid_at) >= quarter.start &&
+          new Date(inv.paid_at) <= cutoff,
+      )
+      .reduce((s, inv) => s + Number(inv.vat_amount ?? 0), 0);
+    const inputToDate = overheads
+      .filter(
+        (o) =>
+          o.payment_status === "paid" &&
+          !o.is_reverse_charge &&
+          o.payment_date &&
+          new Date(o.payment_date) >= quarter.start &&
+          new Date(o.payment_date) <= cutoff,
+      )
+      .reduce((s, o) => s + Number(o.vat_amount ?? 0), 0);
+    series.push(outputToDate - inputToDate);
+  }
+  return series;
+}
+
 export function computeQuarterVat(
   invoices: MoneyInInvoice[],
   overheads: Overhead[],

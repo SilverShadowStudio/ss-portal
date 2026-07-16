@@ -54,12 +54,14 @@
 
     /* Four-tier text contrast tokens (role-based; light values). The spec's
        "primary" tier is named --text-strong here to avoid colliding with the
-       existing gold `primary` colour (text-primary). Hex values unchanged. */
-    --text-strong: #1A1814;
-    --text-standard: #3A3530;
-    --text-label: #6B6358;
-    --text-recessive: #9A9388;
-    --divider: #D8D2C6;
+       existing gold `primary` colour (text-primary). Contrast bumped: text
+       tiers pushed deeper for stronger separation, divider darkened so
+       dense tables read cleanly. */
+    --text-strong: #0D0B08;
+    --text-standard: #2A2620;
+    --text-label: #5E574C;
+    --text-recessive: #7F7869;
+    --divider: #B8B29E;
     
     /* Typography */
     --font-serif: 'Cinzel', serif;
@@ -130,12 +132,15 @@
     --surface-elevated: var(--brand-dark-elevated-hsl, 36 12% 8%);
     --surface-overlay: var(--brand-dark-elevated-hsl, 40 9% 7%);
 
-    /* Four-tier text contrast tokens (role-based; dark values). */
-    --text-strong: #F0EBE0;
-    --text-standard: #C8C2B5;
-    --text-label: #8A8378;
-    --text-recessive: #5A554E;
-    --divider: #2A2820;
+    /* Four-tier text contrast tokens (role-based; dark values). Contrast
+       bumped: text-strong brighter, text-standard clearly separated from
+       text-recessive, divider lifted so row-lines register in dense
+       tables. */
+    --text-strong: #F5F0E5;
+    --text-standard: #D8D2C2;
+    --text-label: #948C7F;
+    --text-recessive: #6C6659;
+    --divider: #3D3B2E;
     
     /* Shadows */
     --shadow-card: 0 4px 24px -4px hsl(24 15% 3% / 0.5);

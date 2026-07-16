@@ -54,20 +54,26 @@ export function statusLabel(status: string) {
   return map[status] || status;
 }
 
+// Status is rendered as sharp text only — no filled backgrounds, no pills,
+// no hardcoded emerald/rose/blue. Emphasis conveyed via the shared token
+// palette (gold = active/paid, standard = normal state, recessive = inert,
+// gold-muted = attention/needs-review).
 export function statusBadgeClasses(status: string) {
   switch (status) {
     case "paid":
-      return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
+      return "text-gold";
     case "sent":
-      return "bg-blue-500/15 text-blue-600 dark:text-blue-400";
+      return "text-standard";
     case "overdue":
-      return "bg-rose-500/15 text-rose-600 dark:text-rose-400";
+      return "text-gold-muted";
+    case "pending":
+      return "text-gold-muted";
     case "draft":
-      return "bg-muted text-muted-foreground";
+      return "text-recessive";
     case "cancelled":
-      return "bg-muted text-muted-foreground line-through";
+      return "text-recessive line-through";
     default:
-      return "bg-[#181613] text-gold-muted";
+      return "text-recessive";
   }
 }
 

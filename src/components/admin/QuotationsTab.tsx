@@ -22,13 +22,14 @@ const STATUSES = ["draft", "sent", "signed", "declined", "cancelled"] as const;
 function statusLabel(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+// Sharp text-only status classes; token-based, no filled pills.
 function statusClasses(s: string) {
   switch (s) {
-    case "signed": return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
-    case "sent": return "bg-blue-500/15 text-blue-600 dark:text-blue-400";
-    case "declined": return "bg-rose-500/15 text-rose-600 dark:text-rose-400";
-    case "cancelled": return "bg-muted text-muted-foreground line-through";
-    default: return "bg-muted text-muted-foreground";
+    case "signed": return "text-gold";
+    case "sent": return "text-standard";
+    case "declined": return "text-gold-muted";
+    case "cancelled": return "text-recessive line-through";
+    default: return "text-recessive";
   }
 }
 
@@ -215,7 +216,7 @@ export function QuotationsTab() {
                 <TableCell>
                   <div onClick={(e) => e.stopPropagation()}>
                     <Select value={r.status} onValueChange={(v) => updateStatus(r.id, v)}>
-                      <SelectTrigger className={`h-7 w-auto min-w-[110px] gap-1 rounded-full border-0 px-2.5 py-0.5 text-xs font-medium focus:ring-0 focus:ring-offset-0 ${statusClasses(r.status)}`}>
+                      <SelectTrigger className={`h-7 w-auto min-w-[110px] gap-1 rounded-none border-0 bg-transparent px-1 py-0.5 text-xs focus:ring-0 focus:ring-offset-0 ${statusClasses(r.status)}`}>
                         <SelectValue>{statusLabel(r.status)}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>

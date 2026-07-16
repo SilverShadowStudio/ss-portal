@@ -23,6 +23,7 @@ import {
   type InvoiceViewerData,
 } from "@/components/invoices/InvoiceViewer";
 import {
+  computeCumulativeVatSeries,
   computeQuarterPayables,
   computeQuarterVat,
   dateInQuarter,
@@ -263,6 +264,14 @@ export default function AdminPnL() {
     () => computeQuarterVat(invoices, overheads, previousQuarter),
     [invoices, overheads, previousQuarter],
   );
+  const currentVatSeries = useMemo(
+    () => computeCumulativeVatSeries(invoices, overheads, currentQuarter),
+    [invoices, overheads, currentQuarter],
+  );
+  const closedVatSeries = useMemo(
+    () => computeCumulativeVatSeries(invoices, overheads, previousQuarter),
+    [invoices, overheads, previousQuarter],
+  );
 
   // Payables: computed alongside overheads/invoices but never summed into
   // computeQuarterVat — cash-basis input VAT is overheads-only by design.
@@ -345,7 +354,12 @@ export default function AdminPnL() {
       />
 
       {/* VAT panel */}
-      <VatIndicator current={currentVat} closed={closedVat} />
+      <VatIndicator
+        current={currentVat}
+        closed={closedVat}
+        currentSeries={currentVatSeries}
+        closedSeries={closedVatSeries}
+      />
 
       {/* Money OUT */}
       <div className="mb-4 flex items-baseline justify-between">
