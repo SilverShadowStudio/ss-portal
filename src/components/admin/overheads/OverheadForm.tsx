@@ -16,18 +16,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
   computeVat,
   computeReverseChargeVat,
   formatCurrency,
+  formatDate,
   VAT_TREATMENT_LABELS,
   VAT_TREATMENT_ORDER,
   type ExpenseCategory,
   type Overhead,
   type VatTreatment,
 } from "@/lib/finance";
+
+// ISO date I/O for HTML/DB compatibility: form fields carry "YYYY-MM-DD"
+// strings; Calendar works in Date objects. Local time avoids the TZ shift
+// that comes from d.toISOString() when the machine is behind UTC.
+function isoDateString(d: Date | undefined): string {
+  if (!d) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseIsoDate(s: string): Date | undefined {
+  if (!s) return undefined;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
 
 interface OverheadFormProps {
   open: boolean;
@@ -98,6 +131,10 @@ export function OverheadForm({
 }: OverheadFormProps) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [invoiceDateOpen, setInvoiceDateOpen] = useState(false);
+  const [dueDateOpen, setDueDateOpen] = useState(false);
+  const [paymentDateOpen, setPaymentDateOpen] = useState(false);
   const { toast } = useToast();
 
   // Reset form whenever the dialog opens (create) or the initial changes (edit).
@@ -244,20 +281,62 @@ export function OverheadForm({
               />
             </Field>
             <Field label="Category">
-              <Select value={form.category_code} onValueChange={handleCategoryChange}>
-                <SelectTrigger className="rounded-sm">
-                  <SelectValue placeholder="Choose…" />
-                </SelectTrigger>
-                <SelectContent className="z-[200]">
-                  {categories
-                    .filter((c) => c.active)
-                    .map((c) => (
-                      <SelectItem key={c.code} value={c.code}>
-                        {c.code} — {c.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    role="combobox"
+                    aria-expanded={categoryOpen}
+                    className="flex h-10 w-full items-center justify-between rounded-sm border border-input bg-background px-3 py-2 text-sm text-left ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <span className={selectedCategory ? "text-standard" : "text-muted-foreground"}>
+                      {selectedCategory
+                        ? `${selectedCategory.code} — ${selectedCategory.name}`
+                        : "Choose…"}
+                    </span>
+                    <span aria-hidden className="ml-2 text-recessive">▾</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-[var(--radix-popover-trigger-width)] p-0 rounded-sm border-divider z-[200]"
+                >
+                  <Command
+                    filter={(value, search) => {
+                      // cmdk lower-cases both; substring match on "code name" wins
+                      // for typing either the code ("445") or any part of the name.
+                      return value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+                    }}
+                  >
+                    <CommandInput placeholder="Search code or name…" />
+                    <CommandList>
+                      <CommandEmpty>No category.</CommandEmpty>
+                      <CommandGroup>
+                        {categories
+                          .filter((c) => c.active)
+                          .map((c) => (
+                            <CommandItem
+                              key={c.code}
+                              value={`${c.code} ${c.name}`}
+                              onSelect={() => {
+                                handleCategoryChange(c.code);
+                                setCategoryOpen(false);
+                              }}
+                            >
+                              <span className="text-recessive tabular-nums w-10 shrink-0">
+                                {c.code}
+                              </span>
+                              <span className="text-standard">{c.name}</span>
+                              {form.category_code === c.code && (
+                                <span aria-hidden className="ml-auto text-gold">✓</span>
+                              )}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </Field>
           </div>
 
@@ -372,27 +451,32 @@ export function OverheadForm({
               />
             </Field>
             <Field label="Invoice date (tax point)">
-              <Input
-                type="date"
+              <DatePickerButton
                 value={form.invoice_date}
-                onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))}
-                className="rounded-sm"
+                open={invoiceDateOpen}
+                onOpenChange={setInvoiceDateOpen}
+                onSelect={(iso) => setForm((f) => ({ ...f, invoice_date: iso }))}
+                placeholder="Pick a date"
               />
             </Field>
             <Field label="Due date">
-              <Input
-                type="date"
+              <DatePickerButton
                 value={form.due_date}
-                onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-                className="rounded-sm"
+                open={dueDateOpen}
+                onOpenChange={setDueDateOpen}
+                onSelect={(iso) => setForm((f) => ({ ...f, due_date: iso }))}
+                placeholder="—"
+                clearable
               />
             </Field>
             <Field label="Payment date (blank = unpaid)">
-              <Input
-                type="date"
+              <DatePickerButton
                 value={form.payment_date}
-                onChange={(e) => setForm((f) => ({ ...f, payment_date: e.target.value }))}
-                className="rounded-sm"
+                open={paymentDateOpen}
+                onOpenChange={setPaymentDateOpen}
+                onSelect={(iso) => setForm((f) => ({ ...f, payment_date: iso }))}
+                placeholder="—"
+                clearable
               />
             </Field>
           </div>
@@ -436,5 +520,67 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">{label}</Label>
       <div className="mt-1">{children}</div>
     </div>
+  );
+}
+
+interface DatePickerButtonProps {
+  value: string; // "YYYY-MM-DD" or ""
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (iso: string) => void;
+  placeholder: string;
+  clearable?: boolean;
+}
+
+function DatePickerButton({
+  value,
+  open,
+  onOpenChange,
+  onSelect,
+  placeholder,
+  clearable,
+}: DatePickerButtonProps) {
+  const selected = parseIsoDate(value);
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-10 w-full items-center justify-between rounded-sm border border-input bg-background px-3 py-2 text-sm text-left ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          <span className={value ? "text-standard" : "text-muted-foreground"}>
+            {value ? formatDate(value) : placeholder}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-auto p-0 rounded-sm border-divider z-[200]"
+      >
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(d) => {
+            onSelect(isoDateString(d));
+            onOpenChange(false);
+          }}
+          initialFocus
+        />
+        {clearable && value && (
+          <div className="flex justify-end border-t border-divider p-2">
+            <button
+              type="button"
+              onClick={() => {
+                onSelect("");
+                onOpenChange(false);
+              }}
+              className="text-xs text-recessive hover:text-standard transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
