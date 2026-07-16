@@ -112,6 +112,75 @@ resolution, and defensive re-issue prevention.
 
 ---
 
+# Session — 16 July 2026 (Finance Module Phase 1 + Payables Read — two full slices shipped)
+
+Big session. Two full slices merged to main via squash and deployed to prod: Phase 1 Finance Module (overheads + expenses page + P&L VAT indicator) then Payables Read (Kieran's Airtable → portal mirror + P&L Payables tile + generic AdminAlertBanner + sortable finance tables). Two migrations applied. One edge function deployed. Live deploys verified end-to-end. Roadmap section added to HANDOFF for the two backlog slices that follow.
+
+## Completed this session — merged to main + live
+
+- **Phase 1 Finance Module → `48d65f2` squash-merge, live bundle `index-DdvRfy9-.js` at 11:40.** Three passes:
+  - Pass 1 schema (`20260716000001_finance_phase_1.sql`): `expense_categories` (32-row Xero-aligned seed, active-bool soft-hide) + `overheads` (cash-basis ledger with `reverse_charge_vat` — notional self-accounted VAT stored per row so Lindsay reads the figure straight off the dashboard). Partial UNIQUE `(supplier_name, invoice_number) WHERE invoice_number IS NOT NULL` dedup guard. Seed runs BEFORE RLS enablement so it isn't gated by the admin-only INSERT policy at apply time. Applied to prod via Dashboard SQL editor.
+  - Pass 2 `/admin/finance/expenses`: summary band + filterable OverheadTable + OverheadForm (create + edit, category autofills VAT treatment with soft deviation warning, reverse-charge toggle zeroes `vat_amount` and captures `net × 20%` as self-accounted VAT, payment-date flip drives `payment_status`). Refinements folded in: category picker replaced with a Popover + cmdk Command searchable combobox (types code OR name); date fields replaced with Popover + shadcn Calendar that closes on select.
+  - Pass 3 `/admin/finance/pnl`: three-panel summary (Money out / Money in / VAT est.) + VAT indicator (current + just-closed quarters, cash basis, UK Stagger 1; reverse-charge items surfaced separately with self-accounted total; HMRC deadline as static text — Xero owns real filing later) + Money OUT table (reuses OverheadTable) + Money IN table (read-only from `invoices`).
+  - Fixes shipped during preview: `SelectContent` given `z-[200]` inside Dialog (default `z-50` sat below Dialog overlay at `z-[90]` — dropdowns invisible AND Radix outside-click swallowed Cancel/Save clicks); VatIndicator was passing `QuarterVat` to `formatHmrcDeadline` instead of `Quarter` → crashed on empty state — **`tsc --noEmit` now paired with `npm run build` before every push** (Vite/SWC doesn't type-check on build).
+
+- **Payables Read → `da83835` squash-merge, live bundle `index-BQTJNfQn.js` at 15:44.** Three passes:
+  - Pass 1 schema (`20260716000002_payables_read_phase.sql`): `payables_snapshot` (mirror keyed on Airtable record ID; freelancer tables populate `amount_paid` + `balance_remaining`, PS tables NULL; three-state `paid_status` incl. `partial`; `vat_registered` defaults FALSE and NEVER sums into `computeQuarterVat`; `period_date` carries PS Contract Date Created), `payables_sync_log` (append-only observability), `admin_alerts` (generic surface, partial UNIQUE on `(kind, source, detail->>'field_id') WHERE resolved_at IS NULL` prevents drift re-raise per cycle). Config seed of `app_settings.airtable_payables_field_config` — field-ID-keyed manifest for all five payables tables, captured live from Airtable Metadata API 2026-07-16. Applied to prod via SQL editor.
+  - Pass 2 `supabase/functions/payables-sync/index.ts`: two accepted callers — pg_cron via service-role bearer match / admin JWT for manual. Schema-guard runs BEFORE sync (metadata API + field-ID existence check; missing IDs land as `admin_alerts`, sync proceeds). Per-source: paginate with `pageSize=100`, hard cap 50 pages, `returnFieldsByFieldId=true` + `fields[]=fldXXX` so name drift is invisible. Normalize (Paid? emoji-select → paid/partial/unpaid; toNumber strips currency symbols defensively; extractPeriod falls back `period_date` → `period_formula` → `date_created` for PS Contract). Upsert on `airtable_record_id`; set-diff delete-on-sync per source (avoids URL-length limits on long NOT-IN clauses). Sync-log observability. Deployed with `--no-verify-jwt` (function does its own auth). First manual sync landed **35 records** across all five sources.
+  - Pass 3 UI: fourth **Payables** tile on FinanceSummary between Money out and Money in (`Not part of your VAT return` subtitle + partial-count when >0). New Payables section (payee search + source + status + quarter filters + **"Refresh from Airtable"** text CTA + last-synced timestamp). `PayablesTable` enforces `outstandingFor()` — `COALESCE(balance_remaining, CASE WHEN paid_status='paid' THEN 0 ELSE invoice_total END)` — never `invoice_total` for a partially-paid freelancer. `PayableDetail` deep-links to Kieran's Airtable. `≈ created` marker on `partner_studios_contract` period. Generic **AdminAlertBanner** introduced (fixed top, RLS-gated so non-admin sessions get zero rows and banner never renders, 40 px offset stacked under GhostModeBanner, Details dialog + Acknowledge all).
+  - **Sortable column headers across all four finance tables** (Payables / Money out / Money in / Expenses) — `src/hooks/useTableSort.ts` + `src/components/ui/SortableTh.tsx`. Click asc → click again desc. Nulls sink to end regardless of direction. Text/number/date accessors. Filters compose naturally. Defaults preserve prior natural ordering.
+  - Diagnostic fix during preview: `amount_paid` NULL on every synced row — added a `debug` block to the sync response, confirmed with Fred that Kieran hasn't backfilled Amount Paid on most records (data reality, not code bug). `toNumber` hardened defensively (strips £/$/€/commas/whitespace, handles `{specialValue}`); no further action needed until Kieran populates.
+
+## In progress / needs verification
+
+- **pg_cron for payables-sync NOT enabled yet.** Snippet delivered as an SQL-editor paste (never in git); Fred to schedule when ready. Manual refresh from `/admin/finance/pnl` works; automatic 15-min cadence starts when Fred pastes the schedule with the real service-role key.
+
+## Pending
+
+- **Slice A** in Roadmap (see above the session log) — payment-field write-back to Airtable. **URGENT next session.**
+- **Slice B** in Roadmap — freelancer payment execution via Revolut Business API. Final slice, highest stakes.
+- Standing carry-overs from before this session (unchanged): `fix/lightbox-portals-in-fs` awaiting sign-off + merge (5 commits ready at `aa0e89c`), CP115/SC02/R01 version pick, pin-delete own-only RLS migration (drafted), `render-viewer-perf` inline-image regression, viewer-branch merge decisions.
+
+## Decisions made
+
+- **Payables strictly isolated from `computeQuarterVat`** — no cross-import. Signature stays `(invoices, overheads, quarter)`. Any attempt to sum payables into cash-basis input VAT would require a code change and light up in review. Payables live in a separate DB table with their own admin RLS.
+- **Field-ID-keyed manifest** (`returnFieldsByFieldId=true` + `fields[]=fldXXX`) — Kieran renames columns freely; only true field deletions surface via schema-guard.
+- **`admin_alerts` + `AdminAlertBanner` introduced as GENERIC surface**, not payables-specific. Extensible to Dropbox / Stripe drift later without another banner component. RLS naturally gates non-admin sessions to zero rows.
+- **pg_cron snippet held OUT of git** — service-role key never touches the repo, Fred pastes in Dashboard SQL editor when ready. Snippet includes `cron.unschedule` guard for safe re-run.
+- **Sortable-column defaults preserve prior natural ordering** (invoice_date desc for overheads, paid_at desc for invoices, period_date desc for payables) so first-load view looks unchanged; users opt into other sorts by click.
+- **Diagnostic-first discipline paid off**: `amount_paid` empty across every row on the first manual sync — added a `debug` block to the sync response instead of guessing at a code fix. Two-turn resolution: Fred confirmed data reality, no unnecessary code churn.
+- **`hideClose` prop on `ui/dialog.tsx`** — opt-in, default false so every existing Dialog is unaffected. Same non-breaking-extension pattern as popover.tsx / alert-dialog.tsx `container` prop.
+- **`tsc --noEmit` paired with `npm run build`** on every finance-adjacent push going forward. Vite doesn't type-check on build; Phase 1 Pass 3 confirmed this class of miss can crash the page on load.
+
+## Open questions / things to watch
+
+- **Amount Paid populated on zero rows currently.** Kieran hasn't backfilled the newly-added column. When he starts, the hardened `toNumber` picks it up automatically. Not a code issue.
+- **`sbp_9ca0…521ec` Management-API token exposed in this session's transcript** (pasted once via `!` for the Pass-2 deploy). **Fred should rotate.** Both `~/.zshrc:3` and the `ss-portal-supabase` keychain entry are still stale from earlier; persist a fresh one either way.
+- **Photographer + freelancer tables gained Amount Paid / Remaining Balance / three-state Paid? between the earlier 06-17 schema snapshot and today's 07-16 fetch** — Kieran extended the pattern to Photographer to match Modeller and Scene Manager. Fresh schema audit in `/tmp/at-fresh.json` at session close.
+- **Two stashes preserved as `keep/` branches at origin** (`keep/pass14-esc-backdrop`, `keep/v3-pdf-surface-refinements`) — still on origin, safe to delete at Fred's discretion.
+- **`feature/finance-phase-1` and `feature/payables-read` branches** — both squash-merged to main, still on origin, safe to delete after this HANDOFF commit lands.
+- **Slice B open question** (Roadmap): Revolut Business plan API access + scoped payment credentials. **Resolve BEFORE designing Slice B.**
+
+## URGENT next session
+
+- **Slice A — payment-field write-back to Airtable** (per Roadmap above the session log). Diagnose-first: audit the fresh Airtable schema for a Payment Date column on the three freelancer tables (may or may not exist yet); propose the write function shape; STOP for sign-off before code. Separate `AIRTABLE_WRITE_PAT` from the existing read token, PATCH-not-PUT throughout, reuses the existing schema-guard + admin_alerts.
+
+## Production state at session close
+
+- **Live commit on main:** `da83835` (this HANDOFF commit will move it forward by one; no code change).
+- **Live bundle:** `index-BQTJNfQn.js` (verified 15:44:20).
+- **Migrations applied to prod:** `20260716000001_finance_phase_1.sql`, `20260716000002_payables_read_phase.sql`.
+- **Edge functions deployed:** `payables-sync` (verified byte-identical to main via `functions download` + diff).
+- **DB writes this session:** two migrations + config seed populated + one manual payables sync (35 rows in `payables_snapshot`, one row in `payables_sync_log`).
+
+## Next step to resume from
+
+- **First — Slice A per Roadmap** (payment-field write-back to Airtable). Fresh schema audit against Kieran's base first; propose the function shape; STOP for sign-off.
+- **Then — Slice B open question**: confirm Revolut Business plan API access + scoped credentials capability. Resolves before Slice B design.
+- **Then — standing carry-overs**: `fix/lightbox-portals-in-fs` merge, CP115/SC02/R01 version pick, older-still-open items.
+
+---
+
 # Session — 15 July 2026 (read-only client_code uniqueness diagnostic; invoice-generator client + bank picker feature request queued, not started)
 
 Short read-only session. Answered a definitive "can two clients share a client code" question from the applied schema; received a new admin-invoices-generator feature request (real-client dropdown + bank-account picker) and stopped before touching code. No writes, no code changes, no migrations, no edge deploys, no branch created.
