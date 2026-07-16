@@ -57,6 +57,10 @@ import AdminExpenses from "./pages/admin/AdminExpenses";
 import AdminPnL from "./pages/admin/AdminPnL";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
+import {
+  AdminAlertBanner,
+  useUnresolvedAdminAlerts,
+} from "@/components/AdminAlertBanner";
 import { PWAInstallProvider } from "@/components/PWAInstallPrompt";
 import { ClientInstallOnboarding } from "@/components/ClientInstallOnboarding";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,9 +74,14 @@ function ActivityTrackerMount() {
 
 function GhostModeShell({ children }: { children: React.ReactNode }) {
   const { isGhostMode } = useAuth();
+  const { data: alerts } = useUnresolvedAdminAlerts();
+  const alertsVisible = (alerts?.length ?? 0) > 0;
+  const topOffset =
+    (isGhostMode ? 40 : 0) + (alertsVisible ? 40 : 0);
   return (
-    <div style={{ paddingTop: isGhostMode ? "40px" : undefined }}>
+    <div style={{ paddingTop: topOffset || undefined }}>
       <GhostModeBanner />
+      <AdminAlertBanner offsetTop={isGhostMode ? 40 : 0} />
       {children}
     </div>
   );

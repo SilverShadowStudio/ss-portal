@@ -14,6 +14,104 @@ Then ask for the state summary before acting.
 
 ---
 
+# Roadmap — future slices (backlog)
+
+Ordered. Each item is BACKLOG ONLY — do not build unprompted. Diagnose-first
+discipline (schema audit → plan → per-pass sign-off) applies to both.
+
+## Slice A — Payment-field write-back to Airtable (URGENT next candidate after payables-read merges)
+
+Scope: when Fred records a payment in the portal, write ONLY the payment
+fields back to the five payables tables in Kieran's Airtable base. That is:
+
+- `Paid?` — singleSelect (🔴 NO / 🟢 YES / 🟠 PARTIAL where present)
+- `Amount Paid` — currency
+- A payment date field (to be resolved during the schema audit — Modeller /
+  Scene Manager / Photographer may already have one; PS tables likely not)
+
+**Never any other Airtable field. Never overheads.** Overheads are portal-
+native and unrelated to Kieran's tracker.
+
+Airtable token:
+- Fred has read-only personal access to the base.
+- The write token must have **edit permission independent of Fred's login**
+  — Kieran creates a new scoped PAT with write access to only the five
+  payables tables, stored as a Supabase Function Secret **separate from the
+  existing `AIRTABLE_PAT`** (which stays read-only).
+- Deploy secret name suggestion: `AIRTABLE_WRITE_PAT` + a config toggle
+  `AIRTABLE_WRITES_ENABLED_PAYABLES=true` mirroring the existing pattern.
+
+Discipline:
+- Schema-audit re-run against the fresh base first — confirm the exact
+  field IDs still exist and whether Kieran added a `Payment Date` column to
+  the freelancer tables.
+- Write function is a NEW edge function (`payables-write-payment` or
+  similar), separate from `payables-sync` — read paths stay clean.
+- Every write PATCH targets ONE record, only the mapped payment fields,
+  never PUT (which would clear other fields).
+- The `admin_alerts` mechanism from Pass 3 catches any drift on the write
+  targets too (schema-guard re-uses the config manifest).
+
+Foundation already in place from payables-read:
+- `payables_snapshot` mirror with paid_status, amount_paid, balance_remaining
+- Manual "Refresh from Airtable" flow to re-pull after a write
+- `admin_alerts` + `AdminAlertBanner` for schema drift
+- Field-ID-keyed config manifest in `app_settings.airtable_payables_field_config`
+
+## Slice B — Freelancer payment execution via Revolut Business API (later / final; highest stakes)
+
+Scope: in P&L → Payables, clicking an unpaid/partial row opens a payment
+box with two options:
+
+- **Pay all £X** — full outstanding balance
+- **Pay custom amount** — arbitrary partial payment
+
+Clicking either initiates a real payment to the freelancer via the Revolut
+Business API, then marks the row paid in both the portal and Airtable
+(the latter requires Slice A to be shipped first).
+
+Hard requirements to design in:
+
+- **Revolut Business API only.** Credentials in Supabase Vault. **Never
+  in git**, never in a migration file, never in the deployed function
+  source — fetched at runtime.
+- **Propose → human-confirm → execute.** No silent one-click send —
+  clicking "Pay" opens a confirmation dialog that shows: amount, recipient
+  name, bank details, and a typed confirmation phrase before the API
+  call fires. Payment is irreversible; this is the strictest gating we've
+  built.
+- **Bank details from `freelancer_profiles`.** The Pass-1 audit confirmed
+  the table has sort_code, account_number, account_holder. The payment
+  box must:
+  1. Look up bank details by matching the payables_snapshot payee to
+     `freelancer_profiles` (needs a linkage — TBD whether via email match,
+     manual mapping, or a new column on payables_snapshot).
+  2. Validate all bank fields are present + look plausible before
+     enabling the Pay buttons. Missing details → button disabled with an
+     "add bank details" prompt pointing to the freelancer's profile.
+- **Depends on Slice A**: portal write to Airtable must be working before
+  Slice B ships, otherwise the payment executes but Kieran's tracker
+  doesn't update.
+
+Open question to resolve BEFORE building:
+
+- Confirm the Revolut Business plan Silver Shadow uses includes API access.
+  Some tiers are UI-only. If API is not included, a plan upgrade is
+  required before this slice is viable.
+- Confirm Fred can generate scoped payment credentials (not the full-
+  access certificate — narrower is safer). Revolut's API auth model needs
+  a certificate + client_id + refresh_token per docs, all long-lived and
+  extremely sensitive. Vault entries, per-environment, with rotation
+  discipline.
+
+Payment-audit table: introduce a new `payment_executions` table before
+Slice B ships — one row per Revolut API call with amount, recipient,
+initiator (auth.uid), Revolut transaction ID, status transitions, error
+details. Immutable, admin-read-only. Required for compliance, dispute
+resolution, and defensive re-issue prevention.
+
+---
+
 # Session — 15 July 2026 (read-only client_code uniqueness diagnostic; invoice-generator client + bank picker feature request queued, not started)
 
 Short read-only session. Answered a definitive "can two clients share a client code" question from the applied schema; received a new admin-invoices-generator feature request (real-client dropdown + bank-account picker) and stopped before touching code. No writes, no code changes, no migrations, no edge deploys, no branch created.

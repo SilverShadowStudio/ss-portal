@@ -16,24 +16,40 @@ import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { FinanceSummary } from "@/components/admin/finance/FinanceSummary";
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
+import { PayablesTable } from "@/components/admin/finance/PayablesTable";
+import { PayableDetail } from "@/components/admin/finance/PayableDetail";
 import {
   InvoiceViewer,
   type InvoiceViewerData,
 } from "@/components/invoices/InvoiceViewer";
 import {
+  computeQuarterPayables,
   computeQuarterVat,
   dateInQuarter,
+  formatDate,
   getCurrentQuarter,
   getPreviousQuarter,
+  payablePeriodDate,
+  PAYABLE_SOURCE_LABELS,
+  PAYABLE_SOURCE_ORDER,
   type ExpenseCategory,
   type MoneyInInvoice,
   type Overhead,
+  type Payable,
+  type PayablePaidStatus,
+  type PayableSource,
   type PaymentStatus,
 } from "@/lib/finance";
+import {
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY,
+} from "@/integrations/supabase/client";
 
 type QuarterFilter = "current" | "previous" | "all";
 type OverheadStatusFilter = "all" | PaymentStatus;
 type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
+type PayableStatusFilter = "all" | PayablePaidStatus;
+type PayableSourceFilter = "all" | PayableSource;
 
 export default function AdminPnL() {
   const [overheads, setOverheads] = useState<Overhead[]>([]);
@@ -56,6 +72,17 @@ export default function AdminPnL() {
   const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
 
   const [invoiceViewing, setInvoiceViewing] = useState<InvoiceViewerData | null>(null);
+
+  const [payables, setPayables] = useState<Payable[]>([]);
+  const [payableBaseId, setPayableBaseId] = useState<string | null>(null);
+  const [paySearch, setPaySearch] = useState("");
+  const [payStatus, setPayStatus] = useState<PayableStatusFilter>("all");
+  const [paySource, setPaySource] = useState<PayableSourceFilter>("all");
+  const [payQuarter, setPayQuarter] = useState<QuarterFilter>("all");
+  const [selectedPayable, setSelectedPayable] = useState<Payable | null>(null);
+  const [payableDetailOpen, setPayableDetailOpen] = useState(false);
+  const [refreshingPayables, setRefreshingPayables] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const { toast } = useToast();
 
@@ -102,8 +129,78 @@ export default function AdminPnL() {
     setLoading(false);
   }
 
+  async function fetchPayables() {
+    const { data, error } = await supabase
+      .from("payables_snapshot" as any)
+      .select("*")
+      .order("period_date", { ascending: false, nullsFirst: false });
+    if (error) {
+      toast({ title: "Failed to load payables", description: error.message, variant: "destructive" });
+      return;
+    }
+    const rows = ((data as unknown) as Payable[]) ?? [];
+    setPayables(rows);
+    if (rows.length) setLastSyncedAt(rows[0].synced_at);
+  }
+
+  async function fetchPayableBaseId() {
+    const { data } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "airtable_payables_field_config")
+      .maybeSingle();
+    const bid = (data?.value as any)?.base_id ?? null;
+    if (bid) setPayableBaseId(bid);
+  }
+
+  async function handleRefreshPayables() {
+    setRefreshingPayables(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        toast({ title: "Not signed in", variant: "destructive" });
+        return;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/payables-sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ trigger: "manual" }),
+      });
+      const result = await res.json();
+      if (result?.ok) {
+        await fetchPayables();
+        toast({
+          title: "Payables synced",
+          description: `${result.duration_ms}ms · ${Object.values(result.counts ?? {}).reduce((s: number, c: any) => s + (c?.upserted ?? 0), 0)} rows`,
+        });
+      } else {
+        toast({
+          title: "Sync completed with errors",
+          description: JSON.stringify(result?.errors ?? result?.error ?? "unknown"),
+          variant: "destructive",
+        });
+        await fetchPayables();
+      }
+    } catch (e) {
+      toast({
+        title: "Sync failed",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshingPayables(false);
+    }
+  }
+
   useEffect(() => {
     fetchAll();
+    fetchPayables();
+    fetchPayableBaseId();
   }, []);
 
   // Filters
@@ -167,6 +264,29 @@ export default function AdminPnL() {
     [invoices, overheads, previousQuarter],
   );
 
+  // Payables: computed alongside overheads/invoices but never summed into
+  // computeQuarterVat — cash-basis input VAT is overheads-only by design.
+  const filteredPayables = useMemo(() => {
+    return payables.filter((r) => {
+      if (payStatus !== "all" && r.paid_status !== payStatus) return false;
+      if (paySource !== "all" && r.source_table !== paySource) return false;
+      const pd = payablePeriodDate(r);
+      if (payQuarter === "current" && !dateInQuarter(pd, currentQuarter)) return false;
+      if (payQuarter === "previous" && !dateInQuarter(pd, previousQuarter)) return false;
+      if (paySearch.trim()) {
+        const q = paySearch.trim().toLowerCase();
+        const nm = (r.payee_name ?? "").toLowerCase();
+        if (!nm.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [payables, payStatus, paySource, payQuarter, paySearch, currentQuarter, previousQuarter]);
+
+  const payablesSummary = useMemo(
+    () => computeQuarterPayables(payables, currentQuarter),
+    [payables, currentQuarter],
+  );
+
   // Row-click handlers
   function openOverheadDetail(o: Overhead) {
     setSelectedOverhead(o);
@@ -218,6 +338,7 @@ export default function AdminPnL() {
       {/* Summary band — figures lead the surface */}
       <FinanceSummary
         moneyOut={moneyOut}
+        payables={payablesSummary}
         moneyIn={moneyIn}
         vat={{ netEstimate: currentVat.netVat }}
         currentQuarter={currentQuarter}
@@ -265,6 +386,82 @@ export default function AdminPnL() {
           categories={categories}
           loading={loading}
           onRowClick={openOverheadDetail}
+        />
+      </div>
+
+      {/* Payables (Kieran's Airtable, read-only mirror) */}
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Payables</p>
+        <div className="flex items-baseline gap-6">
+          <p className="text-xs text-recessive">
+            Read-only mirror of Kieran's Airtable · not part of your VAT return
+            {lastSyncedAt && (
+              <>
+                {" "}· last synced {formatDate(lastSyncedAt)}
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={handleRefreshPayables}
+            disabled={refreshingPayables}
+            className="text-xs text-gold hover:underline underline-offset-4 disabled:opacity-50"
+          >
+            {refreshingPayables ? "Syncing…" : "Refresh from Airtable"}
+          </button>
+        </div>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <Input
+          placeholder="Search payee…"
+          value={paySearch}
+          onChange={(e) => setPaySearch(e.target.value)}
+          className="rounded-sm max-w-xs"
+        />
+        <Select value={paySource} onValueChange={(v) => setPaySource(v as PayableSourceFilter)}>
+          <SelectTrigger className="rounded-sm w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            {PAYABLE_SOURCE_ORDER.map((s) => (
+              <SelectItem key={s} value={s}>
+                {PAYABLE_SOURCE_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={payStatus} onValueChange={(v) => setPayStatus(v as PayableStatusFilter)}>
+          <SelectTrigger className="rounded-sm w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="unpaid">Unpaid</SelectItem>
+            <SelectItem value="partial">Partial</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="unknown">Unknown</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={payQuarter} onValueChange={(v) => setPayQuarter(v as QuarterFilter)}>
+          <SelectTrigger className="rounded-sm w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All quarters</SelectItem>
+            <SelectItem value="current">{currentQuarter.label}</SelectItem>
+            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mb-10">
+        <PayablesTable
+          rows={filteredPayables}
+          loading={loading}
+          onRowClick={(p) => {
+            setSelectedPayable(p);
+            setPayableDetailOpen(true);
+          }}
         />
       </div>
 
@@ -327,6 +524,12 @@ export default function AdminPnL() {
         invoice={invoiceViewing}
         open={!!invoiceViewing}
         onOpenChange={(o) => !o && setInvoiceViewing(null)}
+      />
+      <PayableDetail
+        open={payableDetailOpen}
+        onOpenChange={setPayableDetailOpen}
+        payable={selectedPayable}
+        baseId={payableBaseId}
       />
     </AdminLayout>
   );
