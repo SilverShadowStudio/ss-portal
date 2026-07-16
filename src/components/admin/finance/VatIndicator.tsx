@@ -21,13 +21,13 @@ export function VatIndicator({ current, closed }: VatIndicatorProps) {
           title={`Current · ${current.quarter.label}`}
           stateLabel="Estimate · in progress"
           vat={current}
-          deadlineLabel={`Filing window opens ${formatHmrcDeadline(current)}`}
+          deadlineLabel={`Filing window opens ${formatHmrcDeadline(current.quarter)}`}
         />
         <QuarterCard
           title={`Just closed · ${closed.quarter.label}`}
           stateLabel="Estimate · final — file via Xero"
           vat={closed}
-          deadlineLabel={`Next HMRC deadline: ${formatHmrcDeadline(closed)}`}
+          deadlineLabel={`Next HMRC deadline: ${formatHmrcDeadline(closed.quarter)}`}
           deadlineAccent
         />
       </div>
