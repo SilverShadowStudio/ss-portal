@@ -1,31 +1,333 @@
+import { useEffect, useMemo, useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { useBrand } from "@/contexts/BrandContext";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
+import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
+import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
+import { FinanceSummary } from "@/components/admin/finance/FinanceSummary";
+import { VatIndicator } from "@/components/admin/finance/VatIndicator";
+import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
+import {
+  InvoiceViewer,
+  type InvoiceViewerData,
+} from "@/components/invoices/InvoiceViewer";
+import {
+  computeQuarterVat,
+  dateInQuarter,
+  getCurrentQuarter,
+  getPreviousQuarter,
+  type ExpenseCategory,
+  type MoneyInInvoice,
+  type Overhead,
+  type PaymentStatus,
+} from "@/lib/finance";
+
+type QuarterFilter = "current" | "previous" | "all";
+type OverheadStatusFilter = "all" | PaymentStatus;
+type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
 
 export default function AdminPnL() {
-  const { brand } = useBrand();
+  const [overheads, setOverheads] = useState<Overhead[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [invoices, setInvoices] = useState<MoneyInInvoice[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [ovSearch, setOvSearch] = useState("");
+  const [ovStatus, setOvStatus] = useState<OverheadStatusFilter>("all");
+  const [ovQuarter, setOvQuarter] = useState<QuarterFilter>("all");
+
+  const [invSearch, setInvSearch] = useState("");
+  const [invStatus, setInvStatus] = useState<InvoiceStatusFilter>("all");
+  const [invQuarter, setInvQuarter] = useState<QuarterFilter>("all");
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Overhead | null>(null);
+
+  const [overheadDetailOpen, setOverheadDetailOpen] = useState(false);
+  const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
+
+  const [invoiceViewing, setInvoiceViewing] = useState<InvoiceViewerData | null>(null);
+
+  const { toast } = useToast();
+
+  const currentQuarter = useMemo(() => getCurrentQuarter(), []);
+  const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
+
+  async function fetchAll() {
+    setLoading(true);
+    const [
+      { data: ovs, error: ovErr },
+      { data: cats, error: cErr },
+      { data: invs, error: iErr },
+    ] = await Promise.all([
+      supabase.from("overheads" as any).select("*").order("invoice_date", { ascending: false }),
+      supabase.from("expense_categories" as any).select("*").order("code"),
+      supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+    ]);
+    if (ovErr) toast({ title: "Failed to load overheads", description: ovErr.message, variant: "destructive" });
+    if (cErr) toast({ title: "Failed to load categories", description: cErr.message, variant: "destructive" });
+    if (iErr) toast({ title: "Failed to load invoices", description: iErr.message, variant: "destructive" });
+
+    const overheadsList = ((ovs as unknown) as Overhead[]) ?? [];
+    const catsList = ((cats as unknown) as ExpenseCategory[]) ?? [];
+    const invoicesList = (invs ?? []) as any[];
+
+    const accountIds = Array.from(new Set(invoicesList.map((i) => i.account_id).filter(Boolean)));
+    let accountsMap: Record<string, string> = {};
+    if (accountIds.length) {
+      const { data: accs } = await supabase
+        .from("accounts")
+        .select("id, company_name")
+        .in("id", accountIds);
+      accountsMap = Object.fromEntries((accs ?? []).map((a: any) => [a.id, a.company_name]));
+    }
+
+    setOverheads(overheadsList);
+    setCategories(catsList);
+    setInvoices(
+      invoicesList.map((i) => ({
+        ...i,
+        account_company: i.account_id ? accountsMap[i.account_id] ?? null : null,
+      })) as MoneyInInvoice[],
+    );
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
+
+  // Filters
+  const filteredOverheads = useMemo(() => {
+    return overheads.filter((r) => {
+      if (ovStatus !== "all" && r.payment_status !== ovStatus) return false;
+      if (ovQuarter === "current" && !dateInQuarter(r.invoice_date, currentQuarter)) return false;
+      if (ovQuarter === "previous" && !dateInQuarter(r.invoice_date, previousQuarter)) return false;
+      if (ovSearch.trim() && !r.supplier_name.toLowerCase().includes(ovSearch.trim().toLowerCase()))
+        return false;
+      return true;
+    });
+  }, [overheads, ovStatus, ovQuarter, ovSearch, currentQuarter, previousQuarter]);
+
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((r) => {
+      if (invStatus !== "all" && r.status !== invStatus) return false;
+      const dateForQuarterFilter = r.paid_at ?? r.issued_at ?? r.created_at;
+      if (invQuarter === "current" && !dateInQuarter(dateForQuarterFilter, currentQuarter)) return false;
+      if (invQuarter === "previous" && !dateInQuarter(dateForQuarterFilter, previousQuarter)) return false;
+      if (invSearch.trim()) {
+        const q = invSearch.trim().toLowerCase();
+        const co = (r.account_company ?? "").toLowerCase();
+        const num = (r.invoice_number ?? r.reference_number ?? "").toLowerCase();
+        if (!co.includes(q) && !num.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [invoices, invStatus, invQuarter, invSearch, currentQuarter, previousQuarter]);
+
+  // Summary totals
+  const moneyOut = useMemo(() => {
+    const outstanding = overheads
+      .filter((r) => r.payment_status === "unpaid")
+      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
+    const paidThisQuarter = overheads
+      .filter((r) => r.payment_status === "paid" && dateInQuarter(r.payment_date, currentQuarter))
+      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
+    const totalThisQuarter = overheads
+      .filter((r) => dateInQuarter(r.invoice_date, currentQuarter))
+      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
+    return { outstanding, paidThisQuarter, totalThisQuarter };
+  }, [overheads, currentQuarter]);
+
+  const moneyIn = useMemo(() => {
+    const outstanding = invoices
+      .filter((i) => i.status === "sent" || i.status === "overdue" || i.status === "pending")
+      .reduce((s, i) => s + Number(i.amount ?? 0), 0);
+    const paidThisQuarter = invoices
+      .filter((i) => i.status === "paid" && dateInQuarter(i.paid_at, currentQuarter))
+      .reduce((s, i) => s + Number(i.amount ?? 0), 0);
+    return { outstanding, paidThisQuarter };
+  }, [invoices, currentQuarter]);
+
+  const currentVat = useMemo(
+    () => computeQuarterVat(invoices, overheads, currentQuarter),
+    [invoices, overheads, currentQuarter],
+  );
+  const closedVat = useMemo(
+    () => computeQuarterVat(invoices, overheads, previousQuarter),
+    [invoices, overheads, previousQuarter],
+  );
+
+  // Row-click handlers
+  function openOverheadDetail(o: Overhead) {
+    setSelectedOverhead(o);
+    setOverheadDetailOpen(true);
+  }
+
+  function openOverheadEditFromDetail() {
+    if (!selectedOverhead) return;
+    setEditing(selectedOverhead);
+    setOverheadDetailOpen(false);
+    setFormOpen(true);
+  }
+
+  function openInvoiceViewer(r: MoneyInInvoice) {
+    const items = Array.isArray(r.line_items) ? (r.line_items as any) : [];
+    setInvoiceViewing({
+      id: r.id,
+      invoice_number: r.invoice_number,
+      reference_number: r.reference_number,
+      amount: Number(r.amount),
+      currency: r.currency ?? "GBP",
+      status: r.status,
+      due_date: r.due_date,
+      issued_at: r.issued_at,
+      created_at: r.created_at,
+      notes: r.notes,
+      line_items: items,
+      client_company: r.account_company,
+      account_id: r.account_id,
+      subtotal: r.subtotal != null ? Number(r.subtotal) : null,
+      vat_rate: r.vat_rate != null ? Number(r.vat_rate) : null,
+      vat_amount: r.vat_amount != null ? Number(r.vat_amount) : null,
+    });
+  }
 
   return (
     <AdminLayout>
-      <div className="max-w-3xl">
-        <p
-          className="font-sans uppercase mb-4"
-          style={{ fontSize: 9, letterSpacing: "0.28em", color: brand.gold_color }}
-        >
-          Finance
-        </p>
-        <h1
-          className="font-serif font-normal tracking-tight text-foreground mb-8"
-          style={{ fontSize: "2.5rem", lineHeight: 1.05, letterSpacing: "-0.005em" }}
-        >
+      {/* Header */}
+      <div className="mb-8">
+        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">Finance</p>
+        <h1 className="font-serif font-normal tracking-tight text-strong text-4xl leading-none">
           P&amp;L
         </h1>
-        <p
-          className="font-sans"
-          style={{ fontSize: 14, lineHeight: 1.75, color: brand.text_color, opacity: 0.7 }}
-        >
-          Coming soon. This module is in development.
+        <p className="mt-3 text-sm text-recessive">
+          Money out, money in, and cash-basis VAT for {currentQuarter.label}.
         </p>
       </div>
+
+      {/* Summary band — figures lead the surface */}
+      <FinanceSummary
+        moneyOut={moneyOut}
+        moneyIn={moneyIn}
+        vat={{ netEstimate: currentVat.netVat }}
+        currentQuarter={currentQuarter}
+      />
+
+      {/* VAT panel */}
+      <VatIndicator current={currentVat} closed={closedVat} />
+
+      {/* Money OUT */}
+      <div className="mb-4 flex items-baseline justify-between">
+        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money out</p>
+        <p className="text-xs text-recessive">Overheads · cash basis</p>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <Input
+          placeholder="Search supplier…"
+          value={ovSearch}
+          onChange={(e) => setOvSearch(e.target.value)}
+          className="rounded-sm max-w-xs"
+        />
+        <Select value={ovStatus} onValueChange={(v) => setOvStatus(v as OverheadStatusFilter)}>
+          <SelectTrigger className="rounded-sm w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="unpaid">Unpaid</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={ovQuarter} onValueChange={(v) => setOvQuarter(v as QuarterFilter)}>
+          <SelectTrigger className="rounded-sm w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All quarters</SelectItem>
+            <SelectItem value="current">{currentQuarter.label}</SelectItem>
+            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="mb-10">
+        <OverheadTable
+          rows={filteredOverheads}
+          categories={categories}
+          loading={loading}
+          onRowClick={openOverheadDetail}
+        />
+      </div>
+
+      {/* Money IN */}
+      <div className="mb-4 flex items-baseline justify-between">
+        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in</p>
+        <p className="text-xs text-recessive">Invoices · read-only</p>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <Input
+          placeholder="Search client or invoice #…"
+          value={invSearch}
+          onChange={(e) => setInvSearch(e.target.value)}
+          className="rounded-sm max-w-xs"
+        />
+        <Select value={invStatus} onValueChange={(v) => setInvStatus(v as InvoiceStatusFilter)}>
+          <SelectTrigger className="rounded-sm w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="overdue">Overdue</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={invQuarter} onValueChange={(v) => setInvQuarter(v as QuarterFilter)}>
+          <SelectTrigger className="rounded-sm w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All quarters</SelectItem>
+            <SelectItem value="current">{currentQuarter.label}</SelectItem>
+            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
+
+      {/* Dialogs rendered unconditionally at page root */}
+      <OverheadForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        mode="edit"
+        initial={editing}
+        categories={categories}
+        onSaved={fetchAll}
+      />
+      <OverheadDetail
+        open={overheadDetailOpen}
+        onOpenChange={setOverheadDetailOpen}
+        overhead={selectedOverhead}
+        categories={categories}
+        onEdit={openOverheadEditFromDetail}
+      />
+      <InvoiceViewer
+        invoice={invoiceViewing}
+        open={!!invoiceViewing}
+        onOpenChange={(o) => !o && setInvoiceViewing(null)}
+      />
     </AdminLayout>
   );
 }
