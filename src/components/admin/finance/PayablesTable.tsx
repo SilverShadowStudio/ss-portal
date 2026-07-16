@@ -2,7 +2,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -12,9 +11,12 @@ import {
   formatDate,
   outstandingFor,
   PAYABLE_SOURCE_LABELS,
+  payablePeriodDate,
   type Payable,
   type PayablePaidStatus,
 } from "@/lib/finance";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 interface PayablesTableProps {
   rows: Payable[];
@@ -36,19 +38,46 @@ const STATUS_CLASS: Record<PayablePaidStatus, string> = {
   unknown: "text-xs text-recessive",
 };
 
+const COLUMNS: SortableColumn<Payable>[] = [
+  { id: "payee", accessor: (r) => r.payee_name, type: "text" },
+  { id: "source", accessor: (r) => PAYABLE_SOURCE_LABELS[r.source_table], type: "text" },
+  { id: "period", accessor: (r) => payablePeriodDate(r), type: "date" },
+  { id: "total", accessor: (r) => r.invoice_total, type: "number" },
+  { id: "paid", accessor: (r) => r.amount_paid, type: "number" },
+  { id: "outstanding", accessor: (r) => outstandingFor(r), type: "number" },
+  { id: "status", accessor: (r) => r.paid_status, type: "text" },
+];
+
 export function PayablesTable({ rows, loading, onRowClick }: PayablesTableProps) {
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Payable>(
+    rows,
+    COLUMNS,
+    { key: "period", dir: "desc" },
+  );
+
+  const th = (id: string, label: string, className?: string) => (
+    <SortableTh
+      id={id}
+      label={label}
+      className={className}
+      activeKey={sortKey}
+      dir={sortDir}
+      onClick={toggle}
+    />
+  );
+
   return (
     <div className="border border-divider rounded-sm overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="border-divider">
-            <Th>Payee</Th>
-            <Th>Source</Th>
-            <Th>Period</Th>
-            <Th className="text-right">Total</Th>
-            <Th className="text-right">Paid</Th>
-            <Th className="text-right">Outstanding</Th>
-            <Th>Status</Th>
+            {th("payee", "Payee")}
+            {th("source", "Source")}
+            {th("period", "Period")}
+            {th("total", "Total", "text-right")}
+            {th("paid", "Paid", "text-right")}
+            {th("outstanding", "Outstanding", "text-right")}
+            {th("status", "Status")}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -58,14 +87,14 @@ export function PayablesTable({ rows, loading, onRowClick }: PayablesTableProps)
                 Loading…
               </TableCell>
             </TableRow>
-          ) : rows.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={7} className="text-center py-12 text-recessive">
                 No payables synced yet.
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((r) => {
+            sortedRows.map((r) => {
               const isApprox = APPROX_PERIOD_SOURCES.has(r.source_table);
               const periodText = r.period_date
                 ? formatDate(r.period_date)
@@ -116,15 +145,3 @@ export function PayablesTable({ rows, loading, onRowClick }: PayablesTableProps)
   );
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <TableHead
-      className={
-        "text-[9px] uppercase tracking-[0.28em] text-foreground/40 font-normal " +
-        (className ?? "")
-      }
-    >
-      {children}
-    </TableHead>
-  );
-}

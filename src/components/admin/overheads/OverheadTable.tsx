@@ -1,10 +1,18 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   formatCurrency,
   formatDate,
   type ExpenseCategory,
   type Overhead,
 } from "@/lib/finance";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 interface OverheadTableProps {
   rows: Overhead[];
@@ -16,19 +24,54 @@ interface OverheadTableProps {
 export function OverheadTable({ rows, categories, loading, onRowClick }: OverheadTableProps) {
   const catByCode = new Map(categories.map((c) => [c.code, c] as const));
 
+  const columns: SortableColumn<Overhead>[] = [
+    { id: "supplier", accessor: (r) => r.supplier_name, type: "text" },
+    {
+      id: "category",
+      accessor: (r) => {
+        const c = r.category_code ? catByCode.get(r.category_code) : null;
+        return c ? `${c.code} ${c.name}` : (r.category_code ?? "");
+      },
+      type: "text",
+    },
+    { id: "invoice_date", accessor: (r) => r.invoice_date, type: "date" },
+    { id: "net", accessor: (r) => r.net_amount, type: "number" },
+    { id: "vat", accessor: (r) => r.vat_amount, type: "number" },
+    { id: "gross", accessor: (r) => r.gross_amount, type: "number" },
+    { id: "status", accessor: (r) => r.payment_status, type: "text" },
+    { id: "due", accessor: (r) => r.due_date, type: "date" },
+  ];
+
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Overhead>(
+    rows,
+    columns,
+    { key: "invoice_date", dir: "desc" },
+  );
+
+  const th = (id: string, label: string, className?: string) => (
+    <SortableTh
+      id={id}
+      label={label}
+      className={className}
+      activeKey={sortKey}
+      dir={sortDir}
+      onClick={toggle}
+    />
+  );
+
   return (
     <div className="border border-divider rounded-sm overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="border-divider">
-            <Th>Supplier</Th>
-            <Th>Category</Th>
-            <Th>Invoice date</Th>
-            <Th className="text-right">Net</Th>
-            <Th className="text-right">VAT</Th>
-            <Th className="text-right">Gross</Th>
-            <Th>Status</Th>
-            <Th>Due</Th>
+            {th("supplier", "Supplier")}
+            {th("category", "Category")}
+            {th("invoice_date", "Invoice date")}
+            {th("net", "Net", "text-right")}
+            {th("vat", "VAT", "text-right")}
+            {th("gross", "Gross", "text-right")}
+            {th("status", "Status")}
+            {th("due", "Due")}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -38,14 +81,14 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
                 Loading…
               </TableCell>
             </TableRow>
-          ) : rows.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={8} className="text-center py-12 text-recessive">
                 No expenses recorded yet.
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((r) => {
+            sortedRows.map((r) => {
               const cat = r.category_code ? catByCode.get(r.category_code) : null;
               return (
                 <TableRow
@@ -93,18 +136,5 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
         </TableBody>
       </Table>
     </div>
-  );
-}
-
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <TableHead
-      className={
-        "text-[9px] uppercase tracking-[0.28em] text-foreground/40 font-normal " +
-        (className ?? "")
-      }
-    >
-      {children}
-    </TableHead>
   );
 }

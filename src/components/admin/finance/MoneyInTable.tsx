@@ -1,5 +1,7 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, type MoneyInInvoice } from "@/lib/finance";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 interface MoneyInTableProps {
   rows: MoneyInInvoice[];
@@ -22,21 +24,50 @@ const TYPE_LABELS: Record<string, string> = {
   standalone: "Standalone",
 };
 
+const COLUMNS: SortableColumn<MoneyInInvoice>[] = [
+  { id: "client", accessor: (r) => r.account_company ?? "", type: "text" },
+  { id: "number", accessor: (r) => r.invoice_number ?? r.reference_number ?? "", type: "text" },
+  { id: "type", accessor: (r) => (r.type ? TYPE_LABELS[r.type] ?? r.type : ""), type: "text" },
+  { id: "net", accessor: (r) => r.subtotal, type: "number" },
+  { id: "vat", accessor: (r) => r.vat_amount, type: "number" },
+  { id: "gross", accessor: (r) => r.amount, type: "number" },
+  { id: "status", accessor: (r) => r.status, type: "text" },
+  { id: "paid", accessor: (r) => r.paid_at, type: "date" },
+  { id: "due", accessor: (r) => r.due_date, type: "date" },
+];
+
 export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<MoneyInInvoice>(
+    rows,
+    COLUMNS,
+    { key: "paid", dir: "desc" },
+  );
+
+  const th = (id: string, label: string, className?: string) => (
+    <SortableTh
+      id={id}
+      label={label}
+      className={className}
+      activeKey={sortKey}
+      dir={sortDir}
+      onClick={toggle}
+    />
+  );
+
   return (
     <div className="border border-divider rounded-sm overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="border-divider">
-            <Th>Client</Th>
-            <Th>Invoice #</Th>
-            <Th>Type</Th>
-            <Th className="text-right">Net</Th>
-            <Th className="text-right">VAT</Th>
-            <Th className="text-right">Gross</Th>
-            <Th>Status</Th>
-            <Th>Paid</Th>
-            <Th>Due</Th>
+            {th("client", "Client")}
+            {th("number", "Invoice #")}
+            {th("type", "Type")}
+            {th("net", "Net", "text-right")}
+            {th("vat", "VAT", "text-right")}
+            {th("gross", "Gross", "text-right")}
+            {th("status", "Status")}
+            {th("paid", "Paid")}
+            {th("due", "Due")}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -46,14 +77,14 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
                 Loading…
               </TableCell>
             </TableRow>
-          ) : rows.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={9} className="text-center py-12 text-recessive">
                 No invoices in this view.
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((r) => (
+            sortedRows.map((r) => (
               <TableRow
                 key={r.id}
                 onClick={() => onRowClick(r)}
@@ -96,18 +127,5 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
         </TableBody>
       </Table>
     </div>
-  );
-}
-
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <TableHead
-      className={
-        "text-[9px] uppercase tracking-[0.28em] text-foreground/40 font-normal " +
-        (className ?? "")
-      }
-    >
-      {children}
-    </TableHead>
   );
 }
