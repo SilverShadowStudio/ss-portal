@@ -112,6 +112,90 @@ resolution, and defensive re-issue prevention.
 
 ---
 
+# Session — 16 July 2026 (evening — payables cron auth hardening; still unresolved + legacy service_role rotation planned)
+
+Delta after the 15:44 Payables Read deploy. No further code merged to main; one uncommitted diagnostic patch deployed to prod. Legacy-key rotation planning started; two Dashboard checks queued before migration begins.
+
+## (a) PAYABLES_CRON_SECRET rollout — `9d103cc` on main, deployed live
+
+pg_cron was returning `401 {"error":"Unauthorized"}` at every quarter-hour tick because `token === serviceRoleKey` evaluated false on the isCron branch (verify_jwt confirmed OFF on the function; my handler was rejecting the cron caller). Root cause was either env-var drift or Bearer-strip whitespace — but string-equality on a 200+ char JWT is the wrong long-term auth mechanism regardless.
+
+Replaced with a dedicated shared secret decoupled from the service-role key. Changes:
+- `constantTimeEqual(a, b)` helper (XOR-accumulation over UTF-8 bytes; compare time depends only on length, not divergence point).
+- New `PAYABLES_CRON_SECRET` function env var. cron passes it as an `X-Cron-Secret` custom header. `isCron = present + present + constant-time equal`. Not set → fall through to admin-JWT branch (existing manual-refresh path unchanged).
+- `.trim()` on the extracted admin bearer as belt-and-suspenders.
+
+Blast radius on cron-secret leak: cron-scope only ("run this function"). Rotating service_role no longer breaks cron; rotating cron secret doesn't touch service_role. Deployed byte-identical to local.
+
+Fred generated the secret via `openssl rand -hex 32`, set `PAYABLES_CRON_SECRET` in Function Secrets, and re-scheduled the cron with the header — service-role bearer removed from the cron command. **BUT the cron still returns 401**, meaning the header value or env value has drift (whitespace, encoding, wrong secret pasted somewhere). See (b) — a debug branch was deployed but never fired.
+
+## (b) Debug-branch DRIFT on deployed payables-sync — NOT in git
+
+After `9d103cc`, a temporary diagnostic branch was added to `supabase/functions/payables-sync/index.ts` and deployed:
+
+```ts
+if (!isCron && providedCronSecret !== "") {
+  return json({
+    debug: "cron_secret_mismatch",
+    cron_secret_present: cronSecret.length > 0,
+    cron_secret_length: cronSecret.length,
+    provided_present: providedCronSecret.length > 0,
+    provided_length: providedCronSecret.length,
+    length_match: cronSecret.length === providedCronSecret.length,
+    header_names_received: Array.from(req.headers.keys()).sort(),
+  }, 200);
+}
+```
+
+**Live drift**: main HEAD = `9d103cc` (no debug); prod-deployed function = one revision further with the debug branch. No secret bytes returned — only presence booleans + lengths + header names — but it's diagnostic scaffolding shipped to prod that isn't in git.
+
+**Fred never fired the diagnostic curl before session close** (moved on to legacy-key rotation planning). Next session:
+1. **Option A**: fire the curl with the current `PAYABLES_CRON_SECRET` and read the JSON — presence/lengths reveal env-drift vs header-drop vs byte-level content mismatch → remove debug branch, redeploy clean.
+2. **Option B**: remove debug branch blindly, redeploy, and retry the cron from scratch (may reproduce the mismatch anyway; slower).
+
+Prefer A — it settles the mystery in one curl. Repro command in the prior turn.
+
+## (c) Legacy service_role rotation — full audit done, two Dashboard checks queued
+
+Legacy `service_role` JWT leaked into transcript (via the cron command in an earlier turn). Fred wants staged migration to the new `sb_secret_...` / `sb_publishable_...` key system, then legacy disabled.
+
+**Audit done:**
+- **Client bundle**: `src/integrations/supabase/client.ts:5` — variable named `SUPABASE_PUBLISHABLE_KEY` but the *value* is the legacy anon JWT. Must be replaced with the new `sb_publishable_...` BEFORE legacy anon is disabled, otherwise every browser session dies.
+- **65 edge functions read `SUPABASE_SERVICE_ROLE_KEY`** (privileged RLS-bypass); **41 read `SUPABASE_ANON_KEY`** (for the admin JWT gate). Full function list captured in the earlier turn.
+- **Vercel env**: confirmed no `VITE_SUPABASE_*` references; client.ts hardcode is authoritative.
+- **Platform env vars currently populated**: legacy singular (`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) + new plural (`SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS`). Nothing in code reads the plural forms yet.
+
+**Two Dashboard checks Fred owes before migration starts** — they pick the short vs long path:
+1. **In Dashboard → Edge Functions env vars, is `SUPABASE_SECRET_KEY` (singular) already populated with the new `sb_secret_...` value, or empty?** If populated, migration collapses to a client.ts one-line change + Dashboard disable.
+2. **Are `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` marked "system-managed" / read-only, or freely editable?** If editable, migration can skip a 65-function code change entirely (overwrite the legacy env values with the new key strings, keep the names).
+
+Full migration plan (Phase 0–7, dual-read fallback in code first, verify, disable legacy in order service_role → anon) documented in the earlier turn — pick the path once the two checks come back.
+
+**Three Management-API personal access tokens exposed in transcripts today** — rotate at session close via Dashboard → Account → Access tokens:
+- `sbp_9ca0…521ec` (deploys during Payables Read Pass 2)
+- `sbp_ef9d…5b7300` (Fred re-armed after the first leak)
+- `sbp_d560…8a2c9` (accidentally pasted in Fred's next-session summary)
+
+Also: legacy `service_role` JWT itself needs rotating too — it's the whole point of the migration.
+
+## Production state at session close (updated)
+
+- **Live commit on main:** `fda6213` from the earlier 15:44 close, PLUS `9d103cc` (payables cron secret) shipped after. Working tree clean; main = origin/main.
+- **Live prod deployment of `payables-sync`**: one revision *past* `9d103cc` — includes the uncommitted debug branch (see (b)).
+- **Manual refresh from `/admin/finance/pnl`** works normally (admin JWT path unchanged).
+- **pg_cron at every quarter-hour**: still returning 401 until (b) is settled and the secret matches.
+- **Migrations applied to prod**: unchanged (`20260716000001_finance_phase_1.sql`, `20260716000002_payables_read_phase.sql`).
+
+## URGENT next session (revised)
+
+1. **Answer the two Dashboard checks** (see (c) above) — 30 seconds; picks migration path.
+2. **Resolve the debug drift on `payables-sync`** — fire the diagnostic curl, read the JSON, remove the debug branch, redeploy clean (see (b)).
+3. Then choose: proceed with the key migration OR keep the cron-secret debugging until pg_cron writes a `payables_sync_log` row on schedule, whichever unblocks the other.
+
+Slice A (payables write-back) still the URGENT-next candidate *after* the key rotation lands — the write-back function will use whichever key is current at that point, so getting the key migration done first avoids re-doing work.
+
+---
+
 # Session — 16 July 2026 (Finance Module Phase 1 + Payables Read — two full slices shipped)
 
 Big session. Two full slices merged to main via squash and deployed to prod: Phase 1 Finance Module (overheads + expenses page + P&L VAT indicator) then Payables Read (Kieran's Airtable → portal mirror + P&L Payables tile + generic AdminAlertBanner + sortable finance tables). Two migrations applied. One edge function deployed. Live deploys verified end-to-end. Roadmap section added to HANDOFF for the two backlog slices that follow.
