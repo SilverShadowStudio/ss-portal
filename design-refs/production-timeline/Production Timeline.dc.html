@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;}
+    ::-webkit-scrollbar{height:11px;width:11px;}
+    ::-webkit-scrollbar-track{background:#0c0a08;}
+    ::-webkit-scrollbar-thumb{background:#2c2620;border-radius:6px;border:2px solid #0c0a08;}
+    ::-webkit-scrollbar-thumb:hover{background:#3c352b;}
+  </style>
+</helmet>
+
+<div style="display:flex; height:100vh; width:100%; background:#0c0a08; font-family:Jost,sans-serif; color:#e8e2d6; overflow:hidden;">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside style="width:288px; flex:none; height:100%; background:#0c0a08; border-right:1px solid rgba(197,165,114,0.10); display:flex; flex-direction:column; padding:40px 0 28px;">
+    <div style="padding:0 38px 30px;">
+      <div style="font-family:'Cormorant Garamond',serif; font-weight:600; font-size:25px; letter-spacing:3px; color:#ece6da; line-height:1;">SILVERSHADOW</div>
+      <div style="font-size:10px; letter-spacing:6px; color:#9a8c70; margin-top:7px; padding-left:2px;">STUDIO</div>
+    </div>
+
+    <nav style="flex:1; overflow-y:auto; padding:8px 0;">
+      <div style="display:flex; align-items:center; gap:0; padding:13px 38px; position:relative;">
+        <div style="position:absolute; left:0; top:9px; bottom:9px; width:2px; background:#c5a572;"></div>
+        <span style="font-size:13px; letter-spacing:2.5px; color:#9a9082;">OVERVIEW</span>
+      </div>
+      <div style="display:flex; align-items:center; padding:13px 38px; position:relative;">
+        <div style="position:absolute; left:0; top:7px; bottom:7px; width:2px; background:#c5a572;"></div>
+        <span style="font-size:13px; letter-spacing:2.5px; color:#ece6da;">TIMELINE</span>
+      </div>
+
+      <div style="height:1px; background:rgba(197,165,114,0.10); margin:14px 38px;"></div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 38px;">
+        <span style="font-size:13px; letter-spacing:2.5px; color:#9a9082;">CLIENTS</span>
+        <span style="width:21px; height:21px; border-radius:50%; background:#c5a572; color:#1a140a; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center;">2</span>
+      </div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">AGREEMENTS</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">QUOTES</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">INVOICES</div>
+
+      <div style="height:1px; background:rgba(197,165,114,0.10); margin:14px 38px;"></div>
+
+      <div style="padding:12px 38px; font-size:13px; letter-spacing:2.5px; color:#9a9082;">TEAM</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">AGREEMENTS</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">INVOICES</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">TRACKER</div>
+
+      <div style="height:1px; background:rgba(197,165,114,0.10); margin:14px 38px;"></div>
+
+      <div style="padding:12px 38px; font-size:11px; letter-spacing:3px; color:#6a6258;">FINANCE</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">P&amp;L</div>
+      <div style="padding:9px 38px 9px 56px; font-size:12px; letter-spacing:2px; color:#7d756a;">EXPENSES</div>
+    </nav>
+
+    <div style="padding:22px 38px 0; border-top:1px solid rgba(197,165,114,0.10); margin:0 0 0 0;">
+      <div style="font-family:'Cormorant Garamond',serif; font-size:19px; color:#ddd5c6; letter-spacing:0.5px;">Fred Colomb</div>
+      <div style="font-size:10px; letter-spacing:3px; color:#6a6258; margin-top:4px;">ADMIN</div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main style="flex:1; min-width:0; height:100%; overflow-y:auto; padding:40px 48px 64px;">
+
+    <!-- header -->
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="width:36px; height:1px; background:#c5a572;"></div>
+      <span style="font-size:12px; font-weight:500; letter-spacing:3.5px; color:#c5a572;">PRODUCTION TIMELINE</span>
+    </div>
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:18px; margin-top:18px;">
+      <div>
+        <h1 style="font-family:'Cormorant Garamond',serif; font-weight:500; font-size:42px; line-height:1.1; color:#ece6da; margin:0; letter-spacing:0.5px;">Summer Production Schedule</h1>
+        <div style="font-size:13px; letter-spacing:1px; color:#8c8478; margin-top:12px;">19 May — 24 July 2025&nbsp;&nbsp;·&nbsp;&nbsp;14 scenes&nbsp;&nbsp;·&nbsp;&nbsp;3 projects</div>
+      </div>
+    </div>
+
+    <!-- legend -->
+    <div style="display:flex; align-items:center; gap:26px; flex-wrap:wrap; margin-top:26px;">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span style="width:15px; height:15px; border-radius:4px; background:#4f6c99;"></span>
+        <span style="font-size:11px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:#a89e8c;">Production</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span style="width:15px; height:15px; border-radius:4px; background:#a8493c;"></span>
+        <span style="font-size:11px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:#a89e8c;">Feedback</span>
+      </div>
+      <div style="width:1px; height:18px; background:rgba(197,165,114,0.16);"></div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span style="width:7px; height:7px; border-radius:50%; background:#8a76ad;"></span>
+        <span style="font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:#a89e8c;">Katerina</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span style="width:7px; height:7px; border-radius:50%; background:#4f9aa3;"></span>
+        <span style="font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:#a89e8c;">Fiodor</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span style="width:7px; height:7px; border-radius:50%; background:#b0604f;"></span>
+        <span style="font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:#a89e8c;">May</span>
+      </div>
+    </div>
+
+    <!-- schedule card -->
+    <div style="margin-top:28px; background:#14110d; border:1px solid rgba(197,165,114,0.13); border-radius:16px; overflow:hidden;">
+      <div style="overflow-x:auto; overflow-y:hidden;">
+        <div style="width:2046px; min-width:2046px;">
+
+          <!-- date header row -->
+          <div style="display:flex; border-bottom:1px solid rgba(197,165,114,0.12);">
+            <div style="position:sticky; left:0; z-index:7; width:380px; flex:none; height:132px; background:#171410; border-right:1px solid rgba(197,165,114,0.16); display:flex; align-items:flex-end; padding-bottom:13px;">
+              <div style="width:248px; padding-left:34px; font-size:11px; font-weight:500; letter-spacing:2.5px; text-transform:uppercase; color:#8c8478;">Scene</div>
+              <div style="width:132px; font-size:11px; font-weight:500; letter-spacing:2.5px; text-transform:uppercase; color:#8c8478;">Manager</div>
+            </div>
+            <div style="display:flex; flex:none; width:1666px;">
+              <sc-for list="{{ dates }}" as="date" hint-placeholder-count="49">
+                <div style="{{ date.cellStyle }}"><span style="{{ date.labelStyle }}">{{ date.label }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- groups -->
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+            <div style="display:flex;">
+              <div style="position:sticky; left:0; z-index:6; width:380px; flex:none; height:46px; background:#1a1611; border-right:1px solid rgba(197,165,114,0.16); display:flex; align-items:center; gap:12px; padding-left:22px;">
+                <span style="font-family:'Cormorant Garamond',serif; font-weight:600; font-size:16px; letter-spacing:0.5px; color:#d8c39a;">{{ g.code }}</span>
+                <span style="font-family:'Cormorant Garamond',serif; font-weight:400; font-size:15px; letter-spacing:1px; color:#a89c86;">{{ g.place }}</span>
+              </div>
+              <div style="position:relative; width:1666px; flex:none; height:46px; background:#1a1611; display:flex; align-items:center; padding:0 24px;">
+                <div style="height:1px; width:100%; background:linear-gradient(90deg, rgba(197,165,114,0.20), rgba(197,165,114,0));"></div>
+              </div>
+            </div>
+
+            <sc-for list="{{ g.scenes }}" as="s" hint-placeholder-count="5">
+              <div style="display:flex;">
+                <div style="position:sticky; left:0; z-index:5; width:380px; flex:none; height:38px; background:#14110d; border-right:1px solid rgba(197,165,114,0.16); border-bottom:1px solid rgba(197,165,114,0.05); display:flex; align-items:center;">
+                  <div style="width:248px; padding-left:34px; font-size:12.5px; letter-spacing:0.3px; color:#cfc7b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.name }}</div>
+                  <div style="width:132px; display:flex; align-items:center; gap:8px;">
+                    <span style="{{ s.mgrDotStyle }}"></span>
+                    <span style="font-size:10px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:#a89e8c;">{{ s.manager }}</span>
+                  </div>
+                </div>
+                <div style="position:relative; width:1666px; flex:none; height:38px; border-bottom:1px solid rgba(197,165,114,0.05); background-image:repeating-linear-gradient(90deg, rgba(197,165,114,0.035) 0 1px, transparent 1px 34px), repeating-linear-gradient(90deg, rgba(197,165,114,0.09) 0 1px, transparent 1px 170px);">
+                  <sc-for list="{{ s.segments }}" as="seg" hint-placeholder-count="0">
+                    <div style="{{ seg.style }}">{{ seg.text }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </sc-for>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;productionColor&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#4f6c99&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#4f6c99&quot;, &quot;#5b7e8c&quot;, &quot;#6a7f5c&quot;, &quot;#8a76ad&quot;] },
+  &quot;feedbackColor&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#a8493c&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;#a8493c&quot;, &quot;#b06b4f&quot;, &quot;#a85c7a&quot;, &quot;#9c5848&quot;] },
+  &quot;showPhaseLabels&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; }
+}">
+class Component extends DCLogic {
+  hexToRgba(hex, a) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  lighten(hex, amt) {
+    const h = hex.replace('#', '');
+    let r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+    r = Math.round(r + (255 - r) * amt); g = Math.round(g + (255 - g) * amt); b = Math.round(b + (255 - b) * amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  buildDates() {
+    const start = new Date(2025, 4, 19);
+    const monNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const out = [];
+    const d = new Date(start);
+    while (out.length < 49) {
+      const dow = d.getDay();
+      if (dow >= 1 && dow <= 5) {
+        const isMon = dow === 1;
+        const label = `${dows[dow]} ${d.getDate()} ${monNames[d.getMonth()]}`;
+        const cellStyle = `position:relative;width:34px;height:132px;flex:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:13px;border-right:1px solid rgba(197,165,114,0.05);${isMon ? 'border-left:1px solid rgba(197,165,114,0.14);' : ''}`;
+        const labelStyle = `writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font:500 10px Jost,sans-serif;letter-spacing:0.8px;color:${isMon ? '#c7a06a' : '#8c8478'};`;
+        out.push({ label, cellStyle, labelStyle });
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
+  renderVals() {
+    const cellW = 34;
+    const PROD = this.props.productionColor ?? '#4f6c99';
+    const FB = this.props.feedbackColor ?? '#a8493c';
+    const showLbl = this.props.showPhaseLabels ?? true;
+    const PROD_BAND = this.hexToRgba(PROD, 0.20);
+    const FB_BAND = this.hexToRgba(FB, 0.18);
+    const PROD_LBL = this.lighten(PROD, 0.5);
+    const FB_LBL = this.lighten(FB, 0.5);
+    const px = n => n * cellW;
+
+    const band = (s, span, color) => ({ style: `position:absolute;top:5px;height:28px;border-radius:5px;z-index:1;left:${px(s)}px;width:${px(span) - 3}px;background:${color};`, text: '' });
+    const cell = (s, num, bg) => ({ style: `position:absolute;top:5px;height:28px;width:${cellW - 3}px;border-radius:5px;z-index:3;left:${px(s)}px;background:${bg};display:flex;align-items:center;justify-content:center;color:#f4efe5;font:600 13px Jost,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,0.35);`, text: String(num) });
+    const lbl = (s, txt, color) => showLbl ? ({ style: `position:absolute;top:12px;height:14px;line-height:14px;z-index:4;left:${px(s) + 6}px;white-space:nowrap;color:${color};font:600 9px Jost,sans-serif;letter-spacing:1.5px;text-transform:uppercase;`, text: txt }) : null;
+    const compact = arr => arr.filter(Boolean);
+
+    const c88 = (num, fb) => {
+      const a = [band(1, 19, PROD_BAND), cell(1, num, PROD), lbl(2, 'Production', PROD_LBL), cell(20, num, FB), cell(25, num, FB)];
+      if (fb) { a.push(band(26, 13, FB_BAND)); a.push(lbl(26, 'Feedback', FB_LBL)); }
+      return compact(a);
+    };
+    const c101 = () => compact([cell(16, 1, PROD), lbl(17, 'Production', PROD_LBL), cell(19, 1, FB), band(20, 18, FB_BAND), lbl(20, 'Feedback', FB_LBL)]);
+    const c104 = () => compact([
+      band(9, 3, PROD_BAND), cell(9, 1, PROD), lbl(10, 'Production', PROD_LBL),
+      cell(12, 1, FB), band(13, 17, FB_BAND), lbl(13, 'Feedback', FB_LBL),
+      band(30, 18, PROD_BAND), cell(30, 2, PROD), lbl(31, 'Production', PROD_LBL),
+      cell(48, 2, FB)
+    ]);
+
+    const dot = c => `width:7px;height:7px;border-radius:50%;background:${c};flex:none;`;
+    const KAT = '#8a76ad', FIO = '#4f9aa3', MAY = '#b0604f';
+    const sc = (name, mgr, dotc, segs) => ({ name, manager: mgr, mgrDotStyle: dot(dotc), segments: segs });
+
+    const groups = [
+      { code: 'C88', place: 'Walnut Street', scenes: [
+        sc('01 — Kitchen (OWE 1 Round)', 'Katerina', KAT, c88(3, false)),
+        sc('02 — Garden Room', 'Katerina', KAT, c88(2, true)),
+        sc('03 — Dining Room', 'Katerina', KAT, c88(2, true)),
+        sc('04 — Entrance', 'Katerina', KAT, c88(3, false)),
+        sc('05 — Drawing Room', 'Katerina', KAT, c88(2, true)),
+      ] },
+      { code: 'C101', place: 'Bleecker Street', scenes: [
+        sc('01 — Facade A', 'Fiodor', FIO, c101()),
+        sc('02 — Facade B', 'Fiodor', FIO, c101()),
+        sc('03 — Facade C', 'Fiodor', FIO, []),
+        sc('04 — Entrance', 'Fiodor', FIO, []),
+      ] },
+      { code: 'C104', place: 'Ottawa', scenes: [
+        sc('01 — Goldenrod Driveway', 'May', MAY, c104()),
+        sc('02 — Block 5 Courtyard', 'May', MAY, c104()),
+        sc('03 — Boulevard Street', 'May', MAY, c104()),
+        sc('04 — River View', 'May', MAY, c104()),
+        sc('05 — Aerial', 'May', MAY, c104()),
+      ] },
+    ];
+
+    return { dates: this.buildDates(), groups };
+  }
+}
+</script>
+</body>
+</html>

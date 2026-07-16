@@ -642,6 +642,13 @@ export function NewRoundModal({
     if (!isOpen) setConfirmDiscard(false);
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, onClose]);
+
   const handleDiscardDraft = async () => {
     if (!onDiscardDraft || !existingDraft) return;
     if (!confirmDiscard) { setConfirmDiscard(true); return; }
@@ -789,7 +796,6 @@ export function NewRoundModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ type: "tween", duration: DURATION.quick / 1000, ease: FM_EASE.default }}
-            onClick={onClose}
             className="absolute inset-0 bg-background/75 backdrop-blur-md"
           />
           <motion.div
