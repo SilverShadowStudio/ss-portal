@@ -76,10 +76,20 @@ function toNumber(v: unknown): number | null {
   if (v == null) return null;
   if (typeof v === "number") return isNaN(v) ? null : v;
   if (typeof v === "string") {
-    const n = parseFloat(v);
+    // Airtable currency fields SHOULD return raw numbers, but strip
+    // symbols/commas defensively in case a configuration returns
+    // formatted strings ("£1,500.00", "$0", etc.).
+    const cleaned = v.replace(/[£$€,\s]/g, "");
+    if (!cleaned) return null;
+    const n = parseFloat(cleaned);
     return isNaN(n) ? null : n;
   }
   if (Array.isArray(v) && v.length) return toNumber(v[0]);
+  if (typeof v === "object") {
+    // Airtable formula/rollup errors sometimes wrap in { specialValue: "NaN" }.
+    const anyV = v as { specialValue?: unknown };
+    if (anyV.specialValue != null) return null;
+  }
   return null;
 }
 
@@ -333,6 +343,11 @@ Deno.serve(async (req) => {
     // others.
     const counts: Record<string, { fetched: number; upserted: number; deleted: number }> = {};
     const errors: Record<string, string> = {};
+    // Diagnostic: one paid/partial row per source (falls back to first
+    // record). Shows exactly what Airtable is returning for amount_paid /
+    // balance so we can tell field-missing (data reality) from
+    // normalization bug (code) at a glance.
+    const debug: Record<string, unknown> = {};
 
     for (const source of SOURCE_KEYS) {
       const cfg = config.sources[source];
@@ -349,6 +364,32 @@ Deno.serve(async (req) => {
           pat,
         );
         counts[source].fetched = records.length;
+
+        // Debug capture BEFORE upsert so we always have the raw signal.
+        if (records.length) {
+          const paidLike = records.find((r) => {
+            const s = r.fields[cfg.fields.paid_status];
+            const str = Array.isArray(s) ? s[0] : s;
+            return (
+              typeof str === "string" &&
+              (str.includes("YES") || str.includes("PARTIAL"))
+            );
+          });
+          const sample = paidLike ?? records[0];
+          debug[source] = {
+            record_id: sample.id,
+            was_paid_like: !!paidLike,
+            fields_present: Object.keys(sample.fields),
+            paid_status_raw: sample.fields[cfg.fields.paid_status] ?? "ABSENT",
+            invoice_total_raw: sample.fields[cfg.fields.invoice_total] ?? "ABSENT",
+            amount_paid_raw: cfg.fields.amount_paid
+              ? sample.fields[cfg.fields.amount_paid] ?? "ABSENT"
+              : "NOT_MAPPED",
+            balance_raw: cfg.fields.balance
+              ? sample.fields[cfg.fields.balance] ?? "ABSENT"
+              : "NOT_MAPPED",
+          };
+        }
 
         const rows = records.map((r) => normalizeRecord(source, cfg.fields, r));
 
@@ -425,6 +466,7 @@ Deno.serve(async (req) => {
         errors,
         alerts_raised: alerts.length,
         duration_ms: Date.now() - startedAt.getTime(),
+        debug,
       },
       200,
     );
