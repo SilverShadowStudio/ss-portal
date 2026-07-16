@@ -144,3 +144,107 @@ export function dateInQuarter(dateStr: string | null | undefined, quarter: Quart
   if (isNaN(d.getTime())) return false;
   return d >= quarter.start && d <= quarter.end;
 }
+
+// UK VAT return + payment deadline: 1 month + 7 days after the quarter end.
+// Q1 (Jan-Mar) → 7 May, Q2 (Apr-Jun) → 7 Aug, Q3 (Jul-Sep) → 7 Nov, Q4 (Oct-Dec) → 7 Feb.
+export function getHmrcDeadline(quarter: Quarter): Date {
+  const y = quarter.end.getFullYear();
+  const m = quarter.end.getMonth(); // 0-11 (Jun = 5)
+  return new Date(y, m + 2, 7, 23, 59, 59, 999);
+}
+
+export function formatHmrcDeadline(quarter: Quarter): string {
+  return getHmrcDeadline(quarter).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+// Shape used by the finance dashboard for the Money-IN read of `invoices`.
+// The generated Supabase types cover `invoices` fully, but Pass 3 only reads
+// a subset — this narrows what the UI depends on.
+export interface MoneyInInvoice {
+  id: string;
+  invoice_number: string | null;
+  reference_number: string | null;
+  account_id: string | null;
+  account_company?: string | null;
+  subtotal: number | null;
+  vat_amount: number | null;
+  vat_rate: number | null;
+  amount: number;
+  currency: string | null;
+  status: string;
+  type: string | null;
+  paid_at: string | null;
+  due_date: string | null;
+  issued_at: string | null;
+  created_at: string;
+  notes: string | null;
+  line_items: unknown;
+  stripe_checkout_url: string | null;
+  project_id: string | null;
+  user_id: string;
+}
+
+export interface ReverseChargeItem {
+  id: string;
+  supplier_name: string;
+  reverse_charge_vat: number;
+  payment_date: string | null;
+}
+
+export interface QuarterVat {
+  quarter: Quarter;
+  outputVat: number;
+  inputVat: number;
+  netVat: number;
+  reverseChargeItems: ReverseChargeItem[];
+  reverseChargeTotal: number;
+}
+
+// Cash-basis quarter VAT:
+//   Output VAT = Σ invoices.vat_amount WHERE status='paid' AND paid_at ∈ quarter
+//   Input  VAT = Σ overheads.vat_amount WHERE payment_status='paid' AND payment_date ∈ quarter AND NOT is_reverse_charge
+//   Reverse-charge items surfaced separately (excluded from Input VAT sum).
+export function computeQuarterVat(
+  invoices: MoneyInInvoice[],
+  overheads: Overhead[],
+  quarter: Quarter,
+): QuarterVat {
+  const outputVat = invoices
+    .filter((i) => i.status === "paid" && dateInQuarter(i.paid_at, quarter))
+    .reduce((s, i) => s + Number(i.vat_amount ?? 0), 0);
+
+  const paidOverheadsInQuarter = overheads.filter(
+    (o) => o.payment_status === "paid" && dateInQuarter(o.payment_date, quarter),
+  );
+
+  const inputVat = paidOverheadsInQuarter
+    .filter((o) => !o.is_reverse_charge)
+    .reduce((s, o) => s + Number(o.vat_amount ?? 0), 0);
+
+  const reverseChargeItems: ReverseChargeItem[] = paidOverheadsInQuarter
+    .filter((o) => o.is_reverse_charge)
+    .map((o) => ({
+      id: o.id,
+      supplier_name: o.supplier_name,
+      reverse_charge_vat: Number(o.reverse_charge_vat ?? 0),
+      payment_date: o.payment_date,
+    }));
+
+  const reverseChargeTotal = reverseChargeItems.reduce(
+    (s, i) => s + i.reverse_charge_vat,
+    0,
+  );
+
+  return {
+    quarter,
+    outputVat: round2(outputVat),
+    inputVat: round2(inputVat),
+    netVat: round2(outputVat - inputVat),
+    reverseChargeItems,
+    reverseChargeTotal: round2(reverseChargeTotal),
+  };
+}
