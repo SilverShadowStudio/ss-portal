@@ -54,7 +54,52 @@ const QUOTATION_SCHEMA = `{
   "currency": "GBP" | "EUR" | "USD"
 }`
 
-function systemPrompt(documentType: 'invoice' | 'quotation'): string {
+// Overhead = an invoice RECEIVED by the studio (an expense we pay). Different
+// role from invoice/quotation, which are outbound documents we send.
+const OVERHEAD_SCHEMA = `{
+  "supplier_name": "string",
+  "invoice_number": "string",
+  "invoice_date": "YYYY-MM-DD",
+  "due_date": "YYYY-MM-DD" | null,
+  "description": "string" | null,
+  "net_total": number,
+  "vat_amount": number,
+  "gross_total": number,
+  "currency": "GBP" | "EUR" | "USD",
+  "already_paid": boolean | null,
+  "payment_date": "YYYY-MM-DD" | null
+}`
+
+type DocumentType = 'invoice' | 'quotation' | 'overhead'
+
+function systemPrompt(documentType: DocumentType): string {
+  if (documentType === 'overhead') {
+    return (
+      `You are a data extractor for INVOICES RECEIVED by a CGI / architectural-visualisation studio. ` +
+      `These are expense/overhead documents — bills, receipts, or invoices ISSUED BY suppliers TO the studio. ` +
+      `Extract fields into JSON matching EXACTLY this schema:\n` +
+      `${OVERHEAD_SCHEMA}\n\n` +
+      `Field semantics:\n` +
+      `- supplier_name = the entity that ISSUED the invoice (the vendor/supplier), NOT the recipient. ` +
+      `On a document billed to a studio, the supplier is whoever's name or logo is at the top ` +
+      `(e.g. Adobe Inc, Uber, an accountant, a freelancer).\n` +
+      `- If the document contains MULTIPLE totals — for example an order/delivery receipt where ` +
+      `only a service fee or delivery portion is VATable, or a document showing both a headline ` +
+      `"order total" and a separate "tax invoice" — extract net_total, vat_amount, and gross_total ` +
+      `from the TAX INVOICE section (the figures on which VAT is actually accounted), NOT from ` +
+      `the headline order total. The three numbers must be internally consistent ` +
+      `(net_total + vat_amount = gross_total, allowing 1p rounding).\n` +
+      `- If the document clearly shows it has been PAID (words like "PAID", "SETTLED", "RECEIPT", ` +
+      `explicit payment date, zero balance due), set already_paid=true and payment_date to the ` +
+      `visible payment date. If paid but no payment date is visible, set already_paid=true and ` +
+      `payment_date=null.\n` +
+      `- If the document has a future due date and no payment indicator, set already_paid=false ` +
+      `and payment_date=null.\n` +
+      `- Return null for any field that cannot be determined from the document.\n\n` +
+      `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
+      `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
+    )
+  }
   const schema = documentType === 'invoice' ? INVOICE_SCHEMA : QUOTATION_SCHEMA
   return (
     `You are a data extractor for a CGI / architectural-visualisation studio. ` +
@@ -69,7 +114,7 @@ function systemPrompt(documentType: 'invoice' | 'quotation'): string {
 async function callAnthropic(
   apiKey: string,
   model: string,
-  documentType: 'invoice' | 'quotation',
+  documentType: DocumentType,
   mime: string,
   base64: string,
 ): Promise<Response> {
@@ -137,8 +182,8 @@ Deno.serve(async (req) => {
   const documentType = body.document_type
   const base64 = body.file_data_base64
   const mime = body.file_mime_type
-  if (documentType !== 'invoice' && documentType !== 'quotation') {
-    return json({ success: false, error: 'document_type must be invoice or quotation' }, 400)
+  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead') {
+    return json({ success: false, error: 'document_type must be invoice, quotation, or overhead' }, 400)
   }
   if (!base64 || typeof base64 !== 'string') {
     return json({ success: false, error: 'file_data_base64 is required' }, 400)
@@ -148,11 +193,12 @@ Deno.serve(async (req) => {
   }
 
   // Call Claude — primary model, then fallback on any non-OK response.
-  let res = await callAnthropic(anthropicKey, PRIMARY_MODEL, documentType, mime, base64)
+  const dt = documentType as DocumentType
+  let res = await callAnthropic(anthropicKey, PRIMARY_MODEL, dt, mime, base64)
   if (!res.ok) {
     const primaryErr = await res.text()
     console.error(`Anthropic primary (${PRIMARY_MODEL}) error:`, primaryErr)
-    res = await callAnthropic(anthropicKey, FALLBACK_MODEL, documentType, mime, base64)
+    res = await callAnthropic(anthropicKey, FALLBACK_MODEL, dt, mime, base64)
     if (!res.ok) {
       console.error(`Anthropic fallback (${FALLBACK_MODEL}) error:`, await res.text())
       return json({ success: false, error: 'Could not read the document' }, 502)

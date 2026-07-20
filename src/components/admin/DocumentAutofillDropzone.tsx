@@ -10,7 +10,7 @@ const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
 
 interface Props {
-  documentType: "invoice" | "quotation";
+  documentType: "invoice" | "quotation" | "overhead";
   /** Called with the extracted JSON on success. Manual entry stays available. */
   onExtracted: (data: Record<string, unknown>) => void;
   /** Lets the parent disable submit while a document is being read. */

@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
+import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
 import {
   dateInQuarter,
   formatCurrency,
@@ -38,6 +39,7 @@ export default function AdminExpenses() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Overhead | null>(null);
+  const [prefillDefaults, setPrefillDefaults] = useState<Partial<Overhead> | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [selected, setSelected] = useState<Overhead | null>(null);
@@ -95,6 +97,14 @@ export default function AdminExpenses() {
 
   function openCreate() {
     setEditing(null);
+    setPrefillDefaults(null);
+    setFormMode("create");
+    setFormOpen(true);
+  }
+
+  function openCreateFromUpload(defaults: Partial<Overhead>) {
+    setEditing(null);
+    setPrefillDefaults(defaults);
     setFormMode("create");
     setFormOpen(true);
   }
@@ -102,6 +112,7 @@ export default function AdminExpenses() {
   function openEditFromDetail() {
     if (!selected) return;
     setEditing(selected);
+    setPrefillDefaults(null);
     setFormMode("edit");
     setDetailOpen(false);
     setFormOpen(true);
@@ -161,7 +172,8 @@ export default function AdminExpenses() {
           </SelectContent>
         </Select>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-6">
+          <OverheadUploadFlow onExtracted={openCreateFromUpload} />
           <button
             type="button"
             onClick={openCreate}
@@ -186,6 +198,7 @@ export default function AdminExpenses() {
         onOpenChange={setFormOpen}
         mode={formMode}
         initial={editing}
+        defaultValues={prefillDefaults}
         categories={categories}
         onSaved={fetchAll}
       />

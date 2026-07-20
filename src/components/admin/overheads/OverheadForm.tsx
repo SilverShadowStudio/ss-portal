@@ -67,6 +67,10 @@ interface OverheadFormProps {
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
   initial: Overhead | null;
+  /** Optional create-mode seed. Ignored when mode="edit". Parent must
+   *  keep a stable reference (state, not a fresh object literal) or the
+   *  seeding effect will re-fire on every render. */
+  defaultValues?: Partial<Overhead> | null;
   categories: ExpenseCategory[];
   onSaved: () => void;
 }
@@ -121,11 +125,30 @@ function fromOverhead(o: Overhead): FormState {
   };
 }
 
+function fromDefaults(v: Partial<Overhead>): FormState {
+  return {
+    supplier_name: v.supplier_name ?? "",
+    category_code: v.category_code ?? "",
+    description: v.description ?? "",
+    net_amount: v.net_amount != null ? String(v.net_amount) : "",
+    vat_treatment: v.vat_treatment ?? "standard",
+    vat_amount: v.vat_amount != null ? String(v.vat_amount) : "0",
+    invoice_number: v.invoice_number ?? "",
+    invoice_date: v.invoice_date ?? "",
+    due_date: v.due_date ?? "",
+    payment_date: v.payment_date ?? "",
+    is_reverse_charge: v.is_reverse_charge ?? false,
+    reverse_charge_vat: v.reverse_charge_vat != null ? String(v.reverse_charge_vat) : "0",
+    notes: v.notes ?? "",
+  };
+}
+
 export function OverheadForm({
   open,
   onOpenChange,
   mode,
   initial,
+  defaultValues,
   categories,
   onSaved,
 }: OverheadFormProps) {
@@ -138,10 +161,18 @@ export function OverheadForm({
   const { toast } = useToast();
 
   // Reset form whenever the dialog opens (create) or the initial changes (edit).
+  // In create mode, an optional defaultValues seeds the form (e.g. from an
+  // extracted-invoice drop zone).
   useEffect(() => {
     if (!open) return;
-    setForm(mode === "edit" && initial ? fromOverhead(initial) : EMPTY);
-  }, [open, mode, initial]);
+    if (mode === "edit" && initial) {
+      setForm(fromOverhead(initial));
+    } else if (mode === "create" && defaultValues) {
+      setForm(fromDefaults(defaultValues));
+    } else {
+      setForm(EMPTY);
+    }
+  }, [open, mode, initial, defaultValues]);
 
   const net = parseFloat(form.net_amount) || 0;
   const vatAmount = parseFloat(form.vat_amount) || 0;
