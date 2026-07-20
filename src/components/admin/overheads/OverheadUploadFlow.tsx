@@ -6,24 +6,56 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DocumentAutofillDropzone } from "@/components/admin/DocumentAutofillDropzone";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import type { Overhead, VatTreatment } from "@/lib/finance";
+
+const STAGING_BUCKET = "overhead-invoices";
 
 interface Props {
   onExtracted: (defaults: Partial<Overhead>) => void;
 }
 
 /**
- * Text CTA + dropzone dialog for uploading an expense invoice. On successful
- * extraction, closes the dialog and hands mapped defaults to the parent,
- * which then opens the existing OverheadForm with those values pre-filled.
- * No file persistence — extraction only.
+ * Text CTA + dropzone dialog for uploading an expense invoice. Flow:
+ *  1. Drop → Claude extracts fields via parse-document.
+ *  2. Original file uploaded to the `overhead-invoices` bucket at
+ *     `staging/{uuid}.{ext}` so it survives the review gate (tab close,
+ *     browser crash, etc.).
+ *  3. Defaults + staging_storage_path handed to the parent, which opens
+ *     OverheadForm pre-filled. Parent is responsible for cleanup on cancel.
  */
 export function OverheadUploadFlow({ onExtracted }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [staging, setStaging] = useState(false);
+  const { toast } = useToast();
 
-  function handleExtracted(data: Record<string, unknown>) {
+  async function handleExtracted(data: Record<string, unknown>, file: File) {
+    // Upload the original file to Storage BEFORE handing to the review form,
+    // so the file survives the review gate even if Fred closes the tab.
+    setStaging(true);
+    const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+    const stagingPath = `staging/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from(STAGING_BUCKET)
+      .upload(stagingPath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+    setStaging(false);
+
+    if (upErr) {
+      toast({
+        title: "Couldn't save the file — please try again",
+        description: upErr.message,
+        variant: "destructive",
+      });
+      return; // dialog stays open for retry; no cleanup needed (nothing uploaded)
+    }
+
     const defaults = mapExtractedToOverhead(data);
+    defaults.staging_storage_path = stagingPath;
     setOpen(false);
     onExtracted(defaults);
   }
@@ -57,18 +89,25 @@ export function OverheadUploadFlow({ onExtracted }: Props) {
               documentType="overhead"
               onExtracted={handleExtracted}
               onLoadingChange={setBusy}
+              disabled={staging}
             />
-            <p className="mt-3 font-sans text-[11px] text-foreground/40">
-              PDF, JPEG, or PNG. We&rsquo;ll pre-fill the expense form so you
-              can review before saving.
-            </p>
+            {staging ? (
+              <p className="mt-3 font-sans text-[11px] text-gold/70 animate-pulse">
+                Saving your invoice&hellip;
+              </p>
+            ) : (
+              <p className="mt-3 font-sans text-[11px] text-foreground/40">
+                PDF, JPEG, or PNG. We&rsquo;ll pre-fill the expense form so you
+                can review before saving.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-6 border-t border-divider pt-4">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              disabled={busy}
+              disabled={busy || staging}
               className="text-sm text-recessive hover:text-standard transition-colors disabled:opacity-50"
             >
               Cancel

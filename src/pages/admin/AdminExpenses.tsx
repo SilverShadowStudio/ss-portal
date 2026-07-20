@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import {
@@ -40,6 +40,11 @@ export default function AdminExpenses() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Overhead | null>(null);
   const [prefillDefaults, setPrefillDefaults] = useState<Partial<Overhead> | null>(null);
+  // Ref (not state) so back-to-back onSaved + onOpenChange(false) callbacks
+  // in the same event both read the freshest value without closure staleness.
+  // Non-null == an upload was staged to `overhead-invoices/staging/...` and
+  // still needs cleanup if the review gate closes without a save.
+  const pendingStagingPathRef = useRef<string | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [selected, setSelected] = useState<Overhead | null>(null);
@@ -98,6 +103,7 @@ export default function AdminExpenses() {
   function openCreate() {
     setEditing(null);
     setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
     setFormMode("create");
     setFormOpen(true);
   }
@@ -105,6 +111,7 @@ export default function AdminExpenses() {
   function openCreateFromUpload(defaults: Partial<Overhead>) {
     setEditing(null);
     setPrefillDefaults(defaults);
+    pendingStagingPathRef.current = defaults.staging_storage_path ?? null;
     setFormMode("create");
     setFormOpen(true);
   }
@@ -113,9 +120,37 @@ export default function AdminExpenses() {
     if (!selected) return;
     setEditing(selected);
     setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
     setFormMode("edit");
     setDetailOpen(false);
     setFormOpen(true);
+  }
+
+  async function handleFormOpenChange(nextOpen: boolean) {
+    setFormOpen(nextOpen);
+    // If the dialog is closing and a staging path is still pending, the row
+    // was NOT saved (successful save clears the ref via handleSaved before
+    // the dialog closes). Clean the orphaned file from Storage.
+    if (!nextOpen) {
+      const orphan = pendingStagingPathRef.current;
+      pendingStagingPathRef.current = null;
+      if (orphan) {
+        const { error } = await supabase.storage
+          .from("overhead-invoices")
+          .remove([orphan]);
+        if (error) {
+          console.warn("[AdminExpenses] failed to clean up staged file", error);
+        }
+      }
+    }
+  }
+
+  function handleSaved() {
+    // Save succeeded — the overheads row now owns the staging path.
+    // Clear the cleanup ref BEFORE the dialog's onOpenChange(false) fires,
+    // so handleFormOpenChange sees null and does not delete the file.
+    pendingStagingPathRef.current = null;
+    fetchAll();
   }
 
   function openDetail(o: Overhead) {
@@ -195,12 +230,12 @@ export default function AdminExpenses() {
       {/* Dialogs rendered unconditionally at page root (CLAUDE.md pattern) */}
       <OverheadForm
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={handleFormOpenChange}
         mode={formMode}
         initial={editing}
         defaultValues={prefillDefaults}
         categories={categories}
-        onSaved={fetchAll}
+        onSaved={handleSaved}
       />
       <OverheadDetail
         open={detailOpen}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -158,6 +158,9 @@ export function OverheadForm({
   const [invoiceDateOpen, setInvoiceDateOpen] = useState(false);
   const [dueDateOpen, setDueDateOpen] = useState(false);
   const [paymentDateOpen, setPaymentDateOpen] = useState(false);
+  // Staging storage path is metadata (not user-editable), carried through
+  // from defaultValues into the insert payload without polluting FormState.
+  const stagingStoragePathRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   // Reset form whenever the dialog opens (create) or the initial changes (edit).
@@ -167,10 +170,13 @@ export function OverheadForm({
     if (!open) return;
     if (mode === "edit" && initial) {
       setForm(fromOverhead(initial));
+      stagingStoragePathRef.current = null;
     } else if (mode === "create" && defaultValues) {
       setForm(fromDefaults(defaultValues));
+      stagingStoragePathRef.current = defaultValues.staging_storage_path ?? null;
     } else {
       setForm(EMPTY);
+      stagingStoragePathRef.current = null;
     }
   }, [open, mode, initial, defaultValues]);
 
@@ -268,7 +274,12 @@ export function OverheadForm({
     } else {
       const { data: userData } = await supabase.auth.getUser();
       payload.created_by = userData.user?.id ?? null;
-      payload.source = "manual";
+      // "manual" for hand-typed rows; "dropzone" when the row was seeded from
+      // an extracted invoice that also staged a file (Pass 3 will file it).
+      payload.source = stagingStoragePathRef.current ? "dropzone" : "manual";
+      if (stagingStoragePathRef.current) {
+        payload.staging_storage_path = stagingStoragePathRef.current;
+      }
       ({ error } = await supabase.from("overheads" as any).insert(payload));
     }
 

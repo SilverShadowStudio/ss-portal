@@ -11,8 +11,11 @@ const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
 
 interface Props {
   documentType: "invoice" | "quotation" | "overhead";
-  /** Called with the extracted JSON on success. Manual entry stays available. */
-  onExtracted: (data: Record<string, unknown>) => void;
+  /** Called with the extracted JSON on success. The original File is also
+   *  passed so callers that need to persist the raw file (e.g. the overhead
+   *  drop zone staging its invoice to Storage) can pick it up. Existing
+   *  invoice/quotation callers can safely ignore the second argument. */
+  onExtracted: (data: Record<string, unknown>, file: File) => void;
   /** Lets the parent disable submit while a document is being read. */
   onLoadingChange?: (loading: boolean) => void;
   disabled?: boolean;
@@ -56,7 +59,7 @@ export function DocumentAutofillDropzone({ documentType, onExtracted, onLoadingC
       });
       if (error) throw error;
       if (!data?.success || !data?.data) throw new Error(data?.error || "Extraction failed");
-      onExtracted(data.data as Record<string, unknown>);
+      onExtracted(data.data as Record<string, unknown>, file);
       toast({ title: "Document read", description: "Review the pre-filled fields before saving." });
     } catch (err) {
       console.warn("[DocumentAutofillDropzone] extraction failed:", err);

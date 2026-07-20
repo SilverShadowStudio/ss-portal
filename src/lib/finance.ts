@@ -42,6 +42,7 @@ export interface Overhead {
   reverse_charge_vat: number;
   source: string;
   dropbox_path: string | null;
+  staging_storage_path: string | null;
   notes: string | null;
 }
 
