@@ -10,11 +10,18 @@ const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
 
 interface Props {
-  documentType: "invoice" | "quotation";
-  /** Called with the extracted JSON on success. Manual entry stays available. */
-  onExtracted: (data: Record<string, unknown>) => void;
+  documentType: "invoice" | "quotation" | "overhead";
+  /** Called with the extracted JSON on success. The original File is also
+   *  passed so callers that need to persist the raw file (e.g. the overhead
+   *  drop zone staging its invoice to Storage) can pick it up. Existing
+   *  invoice/quotation callers can safely ignore the second argument. */
+  onExtracted: (data: Record<string, unknown>, file: File) => void;
   /** Lets the parent disable submit while a document is being read. */
   onLoadingChange?: (loading: boolean) => void;
+  /** Optional fields merged into the parse-document invoke body (e.g. the
+   *  overhead flow passes the categories list). Merged BEFORE the fixed
+   *  fields so document_type / file_data_base64 / file_mime_type always win. */
+  extraBody?: Record<string, unknown>;
   disabled?: boolean;
 }
 
@@ -31,7 +38,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function DocumentAutofillDropzone({ documentType, onExtracted, onLoadingChange, disabled }: Props) {
+export function DocumentAutofillDropzone({ documentType, onExtracted, onLoadingChange, extraBody, disabled }: Props) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -52,11 +59,16 @@ export function DocumentAutofillDropzone({ documentType, onExtracted, onLoadingC
     try {
       const file_data_base64 = await fileToBase64(file);
       const { data, error } = await supabase.functions.invoke("parse-document", {
-        body: { document_type: documentType, file_data_base64, file_mime_type: file.type },
+        body: {
+          ...extraBody,
+          document_type: documentType,
+          file_data_base64,
+          file_mime_type: file.type,
+        },
       });
       if (error) throw error;
       if (!data?.success || !data?.data) throw new Error(data?.error || "Extraction failed");
-      onExtracted(data.data as Record<string, unknown>);
+      onExtracted(data.data as Record<string, unknown>, file);
       toast({ title: "Document read", description: "Review the pre-filled fields before saving." });
     } catch (err) {
       console.warn("[DocumentAutofillDropzone] extraction failed:", err);
@@ -65,7 +77,7 @@ export function DocumentAutofillDropzone({ documentType, onExtracted, onLoadingC
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
     }
-  }, [documentType, onExtracted, setBusy, toast]);
+  }, [documentType, onExtracted, setBusy, toast, extraBody]);
 
   return (
     <div className="space-y-2">

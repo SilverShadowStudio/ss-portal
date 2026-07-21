@@ -54,7 +54,75 @@ const QUOTATION_SCHEMA = `{
   "currency": "GBP" | "EUR" | "USD"
 }`
 
-function systemPrompt(documentType: 'invoice' | 'quotation'): string {
+// Overhead = an invoice RECEIVED by the studio (an expense we pay). Different
+// role from invoice/quotation, which are outbound documents we send.
+const OVERHEAD_SCHEMA = `{
+  "supplier_name": "string",
+  "invoice_number": "string",
+  "invoice_date": "YYYY-MM-DD",
+  "due_date": "YYYY-MM-DD" | null,
+  "description": "string" | null,
+  "net_total": number,
+  "vat_amount": number,
+  "gross_total": number,
+  "currency": "GBP" | "EUR" | "USD",
+  "already_paid": boolean | null,
+  "payment_date": "YYYY-MM-DD" | null,
+  "category_code": "string" | null
+}`
+
+interface CategoryChoice { code: string; name: string }
+
+type DocumentType = 'invoice' | 'quotation' | 'overhead'
+
+function formatCategoryList(categories: CategoryChoice[]): string {
+  return categories
+    .map((c) => `  ${c.code}: ${c.name}`)
+    .join('\n')
+}
+
+function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[]): string {
+  if (documentType === 'overhead') {
+    return (
+      `You are a data extractor for INVOICES RECEIVED by a CGI / architectural-visualisation studio. ` +
+      `These are expense/overhead documents — bills, receipts, or invoices ISSUED BY suppliers TO the studio. ` +
+      `Extract fields into JSON matching EXACTLY this schema:\n` +
+      `${OVERHEAD_SCHEMA}\n\n` +
+      `Field semantics:\n` +
+      `- supplier_name = the entity that ISSUED the invoice (the vendor/supplier), NOT the recipient. ` +
+      `On a document billed to a studio, the supplier is whoever's name or logo is at the top ` +
+      `(e.g. Adobe Inc, Uber, an accountant, a freelancer).\n` +
+      `- gross_total = the FULL HEADLINE AMOUNT the studio paid on this invoice (the total ` +
+      `spend, including any zero-rated / VAT-exempt items). On a delivery receipt where food ` +
+      `is zero-rated and only a service fee is standard-rated, gross_total is the WHOLE order ` +
+      `total (e.g. £21.09), NOT just the tax-invoice slice (£2.09).\n` +
+      `- vat_amount = the ACTUAL VAT CHARGED on the invoice. On mixed-VAT documents, read this ` +
+      `from the TAX INVOICE / VAT BREAKDOWN section — it is often much smaller than ` +
+      `gross_total × 20% because part of the order is zero-rated (e.g. £0.35 on a £21.09 ` +
+      `Deliveroo order where only the £1.74 service fee is VATable at 20%).\n` +
+      `- net_total = gross_total − vat_amount. Compute this yourself; do not read it from the ` +
+      `document if there's any ambiguity. This is the studio's spend excluding claimable VAT.\n` +
+      `- If the document clearly shows it has been PAID (words like "PAID", "SETTLED", "RECEIPT", ` +
+      `explicit payment date, zero balance due), set already_paid=true and payment_date to the ` +
+      `visible payment date. If paid but no payment date is visible, set already_paid=true and ` +
+      `payment_date=null.\n` +
+      `- If the document has a future due date and no payment indicator, set already_paid=false ` +
+      `and payment_date=null.\n` +
+      (categories && categories.length > 0
+        ? `- category_code = the SINGLE BEST-FIT code from the list below, chosen based on the ` +
+          `supplier and any visible line items. Return the exact code string (e.g. "429"), not the ` +
+          `name. Common mappings: food or drink delivery → Entertainment (or the closest food/staff ` +
+          `catering category); rent / workspace / office lease → Rent; cloud services, SaaS, ` +
+          `software subscriptions → Computer Software; internet or phone → Telecommunications; ` +
+          `office supplies / stationery → Office Expenses; travel (Uber, trains, flights) → ` +
+          `Travel; accountant, lawyer, consultant → Professional Fees. If nothing clearly fits, ` +
+          `return null. Available categories:\n${formatCategoryList(categories)}\n`
+        : ``) +
+      `- Return null for any field that cannot be determined from the document.\n\n` +
+      `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
+      `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
+    )
+  }
   const schema = documentType === 'invoice' ? INVOICE_SCHEMA : QUOTATION_SCHEMA
   return (
     `You are a data extractor for a CGI / architectural-visualisation studio. ` +
@@ -69,9 +137,10 @@ function systemPrompt(documentType: 'invoice' | 'quotation'): string {
 async function callAnthropic(
   apiKey: string,
   model: string,
-  documentType: 'invoice' | 'quotation',
+  documentType: DocumentType,
   mime: string,
   base64: string,
+  categories?: CategoryChoice[],
 ): Promise<Response> {
   const block = mime === 'application/pdf'
     ? { type: 'document', source: { type: 'base64', media_type: mime, data: base64 } }
@@ -86,7 +155,7 @@ async function callAnthropic(
     body: JSON.stringify({
       model,
       max_tokens: 2048,
-      system: systemPrompt(documentType),
+      system: systemPrompt(documentType, categories),
       messages: [
         {
           role: 'user',
@@ -128,7 +197,12 @@ Deno.serve(async (req) => {
   if (!roleRow) return json({ success: false, error: 'Forbidden' }, 403)
 
   // Parse + validate body.
-  let body: { document_type?: string; file_data_base64?: string; file_mime_type?: string }
+  let body: {
+    document_type?: string
+    file_data_base64?: string
+    file_mime_type?: string
+    categories?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -137,8 +211,8 @@ Deno.serve(async (req) => {
   const documentType = body.document_type
   const base64 = body.file_data_base64
   const mime = body.file_mime_type
-  if (documentType !== 'invoice' && documentType !== 'quotation') {
-    return json({ success: false, error: 'document_type must be invoice or quotation' }, 400)
+  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead') {
+    return json({ success: false, error: 'document_type must be invoice, quotation, or overhead' }, 400)
   }
   if (!base64 || typeof base64 !== 'string') {
     return json({ success: false, error: 'file_data_base64 is required' }, 400)
@@ -147,12 +221,25 @@ Deno.serve(async (req) => {
     return json({ success: false, error: 'Unsupported file type (PDF, JPEG, or PNG only)' }, 400)
   }
 
+  // Optional category list — currently used by the 'overhead' path so Claude
+  // can pick the single best-fit category directly. Defensively coerced.
+  let categories: CategoryChoice[] | undefined
+  if (Array.isArray(body.categories)) {
+    categories = body.categories
+      .filter((c): c is CategoryChoice =>
+        !!c && typeof c === 'object' &&
+        typeof (c as CategoryChoice).code === 'string' &&
+        typeof (c as CategoryChoice).name === 'string')
+      .map((c) => ({ code: c.code, name: c.name }))
+  }
+
   // Call Claude — primary model, then fallback on any non-OK response.
-  let res = await callAnthropic(anthropicKey, PRIMARY_MODEL, documentType, mime, base64)
+  const dt = documentType as DocumentType
+  let res = await callAnthropic(anthropicKey, PRIMARY_MODEL, dt, mime, base64, categories)
   if (!res.ok) {
     const primaryErr = await res.text()
     console.error(`Anthropic primary (${PRIMARY_MODEL}) error:`, primaryErr)
-    res = await callAnthropic(anthropicKey, FALLBACK_MODEL, documentType, mime, base64)
+    res = await callAnthropic(anthropicKey, FALLBACK_MODEL, dt, mime, base64, categories)
     if (!res.ok) {
       console.error(`Anthropic fallback (${FALLBACK_MODEL}) error:`, await res.text())
       return json({ success: false, error: 'Could not read the document' }, 502)

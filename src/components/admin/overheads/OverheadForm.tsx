@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeSupplier } from "@/lib/supplierNormalize";
 import {
   computeVat,
   computeReverseChargeVat,
@@ -67,6 +68,10 @@ interface OverheadFormProps {
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
   initial: Overhead | null;
+  /** Optional create-mode seed. Ignored when mode="edit". Parent must
+   *  keep a stable reference (state, not a fresh object literal) or the
+   *  seeding effect will re-fire on every render. */
+  defaultValues?: Partial<Overhead> | null;
   categories: ExpenseCategory[];
   onSaved: () => void;
 }
@@ -121,11 +126,30 @@ function fromOverhead(o: Overhead): FormState {
   };
 }
 
+function fromDefaults(v: Partial<Overhead>): FormState {
+  return {
+    supplier_name: v.supplier_name ?? "",
+    category_code: v.category_code ?? "",
+    description: v.description ?? "",
+    net_amount: v.net_amount != null ? String(v.net_amount) : "",
+    vat_treatment: v.vat_treatment ?? "standard",
+    vat_amount: v.vat_amount != null ? String(v.vat_amount) : "0",
+    invoice_number: v.invoice_number ?? "",
+    invoice_date: v.invoice_date ?? "",
+    due_date: v.due_date ?? "",
+    payment_date: v.payment_date ?? "",
+    is_reverse_charge: v.is_reverse_charge ?? false,
+    reverse_charge_vat: v.reverse_charge_vat != null ? String(v.reverse_charge_vat) : "0",
+    notes: v.notes ?? "",
+  };
+}
+
 export function OverheadForm({
   open,
   onOpenChange,
   mode,
   initial,
+  defaultValues,
   categories,
   onSaved,
 }: OverheadFormProps) {
@@ -135,13 +159,27 @@ export function OverheadForm({
   const [invoiceDateOpen, setInvoiceDateOpen] = useState(false);
   const [dueDateOpen, setDueDateOpen] = useState(false);
   const [paymentDateOpen, setPaymentDateOpen] = useState(false);
+  // Staging storage path is metadata (not user-editable), carried through
+  // from defaultValues into the insert payload without polluting FormState.
+  const stagingStoragePathRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   // Reset form whenever the dialog opens (create) or the initial changes (edit).
+  // In create mode, an optional defaultValues seeds the form (e.g. from an
+  // extracted-invoice drop zone).
   useEffect(() => {
     if (!open) return;
-    setForm(mode === "edit" && initial ? fromOverhead(initial) : EMPTY);
-  }, [open, mode, initial]);
+    if (mode === "edit" && initial) {
+      setForm(fromOverhead(initial));
+      stagingStoragePathRef.current = null;
+    } else if (mode === "create" && defaultValues) {
+      setForm(fromDefaults(defaultValues));
+      stagingStoragePathRef.current = defaultValues.staging_storage_path ?? null;
+    } else {
+      setForm(EMPTY);
+      stagingStoragePathRef.current = null;
+    }
+  }, [open, mode, initial, defaultValues]);
 
   const net = parseFloat(form.net_amount) || 0;
   const vatAmount = parseFloat(form.vat_amount) || 0;
@@ -155,6 +193,8 @@ export function OverheadForm({
 
   // Recompute VAT amount when net or treatment changes (both in normal mode).
   // In reverse-charge mode, vat_amount stays 0 and reverse_charge_vat tracks net×20%.
+  // "mixed" treatment SKIPS auto-compute so an explicit vat_amount survives
+  // (partial-VAT invoices — e.g. Deliveroo where only a service fee is VATable).
   useEffect(() => {
     if (form.is_reverse_charge) {
       setForm((f) => ({
@@ -162,7 +202,7 @@ export function OverheadForm({
         vat_amount: "0",
         reverse_charge_vat: String(computeReverseChargeVat(net).toFixed(2)),
       }));
-    } else {
+    } else if (form.vat_treatment !== "mixed") {
       const { vat } = computeVat(net, form.vat_treatment);
       setForm((f) => ({ ...f, vat_amount: String(vat.toFixed(2)) }));
     }
@@ -237,7 +277,12 @@ export function OverheadForm({
     } else {
       const { data: userData } = await supabase.auth.getUser();
       payload.created_by = userData.user?.id ?? null;
-      payload.source = "manual";
+      // "manual" for hand-typed rows; "dropzone" when the row was seeded from
+      // an extracted invoice that also staged a file (Pass 3 will file it).
+      payload.source = stagingStoragePathRef.current ? "dropzone" : "manual";
+      if (stagingStoragePathRef.current) {
+        payload.staging_storage_path = stagingStoragePathRef.current;
+      }
       ({ error } = await supabase.from("overheads" as any).insert(payload));
     }
 
@@ -250,6 +295,24 @@ export function OverheadForm({
       });
       return;
     }
+
+    // Remember supplier→category mapping so future extractions from the same
+    // supplier pre-fill this category. Fire-and-forget; a failure just means
+    // Fred picks the category again next time. Runs for both create AND edit
+    // so a re-categorised row updates the memory too.
+    if (form.supplier_name.trim() && form.category_code) {
+      const key = normalizeSupplier(form.supplier_name);
+      if (key) {
+        const { data: userData } = await supabase.auth.getUser();
+        void supabase.from("supplier_category_map" as any).upsert({
+          supplier_normalized: key,
+          category_code: form.category_code,
+          updated_by: userData.user?.id ?? null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
     toast({ title: mode === "edit" ? "Expense updated" : "Expense recorded" });
     onSaved();
     onOpenChange(false);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
+import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
 import {
   dateInQuarter,
   formatCurrency,
@@ -38,6 +39,12 @@ export default function AdminExpenses() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Overhead | null>(null);
+  const [prefillDefaults, setPrefillDefaults] = useState<Partial<Overhead> | null>(null);
+  // Ref (not state) so back-to-back onSaved + onOpenChange(false) callbacks
+  // in the same event both read the freshest value without closure staleness.
+  // Non-null == an upload was staged to `overhead-invoices/staging/...` and
+  // still needs cleanup if the review gate closes without a save.
+  const pendingStagingPathRef = useRef<string | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [selected, setSelected] = useState<Overhead | null>(null);
@@ -65,6 +72,27 @@ export default function AdminExpenses() {
 
   useEffect(() => {
     fetchAll();
+  }, []);
+
+  // Realtime — reflect Dropbox filing state without a manual reload. The
+  // trigger + edge function UPDATE the row when the file lands in Kieran's
+  // Dropbox; this subscription refires fetchAll so "Filing…" indicator
+  // + row highlights update within ~1s. RLS on overheads is admin-only so
+  // non-admin sessions never receive events. Migration
+  // 20260721000001_overhead_realtime.sql adds public.overheads to the
+  // supabase_realtime publication.
+  const fetchAllRef = useRef(fetchAll);
+  useEffect(() => { fetchAllRef.current = fetchAll; });
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-overheads-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "overheads" },
+        () => { void fetchAllRef.current(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
   }, []);
 
   const filtered = useMemo(() => {
@@ -95,6 +123,16 @@ export default function AdminExpenses() {
 
   function openCreate() {
     setEditing(null);
+    setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
+    setFormMode("create");
+    setFormOpen(true);
+  }
+
+  function openCreateFromUpload(defaults: Partial<Overhead>) {
+    setEditing(null);
+    setPrefillDefaults(defaults);
+    pendingStagingPathRef.current = defaults.staging_storage_path ?? null;
     setFormMode("create");
     setFormOpen(true);
   }
@@ -102,9 +140,38 @@ export default function AdminExpenses() {
   function openEditFromDetail() {
     if (!selected) return;
     setEditing(selected);
+    setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
     setFormMode("edit");
     setDetailOpen(false);
     setFormOpen(true);
+  }
+
+  async function handleFormOpenChange(nextOpen: boolean) {
+    setFormOpen(nextOpen);
+    // If the dialog is closing and a staging path is still pending, the row
+    // was NOT saved (successful save clears the ref via handleSaved before
+    // the dialog closes). Clean the orphaned file from Storage.
+    if (!nextOpen) {
+      const orphan = pendingStagingPathRef.current;
+      pendingStagingPathRef.current = null;
+      if (orphan) {
+        const { error } = await supabase.storage
+          .from("overhead-invoices")
+          .remove([orphan]);
+        if (error) {
+          console.warn("[AdminExpenses] failed to clean up staged file", error);
+        }
+      }
+    }
+  }
+
+  function handleSaved() {
+    // Save succeeded — the overheads row now owns the staging path.
+    // Clear the cleanup ref BEFORE the dialog's onOpenChange(false) fires,
+    // so handleFormOpenChange sees null and does not delete the file.
+    pendingStagingPathRef.current = null;
+    fetchAll();
   }
 
   function openDetail(o: Overhead) {
@@ -161,7 +228,8 @@ export default function AdminExpenses() {
           </SelectContent>
         </Select>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-6">
+          <OverheadUploadFlow onExtracted={openCreateFromUpload} categories={categories} />
           <button
             type="button"
             onClick={openCreate}
@@ -183,11 +251,12 @@ export default function AdminExpenses() {
       {/* Dialogs rendered unconditionally at page root (CLAUDE.md pattern) */}
       <OverheadForm
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={handleFormOpenChange}
         mode={formMode}
         initial={editing}
+        defaultValues={prefillDefaults}
         categories={categories}
-        onSaved={fetchAll}
+        onSaved={handleSaved}
       />
       <OverheadDetail
         open={detailOpen}

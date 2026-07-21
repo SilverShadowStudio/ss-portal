@@ -1,9 +1,13 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { OverheadFileThumbnail } from "@/components/admin/overheads/OverheadFileThumbnail";
 import {
   formatCurrency,
   formatDate,
@@ -28,6 +32,28 @@ export function OverheadDetail({
   onEdit,
 }: OverheadDetailProps) {
   const cat = overhead ? categories.find((c) => c.code === overhead.category_code) : null;
+  const [retrying, setRetrying] = useState(false);
+  const { toast } = useToast();
+
+  const pendingFiling = !!overhead?.staging_storage_path && !overhead?.dropbox_path;
+
+  async function handleRetry() {
+    if (!overhead) return;
+    setRetrying(true);
+    const { data, error } = await supabase.functions.invoke("dropbox-save-overhead-file", {
+      body: { overhead_id: overhead.id, force: true },
+    });
+    setRetrying(false);
+    if (error) {
+      toast({ title: "Retry failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    if (data?.error) {
+      toast({ title: "Retry failed", description: data.error, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Retry queued", description: "Watch the row for the filed state." });
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -44,6 +70,29 @@ export function OverheadDetail({
 
         {overhead && (
           <div className="grid gap-4 py-2">
+            <OverheadFileThumbnail overhead={overhead} />
+
+            {pendingFiling && (
+              <div className="flex items-baseline justify-between gap-6 border-t border-divider pt-4">
+                <div>
+                  <p className="text-[9px] uppercase tracking-[0.28em] text-gold/70 animate-pulse">
+                    Filing to Dropbox…
+                  </p>
+                  <p className="mt-1 text-xs text-recessive">
+                    The file is safe in Storage. The trigger normally fires within seconds.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="text-sm text-gold hover:underline underline-offset-4 disabled:opacity-50 shrink-0"
+                >
+                  {retrying ? "Retrying…" : "Retry Dropbox upload"}
+                </button>
+              </div>
+            )}
+
             <Row label="Category">
               {cat ? `${cat.code} — ${cat.name}` : overhead.category_code ?? "—"}
             </Row>
