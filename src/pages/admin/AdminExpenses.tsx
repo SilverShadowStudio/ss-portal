@@ -74,6 +74,27 @@ export default function AdminExpenses() {
     fetchAll();
   }, []);
 
+  // Realtime — reflect Dropbox filing state without a manual reload. The
+  // trigger + edge function UPDATE the row when the file lands in Kieran's
+  // Dropbox; this subscription refires fetchAll so "Filing…" indicator
+  // + row highlights update within ~1s. RLS on overheads is admin-only so
+  // non-admin sessions never receive events. Migration
+  // 20260721000001_overhead_realtime.sql adds public.overheads to the
+  // supabase_realtime publication.
+  const fetchAllRef = useRef(fetchAll);
+  useEffect(() => { fetchAllRef.current = fetchAll; });
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-overheads-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "overheads" },
+        () => { void fetchAllRef.current(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, []);
+
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (statusFilter !== "all" && r.payment_status !== statusFilter) return false;

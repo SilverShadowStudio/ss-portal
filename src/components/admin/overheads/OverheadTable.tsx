@@ -103,6 +103,14 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
                         RC
                       </span>
                     )}
+                    {r.staging_storage_path && !r.dropbox_path && (
+                      <span
+                        className="ml-2 text-[9px] uppercase tracking-[0.28em] text-gold/60 animate-pulse"
+                        title="File staged in Supabase Storage, awaiting Dropbox upload."
+                      >
+                        Filing…
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-standard">
                     {cat ? `${cat.code} — ${cat.name}` : r.category_code ?? "—"}
