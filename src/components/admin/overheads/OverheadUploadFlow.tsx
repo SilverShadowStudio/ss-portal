@@ -8,12 +8,18 @@ import {
 import { DocumentAutofillDropzone } from "@/components/admin/DocumentAutofillDropzone";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import type { Overhead, VatTreatment } from "@/lib/finance";
+import { normalizeSupplier } from "@/lib/supplierNormalize";
+import type { ExpenseCategory, Overhead, VatTreatment } from "@/lib/finance";
+import { useMemo } from "react";
 
 const STAGING_BUCKET = "overhead-invoices";
 
 interface Props {
   onExtracted: (defaults: Partial<Overhead>) => void;
+  /** Passed through to parse-document so Claude can auto-pick the best-fit
+   *  category from Fred's real chart of accounts. Also used to defensively
+   *  drop any bogus code Claude might return. */
+  categories: ExpenseCategory[];
 }
 
 /**
@@ -25,11 +31,23 @@ interface Props {
  *  3. Defaults + staging_storage_path handed to the parent, which opens
  *     OverheadForm pre-filled. Parent is responsible for cleanup on cancel.
  */
-export function OverheadUploadFlow({ onExtracted }: Props) {
+export function OverheadUploadFlow({ onExtracted, categories }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [staging, setStaging] = useState(false);
   const { toast } = useToast();
+
+  // Memoised so the DocumentAutofillDropzone doesn't see a fresh reference
+  // on every render (its handleFile depends on extraBody). Only the active
+  // codes are shipped to Claude — no need to offer soft-hidden categories.
+  const extraBody = useMemo(
+    () => ({
+      categories: categories
+        .filter((c) => c.active)
+        .map((c) => ({ code: c.code, name: c.name })),
+    }),
+    [categories],
+  );
 
   async function handleExtracted(data: Record<string, unknown>, file: File) {
     // Upload the original file to Storage BEFORE handing to the review form,
@@ -56,6 +74,30 @@ export function OverheadUploadFlow({ onExtracted }: Props) {
 
     const defaults = mapExtractedToOverhead(data);
     defaults.staging_storage_path = stagingPath;
+
+    // Category precedence, weakest → strongest:
+    //   (a) AI's pick from mapExtractedToOverhead — used as-is only if it
+    //       matches a real code in the active chart of accounts (defense
+    //       against hallucinated codes).
+    //   (b) Supplier→category memory — Fred's prior manual pick wins over
+    //       AI. Same-supplier consistency matters more than fresh guessing.
+    const activeCodes = new Set(categories.filter((c) => c.active).map((c) => c.code));
+    if (defaults.category_code && !activeCodes.has(defaults.category_code)) {
+      delete defaults.category_code;
+    }
+    if (defaults.supplier_name) {
+      const key = normalizeSupplier(defaults.supplier_name);
+      if (key) {
+        const { data: mapping } = await supabase
+          .from("supplier_category_map" as any)
+          .select("category_code")
+          .eq("supplier_normalized", key)
+          .maybeSingle();
+        const cat = (mapping as { category_code?: string } | null)?.category_code;
+        if (cat && activeCodes.has(cat)) defaults.category_code = cat;
+      }
+    }
+
     setOpen(false);
     onExtracted(defaults);
   }
@@ -89,6 +131,7 @@ export function OverheadUploadFlow({ onExtracted }: Props) {
               documentType="overhead"
               onExtracted={handleExtracted}
               onLoadingChange={setBusy}
+              extraBody={extraBody}
               disabled={staging}
             />
             {staging ? (
@@ -144,28 +187,42 @@ function isoDate(v: unknown): string | undefined {
 }
 
 /**
- * Guess VAT treatment from extracted net + VAT so the form's auto-compute
- * effect doesn't clobber a zero-VAT receipt with net×20%.
- * Standard is left implicit (form default).
+ * Guess VAT treatment from the enforced net (gross − vat) and vat_amount.
+ * Ratios reflect the studio's actual charge structure:
+ *   - vat = 0                 → zero
+ *   - vat/net ≈ 20% (standard)→ standard
+ *   - vat/net ≈ 5% (reduced)  → reduced
+ *   - otherwise, vat > 0      → mixed (partial-VAT invoice — e.g. food
+ *     delivery with zero-rated food + standard-rated service fee)
+ * "Mixed" tells the form's auto-compute effect to leave the extracted
+ * vat_amount alone rather than overwriting with net × rate.
  */
 function guessTreatment(net: number | undefined, vat: number | undefined): VatTreatment | undefined {
   if (net == null || net <= 0) return undefined;
+  if (vat == null || vat < 0) return undefined;
   if (vat === 0) return "zero";
-  if (vat != null && vat > 0) {
-    const rate = (vat / net) * 100;
-    if (rate < 2) return "zero";
-    if (rate >= 3 && rate <= 7) return "reduced";
-  }
-  return undefined;
+  const ratePct = (vat / net) * 100;
+  if (ratePct >= 19 && ratePct <= 21) return "standard";
+  if (ratePct >= 4.5 && ratePct <= 5.5) return "reduced";
+  return "mixed";
 }
 
 export function mapExtractedToOverhead(data: Record<string, unknown>): Partial<Overhead> {
-  const net = num(data.net_total);
+  const rawNet = num(data.net_total);
   const vat = num(data.vat_amount);
   const gross = num(data.gross_total);
   const explicitPaymentDate = isoDate(data.payment_date);
   const invoiceDate = isoDate(data.invoice_date);
   const dueDate = isoDate(data.due_date);
+
+  // Enforce net = gross − vat when we have both. The prompt tells Claude to
+  // compute it this way, but this is the safety net if the returned net
+  // doesn't reconcile (mixed-VAT invoices like Deliveroo where only part
+  // is standard-rated).
+  let net = rawNet;
+  if (gross != null && vat != null) {
+    net = Math.round((gross - vat) * 100) / 100;
+  }
   const treatment = guessTreatment(net, vat);
 
   // Paid-vs-to-pay default: most overheads arrive already paid (Adobe subs,
@@ -195,5 +252,8 @@ export function mapExtractedToOverhead(data: Record<string, unknown>): Partial<O
   if (gross != null) out.gross_amount = gross;
   if (treatment) out.vat_treatment = treatment;
   if (prefillPaymentDate) out.payment_date = prefillPaymentDate;
+  // AI's category pick — validated against active codes in handleExtracted.
+  const aiCategory = str(data.category_code);
+  if (aiCategory) out.category_code = aiCategory;
   return out;
 }

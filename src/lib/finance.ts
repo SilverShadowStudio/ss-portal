@@ -9,7 +9,12 @@ export type VatTreatment =
   | "zero"
   | "exempt"
   | "none"
-  | "reverse_charge";
+  | "reverse_charge"
+  // "mixed" = a partial-VAT invoice where net×rate doesn't reproduce vat_amount
+  // (e.g. food delivery with zero-rated food + standard-rated service fee).
+  // The form's auto-compute effect skips this treatment so an explicit
+  // vat_amount survives. Full gross captured as spend.
+  | "mixed";
 
 export type PaymentStatus = "unpaid" | "paid";
 
@@ -53,6 +58,7 @@ export const VAT_RATES: Record<VatTreatment, number> = {
   exempt: 0,
   none: 0,
   reverse_charge: 0,
+  mixed: 0, // rate is meaningless for mixed — form skips auto-compute
 };
 
 export const REVERSE_CHARGE_DEFAULT_RATE = 20;
@@ -64,6 +70,7 @@ export const VAT_TREATMENT_LABELS: Record<VatTreatment, string> = {
   exempt: "Exempt",
   none: "Outside scope",
   reverse_charge: "Reverse charge",
+  mixed: "Mixed (manual VAT)",
 };
 
 export const VAT_TREATMENT_ORDER: VatTreatment[] = [
@@ -73,6 +80,7 @@ export const VAT_TREATMENT_ORDER: VatTreatment[] = [
   "exempt",
   "none",
   "reverse_charge",
+  "mixed",
 ];
 
 function round2(n: number): number {

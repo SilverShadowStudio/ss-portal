@@ -32,6 +32,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeSupplier } from "@/lib/supplierNormalize";
 import {
   computeVat,
   computeReverseChargeVat,
@@ -192,6 +193,8 @@ export function OverheadForm({
 
   // Recompute VAT amount when net or treatment changes (both in normal mode).
   // In reverse-charge mode, vat_amount stays 0 and reverse_charge_vat tracks net×20%.
+  // "mixed" treatment SKIPS auto-compute so an explicit vat_amount survives
+  // (partial-VAT invoices — e.g. Deliveroo where only a service fee is VATable).
   useEffect(() => {
     if (form.is_reverse_charge) {
       setForm((f) => ({
@@ -199,7 +202,7 @@ export function OverheadForm({
         vat_amount: "0",
         reverse_charge_vat: String(computeReverseChargeVat(net).toFixed(2)),
       }));
-    } else {
+    } else if (form.vat_treatment !== "mixed") {
       const { vat } = computeVat(net, form.vat_treatment);
       setForm((f) => ({ ...f, vat_amount: String(vat.toFixed(2)) }));
     }
@@ -292,6 +295,24 @@ export function OverheadForm({
       });
       return;
     }
+
+    // Remember supplier→category mapping so future extractions from the same
+    // supplier pre-fill this category. Fire-and-forget; a failure just means
+    // Fred picks the category again next time. Runs for both create AND edit
+    // so a re-categorised row updates the memory too.
+    if (form.supplier_name.trim() && form.category_code) {
+      const key = normalizeSupplier(form.supplier_name);
+      if (key) {
+        const { data: userData } = await supabase.auth.getUser();
+        void supabase.from("supplier_category_map" as any).upsert({
+          supplier_normalized: key,
+          category_code: form.category_code,
+          updated_by: userData.user?.id ?? null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
     toast({ title: mode === "edit" ? "Expense updated" : "Expense recorded" });
     onSaved();
     onOpenChange(false);

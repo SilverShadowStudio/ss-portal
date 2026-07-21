@@ -229,7 +229,7 @@ export default function AdminExpenses() {
         </Select>
 
         <div className="ml-auto flex items-center gap-6">
-          <OverheadUploadFlow onExtracted={openCreateFromUpload} />
+          <OverheadUploadFlow onExtracted={openCreateFromUpload} categories={categories} />
           <button
             type="button"
             onClick={openCreate}
