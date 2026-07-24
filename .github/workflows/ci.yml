@@ -1,0 +1,56 @@
+# Build + lint on every push and pull request.
+#
+# This exists because of a real incident, not as ceremony: when `npm run build`
+# fails, Vercel keeps serving the last successful build. The live URL shows no
+# error and the new code is simply never served. CLAUDE.md carries a hard rule
+# telling a human to run the build before pushing — this enforces it instead.
+#
+# `tsc --noEmit` is deliberately NOT the check. esbuild syntax errors pass
+# TypeScript and still break the Vite build, so `npm run build` is the only
+# authoritative signal.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` needs the lockfile to match package.json exactly. If this step
+      # fails, the lockfile is stale — commit an updated one rather than
+      # loosening the install.
+      - name: Install dependencies
+        run: npm ci
+
+      # Authoritative check. Must stay before lint: a broken build is the
+      # failure that actually reaches production.
+      - name: Build
+        run: npm run build
+
+      # Non-blocking, and honestly so: the repo currently reports 429 lint
+      # problems (368 errors, 61 warnings), mostly no-explicit-any. Failing the
+      # build on that would make CI red from day one and teach everyone to
+      # ignore it. It runs so the number is visible and can be driven down.
+      # Remove continue-on-error once it reaches zero.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
