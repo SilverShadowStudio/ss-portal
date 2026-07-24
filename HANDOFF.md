@@ -128,7 +128,7 @@ Continuation of the earlier 24 July session's IN PROGRESS list. Two deliveries: 
   - `app_settings.overhead_reminder_config` seed (ON CONFLICT DO NOTHING): `{enabled:true, default_recipient:'accounting@silvershadowstudio.com', additional_recipients:[]}`.
   - pg_cron job `overhead-reminders-daily` @ `0 7 * * *` (UTC). Introspected the `cron` schema — pg_cron 1.6.4 exposes NO per-job timezone argument (only two- and three-arg `cron.schedule` signatures exist). DB-level `cron.timezone` GUC is `'GMT'`; left it alone rather than mutate a global setting that would affect every other scheduled job on this DB. UTC schedule drifts by an hour vs UK local twice a year — winter shift documented in the migration comment.
 
-- **Pass 2 — edge function `send-overhead-reminder`** (deployed with default `verify_jwt=true`, byte-identical verified).
+- **Pass 2 — edge function `send-overhead-reminder`** (deployed with default `verify_jwt=true`, byte-identical verified). **SUPERSEDED later the same evening — see "Auth hardening pass" below. The function is now gated on `X-Cron-Secret`; `verify_jwt=true` alone was not sufficient.**
   - Scan: `.eq('payment_status','unpaid').or('due_date.eq.{today},due_date.eq.{in_7d},due_date.lt.{today}')`.
   - Idempotence: today/in_7d = same-day guard on `last_reminder_sent_at::date >= today`; overdue = 7-day interval guard.
   - Recipients: `default_recipient` + `additional_recipients`, deduped + lowercased. `enabled:false` → early skip.
@@ -145,6 +145,38 @@ Continuation of the earlier 24 July session's IN PROGRESS list. Two deliveries: 
 
 **One-off data cleanup.** Fred hand-fed SQL to flip TEST + British Gas rows to `paid` + `payment_date=invoice_date` + `due_date=NULL`. Two rows updated; RETURNING confirmed. Now neither surfaces in the badge query.
 
+## Auth hardening pass (late evening — reconciled against live prod)
+
+Ran after the Pass 1–3 block above was written, so the notes above were stale on one point; corrected in place.
+
+**The hole.** `send-overhead-reminder` was deployed with `verify_jwt=true` and no in-handler caller check. That is not a gate: `verify_jwt` accepts any valid JWT, and the anon key is a valid JWT published in the client bundle. Any reader of the bundle could POST `{}` and cause real reminder emails to `accounting@`, and each send stamps `last_reminder_sent_at` — so an attacker could also suppress genuine reminders by burning the idempotence guard.
+
+**The fix.**
+
+- **New shared helper `supabase/functions/_shared/cronAuth.ts`** — `requireCronOrAdmin(req, { secretEnvVar })`. Two accepted callers: a machine presenting `X-Cron-Secret` (constant-time compared), or an admin JWT for a manual run. Generalised from the `payables-sync` pattern; `payables-sync` itself was left untouched. **Fails closed** — if the secret env var is unset it 500s rather than falling open, so a half-configured deploy is never publicly reachable.
+- **`send-overhead-reminder` gated** on `CRON_SECRET`, deployed, and verified byte-identical via `functions download` + `diff`.
+- **Secret stored in Supabase Vault** as `cron_secret` (created 18:15:26 UTC), *not* hardcoded into the cron command. The job reads it by reference at run time:
+  `'X-Cron-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_secret')`
+  Confirmed live: `command LIKE '%decrypted_secrets%'` = true, hardcoded-secret regex = false. This keeps the migration file reproducible and carries nothing sensitive into git — a deliberate divergence from the payables job, which still embeds its secret literally.
+- **Function env var `CRON_SECRET`** set 18:13:32 UTC. Vault value and function env var must match; **rotate the two together or the job 401s.**
+
+**Verification (all live against prod, zero emails sent — no rows matched the scan window at the time).**
+
+| Caller | Result |
+|---|---|
+| Anon key only (the actual attack) | `401 {"error":"Unauthorized"}` |
+| Anon key + wrong secret | `401 {"error":"Unauthorized"}` |
+| Anon key + correct secret | `200 {"ok":true,…,"sent":0,"failed":0}` |
+| Stored cron command executed verbatim | `net._http_response` id 20710, `status_code 200` |
+
+The last row is the one that matters: it proves the vault reference resolves inside pg_cron's execution context, so the 07:00 UTC run tomorrow will authenticate. First scheduled fire had not yet occurred at time of writing (`cron.job_run_details` empty for this job).
+
+**Payables cron — rotated and verified today.** `PAYABLES_CRON_SECRET` was rotated at **16:48:33 UTC**. Verified working: `payables_sync_log` shows **7 consecutive `ok=true` runs** since the rotation, first at 16:50:33 UTC, each upserting 40 records, `errors` null throughout. No action needed.
+
+**Still open — four service-role functions with no caller verification at all** (service role, no `getUser`/`getClaims`, no secret): `expire-reservations`, `dispatch-pending-deliveries`, `airtable-sync-contact`, `airtable-sync-project`. `dispatch-pending-deliveries` is on a `*/5` cron carrying only an anon Bearer. Same `cronAuth.ts` helper applies; callers must be identified first (pg_cron vs DB trigger vs frontend) so gating them doesn't break production.
+
+**Process hazard observed.** Two Claude sessions were live on this repo simultaneously — one with `--dangerously-skip-permissions` — and `OverheadTable.tsx` was edited by the other session mid-review (overdue wash `0.16` → `0.12`) while this pass was in flight. Nothing was lost because the working tree was re-read before committing, but the near-miss was a stale redeploy shipping the *ungated* function over the hardened one. **One session at a time on this repo.**
+
 ## Workflow change adopted this session
 
 **Migrations now applied by the assistant via `scripts/sql.sh` (keychain token), not pasted into the dashboard.** Exception: anything touching RLS policies, permissions, storage buckets, or Dropbox write paths still gets pasted for Fred review first, applied only after approval. Everything else = apply, verify, report. Pass 4 migration was the first end-to-end use. **CLAUDE.md promotion candidate** — flagged for Fred at next opportunity (not written into CLAUDE.md this session without explicit approval).
@@ -153,7 +185,7 @@ Continuation of the earlier 24 July session's IN PROGRESS list. Two deliveries: 
 
 - **Cron time = 07:00 UTC**, not `Europe/London`. pg_cron 1.6.4 has no per-job timezone; DB-level GUC change too invasive. Winter drift comment in the migration.
 - **Weekly overdue nudge = distinct branch inside the same daily cron**; no second job. Guard is a 7-day interval on `last_reminder_sent_at`, not a modulo calc — first fire happens whenever a row first meets the overdue criterion.
-- **Function auth = default `verify_jwt=true`** (matches `send-invoice-email` model), NOT `--no-verify-jwt` like `dispatch-pending-deliveries`. Cron carries the anon Bearer; random unauthenticated callers get 401.
+- ~~**Function auth = default `verify_jwt=true`** (matches `send-invoice-email` model), NOT `--no-verify-jwt` like `dispatch-pending-deliveries`. Cron carries the anon Bearer; random unauthenticated callers get 401.~~ **REVERSED same evening.** The premise was wrong: `verify_jwt=true` accepts *any* valid JWT, and the anon key is a valid JWT that ships in the client bundle. Anyone reading the bundle could fire the function, sending real email and burning the `last_reminder_sent_at` guard. Replaced with an `X-Cron-Secret` gate — see "Auth hardening pass" below.
 - **Badge-count predicate = single query** `payment_status='unpaid' AND due_date IS NOT NULL AND due_date <= today+7`. Covers overdue + due-soon in one shot; matches visual treatment scope.
 - **Overdue wash iterated four times against the actual dark ground**: 0.08 → 0.16 → 0.12; hover 0.12 → 0.20 → 0.16. Final: `bg-gold/[0.12]` + `hover:bg-gold/[0.16]`. OVERDUE label went to `font-medium` for weight against the wash.
 - **Test-row policy for a live edge function with no matching real data**: insert a clearly-labelled synthetic row (mirroring the invoice Fred referenced), exercise every branch, hard-delete after. Flagged the invasive step in the report before performing it.
