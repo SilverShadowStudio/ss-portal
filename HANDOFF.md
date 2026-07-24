@@ -112,6 +112,70 @@ resolution, and defensive re-issue prevention.
 
 ---
 
+# Session — 24 July 2026 (late evening — auth-hardening pass verified live + reconciliation pushed)
+
+Short close-out session, no new code. Verified end-to-end that the auth-hardening work documented in `f9ed88c` (written by a parallel Claude Opus 4.8 session) matches live prod, then pushed the one-commit-ahead reconciliation to origin.
+
+## Completed this session
+
+**Live-verified `send-overhead-reminder` auth model matches HANDOFF description.**
+- Management API: `verify_jwt=true` at the platform layer (JWT gate) — but security is carried by the in-function `X-Cron-Secret` gate on top.
+- Downloaded deployed source, `diff -q` against local = empty. Imports `requireCronOrAdmin` from `_shared/cronAuth.ts`, `secretEnvVar: "CRON_SECRET"`.
+- `cron.job` jobid 12 command sends both `Authorization: Bearer <anon>` (for the JWT gate) AND `X-Cron-Secret: (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'cron_secret')` — Vault reference, not embedded literal.
+- Migration file on disk exactly matches the prod `cron.job.command` (X-Cron-Secret + Vault decrypt + `timeout_milliseconds := 30000`).
+
+**Live-verified payables cron cadence.** `payables_sync_log` shows 6 consecutive `ok=true, records_upserted=40` runs at 17:00 / 17:15 / 17:30 / 17:45 / 18:00 / 18:15 UTC — extends the parallel session's "7 consecutive since 16:50:33" observation into the next hour.
+
+**Pushed the outstanding reconciliation commit.** `c5379f2..f9ed88c main -> main`. `f9ed88c67 docs(handoff): reconcile Pass 4 notes against deployed auth state` (HANDOFF.md only, +34/−2, Fred + Claude Opus 4.8).
+
+## Decisions made
+
+- **Left the earlier "Cron-auth reconciliation pending" bullet in the evening session's Open Questions intact** rather than strike-through resolving it. The resolution is fully documented in the "Auth hardening pass" section immediately above it, and Fred's rule is to carry historical notes forward unchanged. Reading the two together, the record is coherent.
+- **No new code, no redeploys, no DB writes** — this session was verification-and-push only.
+
+## Pending / carry-forward (unchanged unless noted)
+
+Everything from the evening 24 July session block still stands. One item resolved during that block (auth reconciliation), captured in the Auth hardening pass; the residual bullet is preserved for historical continuity.
+
+**Ranked (updated):**
+- **Slice A — payables payment-field write-back to Airtable** — still URGENT-next candidate.
+- **Gate the four remaining service-role functions with no caller verification** — `expire-reservations`, `dispatch-pending-deliveries`, `airtable-sync-contact`, `airtable-sync-project`. New from the Auth hardening pass. Requires identifying each caller first (pg_cron vs DB trigger vs frontend) so gating doesn't break production. Same `cronAuth.ts` helper applies. Ranked below Slice A but above the older backlog.
+- **Slice B — freelancer payment execution via Revolut Business API** — Roadmap, open questions unresolved.
+- **`fix/lightbox-portals-in-fs`** — 5 commits at `aa0e89c`, awaiting sign-off + ff-merge.
+- **CP115/SC02/R01 published-version pick** — v04 / v02 (current) / both. One `toggle_round_asset_visible` call.
+- **Invoice-generator client + bank picker** — queued 15 July, never started.
+- **Pin-delete own-only RLS migration** — drafted, not applied.
+- **Legacy `service_role` / `anon` JWT rotation** — two Dashboard checks queued from 16-July-evening.
+- **Three Management-API PATs exposed in 16 July transcripts** — rotate; keychain path working, still hygienic.
+
+## Open questions / things to watch
+
+- **25 July 07:00 UTC `overhead-reminders-daily` first natural tick.** Expected `total:0` — no unpaid rows have a due_date. Confirm via `cron.job_run_details` on jobid 12 or the `net._http_response` row for the send-overhead-reminder URL. If the vault reference somehow doesn't resolve at cron execution time, function returns 401 and the debug is visible in the response body.
+- **accounting@ inbox eyeball** — three test emails from the evening session's Pass 2 test (Resend 200s recorded, actual arrival not confirmed).
+- **Two-Claude-sessions-at-once process hazard** — Fred flagged after a near-miss where a stale redeploy could have shipped the ungated function. **Rule: one session at a time on this repo.** Worth promoting to CLAUDE.md alongside the `scripts/sql.sh` workflow change.
+
+## Production state at session close
+
+- **Live commit on main:** `f9ed88c`. This HANDOFF commit will move it forward by one; no code change.
+- **Migrations applied to prod this session:** none.
+- **Edge functions deployed this session:** none — verified byte-identical only.
+- **Data writes this session:** none.
+- **pg_cron state:** `overhead-reminders-daily` jobid 12 (X-Cron-Secret + Vault, `0 7 * * *`), `payables-sync` cron rolling `*/15` with rotated secret since 16:48:33 UTC.
+
+## Next step to resume from
+
+**First — 25 July 07:00 UTC `overhead-reminders-daily` first natural tick.** Expected `total:0` clean given no unpaid rows carry a due_date. If it fires 401 (vault reference failed to resolve inside pg_cron context), the response body will say so; falls back on rotating the secret and re-scheduling.
+
+**Then — accounting@ inbox eyeball** for the three test emails from the evening session. Soft-bounce → sender strategy revisit for accounting@ specifically.
+
+**Then — Slice A per Roadmap** (payables payment-field write-back to Airtable). Fresh Airtable schema audit → propose write function shape → STOP for sign-off before code.
+
+**Then — gate the four remaining ungated service-role functions** with `cronAuth.ts`. Identify each caller before gating (pg_cron vs DB trigger vs frontend) — a DB-trigger caller can't pass an X-Cron-Secret header the same way a cron job can, so may need a different accepted-caller in the helper.
+
+**Then — standing carry-overs**: `fix/lightbox-portals-in-fs` sign-off + merge, CP115/SC02/R01 version pick, invoice-generator client + bank picker, pin-delete own-only RLS migration, legacy JWT rotation Dashboard checks, PAT rotation.
+
+---
+
 # Session — 24 July 2026 (evening — payables debug drift closed + Overhead Drop Zone Pass 4: due-date reminders shipped)
 
 Continuation of the earlier 24 July session's IN PROGRESS list. Two deliveries: the payables-sync debug drift is finally closed (drift discarded, redeployed byte-identical, prod = git), then Pass 4 of the Overhead Drop Zone shipped end-to-end — daily reminder cron, new edge function, sidebar badge, and OverheadTable urgency treatment. All Pass 4 code lands in this HANDOFF commit.
