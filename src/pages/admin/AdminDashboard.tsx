@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Users, FolderKanban, Image, Clock, ArrowRight } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableConnectionStatus } from "@/components/admin/AirtableConnectionStatus";
 import { ActivityLogPreview } from "@/components/admin/ActivityLogPreview";
@@ -22,6 +23,7 @@ export default function AdminDashboard() {
     pendingReviews: 0,
   });
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -68,9 +70,16 @@ export default function AdminDashboard() {
     }
 
     fetchDashboardData();
-    // Best-effort reservation-expiry sweep on admin dashboard load (non-blocking).
-    supabase.functions.invoke("expire-reservations").catch(() => {});
   }, []);
+
+  // Best-effort reservation-expiry sweep on admin dashboard load (non-blocking).
+  // Kept in its own effect keyed on the session: the function requires a
+  // signed-in caller, and supabase-js restores the session asynchronously, so
+  // firing on bare mount would 401 into the empty catch and skip the sweep.
+  useEffect(() => {
+    if (!user) return;
+    supabase.functions.invoke("expire-reservations").catch(() => {});
+  }, [user]);
 
   const statCards = [
     { label: "Total Clients", value: stats.totalClients, icon: Users, link: "/admin/clients" },

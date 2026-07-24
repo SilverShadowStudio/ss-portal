@@ -24,6 +24,10 @@
 // Usage:
 //   const auth = await requireCronOrAdmin(req, { secretEnvVar: "CRON_SECRET" });
 //   if (!auth.ok) return auth.response;
+//
+// For a function the browser calls on behalf of any signed-in user (not just
+// admins), use requireAuthenticatedUser instead — it rejects anonymous
+// callers without demanding a role.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -37,7 +41,7 @@ export function constantTimeEqual(a: string, b: string): boolean {
 }
 
 export type CronAuthResult =
-  | { ok: true; caller: "cron" | "admin" }
+  | { ok: true; caller: "cron" | "admin" | "user" }
   | { ok: false; response: Response };
 
 interface CronAuthOptions {
@@ -104,4 +108,42 @@ export async function requireCronOrAdmin(
   if (!roleRow) return deny(403, "Forbidden: admins only");
 
   return { ok: true, caller: "admin" };
+}
+
+/**
+ * Accept any signed-in user; reject anonymous callers.
+ *
+ * For housekeeping endpoints the browser fires on page load — the caller is a
+ * real session, but not necessarily an admin. The anon key alone is NOT a
+ * session: getClaims rejects it, because it carries no `sub`. That is the
+ * distinction this function relies on, and the reason verify_jwt = true is
+ * not by itself a gate.
+ */
+export async function requireAuthenticatedUser(
+  req: Request,
+  opts: { corsHeaders?: Record<string, string> } = {},
+): Promise<CronAuthResult> {
+  const { corsHeaders = {} } = opts;
+
+  const deny = (status: number, error: string): CronAuthResult => ({
+    ok: false,
+    response: new Response(JSON.stringify({ error }), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }),
+  });
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return deny(401, "Unauthorized");
+
+  const authed = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: claims, error } = await authed.auth.getClaims(token);
+  if (error || !claims?.claims?.sub) return deny(401, "Unauthorized");
+
+  return { ok: true, caller: "user" };
 }

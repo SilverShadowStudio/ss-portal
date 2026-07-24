@@ -12,6 +12,7 @@
 // once send-delivery-notification stamps sent_at the row is no longer due.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { requireCronOrAdmin } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,6 +31,16 @@ function json(data: Record<string, unknown>, status = 200) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
+
+  // Auth: pg_cron (*/5) presenting X-Cron-Secret, or an admin JWT for a manual
+  // flush. Previously ungated — the cron carried only the anon Bearer, which is
+  // public, so any caller could drain the delivery queue and fire client emails
+  // early.
+  const auth = await requireCronOrAdmin(req, {
+    secretEnvVar: 'CRON_SECRET',
+    corsHeaders,
+  })
+  if (!auth.ok) return auth.response
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

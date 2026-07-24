@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireCronOrAdmin } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -186,6 +187,16 @@ async function resolveAndStoreCompanyRecordId(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Auth: admin JWT — the only caller is the Add Project flow in
+  // AdminProjects.tsx, which runs as a signed-in admin. The cron-secret branch
+  // is accepted too, for a future server-side backfill. Previously ungated,
+  // which left an anonymous write path into Kieran's Airtable base.
+  const auth = await requireCronOrAdmin(req, {
+    secretEnvVar: "CRON_SECRET",
+    corsHeaders,
+  });
+  if (!auth.ok) return auth.response;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

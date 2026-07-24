@@ -557,6 +557,10 @@ Deno.serve(async (req) => {
     }
 
     admin.functions.invoke('airtable-sync-contact', {
+      // airtable-sync-contact is gated on X-Cron-Secret (see _shared/cronAuth.ts).
+      // The service-role bearer alone is not accepted: it is not a user JWT, so
+      // the admin branch cannot verify it.
+      headers: { 'X-Cron-Secret': Deno.env.get('CRON_SECRET') ?? '' },
       body: {
         first_name: body.contact.firstName ?? '',
         surname: body.contact.lastName ?? '',
@@ -676,6 +680,10 @@ Deno.serve(async (req) => {
     })
 
     admin.functions.invoke('airtable-sync-contact', {
+      // airtable-sync-contact is gated on X-Cron-Secret (see _shared/cronAuth.ts).
+      // The service-role bearer alone is not accepted: it is not a user JWT, so
+      // the admin branch cannot verify it.
+      headers: { 'X-Cron-Secret': Deno.env.get('CRON_SECRET') ?? '' },
       body: {
         first_name: body.contact.firstName ?? '',
         surname: body.contact.lastName ?? '',

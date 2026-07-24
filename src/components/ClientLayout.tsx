@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from "react";
 import { ClientSidebar } from "./ClientSidebar";
 import { NotificationBell } from "./NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 interface ClientLayoutProps {
@@ -10,6 +11,7 @@ interface ClientLayoutProps {
 }
 
 export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps) {
+  const { user } = useAuth();
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-sidebar-expanded");
     return stored === null ? true : stored === "true";
@@ -20,9 +22,13 @@ export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps)
   }, [expanded]);
 
   // Best-effort reservation-expiry sweep on portal load (non-blocking).
+  // Waits for the session: the function requires a signed-in caller, and
+  // supabase-js restores the session asynchronously, so firing on bare mount
+  // would 401 into the empty catch and skip the sweep for that page load.
   useEffect(() => {
+    if (!user) return;
     supabase.functions.invoke("expire-reservations").catch(() => {});
-  }, []);
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-background">
