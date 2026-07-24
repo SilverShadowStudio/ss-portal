@@ -112,6 +112,93 @@ resolution, and defensive re-issue prevention.
 
 ---
 
+# Session — 24 July 2026 (Overhead Drop Zone shipped end-to-end + payables cron root cause found)
+
+One continuous session spanning 20-24 July across date rollovers. Two big deliveries: the Overhead Drop Zone squash-merged to main and went live, and a live diagnosis of the payables cron that pinpointed the exact copy-paste bug (secret has literal "HERE" appended). Fix SQL provided; not yet applied.
+
+## Completed this session — merged to main + live
+
+**Overhead Drop Zone — full feature, squash-merged as `ce0ad8e`, live on Vercel.** Signed off by Fred after end-to-end testing (Deliveroo → Entertainment auto-pick with £0.35 VAT preserved on £21.09 gross; Workspace → Rent with £277.06 at 20% preserved through save; supplier normalization matches "Roofoods Limited" and "Roofoods Limited (Deliveroo)" to the same memory key).
+
+Four passes:
+- **Pass 1 — extraction + review gate** (`f2d97c5` on branch): parse-document overhead schema + prompt (TAX INVOICE section wins on multi-total docs). DocumentAutofillDropzone widened. OverheadForm gained additive `defaultValues` seeding. New OverheadUploadFlow (text CTA + dropzone). No storage, no Dropbox.
+- **Pass 2 — staging storage + review-gate persistence** (`d73babf`): migration `20260720000001_overhead_invoices_storage.sql` (private bucket + admin RLS + `staging_storage_path` column). Upload BEFORE the review form opens so tab close mid-review doesn't lose the file. Ref-tracked orphan cleanup on cancel via `storage.remove([path])`.
+- **Pass 3 — Dropbox filing + preview + realtime** (`0d02c6d`): migrations `20260720000002_overhead_dropbox_filing.sql` (lock columns + `overhead_dropbox_log` + AFTER trigger) and `20260721000001_overhead_realtime.sql` (adds `overheads` to `supabase_realtime`). Two new edge functions: `dropbox-save-overhead-file` (namespace-aware upload, atomic lock with 5-min cooldown, `keepTimestamp=true` on failure to prevent runaway retry loops) and `overhead-file-preview` (Dropbox `get_thumbnail_v2` → JPEG data URI + `get_temporary_link`, falling back to Storage signed URL for staged-not-yet-filed). Frontend: OverheadFileThumbnail component, "Retry Dropbox upload" admin link (calls function with `force: true` bypassing cooldown), muted "Filing…" indicator on OverheadTable, realtime subscription in AdminExpenses via ref-carried fetchAll.
+- **Pass 4 — full-gross capture + smart categorization** (`7772358`): migrations `20260721000002_overheads_vat_mixed.sql` (CHECK expand to include `'mixed'`) and `20260721000003_supplier_category_map.sql` (memory table, admin RLS). Prompt updated: gross = FULL headline paid (£21.09), vat = actual VAT from tax invoice (£0.35), net = gross − vat. New `"mixed"` VatTreatment for partial-VAT invoices; form's auto-compute effect skips it so extracted VAT survives. AI category picker in the prompt with active chart of accounts passed via new `extraBody` prop. Paren-stripping added to `normalizeSupplier` so "Roofoods Limited (Deliveroo)" matches. Category precedence: saved supplier→category memory > AI's pick > blank; AI picks validated against active codes (bogus dropped silently).
+
+Path fix mid-session: `DROPBOX_ROOT` was missing the `03_Invoices` level. Corrected + redeployed byte-identical. One misfiled Deliveroo test file at the wrong path; Fred moved by hand + updated the row's `dropbox_path` via SQL.
+
+Migrations applied to prod this session: `20260720000001`, `20260720000002`, `20260721000001`, `20260721000002`, `20260721000003`.
+
+Edge functions deployed byte-identical (all verified via `functions download` + `diff`): `parse-document` (v3, categories + full-gross), `dropbox-save-overhead-file` (path fix redeploy), `overhead-file-preview` (v1).
+
+## Completed this session — non-code
+
+- **macOS keychain token wiring.** `~/.zshrc:3` was a bare stale token that always won over the keychain read in the `cc()` function. Rewrote line 3 to run `security find-generic-password -a "$USER" -s ss-portal-supabase -w` on every shell start with a warning if empty. Fred generated a fresh Management-API PAT and stored via `security add-generic-password -U`. Every subsequent deploy/download this session used it without inline pasting. Rotation runbook: same `security add-generic-password -U -a "$USER" -s ss-portal-supabase -w` command re-prompts non-echoing.
+
+## IN PROGRESS — payables cron re-schedule (Fred to run, SQL provided)
+
+Live diagnosis via `cron.job`, `cron.job_run_details`, `net._http_response` confirmed the 401 stopped happening the moment `9d103cc` shipped; the failure changed shape to "HTTP 200 with debug body, real sync never runs".
+
+**Root cause**: the cron schedule's `X-Cron-Secret` header value literally ends in the string `HERE` — 68 chars total, real 64-char secret + `HERE` placeholder tail. Function's `PAYABLES_CRON_SECRET` env var is the correct 64-char secret (debug branch confirms `cron_secret_present: true, cron_secret_length: 64`; `provided_length: 68`; `length_match: false`). Classic partial-replacement: Fred replaced `<PASTE_SECRET_...` in a placeholder but the `HERE>` suffix stuck.
+
+**Fix delivered (not yet applied)**: drift-proof SQL snippet with ONE paste target (`<PASTE_FRESH_SECRET_HERE>` appears once, dollar-quoted with `$CRON$…$CRON$` so a `$$`-containing secret can't break outer quoting), idempotent `IF EXISTS`-guarded unschedule, plus two post-tick verification queries (fresh `payables_sync_log` row in the last 15 min AND no `"cron_secret_mismatch"` strings in `net._http_response` bodies since the re-schedule).
+
+**Fred's remaining steps**:
+1. `openssl rand -hex 32` to generate fresh 64-char hex secret.
+2. Dashboard → Edge Functions → payables-sync → Secrets → set `PAYABLES_CRON_SECRET` to that value.
+3. Dashboard → SQL editor → paste the snippet (in this session's chat log), replace the single `<PASTE_FRESH_SECRET_HERE>` token by highlighting the whole token including angle brackets and pasting over.
+4. Wait for next quarter-hour tick.
+5. Run the two verification queries.
+
+**Then** — clean up the payables-sync debug drift: `git restore supabase/functions/payables-sync/index.ts` locally (discards the +20 diagnostic lines), redeploy byte-identical to main HEAD, verify via `functions download` + `diff`. Closes the "prod-deployed but uncommitted" drift flagged in every HANDOFF since 16 July. Kept the debug branch deployed until re-schedule is confirmed working — without it, we'd have been guessing at the mismatch this session.
+
+## Pending / carry-forward from prior sessions (unchanged)
+
+- **Slice A — payables payment-field write-back to Airtable** (see Roadmap above session log). URGENT-next candidate AFTER payables cron closes.
+- **Slice B — freelancer payment execution via Revolut Business API** (Roadmap). Open questions unresolved (API plan tier, credential scoping).
+- **`fix/lightbox-portals-in-fs`** — 5 commits at `aa0e89c`, awaiting sign-off + ff-merge off main.
+- **CP115/SC02/R01 published-version pick** — v04 / v02 (current) / both. One `toggle_round_asset_visible` call.
+- **Invoice-generator client + bank picker** — queued 15 July, never started.
+- **Pin-delete own-only RLS migration** — drafted, not applied.
+- **Legacy `service_role` / `anon` JWT rotation** — two Dashboard checks queued from 16-July-evening; not addressed this session.
+- **Three Management-API PATs exposed in 16 July transcripts** — should be rotated. Lower urgency now that keychain path is working, but still hygienic.
+
+## Decisions made
+
+- Overhead file staging happens BEFORE the review form opens (not after Fred confirms) so the file survives tab close mid-review. Cleanup on cancel via ref-tracked orphan path.
+- New `"mixed"` VatTreatment for partial-VAT invoices. Auto-compute effect skips this treatment so extracted VAT survives seeding.
+- Category precedence: saved supplier→category memory > AI's pick > blank. AI picks validated against active codes (hallucinated codes silently dropped).
+- **VAT invariant hard-locked**: category selection at seed time affects only `form.category_code`. `handleCategoryChange` (which touches treatment) fires ONLY from the user's cmdk picker. A Rent auto-pick can never wipe an extracted 20% VAT to Rent's exempt default.
+- Payables cron debug branch STAYS deployed until the re-schedule is verified working. Removed only after Fred confirms a real `payables_sync_log` row lands from the cron path.
+- Dropbox month-folder spelling ships with full English names (`January`…`December`) since Fred never confirmed exact spelling before deploy. First real filing to a non-July month will reveal mismatches — one `MONTH_NAMES` array edit + redeploy if wrong.
+
+## Open questions / things to watch
+
+- **Month-folder spelling** under `/03_Portal_Admin_Docs/03_Invoices/INV002_Payable/02_Overheads/` — unconfirmed against Kieran's convention beyond `July` (which worked). Watch first August filing.
+- **Vercel bot challenge blocks curl-based live-site verification** — automated `curl` returns HTTP 403 with `x-vercel-mitigated: challenge` even with browser UA. Browser traffic passes. Live deploys must be verified in-browser going forward.
+- **`feature/overhead-dropzone` branch still on origin** — safe to delete at Fred's discretion; all 4 branch commits are in `main` via squash.
+
+## Production state at session close
+
+- **Live commit on main:** `ce0ad8e` (this HANDOFF commit will move it forward by one; no code change).
+- **Live bundle:** `index-dpXkO3ch.js` (verified via build; live-URL verification blocked by Vercel bot challenge).
+- **Migrations applied to prod this session:** `20260720000001`, `20260720000002`, `20260721000001`, `20260721000002`, `20260721000003`.
+- **Edge functions deployed this session:** `parse-document` (v3, byte-identical), `dropbox-save-overhead-file` (path fix redeploy, byte-identical), `overhead-file-preview` (v1, byte-identical).
+- **Working tree pre-HANDOFF:** `payables-sync/index.ts` +20-line debug drift only (unchanged since 16 July evening; retained deliberately per IN PROGRESS above).
+
+## Next step to resume from
+
+**First — Fred applies the payables cron re-schedule SQL** from this session's diagnosis: generate fresh 64-char secret via `openssl rand -hex 32` → set as `PAYABLES_CRON_SECRET` function env var → paste into the provided SQL snippet's single `<PASTE_FRESH_SECRET_HERE>` token → wait for the next quarter-hour tick → run the two verification queries. Success = fresh `payables_sync_log` row in the last 15 min AND no `"cron_secret_mismatch"` strings in `net._http_response` bodies since the re-schedule.
+
+**Then — clean up the payables-sync debug drift**: `git restore supabase/functions/payables-sync/index.ts`, redeploy byte-identical to main HEAD, verify via `functions download` + `diff`. Closes the deploy-but-uncommitted drift flagged in every HANDOFF since 16 July.
+
+**Then — Slice A** (payables payment-field write-back to Airtable) per the Roadmap at the top of HANDOFF. Fresh schema audit against Kieran's Airtable base first; propose the write function shape; STOP for sign-off before code.
+
+**Then — standing carry-overs**: `fix/lightbox-portals-in-fs` sign-off + merge, CP115/SC02/R01 version pick, invoice-generator client + bank picker, pin-delete own-only RLS migration, legacy JWT rotation Dashboard checks.
+
+---
+
 # Session — 16 July 2026 (evening — payables cron auth hardening; still unresolved + legacy service_role rotation planned)
 
 Delta after the 15:44 Payables Read deploy. No further code merged to main; one uncommitted diagnostic patch deployed to prod. Legacy-key rotation planning started; two Dashboard checks queued before migration begins.
