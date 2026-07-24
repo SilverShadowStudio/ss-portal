@@ -13,6 +13,17 @@ import {
 } from "@/lib/finance";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { differenceInCalendarDays } from "date-fns";
+
+type Urgency = "overdue" | "due-soon" | null;
+
+function computeUrgency(dueDate: string | null, status: string): Urgency {
+  if (status === "paid" || !dueDate) return null;
+  const days = differenceInCalendarDays(new Date(`${dueDate}T00:00:00`), new Date());
+  if (days < 0) return "overdue";
+  if (days <= 7) return "due-soon";
+  return null;
+}
 
 interface OverheadTableProps {
   rows: Overhead[];
@@ -90,11 +101,22 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
           ) : (
             sortedRows.map((r) => {
               const cat = r.category_code ? catByCode.get(r.category_code) : null;
+              const urgency = computeUrgency(r.due_date, r.payment_status);
+              const rowClass =
+                urgency === "overdue"
+                  ? "cursor-pointer border-divider border-l-2 border-l-gold bg-gold/[0.12] hover:bg-gold/[0.16] transition-colors"
+                  : "cursor-pointer border-divider hover:bg-foreground/[0.03] transition-colors";
+              const dueCellClass =
+                urgency === "overdue"
+                  ? "text-sm text-gold"
+                  : urgency === "due-soon"
+                    ? "text-sm text-gold/70"
+                    : "text-sm text-recessive";
               return (
                 <TableRow
                   key={r.id}
                   onClick={() => onRowClick(r)}
-                  className="cursor-pointer border-divider hover:bg-foreground/[0.03] transition-colors"
+                  className={rowClass}
                 >
                   <TableCell className="text-sm text-strong">
                     {r.supplier_name}
@@ -126,17 +148,19 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
                     {formatCurrency(r.gross_amount)}
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={
-                        r.payment_status === "paid"
-                          ? "text-xs text-gold"
-                          : "text-xs text-standard"
-                      }
-                    >
-                      {r.payment_status === "paid" ? "Paid" : "Unpaid"}
-                    </span>
+                    {r.payment_status === "paid" ? (
+                      <span className="text-xs text-gold">Paid</span>
+                    ) : urgency === "overdue" ? (
+                      <span className="text-xs font-medium uppercase tracking-[0.24em] text-gold">
+                        OVERDUE
+                      </span>
+                    ) : urgency === "due-soon" ? (
+                      <span className="text-xs text-gold/70">Unpaid</span>
+                    ) : (
+                      <span className="text-xs text-standard">Unpaid</span>
+                    )}
                   </TableCell>
-                  <TableCell className="text-sm text-recessive">{formatDate(r.due_date)}</TableCell>
+                  <TableCell className={dueCellClass}>{formatDate(r.due_date)}</TableCell>
                 </TableRow>
               );
             })

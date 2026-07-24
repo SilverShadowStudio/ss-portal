@@ -112,6 +112,90 @@ resolution, and defensive re-issue prevention.
 
 ---
 
+# Session — 24 July 2026 (evening — payables debug drift closed + Overhead Drop Zone Pass 4: due-date reminders shipped)
+
+Continuation of the earlier 24 July session's IN PROGRESS list. Two deliveries: the payables-sync debug drift is finally closed (drift discarded, redeployed byte-identical, prod = git), then Pass 4 of the Overhead Drop Zone shipped end-to-end — daily reminder cron, new edge function, sidebar badge, and OverheadTable urgency treatment. All Pass 4 code lands in this HANDOFF commit.
+
+## Completed this session
+
+**Payables-sync debug drift closed.** Cron confirmed working at 17:00:04 UTC (`payables_sync_log`: `ok=true`, 40 records). Debug branch's job done. `git restore supabase/functions/payables-sync/index.ts` locally → redeployed byte-identical from project root using the keychain token → verified via `functions download` + `diff -u` (exit 0). Working tree back to clean; the "prod-deployed but uncommitted" drift flagged in every HANDOFF since 16 July is now closed. No commit needed — drift was working-tree-only.
+
+**Overhead Drop Zone — Pass 4 (due-date reminders).** Three passes, applied to prod + verified end-to-end. Code lands in this HANDOFF commit.
+
+- **Pass 1 — migration** (`supabase/migrations/20260724000001_overhead_reminders.sql`, applied via `scripts/sql.sh`).
+  - Column `overheads.last_reminder_sent_at timestamptz` — populated by send-overhead-reminder only; drives same-day guard (today / in_7d) and 7-day interval guard (overdue).
+  - Partial index `overheads_due_reminder_idx` on `(due_date)` where unpaid + due_date not null.
+  - `app_settings.overhead_reminder_config` seed (ON CONFLICT DO NOTHING): `{enabled:true, default_recipient:'accounting@silvershadowstudio.com', additional_recipients:[]}`.
+  - pg_cron job `overhead-reminders-daily` @ `0 7 * * *` (UTC). Introspected the `cron` schema — pg_cron 1.6.4 exposes NO per-job timezone argument (only two- and three-arg `cron.schedule` signatures exist). DB-level `cron.timezone` GUC is `'GMT'`; left it alone rather than mutate a global setting that would affect every other scheduled job on this DB. UTC schedule drifts by an hour vs UK local twice a year — winter shift documented in the migration comment.
+
+- **Pass 2 — edge function `send-overhead-reminder`** (deployed with default `verify_jwt=true`, byte-identical verified).
+  - Scan: `.eq('payment_status','unpaid').or('due_date.eq.{today},due_date.eq.{in_7d},due_date.lt.{today}')`.
+  - Idempotence: today/in_7d = same-day guard on `last_reminder_sent_at::date >= today`; overdue = 7-day interval guard.
+  - Recipients: `default_recipient` + `additional_recipients`, deduped + lowercased. `enabled:false` → early skip.
+  - HTML modelled on `send-invoice-email`. Subject: `Payment due — {supplier}` or `Overdue — {supplier}`. CTA: `/admin/finance/expenses` (no per-row deep link this pass).
+  - Manual test: 4 fires against one synthetic Workspace row (WS12-043778 — the invoice Fred referenced in his brief, but that didn't yet exist in the DB). All three buckets confirmed sent via Resend (email IDs `79f4e6b6-…`, `a31e283d-…`, `9ae36d16-…`), guard confirmed skip on immediate re-fire. Test row hard-deleted after; zero residue.
+
+- **Pass 3 — sidebar badge + row treatment** (three files).
+  - New hook `src/hooks/useDueOverheadsCount.ts` — count of unpaid overheads with `due_date IS NOT NULL AND due_date <= today+7`. 60s poll + realtime channel on `overheads` (already published to `supabase_realtime` from Pass 3 of the drop-zone).
+  - `AdminSidebar.tsx` — extended the badge-attach map to include `/admin/finance/expenses` alongside the existing new-clients badge on `/admin/clients`.
+  - `OverheadTable.tsx` — per-row `computeUrgency()` via `date-fns/differenceInCalendarDays`. Final visual language (after four Fred sight-checks against the charcoal ground):
+    - Overdue: `border-l-2 border-l-gold` + `bg-gold/[0.12]` + `hover:bg-gold/[0.16]` (overrides neutral hover so signal survives mouseover). Status cell replaces "Unpaid" with `OVERDUE` in `text-xs font-medium uppercase tracking-[0.24em] text-gold`. Due-cell text in `text-gold`.
+    - Due-soon (unpaid, 0 ≤ days ≤ 7): no border, no wash. Status + due-cell both `text-gold/70`.
+    - Paid / normal-unpaid: unchanged.
+
+**One-off data cleanup.** Fred hand-fed SQL to flip TEST + British Gas rows to `paid` + `payment_date=invoice_date` + `due_date=NULL`. Two rows updated; RETURNING confirmed. Now neither surfaces in the badge query.
+
+## Workflow change adopted this session
+
+**Migrations now applied by the assistant via `scripts/sql.sh` (keychain token), not pasted into the dashboard.** Exception: anything touching RLS policies, permissions, storage buckets, or Dropbox write paths still gets pasted for Fred review first, applied only after approval. Everything else = apply, verify, report. Pass 4 migration was the first end-to-end use. **CLAUDE.md promotion candidate** — flagged for Fred at next opportunity (not written into CLAUDE.md this session without explicit approval).
+
+## Decisions made
+
+- **Cron time = 07:00 UTC**, not `Europe/London`. pg_cron 1.6.4 has no per-job timezone; DB-level GUC change too invasive. Winter drift comment in the migration.
+- **Weekly overdue nudge = distinct branch inside the same daily cron**; no second job. Guard is a 7-day interval on `last_reminder_sent_at`, not a modulo calc — first fire happens whenever a row first meets the overdue criterion.
+- **Function auth = default `verify_jwt=true`** (matches `send-invoice-email` model), NOT `--no-verify-jwt` like `dispatch-pending-deliveries`. Cron carries the anon Bearer; random unauthenticated callers get 401.
+- **Badge-count predicate = single query** `payment_status='unpaid' AND due_date IS NOT NULL AND due_date <= today+7`. Covers overdue + due-soon in one shot; matches visual treatment scope.
+- **Overdue wash iterated four times against the actual dark ground**: 0.08 → 0.16 → 0.12; hover 0.12 → 0.20 → 0.16. Final: `bg-gold/[0.12]` + `hover:bg-gold/[0.16]`. OVERDUE label went to `font-medium` for weight against the wash.
+- **Test-row policy for a live edge function with no matching real data**: insert a clearly-labelled synthetic row (mirroring the invoice Fred referenced), exercise every branch, hard-delete after. Flagged the invasive step in the report before performing it.
+
+## Pending / carry-forward from prior sessions (unchanged)
+
+- **Slice A — payables payment-field write-back to Airtable** — URGENT-next candidate now that both prior blockers (payables cron 401 + debug drift) are closed. Diagnose-first: fresh schema audit against Kieran's Airtable base + write function shape proposal; STOP for sign-off before code.
+- **Slice B — freelancer payment execution via Revolut Business API** (Roadmap). Open questions unresolved.
+- **`fix/lightbox-portals-in-fs`** — 5 commits at `aa0e89c`, awaiting sign-off + ff-merge off main.
+- **CP115/SC02/R01 published-version pick** — v04 / v02 (current) / both. One `toggle_round_asset_visible` call.
+- **Invoice-generator client + bank picker** — queued 15 July, never started.
+- **Pin-delete own-only RLS migration** — drafted, not applied.
+- **Legacy `service_role` / `anon` JWT rotation** — two Dashboard checks queued from 16-July-evening; not addressed this session.
+- **Three Management-API PATs exposed in 16 July transcripts** — should be rotated (lower urgency now that keychain path is working, still hygienic).
+
+## Open questions / things to watch
+
+- **Actual email arrival at accounting@silvershadowstudio.com** — Resend returned 200 + email IDs for all three test fires (2 × `Payment due — The Workspace Group`, 1 × `Overdue — The Workspace Group`). Corporate-filter soft-bounce precedent on `portal@silvershadowstudio.com` per CLAUDE.md; eyeball needed at first opportunity.
+- **First real 07:00 UTC cron fire (25 July 07:00 UTC)**: no natural rows in the DB match right now (all overheads paid or missing due_date after the TEST + British Gas cleanup). Expected `total:0` clean. If not, check `cron.job_run_details` filtered on the jobid of `overhead-reminders-daily`.
+- **Overdue-row wash at 0.12** — Fred rolled back from 0.16 as too strong. If 0.12 later reads too subtle after eye-adjusting, one-line bump.
+- **`overhead_reminder_config` has no admin UI** — recipients editable only via SQL until a follow-on slice. Fine for the current one-recipient default, but worth surfacing when a second recipient is first added.
+- **Cron-auth reconciliation pending on `send-overhead-reminder`.** New shared helper `supabase/functions/_shared/cronAuth.ts` is checked in (generalises the payables-sync X-Cron-Secret + constant-time-compare + admin-JWT fallback pattern into a reusable `requireCronOrAdmin` gate). Migration comment also describes the target Vault-based X-Cron-Secret path. But the currently-applied `cron.schedule` and the deployed `send-overhead-reminder/index.ts` both still use the hardcoded anon-Bearer model. Reconciliation deferred — needs a fresh `openssl rand -hex 32` secret set as `<FUNCTION>_CRON_SECRET` on Function Secrets first, then function switched to use the helper, then migration re-applied so the schedule sends `X-Cron-Secret` instead of `Authorization: Bearer`.
+
+## Production state at session close
+
+- **Live commit on main pre-HANDOFF:** `2bdf081`. This HANDOFF commit will move it forward; Pass 4 code + this session log all in one commit.
+- **Migrations applied to prod this session:** `20260724000001_overhead_reminders.sql`.
+- **Edge functions deployed this session:** `payables-sync` (byte-identical redeploy — closes the debug drift), `send-overhead-reminder` v1 (new, byte-identical verified).
+- **Data writes this session:** synthetic test row insert + hard-delete (single row, isolated verification), then TEST + British Gas paid-flip (Fred's hand-fed SQL). All state-verified via RETURNING.
+
+## Next step to resume from
+
+**First — eyeball accounting@ inbox** for the three test emails from this session (2 × "Payment due — The Workspace Group", 1 × "Overdue — The Workspace Group"). If any soft-bounced, revisit sender strategy for accounting@ specifically — the Resend webhook doesn't yet ingest bounce reasons.
+
+**Then — watch the 25 July 07:00 UTC cron tick.** Expected `total:0` given no unpaid rows have a due_date. Confirm via `cron.job_run_details` filtered on `jobid` of `overhead-reminders-daily`.
+
+**Then — Slice A per Roadmap** (payables payment-field write-back to Airtable) — URGENT-next candidate now that both cron issues are cleaned up. Fresh schema audit against Kieran's Airtable base first; propose write function shape; STOP for sign-off before code.
+
+**Then — standing carry-overs**: `fix/lightbox-portals-in-fs` sign-off + merge, CP115/SC02/R01 version pick, invoice-generator client + bank picker, pin-delete own-only RLS migration, legacy JWT rotation Dashboard checks.
+
+---
+
 # Session — 24 July 2026 (Overhead Drop Zone shipped end-to-end + payables cron root cause found)
 
 One continuous session spanning 20-24 July across date rollovers. Two big deliveries: the Overhead Drop Zone squash-merged to main and went live, and a live diagnosis of the payables cron that pinpointed the exact copy-paste bug (secret has literal "HERE" appended). Fix SQL provided; not yet applied.

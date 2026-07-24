@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
+import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   FileText, Landmark, ScrollText, Receipt, TrendingUp,
@@ -67,6 +68,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     full_name: string | null;
   } | null>(null);
   const newClientsCount = useNewClientsCount();
+  const dueOverheadsCount = useDueOverheadsCount();
 
   useEffect(() => {
     if (!user) return;
@@ -83,14 +85,18 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     navigate("/auth");
   };
 
-  // Attach the live new-clients badge to the Clients item.
+  // Attach the live badges: new-clients on Clients, due-overheads on Expenses.
   const sections: SidebarNavSection[] = SECTIONS.map((section) => ({
     ...section,
-    items: section.items.map((item) =>
-      item.path === "/admin/clients"
-        ? { ...item, badgeCount: newClientsCount }
-        : item,
-    ),
+    items: section.items.map((item) => {
+      if (item.path === "/admin/clients") {
+        return { ...item, badgeCount: newClientsCount };
+      }
+      if (item.path === "/admin/finance/expenses") {
+        return { ...item, badgeCount: dueOverheadsCount };
+      }
+      return item;
+    }),
   }));
 
   const accountMenuItems: SidebarAccountMenuItem[] = [
