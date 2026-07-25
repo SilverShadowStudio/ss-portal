@@ -13,12 +13,21 @@ Two commercial models:
 - **Partnership/Subscription** — Lane-based (dedicated production capacity, monthly subscription)
 - **Project** — Per-quotation, per-scene delivery
 
+## Working mode (Fred's standing mandate — 25 July 2026)
+
+Fred commands; the assistant builds. He does not want to be middleware between chat and the code any more. Take a feature and carry it all the way — read the code, write it, run the SQL, deploy, test against the live database — and return only when it is done or genuinely blocked.
+
+- **Push when it's green.** Once `npm run build` passes and the change is verified, commit and push to production without asking. Do not stop at "ready to push?". The migration and destructive-change guardrails below still apply, and a change that is failing or unverified is never pushed.
+- **Batch the questions.** Hold every non-blocking decision and surface them together at the end of the feature — one message, not a stream. Only a hard blocker (a destructive migration needing sign-off, a physical block, a decision that changes what gets built) interrupts mid-flight.
+
+What still reaches Fred, and nothing else: destructive DB changes (show SQL, wait), a genuine product decision with no right answer (batched), and anything the assistant is physically blocked from doing (hand him one command).
+
 ## Hard rules
 
 - **Migrations: additive proceeds, destructive stops.** Purely additive changes — new tables, new columns, new indexes, new policies, new cron jobs — apply without asking; they are trivially revertible. Anything that **drops or alters an existing column, table, or policy**, backfills or mutates existing rows, or touches storage buckets, stops: show Fred the SQL and wait. When it is not obvious which side a migration falls on, it is destructive. (Supersedes the previous blanket rule; agreed with Fred 24 July 2026, so that a feature can be finished end-to-end without a human relay.)
 - **Never run `supabase db push` on this project.** There are 102 local migration files and **no `supabase_migrations.schema_migrations` table on the remote** — the schema was built through Lovable and the dashboard, so nothing was ever recorded as applied. A push would replay all 102 against a database that already has those objects, and several carry data backfills that would double-apply. Apply new migrations one at a time through the Management API query endpoint instead, and keep writing the `.sql` file for the record.
 - **One session at a time on this repo.** Two Claude sessions ran concurrently on 24 July; one edited a component mid-review and committed the other's uncommitted work under its own message. The near-miss was a stale redeploy shipping an ungated function over a hardened one. Check `git status` and `pgrep -fl claude` before starting work.
-- **Never ask Fred clarifying questions. Resolve all ambiguity yourself using the most conservative, least-destructive interpretation. Do less rather than more when scope is unclear.**
+- **Resolve ambiguity yourself; never ask a clarifying question you can answer from the code, the conventions, or the most conservative reading. Do less rather than more when scope is unclear.** The only questions that reach Fred are genuine product decisions with no right answer — and those are held and batched at the end of the feature (see Working mode), never asked mid-flight.
 - **Never delete, rename, or restructure existing code unless the task explicitly requires it. Additions are preferred over modifications; modifications over deletions.**
 - **When multiple approaches exist, pick the one with the smallest blast radius — easiest to revert, least likely to break something else.**
 - **Never touch files unrelated to the task at hand, even if they look wrong.**
