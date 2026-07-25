@@ -235,6 +235,10 @@ Ran after the Pass 1–3 block above was written, so the notes above were stale 
 
 The last row is the one that matters: it proves the vault reference resolves inside pg_cron's execution context, so the 07:00 UTC run tomorrow will authenticate. First scheduled fire had not yet occurred at time of writing (`cron.job_run_details` empty for this job).
 
+**Payables cron — broke 24 Jul 18:30, FIXED 25 Jul 12:33. ✓ Closed.** Env var `PAYABLES_CRON_SECRET` was pointed at the Vault value (digests confirmed matching), the stored cron command fired verbatim returned `200 ok=true`, and `payables_sync_log` logged a fresh 40-record run at 12:33:10 — first success since the 18:15 run the day before. Both cron and function now read the one Vault secret. Original diagnosis retained below for the record.
+
+<details><summary>Original outage writeup (24 Jul)</summary>
+
 **Payables cron — rotated today, then found BROKEN. ⚠️ ACTION REQUIRED.** `PAYABLES_CRON_SECRET` was rotated at **16:48:33 UTC** and looked healthy: `payables_sync_log` showed 7 consecutive `ok=true` runs from 16:50:33 to 18:15, 40 records each. That verification was accurate when written and is no longer true.
 
 **From 18:30 UTC every tick returns `401`** (`net._http_response` ids 20713, 20717; `payables_sync_log` has had no row since 18:15). Cause, established by comparing SHA-256 digests rather than guessing: **the cron job's hardcoded `X-Cron-Secret` does not match the `PAYABLES_CRON_SECRET` function env var.** The rotation updated the env var and left the cron command carrying the old literal. The mismatch was masked for ~1.5 hours because warm function instances still held the pre-rotation env; it surfaced on the first cold start, which a `secrets set` on an unrelated variable at 18:13 most likely triggered. It would have surfaced by itself at the next cold start regardless.
@@ -251,6 +255,8 @@ rm /tmp/p.env
 Verify with: `select started_at, ok from payables_sync_log order by started_at desc limit 2`.
 
 Lesson written into CLAUDE.md hard rules: **a cron secret lives in exactly one place — Vault.** Two copies in two systems is the bug; the drift is silent, and warm instances delay the symptom well past the change that caused it.
+
+</details>
 
 **Still open — four service-role functions with no caller verification at all** (service role, no `getUser`/`getClaims`, no secret): `expire-reservations`, `dispatch-pending-deliveries`, `airtable-sync-contact`, `airtable-sync-project`. `dispatch-pending-deliveries` is on a `*/5` cron carrying only an anon Bearer. Same `cronAuth.ts` helper applies; callers must be identified first (pg_cron vs DB trigger vs frontend) so gating them doesn't break production.
 
