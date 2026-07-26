@@ -323,35 +323,51 @@ export default function AdminPnL() {
   }
 
   return (
-    <AdminLayout>
-      {/* Header */}
-      <div className="mb-8">
-        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">Finance</p>
-        <h1 className="font-serif font-normal tracking-tight text-strong text-4xl leading-none">
-          P&amp;L
-        </h1>
+    <AdminLayout panel>
+      {/* Header — page-name eyebrow (matches the dashboard's Studio Overview) */}
+      <div className="mb-8 animate-fade-in">
+        <div className="flex items-center gap-3">
+          <div className="h-px w-12 bg-gold-muted" />
+          <span className="text-label-gold text-[#ecd39c]">P&amp;L</span>
+        </div>
         <p className="mt-3 text-sm text-recessive">
           Money out, money in, and cash-basis VAT for {currentQuarter.label}.
         </p>
       </div>
 
       {/* Summary band — figures lead the surface */}
-      <FinanceSummary
-        moneyOut={moneyOut}
-        payables={payablesSummary}
-        moneyIn={moneyIn}
-        vat={{ netEstimate: currentVat.netVat }}
-        currentQuarter={currentQuarter}
-      />
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="h-px w-6 bg-gold-muted" />
+          <h2 className="text-label">Summary</h2>
+        </div>
+        <FinanceSummary
+          moneyOut={moneyOut}
+          payables={payablesSummary}
+          moneyIn={moneyIn}
+          vat={{ netEstimate: currentVat.netVat }}
+          currentQuarter={currentQuarter}
+        />
+      </section>
 
       {/* VAT panel */}
-      <VatIndicator current={currentVat} closed={closedVat} />
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="h-px w-6 bg-gold-muted" />
+          <h2 className="text-label">VAT</h2>
+        </div>
+        <VatIndicator current={currentVat} closed={closedVat} />
+      </section>
 
       {/* Money OUT */}
-      <div className="mb-4 flex items-baseline justify-between">
-        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money out</p>
-        <p className="text-xs text-recessive">Overheads · cash basis</p>
-      </div>
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">Money Out</h2>
+          </div>
+          <p className="text-xs text-recessive">Overheads · cash basis</p>
+        </div>
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <Input
           placeholder="Search supplier…"
@@ -380,19 +396,22 @@ export default function AdminPnL() {
           </SelectContent>
         </Select>
       </div>
-      <div className="mb-10">
         <OverheadTable
           rows={filteredOverheads}
           categories={categories}
           loading={loading}
           onRowClick={openOverheadDetail}
         />
-      </div>
+      </section>
 
       {/* Payables (Kieran's Airtable, read-only mirror) */}
-      <div className="mb-4 flex items-baseline justify-between gap-4">
-        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Payables</p>
-        <div className="flex items-baseline gap-6">
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">Payables</h2>
+          </div>
+          <div className="flex items-baseline gap-6">
           <p className="text-xs text-recessive">
             Read-only mirror of Kieran's Airtable · not part of your VAT return
             {lastSyncedAt && (
@@ -454,7 +473,6 @@ export default function AdminPnL() {
           </SelectContent>
         </Select>
       </div>
-      <div className="mb-10">
         <PayablesTable
           rows={filteredPayables}
           loading={loading}
@@ -463,13 +481,17 @@ export default function AdminPnL() {
             setPayableDetailOpen(true);
           }}
         />
-      </div>
+      </section>
 
       {/* Money IN */}
-      <div className="mb-4 flex items-baseline justify-between">
-        <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in</p>
-        <p className="text-xs text-recessive">Invoices · read-only</p>
-      </div>
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">Money In</h2>
+          </div>
+          <p className="text-xs text-recessive">Invoices · read-only</p>
+        </div>
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <Input
           placeholder="Search client or invoice #…"
@@ -502,7 +524,8 @@ export default function AdminPnL() {
           </SelectContent>
         </Select>
       </div>
-      <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
+        <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
+      </section>
 
       {/* Dialogs rendered unconditionally at page root */}
       <OverheadForm
