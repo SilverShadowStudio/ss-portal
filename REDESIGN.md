@@ -4,18 +4,24 @@ The rules every page must follow as it is brought into the new design. **Styling
 only** — never change content, data, wiring, routing, or font sizes. Roll out one
 page at a time, each reviewed on a Vercel preview before merge.
 
-## Layer structure (back → front)
+## The three tiers (mandatory on every page)
 
-1. **Ground + sidebar** — one uniform `#1b1b1b` (dark `--background` and
-   `--sidebar-background` tokens). No vertical divider on the sidebar.
-2. **Gradient panel** — page content sits inside it. Opt in via the layout's
-   `panel` prop (`.ssr-panel`). Violet gradient `#352d42 → #3c2e4f → #201b1f →
-   #17151a`, rounded, soft float shadow, **no highlight rim**, left edge flush to
-   the sidebar.
-3. **Zones** (`.ssr-zone`) — one per section. Distinguished by tone only: no
-   border, no highlight.
-4. **Data tiles** (`.ssr-tile`) — translucent dark, composited over the panel
-   gradient so each picks up the local violet; keep the bevel on these.
+Fred's naming. Every page is built from exactly these nested levels, always all
+three — data is never allowed to sit loose on a Section:
+
+- **(backdrop) Ground + sidebar** — one uniform `#1b1b1b` (dark `--background`
+  and `--sidebar-background`). No vertical divider on the sidebar.
+- **1 · Page** — the gradient panel holding all page content, with the page
+  name eyebrow at the top. Layout `panel` prop → `.ssr-panel`. Violet gradient
+  `#352d42 → #3c2e4f → #201b1f → #17151a`, rounded, soft float shadow, **no
+  highlight rim**, left edge flush to the sidebar.
+- **2 · Section** — a brighter zone grouping related information; one per group.
+  `.ssr-zone`, tone only (no border, no highlight), each with a gold-hairline +
+  `text-label` title.
+- **3 · Tile** — the darker zone that **every** individual piece of information
+  or data lives in, *inside* a Section. `.ssr-tile` — translucent dark composited
+  over the Page gradient, bevelled. **Data always goes in a Tile, never loose on
+  a Section.**
 
 ## Rules
 

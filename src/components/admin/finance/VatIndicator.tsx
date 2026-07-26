@@ -12,9 +12,9 @@ interface VatIndicatorProps {
 
 export function VatIndicator({ current, closed }: VatIndicatorProps) {
   return (
-    <section className="mb-10">
+    <section>
       <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-4">
-        VAT indicator · cash basis · Stagger 1
+        Cash basis · Stagger 1
       </p>
       <div className="grid grid-cols-2 gap-6">
         <QuarterCard
@@ -49,7 +49,7 @@ function QuarterCard({
   deadlineAccent?: boolean;
 }) {
   return (
-    <div className="border border-divider rounded-sm p-6">
+    <div className="ssr-tile p-6">
       <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">{title}</p>
       <p className="mt-1 text-[10px] uppercase tracking-[0.24em] text-gold-muted">{stateLabel}</p>
 

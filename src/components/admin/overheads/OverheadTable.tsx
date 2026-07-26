@@ -71,7 +71,7 @@ export function OverheadTable({ rows, categories, loading, onRowClick }: Overhea
   );
 
   return (
-    <div className="border border-divider rounded-sm overflow-hidden">
+    <div className="ssr-tile overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="border-divider">

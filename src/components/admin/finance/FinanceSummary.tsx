@@ -21,7 +21,7 @@ export function FinanceSummary({
   currentQuarter,
 }: FinanceSummaryProps) {
   return (
-    <div className="mb-10 grid grid-cols-2 xl:grid-cols-4 gap-6 border-y border-divider py-6">
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
       <Panel title="Money out">
         <Row label="Outstanding" value={formatCurrency(moneyOut.outstanding)} />
         <Row label={`Paid ${currentQuarter.label}`} value={formatCurrency(moneyOut.paidThisQuarter)} />
@@ -57,7 +57,7 @@ export function FinanceSummary({
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="ssr-tile p-5">
       <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">{title}</p>
       <div className="space-y-2">{children}</div>
     </div>
