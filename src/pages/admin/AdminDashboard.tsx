@@ -104,6 +104,10 @@ export default function AdminDashboard() {
       {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
         <div className="ssr-zone">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">At a Glance</h2>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {statCards.map((stat) => (
               <Link key={stat.label} to={stat.link} className="ssr-tile ssr-tile-hover block p-5 transition-smooth">
@@ -167,6 +171,10 @@ export default function AdminDashboard() {
           activity log + quick actions) so the connection panels recede. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.15s" }}>
         <div className="ssr-zone">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">Connections</h2>
+          </div>
           <div className="flex flex-col gap-3">
             <DropboxConnectionStatus />
             <AirtableConnectionStatus />
