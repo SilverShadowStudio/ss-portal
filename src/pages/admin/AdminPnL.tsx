@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
-import { FinanceSummary } from "@/components/admin/finance/FinanceSummary";
+import { FinanceSummary, type FinanceSectionKey } from "@/components/admin/finance/FinanceSummary";
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
 import { PayablesTable } from "@/components/admin/finance/PayablesTable";
@@ -56,6 +56,10 @@ export default function AdminPnL() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [invoices, setInvoices] = useState<MoneyInInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Which detail section is open below the summary (null = none; click a
+  // summary frame to open it, click it again to close).
+  const [activeSection, setActiveSection] = useState<FinanceSectionKey | null>(null);
 
   const [ovSearch, setOvSearch] = useState("");
   const [ovStatus, setOvStatus] = useState<OverheadStatusFilter>("all");
@@ -347,19 +351,24 @@ export default function AdminPnL() {
           moneyIn={moneyIn}
           vat={{ netEstimate: currentVat.netVat }}
           currentQuarter={currentQuarter}
+          active={activeSection}
+          onSelect={(k) => setActiveSection((cur) => (cur === k ? null : k))}
         />
       </section>
 
-      {/* VAT panel */}
-      <section className="ssr-zone mb-4">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-6 bg-gold-muted" />
-          <h2 className="text-label">VAT</h2>
-        </div>
-        <VatIndicator current={currentVat} closed={closedVat} />
-      </section>
+      {/* VAT panel — shown when its summary frame is selected */}
+      {activeSection === "vat" && (
+        <section className="ssr-zone mb-4">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">VAT</h2>
+          </div>
+          <VatIndicator current={currentVat} closed={closedVat} />
+        </section>
+      )}
 
-      {/* Money OUT */}
+      {/* Money OUT — shown when its summary frame is selected */}
+      {activeSection === "moneyOut" && (
       <section className="ssr-zone mb-4">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -403,8 +412,10 @@ export default function AdminPnL() {
           onRowClick={openOverheadDetail}
         />
       </section>
+      )}
 
-      {/* Payables (Kieran's Airtable, read-only mirror) */}
+      {/* Payables — shown when its summary frame is selected */}
+      {activeSection === "payables" && (
       <section className="ssr-zone mb-4">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -482,8 +493,10 @@ export default function AdminPnL() {
           }}
         />
       </section>
+      )}
 
-      {/* Money IN */}
+      {/* Money IN — shown when its summary frame is selected */}
+      {activeSection === "moneyIn" && (
       <section className="ssr-zone mb-4">
         <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -526,6 +539,7 @@ export default function AdminPnL() {
       </div>
         <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
       </section>
+      )}
 
       {/* Dialogs rendered unconditionally at page root */}
       <OverheadForm
