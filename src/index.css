@@ -96,7 +96,7 @@
        Surfaces (--background, --card, --popover, --gold) read from
        --brand-dark-*-hsl variables set at runtime by BrandProvider. The
        trailing literals are the static fallbacks. */
-    --background: var(--brand-dark-bg-hsl, 240 5% 9%);
+    --background: 0 0% 10.6%;            /* #1b1b1b — fixed dark-only ground */
     --foreground: 36 18% 88%;
 
     --card: var(--brand-dark-surface-hsl, 240 4% 11%);
@@ -141,7 +141,7 @@
     --shadow-card: 0 4px 24px -4px hsl(24 15% 3% / 0.5);
     --shadow-glow: 0 0 40px hsl(34 26% 65% / 0.1);
 
-    --sidebar-background: var(--brand-dark-bg-hsl, 240 5% 7%);
+    --sidebar-background: 0 0% 10.6%;    /* #1b1b1b — match the ground exactly */
     --sidebar-foreground: 35 12% 75%;
     --sidebar-primary: var(--brand-gold-hsl, 34 26% 65%);
     --sidebar-primary-foreground: 40 12% 5%;
@@ -512,12 +512,13 @@ input:-webkit-autofill:active {
    ============================================================ */
 .ssr-shell { min-height: 100vh; background: #1b1b1b; }
 
-/* gap on top/right/bottom; left edge tucks toward the sidebar */
-.ssr-panelwrap { padding: 16px 16px 16px 0; }
+/* even gap on all sides so the panel floats and the left corners show
+   (the sidebar is position:fixed, so a negative pull hides the left bevel) */
+.ssr-panelwrap { padding: 16px; }
 
 .ssr-panel {
   position: relative;
-  margin-left: -20px;                 /* pull left edge toward the nav */
+  margin-left: 0;
   border-radius: 22px;
   padding: 30px 34px 40px;
   min-height: calc(100vh - 32px);

@@ -137,7 +137,7 @@ export function DropboxConnectionStatus() {
 
   if (status.loading) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+      <div className="ssr-tile flex items-center gap-3 px-4 py-3">
         <BrandLoader size="sm" />
         <span className="text-sm text-[var(--text-label)]">Checking connection...</span>
       </div>
@@ -184,7 +184,7 @@ export function DropboxConnectionStatus() {
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gold/20 bg-[#181613] px-4 py-3">
+    <div className="ssr-tile flex items-center justify-between px-4 py-3">
       <div className="flex items-center gap-3">
         <DropboxIcon className="h-5 w-5 text-gold" />
         <div>

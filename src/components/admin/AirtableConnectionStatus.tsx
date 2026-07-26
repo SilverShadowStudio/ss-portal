@@ -78,7 +78,7 @@ export function AirtableConnectionStatus() {
 
   if (status.state === "loading") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+      <div className="ssr-tile flex items-center gap-3 px-4 py-3">
         <BrandLoader size="sm" />
         <span className="text-sm text-[var(--text-label)]">Checking Airtable connection...</span>
       </div>
@@ -111,7 +111,7 @@ export function AirtableConnectionStatus() {
 
   if (status.state === "misconfigured") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-gold/20 bg-[#181613] px-4 py-3">
+      <div className="ssr-tile flex items-center gap-3 px-4 py-3">
         <AirtableIcon className="h-5 w-5 shrink-0 text-gold" />
         <div>
           <p className="text-sm font-medium text-standard">Airtable Not Configured</p>
