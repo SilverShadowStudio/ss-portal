@@ -124,8 +124,8 @@
     --input: 36 10% 12%;
     --ring: var(--brand-gold-hsl, 36 35% 57%);
 
-    /* Custom tokens — antique gold from brand */
-    --gold: var(--brand-gold-hsl, 36 35% 57%);
+    /* Custom tokens — brighter mockup gold (#d3b47c) for the dark-only redesign */
+    --gold: 39 50% 66%;
     --gold-muted: 36 22% 48%;
     --surface-elevated: var(--brand-dark-elevated-hsl, 36 12% 8%);
     --surface-overlay: var(--brand-dark-elevated-hsl, 40 9% 7%);
@@ -520,8 +520,9 @@ input:-webkit-autofill:active {
   position: relative;
   margin-left: 0;
   border-radius: 22px;
-  /* extra top space above the first zone — applies to every panel page */
-  padding: 47px 34px 40px;
+  /* top padding == eyebrow's bottom margin, so the page name sits halfway
+     between the panel top and the first card. Applies to every panel page. */
+  padding: 32px 34px 40px;
   min-height: calc(100vh - 32px);
   background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */

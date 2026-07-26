@@ -94,10 +94,10 @@ export default function AdminDashboard() {
           are self-evident); the breadcrumb is now the visible page label and
           the browser tab <title> remains the document-level label. Spacing
           tightened so the metric row sits where the H1 used to. */}
-      <div className="mb-6 animate-fade-in">
+      <div className="mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold">Studio Overview</span>
+          <span className="text-label-gold text-[#ecd39c]">Studio Overview</span>
         </div>
       </div>
 
