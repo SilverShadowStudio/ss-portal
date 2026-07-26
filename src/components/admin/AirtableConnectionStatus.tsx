@@ -101,7 +101,7 @@ export function AirtableConnectionStatus() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => check(true)} disabled={refreshing}>
+        <Button variant="outline" size="sm" className="border-gold/30 text-gold hover:bg-gold/10 hover:text-gold" onClick={() => check(true)} disabled={refreshing}>
           {refreshing ? <BrandLoader size="sm" className="mr-2 h-3 w-3" /> : <RefreshCw className="mr-2 h-3 w-3" />}
           Refresh
         </Button>

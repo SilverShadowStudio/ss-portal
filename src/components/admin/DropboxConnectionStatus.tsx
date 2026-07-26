@@ -161,11 +161,11 @@ export function DropboxConnectionStatus() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={checkConnectionStatus}>
+          <Button variant="ghost" size="sm" className="text-gold hover:bg-gold/10 hover:text-gold" onClick={checkConnectionStatus}>
             <RefreshCw className="mr-2 h-3 w-3" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleConnect(true)} disabled={isConnecting}>
+          <Button variant="outline" size="sm" className="border-gold/30 text-gold hover:bg-gold/10 hover:text-gold" onClick={() => handleConnect(true)} disabled={isConnecting}>
             {isConnecting ? (
               <>
                 <BrandLoader size="sm" className="mr-2 h-3 w-3" />

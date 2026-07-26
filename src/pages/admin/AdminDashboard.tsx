@@ -129,7 +129,7 @@ export default function AdminDashboard() {
           <div className="h-px w-6 bg-gold-muted" />
           <h2 className="text-label">Quick Actions</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex flex-col gap-3">
           <Link
             to="/admin/clients"
             className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"

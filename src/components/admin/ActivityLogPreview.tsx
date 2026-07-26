@@ -139,7 +139,7 @@ export function ActivityLogPreview() {
                 )}
                 title="Click to dismiss from your preview"
               >
-                <span className="mt-1 inline-flex h-5 min-w-[60px] items-center justify-center rounded bg-muted/60 px-2 text-[8px] font-bold tracking-[0.18em] uppercase text-[var(--text-label)]">
+                <span className="mt-1 inline-flex h-5 min-w-[60px] items-center justify-center rounded border border-gold/25 bg-gold/15 px-2 text-[8px] font-bold tracking-[0.18em] uppercase text-gold">
                   {ACTION_LABELS[row.action] ?? row.action}
                 </span>
                 <div className="flex-1 min-w-0">

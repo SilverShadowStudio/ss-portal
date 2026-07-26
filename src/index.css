@@ -512,15 +512,16 @@ input:-webkit-autofill:active {
    ============================================================ */
 .ssr-shell { min-height: 100vh; background: #1b1b1b; }
 
-/* even gap on all sides so the panel floats and the left corners show
-   (the sidebar is position:fixed, so a negative pull hides the left bevel) */
-.ssr-panelwrap { padding: 16px; }
+/* flush the panel's left edge to the sidebar (as far left as it can go while
+   the rounded left corners — the bevel — still clear the fixed sidebar) */
+.ssr-panelwrap { padding: 16px 16px 16px 0; }
 
 .ssr-panel {
   position: relative;
   margin-left: 0;
   border-radius: 22px;
-  padding: 30px 34px 40px;
+  /* extra top space above the first zone — applies to every panel page */
+  padding: 52px 34px 40px;
   min-height: calc(100vh - 32px);
   background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
