@@ -215,7 +215,7 @@ export function Sidebar({
         )}
       >
         {/* Logo */}
-        <div className={cn(expanded ? `${SB.logoMarginExpanded} px-4` : SB.logoMarginCollapsed)}>
+        <div className={cn(expanded ? `${SB.logoMarginExpanded} px-4 mt-[10px]` : SB.logoMarginCollapsed)}>
           <a href="https://www.silvershadowstudio.com" target="_blank" rel="noopener noreferrer" className="block transition-smooth hover:opacity-80">
             {expanded ? (
               <img
