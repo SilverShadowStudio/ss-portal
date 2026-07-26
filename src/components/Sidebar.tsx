@@ -115,24 +115,16 @@ export function Sidebar({
           expanded
             ? cn("w-full pr-3 py-3", item.indent ? "pl-10" : "pl-5")
             : "h-11 w-12 justify-center mx-auto",
-          isActive ? "text-strong" : "text-standard hover:text-strong",
-          // collapsed keeps a full-box hover; expanded uses the tick-height pill below
-          !expanded && "hover:bg-gold/10",
+          // hover turns the label bright gold — no background rectangle
+          isActive ? "text-strong" : "text-standard hover:text-[#ecd39c]",
         )}
         style={expanded ? SB.navStyle : undefined}
       >
-        {/* Hover highlight — same height as the active tick (h-4), centred */}
-        {expanded && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 rounded-md bg-gold/10 opacity-0 transition-opacity duration-quick group-hover:opacity-100"
-          />
-        )}
         {expanded && isActive && (
           <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
         )}
         {expanded ? (
-          <span className="relative z-10 flex flex-1 items-center justify-between gap-2">
+          <span className="flex flex-1 items-center justify-between gap-2">
             <span>{item.label}</span>
             {showBadge && (
               <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
@@ -283,13 +275,13 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center rounded-lg transition-colors hover:bg-gold/10",
+                  "group flex w-full items-center rounded-lg transition-colors",
                   expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
                 )}
               >
                 {expanded ? (
                   <div className="min-w-0 text-left">
-                    <p className={SB.accountNameClass} style={{ ...SB.accountNameStyle, color: "var(--text-standard)" }}>
+                    <p className={cn(SB.accountNameClass, "text-standard transition-colors group-hover:text-[#ecd39c]")} style={SB.accountNameStyle}>
                       {accountDisplayName}
                     </p>
                     {accountSubLabel && (
@@ -299,7 +291,7 @@ export function Sidebar({
                     )}
                   </div>
                 ) : (
-                  <p className={SB.accountInitialsClass}>{accountInitials}</p>
+                  <p className={cn(SB.accountInitialsClass, "transition-colors group-hover:text-[#ecd39c]")}>{accountInitials}</p>
                 )}
               </button>
             </PopoverTrigger>
