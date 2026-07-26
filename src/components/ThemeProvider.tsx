@@ -1,5 +1,9 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
 
+// Light mode has been removed — the portal is dark-only, designed to stay
+// readable in all conditions. `theme` is pinned to "dark" and `toggleTheme`
+// is kept as a no-op so every existing caller of useTheme() keeps working
+// unchanged; only the ability to switch to light is gone.
 type Theme = "dark" | "light";
 
 interface ThemeContextType {
@@ -10,24 +14,15 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const stored = localStorage.getItem("ss-theme");
-    return stored ? (stored as Theme) : "dark";
-  });
-
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    localStorage.setItem("ss-theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-  };
+    root.classList.remove("light");
+    root.classList.add("dark");
+    localStorage.setItem("ss-theme", "dark");
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: "dark", toggleTheme: () => {} }}>
       {children}
     </ThemeContext.Provider>
   );

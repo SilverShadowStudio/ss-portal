@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   FileText, Landmark, ScrollText, Receipt, TrendingUp,
-  Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
+  Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -60,7 +59,6 @@ interface AdminSidebarProps {
 export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<{
     first_name: string | null;
@@ -100,8 +98,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   }));
 
   const accountMenuItems: SidebarAccountMenuItem[] = [
-    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
-    { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+    { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), separatorAfter: true, Icon: expanded ? ChevronsLeft : ChevronsRight },
     { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true, Icon: Settings },
     { label: "Log off", onClick: handleSignOut, Icon: LogOut },
   ];

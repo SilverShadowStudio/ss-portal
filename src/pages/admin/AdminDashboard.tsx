@@ -89,7 +89,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <AdminLayout>
+    <AdminLayout panel>
       {/* Header — breadcrumb only. The H1 + subtitle were removed (the metrics
           are self-evident); the breadcrumb is now the visible page label and
           the browser tab <title> remains the document-level label. Spacing
@@ -101,26 +101,28 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Status Overview — column metrics */}
-      <div className="mb-14 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-4">
-          {statCards.map((stat) => (
-            <Link key={stat.label} to={stat.link} className="border-l border-border/80 pl-6 transition-smooth hover:border-gold">
-              <p className="text-label mb-3">{stat.label}</p>
-              <span className="font-serif text-4xl font-medium text-strong">
-                {loading ? "..." : stat.value.toString().padStart(2, '0')}
-              </span>
-            </Link>
-          ))}
+      {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
+      <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        <div className="ssr-zone">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {statCards.map((stat) => (
+              <Link key={stat.label} to={stat.link} className="ssr-tile ssr-tile-hover block p-5 transition-smooth">
+                <p className="text-label mb-3">{stat.label}</p>
+                <span className="font-serif text-4xl font-medium text-strong">
+                  {loading ? "..." : stat.value.toString().padStart(2, '0')}
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Activity Log Preview — click a line to dismiss; title to open full log */}
       <ActivityLogPreview />
 
-      {/* Quick Actions */}
+      {/* Quick Actions — zone with tile links. Same labels + destinations. */}
       <div
-        className="mb-14 rounded-xl border border-border bg-card shadow-sm p-8 md:p-10 animate-fade-in"
+        className="mb-4 ssr-zone animate-fade-in"
         style={{ animationDelay: "0.2s" }}
       >
         <div className="mb-6 flex items-center gap-3">
@@ -130,7 +132,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Link
             to="/admin/clients"
-            className="group flex items-center justify-between rounded-lg border border-border bg-background/40 p-5 transition-smooth hover:border-gold/40"
+            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
           >
             <div className="flex items-center gap-4">
               <Users className="h-5 w-5 text-gold" strokeWidth={1.5} />
@@ -140,7 +142,7 @@ export default function AdminDashboard() {
           </Link>
           <Link
             to="/admin/projects"
-            className="group flex items-center justify-between rounded-lg border border-border bg-background/40 p-5 transition-smooth hover:border-gold/40"
+            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
           >
             <div className="flex items-center gap-4">
               <FolderKanban className="h-5 w-5 text-gold" strokeWidth={1.5} />
@@ -150,7 +152,7 @@ export default function AdminDashboard() {
           </Link>
           <Link
             to="/admin/scenes"
-            className="group flex items-center justify-between rounded-lg border border-border bg-background/40 p-5 transition-smooth hover:border-gold/40"
+            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
           >
             <div className="flex items-center gap-4">
               <Image className="h-5 w-5 text-gold" strokeWidth={1.5} />

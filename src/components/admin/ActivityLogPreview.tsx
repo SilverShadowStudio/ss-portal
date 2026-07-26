@@ -101,7 +101,7 @@ export function ActivityLogPreview() {
   }
 
   return (
-    <div className="mb-14 rounded-xl border border-border bg-card shadow-sm p-8 md:p-10 animate-fade-in">
+    <div className="mb-4 ssr-zone animate-fade-in">
       <div className="mb-6 flex items-center gap-3">
         <div className="h-px w-6 bg-gold-muted" />
         <Link
@@ -127,15 +127,15 @@ export function ActivityLogPreview() {
           <p className="font-serif text-base text-muted-foreground">All caught up</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border/40 max-h-[28rem] overflow-y-auto">
+        <ul className="flex flex-col gap-2 max-h-[28rem] overflow-y-auto">
           {visible.map((row) => (
             <li key={row.id}>
               <button
                 type="button"
                 onClick={() => dismiss(row.id)}
                 className={cn(
-                  "group w-full text-left flex items-start gap-4 py-3 px-1",
-                  "hover:bg-muted/30 transition-colors rounded-md",
+                  "group ssr-tile ssr-tile-hover w-full text-left flex items-start gap-4 p-4",
+                  "transition-colors",
                 )}
                 title="Click to dismiss from your preview"
               >

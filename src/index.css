@@ -504,3 +504,45 @@ input:-webkit-autofill:active {
 .animate-pulse-gold {
   animation: pulse-gold var(--duration-signature) var(--ease-default) infinite;
 }
+
+/* ============================================================
+   Dashboard redesign — dark-only layered look (opt-in via .ssr-*)
+   Scoped, additive classes; nothing outside these selectors is
+   affected. Values match the approved mockup exactly.
+   ============================================================ */
+.ssr-shell { min-height: 100vh; background: #1b1b1b; }
+
+/* gap on top/right/bottom; left edge tucks toward the sidebar */
+.ssr-panelwrap { padding: 16px 16px 16px 0; }
+
+.ssr-panel {
+  position: relative;
+  margin-left: -20px;                 /* pull left edge toward the nav */
+  border-radius: 22px;
+  padding: 30px 34px 40px;
+  min-height: calc(100vh - 32px);
+  background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
+  box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
+}
+
+/* brighter zone — distinguished by tone only (no border/highlight) */
+.ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(150, 138, 177, 0.13); }
+.ssr-zone + .ssr-zone { margin-top: 16px; }
+
+/* dark data tile — translucent, composited over the panel gradient, bevelled */
+.ssr-tile {
+  border-radius: 14px;
+  background: linear-gradient(163deg, rgba(18, 15, 26, 0.44) 0%, rgba(8, 6, 13, 0.60) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 4px 12px -8px rgba(0, 0, 0, 0.6);
+}
+.ssr-tile-hover:hover {
+  background: linear-gradient(163deg, rgba(40, 33, 58, 0.46) 0%, rgba(16, 13, 24, 0.58) 100%);
+}
+
+@media (max-width: 720px) {
+  .ssr-panelwrap { padding: 14px; }
+  .ssr-panel { margin-left: 0; min-height: 0; }
+}
