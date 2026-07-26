@@ -12,7 +12,7 @@ import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SB } from "@/lib/sidebarConstants";
 import type { LucideIcon } from "lucide-react";
 
@@ -85,6 +85,7 @@ export function Sidebar({
   const location = useLocation();
   const { theme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [acctMenuOpen, setAcctMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Retained only for the mobile bottom-tab account button (openMenu). The
@@ -273,8 +274,8 @@ export function Sidebar({
             menu floats free of the sidebar. The mobile bottom-tab path (which
             still calls openMenu) is untouched. */}
         <div className="w-full pt-4">
-          <HoverCard openDelay={80} closeDelay={140}>
-            <HoverCardTrigger asChild>
+          <Popover open={acctMenuOpen} onOpenChange={setAcctMenuOpen}>
+            <PopoverTrigger asChild>
               <button
                 type="button"
                 className={cn(
@@ -297,8 +298,8 @@ export function Sidebar({
                   <p className={SB.accountInitialsClass}>{accountInitials}</p>
                 )}
               </button>
-            </HoverCardTrigger>
-            <HoverCardContent
+            </PopoverTrigger>
+            <PopoverContent
               side="right"
               align="end"
               sideOffset={6}
@@ -309,7 +310,7 @@ export function Sidebar({
                   <div key={it.label}>
                     <button
                       type="button"
-                      onClick={it.onClick}
+                      onClick={() => { it.onClick(); setAcctMenuOpen(false); }}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-sans uppercase transition-colors",
                         it.active
@@ -325,8 +326,8 @@ export function Sidebar({
                   </div>
                 ))}
               </div>
-            </HoverCardContent>
-          </HoverCard>
+            </PopoverContent>
+          </Popover>
         </div>
       </aside>
     </>
