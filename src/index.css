@@ -131,7 +131,7 @@
     --surface-overlay: var(--brand-dark-elevated-hsl, 40 9% 7%);
 
     /* Four-tier text contrast tokens (role-based; dark values). */
-    --text-strong: #F0EBE0;
+    --text-strong: #FBF7F0;
     --text-standard: #C8C2B5;
     --text-label: #8A8378;
     --text-recessive: #5A554E;
