@@ -235,7 +235,7 @@ export function Sidebar({
           <nav
             className={cn(
               "flex flex-1 flex-col overflow-y-auto",
-              expanded ? "w-full" : "items-center w-full gap-1",
+              expanded ? "w-full mt-[5px]" : "items-center w-full gap-1",
             )}
           >
             {sections.map((section, sIdx) => (
