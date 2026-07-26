@@ -301,7 +301,7 @@ export function Sidebar({
             <HoverCardContent
               side="right"
               align="end"
-              sideOffset={16}
+              sideOffset={6}
               className="w-52 rounded-xl border-0 bg-[#211c26] p-1.5 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.75)]"
             >
               <div className="flex flex-col">
