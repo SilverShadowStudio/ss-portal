@@ -89,7 +89,7 @@ export function Sidebar({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Retained only for the mobile bottom-tab account button (openMenu). The
-  // desktop account menu is now a Radix HoverCard and no longer uses this.
+  // desktop account menu is now a Radix Popover and no longer uses this.
   const openMenu = () => {
     if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
     setMenuOpen(true);
@@ -270,7 +270,7 @@ export function Sidebar({
         </TooltipProvider>
 
         {/* Account — hover the name to reveal an independent popover menu.
-            Replaces the old inline animated stack with a Radix HoverCard so the
+            Replaces the old inline animated stack with a Radix Popover so the
             menu floats free of the sidebar. The mobile bottom-tab path (which
             still calls openMenu) is untouched. */}
         <div className="w-full pt-4">
