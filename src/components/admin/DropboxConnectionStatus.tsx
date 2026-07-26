@@ -161,11 +161,9 @@ export function DropboxConnectionStatus() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-7 rounded px-2.5 text-xs border-0 bg-gold/20 text-[#ecd39c] hover:bg-gold/30 hover:text-[#ecd39c]" onClick={checkConnectionStatus}>
-            <RefreshCw className="mr-2 h-3 w-3" />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm" className="h-7 rounded px-2.5 text-xs border-0 bg-gold/20 text-[#ecd39c] hover:bg-gold/30 hover:text-[#ecd39c]" onClick={() => handleConnect(true)} disabled={isConnecting}>
+          {/* Reconnect — secondary action, ghost/no-fill so it reads as distinct
+              from the gold-filled Refresh, sitting to its left */}
+          <Button variant="ghost" size="sm" className="h-7 rounded px-2.5 text-xs text-[#ecd39c] hover:bg-gold/15 hover:text-[#ecd39c]" onClick={() => handleConnect(true)} disabled={isConnecting}>
             {isConnecting ? (
               <>
                 <BrandLoader size="sm" className="mr-2 h-3 w-3" />
@@ -177,6 +175,10 @@ export function DropboxConnectionStatus() {
                 Reconnect
               </>
             )}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 rounded px-2.5 text-xs border-0 bg-gold/20 text-[#ecd39c] hover:bg-gold/30 hover:text-[#ecd39c]" onClick={checkConnectionStatus}>
+            <RefreshCw className="mr-2 h-3 w-3" />
+            Refresh
           </Button>
         </div>
       </div>
