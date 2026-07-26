@@ -111,16 +111,13 @@ export function Sidebar({
       <Link
         to={item.path}
         className={cn(
-          "relative group flex items-center transition-colors duration-quick whitespace-nowrap font-sans uppercase",
+          "relative group flex items-center rounded-lg transition-colors duration-quick whitespace-nowrap font-sans uppercase",
           expanded
             ? cn("w-full pr-3 py-3", item.indent ? "pl-10" : "pl-5")
-            : "h-11 w-12 justify-center mx-auto rounded-lg",
-          isActive
-            ? "text-strong"
-            : cn(
-                "text-standard hover:text-strong",
-                !expanded && "hover:bg-muted/40",
-              ),
+            : "h-11 w-12 justify-center mx-auto",
+          isActive ? "text-strong" : "text-standard hover:text-strong",
+          // hover surface on every tab — same gold tint as the account-menu items
+          "hover:bg-gold/10",
         )}
         style={expanded ? SB.navStyle : undefined}
       >
