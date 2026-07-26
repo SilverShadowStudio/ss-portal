@@ -12,6 +12,7 @@ import ssIcon from "@/assets/ss-icon.png";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { SB } from "@/lib/sidebarConstants";
 import type { LucideIcon } from "lucide-react";
 
@@ -86,13 +87,11 @@ export function Sidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Retained only for the mobile bottom-tab account button (openMenu). The
+  // desktop account menu is now a Radix HoverCard and no longer uses this.
   const openMenu = () => {
     if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
     setMenuOpen(true);
-  };
-  const scheduleClose = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setMenuOpen(false), 5000);
   };
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -269,132 +268,65 @@ export function Sidebar({
           </nav>
         </TooltipProvider>
 
-        {/* Account — hover to reveal menu.
-            The hover-stack animation below is copied VERBATIM from the
-            original per-portal implementations. Do not rewrite without
-            re-confirming the visual behaviour. */}
-        <div
-          className={cn("group/account pt-4 relative", "w-full")}
-          onMouseEnter={openMenu}
-          onMouseLeave={scheduleClose}
-          onFocus={openMenu}
-          onBlur={scheduleClose}
-        >
-          {/* Animated stack above account row */}
-          <div className="pointer-events-none absolute left-0 right-0 bottom-full overflow-hidden">
-            <div className="flex flex-col">
-              {accountMenuItems.map((it, idx) => {
-                const buttonClass = cn(
-                  "relative pointer-events-auto transition-all duration-standard whitespace-nowrap",
-                  it.active
-                    ? "translate-y-0 opacity-100 text-strong"
-                    : cn(
-                        "text-standard hover:text-strong",
-                        menuOpen ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
-                      ),
-                  expanded
-                    ? "font-sans uppercase text-left flex items-center w-full pl-5 pr-3 py-3.5"
-                    : "flex items-center justify-center w-full py-3.5",
-                );
-                const buttonStyle = {
-                  ...(expanded ? SB.menuItemStyle : {}),
-                  transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
-                };
-                const activeBar = it.active ? (
-                  <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
-                ) : null;
-
-                // Compact mode with an Icon: render icon-only + tooltip. Falls
-                // back to text if no Icon is provided.
-                const renderButton = !expanded && it.Icon ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={it.onClick}
-                        aria-label={it.label}
-                        className={buttonClass}
-                        style={buttonStyle}
-                      >
-                        {activeBar}
-                        <it.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
-                      {it.label}
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={it.onClick}
-                    title={expanded ? undefined : it.label}
-                    className={buttonClass}
-                    style={buttonStyle}
-                  >
-                    {activeBar}
-                    <span>{it.label}</span>
-                  </button>
-                );
-
-                return (
-                  <div key={it.label} className="contents">
-                    {renderButton}
-                    {it.separatorAfter && (
-                      <div
-                        aria-hidden
-                        className={cn(
-                          "pointer-events-none transition-all duration-standard",
-                          menuOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
-                        )}
-                        style={{
-                          ...SB.separatorStyle,
-                          transitionDelay: `${(accountMenuItems.length - 1 - idx) * 40}ms`,
-                        }}
-                      />
+        {/* Account — hover the name to reveal an independent popover menu.
+            Replaces the old inline animated stack with a Radix HoverCard so the
+            menu floats free of the sidebar. The mobile bottom-tab path (which
+            still calls openMenu) is untouched. */}
+        <div className="w-full pt-4">
+          <HoverCard openDelay={80} closeDelay={140}>
+            <HoverCardTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center rounded-lg transition-colors hover:bg-muted/30",
+                  expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
+                )}
+              >
+                {expanded ? (
+                  <div className="min-w-0 text-left">
+                    <p className={SB.accountNameClass} style={{ ...SB.accountNameStyle, color: "var(--text-standard)" }}>
+                      {accountDisplayName}
+                    </p>
+                    {accountSubLabel && (
+                      <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1 whitespace-normal break-words`}>
+                        {accountSubLabel}
+                      </p>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Account row */}
-          <TooltipProvider delayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex items-center transition-all w-full",
-                    expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
-                  )}
-                >
-                  {expanded ? (
-                    <div className="text-left min-w-0">
-                      <p className={SB.accountNameClass} style={{ ...SB.accountNameStyle, color: "var(--text-standard)" }}>
-                        {accountDisplayName}
-                      </p>
-                      {accountSubLabel && (
-                        <p className={`text-[8.5px] uppercase tracking-[0.24em] text-[hsl(var(--gold))]${SB.accountSubOpacity} mt-1 whitespace-normal break-words`}>
-                          {accountSubLabel}
-                        </p>
+                ) : (
+                  <p className={SB.accountInitialsClass}>{accountInitials}</p>
+                )}
+              </button>
+            </HoverCardTrigger>
+            <HoverCardContent
+              side="right"
+              align="end"
+              sideOffset={16}
+              className="w-52 rounded-xl border-0 bg-[#211c26] p-1.5 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.75)]"
+            >
+              <div className="flex flex-col">
+                {accountMenuItems.map((it) => (
+                  <div key={it.label}>
+                    <button
+                      type="button"
+                      onClick={it.onClick}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-sans uppercase transition-colors",
+                        it.active
+                          ? "bg-gold/10 text-strong"
+                          : "text-standard hover:bg-gold/10 hover:text-strong",
                       )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <p className={SB.accountInitialsClass}>{accountInitials}</p>
-                    </div>
-                  )}
-                </button>
-              </TooltipTrigger>
-              {!expanded && (
-                <TooltipContent side="right" sideOffset={12} className={SB.tooltipClass}>
-                  Account
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+                      style={SB.menuItemStyle}
+                    >
+                      {it.Icon && <it.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />}
+                      <span>{it.label}</span>
+                    </button>
+                    {it.separatorAfter && <div className="mx-2 my-1 h-px bg-border/40" />}
+                  </div>
+                ))}
+              </div>
+            </HoverCardContent>
+          </HoverCard>
         </div>
       </aside>
     </>
