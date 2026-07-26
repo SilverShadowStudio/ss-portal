@@ -115,13 +115,19 @@ export function Sidebar({
           expanded
             ? cn("w-full pr-3 py-3", item.indent ? "pl-10" : "pl-5")
             : "h-11 w-12 justify-center mx-auto",
-          // hover turns the label bright gold — no background rectangle
-          isActive ? "text-strong" : "text-standard hover:text-[#ecd39c]",
+          // hover reveals the same gold vertical tick as the active state
+          isActive ? "text-strong" : "text-standard hover:text-strong",
         )}
         style={expanded ? SB.navStyle : undefined}
       >
-        {expanded && isActive && (
-          <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-px bg-[hsl(var(--gold))]" />
+        {expanded && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-[hsl(var(--gold))] transition-opacity",
+              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+          />
         )}
         {expanded ? (
           <span className="flex flex-1 items-center justify-between gap-2">
@@ -275,13 +281,16 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(
-                  "group flex w-full items-center rounded-lg transition-colors",
+                  "group relative flex w-full items-center rounded-lg transition-colors",
                   expanded ? "gap-3 px-5 py-3" : "justify-center py-3",
                 )}
               >
+                {expanded && (
+                  <span aria-hidden className="absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-[hsl(var(--gold))] opacity-0 transition-opacity group-hover:opacity-100" />
+                )}
                 {expanded ? (
                   <div className="min-w-0 text-left">
-                    <p className={cn(SB.accountNameClass, "text-standard transition-colors group-hover:text-[#ecd39c]")} style={SB.accountNameStyle}>
+                    <p className={cn(SB.accountNameClass, "text-standard")} style={SB.accountNameStyle}>
                       {accountDisplayName}
                     </p>
                     {accountSubLabel && (
@@ -291,7 +300,7 @@ export function Sidebar({
                     )}
                   </div>
                 ) : (
-                  <p className={cn(SB.accountInitialsClass, "transition-colors group-hover:text-[#ecd39c]")}>{accountInitials}</p>
+                  <p className={SB.accountInitialsClass}>{accountInitials}</p>
                 )}
               </button>
             </PopoverTrigger>
