@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
+import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
 import { FinanceSummary, type FinanceSectionKey } from "@/components/admin/finance/FinanceSummary";
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
@@ -71,6 +72,12 @@ export default function AdminPnL() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Overhead | null>(null);
+  // Expense create/upload flow (moved here from the retired Expenses page).
+  const [formMode, setFormMode] = useState<"create" | "edit">("edit");
+  const [prefillDefaults, setPrefillDefaults] = useState<Partial<Overhead> | null>(null);
+  // Non-null == an upload was staged to `overhead-invoices/staging/...` and
+  // still needs cleanup if the review gate closes without a save.
+  const pendingStagingPathRef = useRef<string | null>(null);
 
   const [overheadDetailOpen, setOverheadDetailOpen] = useState(false);
   const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
@@ -300,9 +307,63 @@ export default function AdminPnL() {
   function openOverheadEditFromDetail() {
     if (!selectedOverhead) return;
     setEditing(selectedOverhead);
+    setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
+    setFormMode("edit");
     setOverheadDetailOpen(false);
     setFormOpen(true);
   }
+
+  function openCreateExpense() {
+    setEditing(null);
+    setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
+    setFormMode("create");
+    setFormOpen(true);
+  }
+
+  function openCreateExpenseFromUpload(defaults: Partial<Overhead>) {
+    setEditing(null);
+    setPrefillDefaults(defaults);
+    pendingStagingPathRef.current = defaults.staging_storage_path ?? null;
+    setFormMode("create");
+    setFormOpen(true);
+  }
+
+  async function handleOverheadFormOpenChange(nextOpen: boolean) {
+    setFormOpen(nextOpen);
+    // Closing without a save leaves an orphaned staged upload — clean it.
+    if (!nextOpen) {
+      const orphan = pendingStagingPathRef.current;
+      pendingStagingPathRef.current = null;
+      if (orphan) {
+        const { error } = await supabase.storage.from("overhead-invoices").remove([orphan]);
+        if (error) console.warn("[AdminPnL] failed to clean up staged file", error);
+      }
+    }
+  }
+
+  function handleOverheadSaved() {
+    // Save owns the staging path now — clear the ref before onOpenChange fires.
+    pendingStagingPathRef.current = null;
+    fetchAll();
+  }
+
+  // Realtime — reflect Dropbox filing state on overheads without a manual
+  // reload (the trigger + edge function UPDATE the row when the file lands).
+  const fetchAllRef = useRef(fetchAll);
+  useEffect(() => { fetchAllRef.current = fetchAll; });
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-overheads-realtime-pnl")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "overheads" },
+        () => { void fetchAllRef.current(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, []);
 
   function openInvoiceViewer(r: MoneyInInvoice) {
     const items = Array.isArray(r.line_items) ? (r.line_items as any) : [];
@@ -337,6 +398,18 @@ export default function AdminPnL() {
         <p className="mt-3 text-sm text-recessive">
           Money out, money in, and cash-basis VAT for {currentQuarter.label}.
         </p>
+      </div>
+
+      {/* Invoice intake — expense upload feeds Money out (income upload: stage 2) */}
+      <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
+        <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
+        <button
+          type="button"
+          onClick={openCreateExpense}
+          className="text-sm text-gold hover:underline underline-offset-4"
+        >
+          New expense
+        </button>
       </div>
 
       {/* Summary band — figures lead the surface */}
@@ -544,11 +617,12 @@ export default function AdminPnL() {
       {/* Dialogs rendered unconditionally at page root */}
       <OverheadForm
         open={formOpen}
-        onOpenChange={setFormOpen}
-        mode="edit"
+        onOpenChange={handleOverheadFormOpenChange}
+        mode={formMode}
         initial={editing}
+        defaultValues={prefillDefaults}
         categories={categories}
-        onSaved={fetchAll}
+        onSaved={handleOverheadSaved}
       />
       <OverheadDetail
         open={overheadDetailOpen}

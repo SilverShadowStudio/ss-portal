@@ -6,7 +6,7 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Landmark, ScrollText, Receipt, TrendingUp,
+  FileText, Landmark, ScrollText, TrendingUp,
   Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
@@ -46,7 +46,6 @@ const SECTIONS: SidebarNavSection[] = [
     title: "Finance",
     items: [
       { path: "/admin/finance/pnl",      label: "P&L",      Icon: TrendingUp, indent: true },
-      { path: "/admin/finance/expenses", label: "Expenses", Icon: Receipt,    indent: true },
     ],
   },
 ];
@@ -90,7 +89,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       if (item.path === "/admin/clients") {
         return { ...item, badgeCount: newClientsCount };
       }
-      if (item.path === "/admin/finance/expenses") {
+      if (item.path === "/admin/finance/pnl") {
         return { ...item, badgeCount: dueOverheadsCount };
       }
       return item;
