@@ -401,26 +401,6 @@ export default function AdminPnL() {
         </p>
       </div>
 
-      {/* Invoice intake — you pick the side, so there's no misclassification:
-          expense uploads feed Money out, income uploads feed Money in. */}
-      <div className="mb-6 flex flex-wrap items-center gap-x-10 gap-y-3 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money out</span>
-          <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
-          <button
-            type="button"
-            onClick={openCreateExpense}
-            className="text-sm text-gold hover:underline underline-offset-4"
-          >
-            New expense
-          </button>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in</span>
-          <IncomeInvoiceUpload onSaved={fetchAll} />
-        </div>
-      </div>
-
       {/* Summary band — figures lead the surface */}
       <section className="ssr-zone mb-4">
         <div className="mb-6 flex items-center gap-3">
@@ -486,6 +466,16 @@ export default function AdminPnL() {
             <SelectItem value="previous">{previousQuarter.label}</SelectItem>
           </SelectContent>
         </Select>
+        <div className="ml-auto flex items-center gap-6">
+          <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
+          <button
+            type="button"
+            onClick={openCreateExpense}
+            className="text-sm text-gold hover:underline underline-offset-4"
+          >
+            New expense
+          </button>
+        </div>
       </div>
         <OverheadTable
           rows={filteredOverheads}
@@ -585,7 +575,7 @@ export default function AdminPnL() {
             <div className="h-px w-6 bg-gold-muted" />
             <h2 className="text-label">Money In</h2>
           </div>
-          <p className="text-xs text-recessive">Invoices · read-only</p>
+          <p className="text-xs text-recessive">Invoices · cash basis</p>
         </div>
       <div className="mb-4 flex flex-wrap items-center gap-4">
         <Input
@@ -618,6 +608,9 @@ export default function AdminPnL() {
             <SelectItem value="previous">{previousQuarter.label}</SelectItem>
           </SelectContent>
         </Select>
+        <div className="ml-auto flex items-center gap-6">
+          <IncomeInvoiceUpload onSaved={fetchAll} />
+        </div>
       </div>
         <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
       </section>
