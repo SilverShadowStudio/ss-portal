@@ -14,6 +14,7 @@ import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
+import { IncomeInvoiceUpload } from "@/components/admin/finance/IncomeInvoiceUpload";
 import { FinanceSummary, type FinanceSectionKey } from "@/components/admin/finance/FinanceSummary";
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
@@ -400,16 +401,24 @@ export default function AdminPnL() {
         </p>
       </div>
 
-      {/* Invoice intake — expense upload feeds Money out (income upload: stage 2) */}
-      <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
-        <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
-        <button
-          type="button"
-          onClick={openCreateExpense}
-          className="text-sm text-gold hover:underline underline-offset-4"
-        >
-          New expense
-        </button>
+      {/* Invoice intake — you pick the side, so there's no misclassification:
+          expense uploads feed Money out, income uploads feed Money in. */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-10 gap-y-3 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money out</span>
+          <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
+          <button
+            type="button"
+            onClick={openCreateExpense}
+            className="text-sm text-gold hover:underline underline-offset-4"
+          >
+            New expense
+          </button>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in</span>
+          <IncomeInvoiceUpload onSaved={fetchAll} />
+        </div>
       </div>
 
       {/* Summary band — figures lead the surface */}
