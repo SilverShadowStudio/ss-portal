@@ -165,9 +165,13 @@ export default function AdminDashboard() {
 
       {/* Integration Status — moved to the bottom of the page (below the
           activity log + quick actions) so the connection panels recede. */}
-      <div className="mb-4 flex flex-col gap-3 animate-fade-in" style={{ animationDelay: "0.15s" }}>
-        <DropboxConnectionStatus />
-        <AirtableConnectionStatus />
+      <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+        <div className="ssr-zone">
+          <div className="flex flex-col gap-3">
+            <DropboxConnectionStatus />
+            <AirtableConnectionStatus />
+          </div>
+        </div>
       </div>
     </AdminLayout>
   );

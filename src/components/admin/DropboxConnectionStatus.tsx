@@ -146,7 +146,7 @@ export function DropboxConnectionStatus() {
 
   if (status.connected) {
     return (
-      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+      <div className="ssr-tile flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           <DropboxIcon className="h-5 w-5 text-primary" />
           <div>
