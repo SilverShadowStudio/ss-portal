@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invoiceError } = await userClient
       .from("invoices")
       .select(
-        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id",
+        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -115,10 +115,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Project: prefer the direct link, else derive it from the quote.
     let projectName: string | null = null;
-    if ((invoice as any).project_id) {
+    let projId: string | null = (invoice as any).project_id ?? null;
+    if (!projId && (invoice as any).quotation_id) {
+      const { data: q } = await admin
+        .from("quotations").select("project_id").eq("id", (invoice as any).quotation_id).maybeSingle();
+      projId = (q as any)?.project_id ?? null;
+    }
+    if (projId) {
       const { data: project } = await admin
-        .from("projects").select("name").eq("id", (invoice as any).project_id).maybeSingle();
+        .from("projects").select("name").eq("id", projId).maybeSingle();
       projectName = project?.name ?? null;
     }
 
