@@ -47,16 +47,15 @@ import {
   SUPABASE_PUBLISHABLE_KEY,
 } from "@/integrations/supabase/client";
 
-type PeriodKey = "current_q" | "prev_q_ytd" | "year" | "prev_years";
 type MoneyOutTypeFilter = "all" | MoneyOutKind;
 type MoneyOutStatusFilter = "all" | PayablePaidStatus;
 type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
 
-// Label for the "earlier quarters this year" preset (excludes the current one).
-function prevQuartersLabel(q: number, year: number): string {
-  if (q <= 1) return `Earlier in ${year}`;
-  if (q === 2) return `Q1 ${year}`;
-  return `Q1–Q${q - 1} ${year}`;
+interface PeriodOption {
+  key: string;
+  label: string;
+  start: Date;
+  end: Date;
 }
 
 export default function AdminPnL() {
@@ -70,7 +69,8 @@ export default function AdminPnL() {
   const [activeSection, setActiveSection] = useState<FinanceSectionKey | null>(null);
 
   // Period drives the whole page — the spine figures and both detail tables.
-  const [periodKey, setPeriodKey] = useState<PeriodKey>("current_q");
+  // Empty resolves to the first option (current quarter) once options build.
+  const [periodKey, setPeriodKey] = useState<string>("");
 
   // Money out — one ledger over overheads (fixed) + payables (variable).
   const [moType, setMoType] = useState<MoneyOutTypeFilter>("all");
@@ -105,36 +105,42 @@ export default function AdminPnL() {
   const currentQuarter = useMemo(() => getCurrentQuarter(), []);
   const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
 
-  // The active period as a concrete date range.
-  const period = useMemo(() => {
+  // Presets: current quarter, then each earlier quarter of this year
+  // (descending), then the whole year, then everything before this year.
+  const periodOptions = useMemo<PeriodOption[]>(() => {
     const y = currentQuarter.year;
-    switch (periodKey) {
-      case "prev_q_ytd":
-        // Completed quarters earlier this year — 1 Jan up to the current quarter.
-        return {
-          start: new Date(y, 0, 1, 0, 0, 0, 0),
-          end: new Date(currentQuarter.start.getTime() - 1),
-          label: prevQuartersLabel(currentQuarter.q, y),
-        };
-      case "year":
-        // The whole current year, since 1 January (includes the current quarter).
-        return {
-          start: new Date(y, 0, 1, 0, 0, 0, 0),
-          end: new Date(y, 11, 31, 23, 59, 59, 999),
-          label: String(y),
-        };
-      case "prev_years":
-        // Everything before this year.
-        return {
-          start: new Date(0),
-          end: new Date(y - 1, 11, 31, 23, 59, 59, 999),
-          label: `Before ${y}`,
-        };
-      case "current_q":
-      default:
-        return { start: currentQuarter.start, end: currentQuarter.end, label: currentQuarter.label };
+    const opts: PeriodOption[] = [
+      {
+        key: `q:${y}:${currentQuarter.q}`,
+        label: currentQuarter.label,
+        start: currentQuarter.start,
+        end: currentQuarter.end,
+      },
+    ];
+    for (let q = currentQuarter.q - 1; q >= 1; q--) {
+      opts.push({
+        key: `q:${y}:${q}`,
+        label: `Q${q} ${y}`,
+        start: new Date(y, (q - 1) * 3, 1, 0, 0, 0, 0),
+        end: new Date(y, (q - 1) * 3 + 3, 0, 23, 59, 59, 999),
+      });
     }
-  }, [periodKey, currentQuarter]);
+    opts.push({
+      key: `year:${y}`,
+      label: String(y),
+      start: new Date(y, 0, 1, 0, 0, 0, 0),
+      end: new Date(y, 11, 31, 23, 59, 59, 999),
+    });
+    opts.push({
+      key: "prev_years",
+      label: `Before ${y}`,
+      start: new Date(0),
+      end: new Date(y - 1, 11, 31, 23, 59, 59, 999),
+    });
+    return opts;
+  }, [currentQuarter]);
+
+  const period = periodOptions.find((o) => o.key === periodKey) ?? periodOptions[0];
 
   const inPeriod = useMemo(() => {
     return (dateStr: string | null | undefined) => {
@@ -481,17 +487,16 @@ export default function AdminPnL() {
             <h2 className="text-label">Summary</h2>
           </div>
           <div className="flex items-center gap-3">
-            <Select value={periodKey} onValueChange={(v) => setPeriodKey(v as PeriodKey)}>
+            <Select value={period.key} onValueChange={setPeriodKey}>
               <SelectTrigger className="h-8 w-[170px] rounded-sm text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="current_q">{currentQuarter.label}</SelectItem>
-                <SelectItem value="prev_q_ytd">
-                  {prevQuartersLabel(currentQuarter.q, currentQuarter.year)}
-                </SelectItem>
-                <SelectItem value="year">{currentQuarter.year}</SelectItem>
-                <SelectItem value="prev_years">Before {currentQuarter.year}</SelectItem>
+                {periodOptions.map((o) => (
+                  <SelectItem key={o.key} value={o.key}>
+                    {o.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <span className="whitespace-nowrap text-xs text-recessive">VAT-inclusive</span>
