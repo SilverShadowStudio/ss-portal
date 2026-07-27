@@ -40,8 +40,10 @@ const corsHeaders = {
 const LOGO_URL =
   "https://portal.silvershadowstudio.com/email-assets/silvershadow-wordmark.png";
 const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
+// Expenses were merged into P&L (Money out); the old /finance/expenses path
+// still redirects, but link straight to the live P&L page.
 const PORTAL_EXPENSES_URL =
-  "https://portal.silvershadowstudio.com/admin/finance/expenses";
+  "https://portal.silvershadowstudio.com/admin/finance/pnl";
 
 type Bucket = "today" | "in_7d" | "overdue";
 

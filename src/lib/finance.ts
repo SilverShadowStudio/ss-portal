@@ -256,6 +256,75 @@ export function computeQuarterPayables(
   return { outstanding, paidThisQuarter, totalThisQuarter, partialCount };
 }
 
+// ---- Money out (unified ledger) -----------------------------------------
+// "Money out" is one list over two sources that stay in separate tables:
+//   • Operational fixed cost  → overheads        (portal-entered, carries VAT)
+//   • Variable production cost → payables_snapshot (Airtable mirror, read-only,
+//                                excluded from the VAT return by design)
+// The split is a per-row tag, not two sections. buildMoneyOutRows normalises
+// both into one shape; net/vat are null for variable rows (they carry no
+// reclaimable VAT — the "—" in the table is the point, not missing data).
+
+export type MoneyOutKind = "fixed" | "variable";
+
+export interface MoneyOutRow {
+  key: string;
+  kind: MoneyOutKind;
+  name: string;
+  detail: string | null; // category label (fixed) / source label (variable)
+  date: string | null; // invoice_date (fixed) / period date (variable)
+  net: number | null;
+  vat: number | null;
+  amount: number; // gross_amount (fixed) / invoice_total (variable)
+  status: PayablePaidStatus; // fixed rows are only ever paid | unpaid
+  dueDate: string | null;
+  approxPeriod: boolean; // variable row whose period is "≈ created"
+  isReverseCharge: boolean;
+  filing: boolean; // fixed row staged, awaiting Dropbox filing
+  overhead?: Overhead;
+  payable?: Payable;
+}
+
+export function buildMoneyOutRows(
+  overheads: Overhead[],
+  payables: Payable[],
+  categoryLabel: (code: string | null) => string | null,
+): MoneyOutRow[] {
+  const fixed: MoneyOutRow[] = overheads.map((o) => ({
+    key: `o:${o.id}`,
+    kind: "fixed",
+    name: o.supplier_name,
+    detail: categoryLabel(o.category_code),
+    date: o.invoice_date,
+    net: o.net_amount,
+    vat: o.vat_amount,
+    amount: Number(o.gross_amount ?? 0),
+    status: o.payment_status,
+    dueDate: o.due_date,
+    approxPeriod: false,
+    isReverseCharge: o.is_reverse_charge,
+    filing: !!o.staging_storage_path && !o.dropbox_path,
+    overhead: o,
+  }));
+  const variable: MoneyOutRow[] = payables.map((p) => ({
+    key: `p:${p.airtable_record_id}`,
+    kind: "variable",
+    name: p.payee_name ?? "—",
+    detail: PAYABLE_SOURCE_LABELS[p.source_table],
+    date: payablePeriodDate(p),
+    net: null,
+    vat: null,
+    amount: Number(p.invoice_total ?? 0),
+    status: p.paid_status,
+    dueDate: null,
+    approxPeriod: APPROX_PERIOD_SOURCES.has(p.source_table) && !!p.period_date,
+    isReverseCharge: false,
+    filing: false,
+    payable: p,
+  }));
+  return [...fixed, ...variable];
+}
+
 // UK VAT return + payment deadline: 1 month + 7 days after the quarter end.
 // Q1 (Jan-Mar) → 7 May, Q2 (Apr-Jun) → 7 Aug, Q3 (Jul-Sep) → 7 Nov, Q4 (Oct-Dec) → 7 Feb.
 export function getHmrcDeadline(quarter: Quarter): Date {

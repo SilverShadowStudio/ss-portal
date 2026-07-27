@@ -67,7 +67,7 @@ export function PayablesTable({ rows, loading, onRowClick }: PayablesTableProps)
   );
 
   return (
-    <div className="border border-divider rounded-sm overflow-hidden">
+    <div className="ssr-tile overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="border-divider">
