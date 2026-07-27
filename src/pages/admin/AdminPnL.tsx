@@ -434,6 +434,7 @@ export default function AdminPnL() {
           vatNet={currentVat.netVat}
           currentQuarter={currentQuarter}
           active={activeSection}
+          moneyOutType={moType}
           onSelect={handleSelectSection}
         />
       </section>
@@ -485,8 +486,8 @@ export default function AdminPnL() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All costs</SelectItem>
-                <SelectItem value="fixed">Operational fixed</SelectItem>
-                <SelectItem value="variable">Variable production</SelectItem>
+                <SelectItem value="fixed">Operational fixed (Overheads)</SelectItem>
+                <SelectItem value="variable">Variable production (Airtable)</SelectItem>
               </SelectContent>
             </Select>
             <Select value={moStatus} onValueChange={(v) => setMoStatus(v as MoneyOutStatusFilter)}>
@@ -526,13 +527,13 @@ export default function AdminPnL() {
         </section>
       )}
 
-      {/* Money IN — shown when its summary frame is selected */}
+      {/* Revenue (money-in) — shown when its summary tile is selected */}
       {activeSection === "moneyIn" && (
         <section className="ssr-zone mb-4">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="h-px w-6 bg-gold-muted" />
-              <h2 className="text-label">Money In</h2>
+              <h2 className="text-label">Revenue</h2>
             </div>
             <p className="text-xs text-recessive">Invoices · cash basis</p>
           </div>

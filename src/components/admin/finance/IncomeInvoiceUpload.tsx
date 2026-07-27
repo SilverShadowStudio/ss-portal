@@ -175,7 +175,7 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent className="max-w-lg rounded-sm border-divider bg-background" hideClose>
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in</p>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Revenue</p>
             <DialogTitle className="font-serif font-normal text-2xl">Upload income invoice</DialogTitle>
           </DialogHeader>
           <div className="py-2">
@@ -205,7 +205,7 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-w-lg rounded-sm border-divider bg-background">
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Money in · external invoice</p>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Revenue · external invoice</p>
             <DialogTitle className="font-serif font-normal text-2xl">Income invoice</DialogTitle>
           </DialogHeader>
 
