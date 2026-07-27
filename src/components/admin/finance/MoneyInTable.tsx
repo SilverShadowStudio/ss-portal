@@ -92,7 +92,7 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
               >
                 <TableCell className="text-sm text-strong">
                   {r.account_company ?? "—"}
-                  {!r.dropbox_path && (
+                  {!r.dropbox_path && r.status !== "draft" && r.status !== "cancelled" && (
                     <span
                       className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
                       title="No invoice PDF filed to Dropbox yet"
