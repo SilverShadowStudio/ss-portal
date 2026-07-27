@@ -906,7 +906,7 @@ export function AccountList({
   return (
     <>
       {/* Header */}
-      <div className="mb-10 flex items-end justify-between animate-fade-in">
+      <div className="mb-10 flex items-start justify-between animate-fade-in">
         <div>
           <div className="mb-4 flex items-center gap-3">
             <div className="h-px w-12 bg-gold-muted" />
@@ -929,13 +929,15 @@ export function AccountList({
             }
           }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 pt-1">
             {headerActions}
             <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                {addButtonLabel}
-              </Button>
+              <button
+                className="flex h-[38px] items-center gap-2.5 rounded-lg border border-[#C9A96A]/45 px-[18px] transition-colors duration-300 hover:border-[#C9A96A]/80 hover:bg-[#C9A96A]/[0.12] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#C9A96A]/60"
+              >
+                <Plus className="h-[13px] w-[13px] text-[#C9A96A]" strokeWidth={1.5} />
+                <span className="text-[11px] uppercase tracking-[0.18em] text-[#C9A96A]">{addButtonLabel}</span>
+              </button>
             </DialogTrigger>
           </div>
           <DialogContent
