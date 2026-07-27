@@ -11,36 +11,36 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
-import { OverheadTable } from "@/components/admin/overheads/OverheadTable";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
 import { IncomeInvoiceUpload } from "@/components/admin/finance/IncomeInvoiceUpload";
-import { FinanceSummary, type FinanceSectionKey } from "@/components/admin/finance/FinanceSummary";
+import {
+  FinanceSummary,
+  type FinanceSectionKey,
+  type MoneyOutKind,
+} from "@/components/admin/finance/FinanceSummary";
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
-import { PayablesTable } from "@/components/admin/finance/PayablesTable";
+import { MoneyOutTable } from "@/components/admin/finance/MoneyOutTable";
 import { PayableDetail } from "@/components/admin/finance/PayableDetail";
 import {
   InvoiceViewer,
   type InvoiceViewerData,
 } from "@/components/invoices/InvoiceViewer";
 import {
+  buildMoneyOutRows,
   computeQuarterPayables,
   computeQuarterVat,
   dateInQuarter,
   formatDate,
   getCurrentQuarter,
   getPreviousQuarter,
-  payablePeriodDate,
-  PAYABLE_SOURCE_LABELS,
-  PAYABLE_SOURCE_ORDER,
   type ExpenseCategory,
   type MoneyInInvoice,
+  type MoneyOutRow,
   type Overhead,
   type Payable,
   type PayablePaidStatus,
-  type PayableSource,
-  type PaymentStatus,
 } from "@/lib/finance";
 import {
   SUPABASE_URL,
@@ -48,10 +48,9 @@ import {
 } from "@/integrations/supabase/client";
 
 type QuarterFilter = "current" | "previous" | "all";
-type OverheadStatusFilter = "all" | PaymentStatus;
+type MoneyOutTypeFilter = "all" | MoneyOutKind;
+type MoneyOutStatusFilter = "all" | PayablePaidStatus;
 type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
-type PayableStatusFilter = "all" | PayablePaidStatus;
-type PayableSourceFilter = "all" | PayableSource;
 
 export default function AdminPnL() {
   const [overheads, setOverheads] = useState<Overhead[]>([]);
@@ -60,12 +59,14 @@ export default function AdminPnL() {
   const [loading, setLoading] = useState(true);
 
   // Which detail section is open below the summary (null = none; click a
-  // summary frame to open it, click it again to close).
+  // summary line to open it, click it again to close).
   const [activeSection, setActiveSection] = useState<FinanceSectionKey | null>(null);
 
-  const [ovSearch, setOvSearch] = useState("");
-  const [ovStatus, setOvStatus] = useState<OverheadStatusFilter>("all");
-  const [ovQuarter, setOvQuarter] = useState<QuarterFilter>("all");
+  // Money out — one ledger over overheads (fixed) + payables (variable).
+  const [moType, setMoType] = useState<MoneyOutTypeFilter>("all");
+  const [moSearch, setMoSearch] = useState("");
+  const [moStatus, setMoStatus] = useState<MoneyOutStatusFilter>("all");
+  const [moQuarter, setMoQuarter] = useState<QuarterFilter>("all");
 
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<InvoiceStatusFilter>("all");
@@ -73,7 +74,6 @@ export default function AdminPnL() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Overhead | null>(null);
-  // Expense create/upload flow (moved here from the retired Expenses page).
   const [formMode, setFormMode] = useState<"create" | "edit">("edit");
   const [prefillDefaults, setPrefillDefaults] = useState<Partial<Overhead> | null>(null);
   // Non-null == an upload was staged to `overhead-invoices/staging/...` and
@@ -87,10 +87,6 @@ export default function AdminPnL() {
 
   const [payables, setPayables] = useState<Payable[]>([]);
   const [payableBaseId, setPayableBaseId] = useState<string | null>(null);
-  const [paySearch, setPaySearch] = useState("");
-  const [payStatus, setPayStatus] = useState<PayableStatusFilter>("all");
-  const [paySource, setPaySource] = useState<PayableSourceFilter>("all");
-  const [payQuarter, setPayQuarter] = useState<QuarterFilter>("all");
   const [selectedPayable, setSelectedPayable] = useState<Payable | null>(null);
   const [payableDetailOpen, setPayableDetailOpen] = useState(false);
   const [refreshingPayables, setRefreshingPayables] = useState(false);
@@ -215,17 +211,32 @@ export default function AdminPnL() {
     fetchPayableBaseId();
   }, []);
 
-  // Filters
-  const filteredOverheads = useMemo(() => {
-    return overheads.filter((r) => {
-      if (ovStatus !== "all" && r.payment_status !== ovStatus) return false;
-      if (ovQuarter === "current" && !dateInQuarter(r.invoice_date, currentQuarter)) return false;
-      if (ovQuarter === "previous" && !dateInQuarter(r.invoice_date, previousQuarter)) return false;
-      if (ovSearch.trim() && !r.supplier_name.toLowerCase().includes(ovSearch.trim().toLowerCase()))
+  const catByCode = useMemo(
+    () => new Map(categories.map((c) => [c.code, c] as const)),
+    [categories],
+  );
+
+  // Money out — normalise both sources into one ledger, then filter.
+  const moneyOutRows = useMemo(
+    () =>
+      buildMoneyOutRows(overheads, payables, (code) => {
+        const c = code ? catByCode.get(code) : null;
+        return c ? `${c.code} — ${c.name}` : code;
+      }),
+    [overheads, payables, catByCode],
+  );
+
+  const filteredMoneyOut = useMemo(() => {
+    return moneyOutRows.filter((r) => {
+      if (moType !== "all" && r.kind !== moType) return false;
+      if (moStatus !== "all" && r.status !== moStatus) return false;
+      if (moQuarter === "current" && !dateInQuarter(r.date, currentQuarter)) return false;
+      if (moQuarter === "previous" && !dateInQuarter(r.date, previousQuarter)) return false;
+      if (moSearch.trim() && !r.name.toLowerCase().includes(moSearch.trim().toLowerCase()))
         return false;
       return true;
     });
-  }, [overheads, ovStatus, ovQuarter, ovSearch, currentQuarter, previousQuarter]);
+  }, [moneyOutRows, moType, moStatus, moQuarter, moSearch, currentQuarter, previousQuarter]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter((r) => {
@@ -243,29 +254,31 @@ export default function AdminPnL() {
     });
   }, [invoices, invStatus, invQuarter, invSearch, currentQuarter, previousQuarter]);
 
-  // Summary totals
-  const moneyOut = useMemo(() => {
+  // ---- Summary spine (this-quarter totals, VAT-inclusive) -----------------
+  const moneyOutTotals = useMemo(() => {
     const outstanding = overheads
       .filter((r) => r.payment_status === "unpaid")
-      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
-    const paidThisQuarter = overheads
-      .filter((r) => r.payment_status === "paid" && dateInQuarter(r.payment_date, currentQuarter))
       .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
     const totalThisQuarter = overheads
       .filter((r) => dateInQuarter(r.invoice_date, currentQuarter))
       .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
-    return { outstanding, paidThisQuarter, totalThisQuarter };
+    return { outstanding, totalThisQuarter };
   }, [overheads, currentQuarter]);
 
-  const moneyIn = useMemo(() => {
+  const moneyInTotals = useMemo(() => {
     const outstanding = invoices
       .filter((i) => i.status === "sent" || i.status === "overdue" || i.status === "pending")
       .reduce((s, i) => s + Number(i.amount ?? 0), 0);
-    const paidThisQuarter = invoices
-      .filter((i) => i.status === "paid" && dateInQuarter(i.paid_at, currentQuarter))
+    const totalThisQuarter = invoices
+      .filter((i) => dateInQuarter(i.issued_at ?? i.created_at, currentQuarter))
       .reduce((s, i) => s + Number(i.amount ?? 0), 0);
-    return { outstanding, paidThisQuarter };
+    return { outstanding, totalThisQuarter };
   }, [invoices, currentQuarter]);
+
+  const payablesSummary = useMemo(
+    () => computeQuarterPayables(payables, currentQuarter),
+    [payables, currentQuarter],
+  );
 
   const currentVat = useMemo(
     () => computeQuarterVat(invoices, overheads, currentQuarter),
@@ -276,33 +289,21 @@ export default function AdminPnL() {
     [invoices, overheads, previousQuarter],
   );
 
-  // Payables: computed alongside overheads/invoices but never summed into
-  // computeQuarterVat — cash-basis input VAT is overheads-only by design.
-  const filteredPayables = useMemo(() => {
-    return payables.filter((r) => {
-      if (payStatus !== "all" && r.paid_status !== payStatus) return false;
-      if (paySource !== "all" && r.source_table !== paySource) return false;
-      const pd = payablePeriodDate(r);
-      if (payQuarter === "current" && !dateInQuarter(pd, currentQuarter)) return false;
-      if (payQuarter === "previous" && !dateInQuarter(pd, previousQuarter)) return false;
-      if (paySearch.trim()) {
-        const q = paySearch.trim().toLowerCase();
-        const nm = (r.payee_name ?? "").toLowerCase();
-        if (!nm.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [payables, payStatus, paySource, payQuarter, paySearch, currentQuarter, previousQuarter]);
+  const revenue = moneyInTotals.totalThisQuarter;
+  const variableCost = payablesSummary.totalThisQuarter;
+  const fixedCost = moneyOutTotals.totalThisQuarter;
+  const grossProfit = revenue - variableCost;
+  const operatingProfit = grossProfit - fixedCost;
 
-  const payablesSummary = useMemo(
-    () => computeQuarterPayables(payables, currentQuarter),
-    [payables, currentQuarter],
-  );
-
-  // Row-click handlers
-  function openOverheadDetail(o: Overhead) {
-    setSelectedOverhead(o);
-    setOverheadDetailOpen(true);
+  // ---- Row-click / open handlers -----------------------------------------
+  function openMoneyOutRow(r: MoneyOutRow) {
+    if (r.overhead) {
+      setSelectedOverhead(r.overhead);
+      setOverheadDetailOpen(true);
+    } else if (r.payable) {
+      setSelectedPayable(r.payable);
+      setPayableDetailOpen(true);
+    }
   }
 
   function openOverheadEditFromDetail() {
@@ -348,6 +349,18 @@ export default function AdminPnL() {
     // Save owns the staging path now — clear the ref before onOpenChange fires.
     pendingStagingPathRef.current = null;
     fetchAll();
+  }
+
+  // Clicking a summary line opens/closes a detail section. Cost lines also
+  // pre-filter Money out to fixed / variable.
+  function handleSelectSection(key: FinanceSectionKey, kind?: MoneyOutKind) {
+    if (key === "moneyOut") {
+      const nextType: MoneyOutTypeFilter = kind ?? "all";
+      setActiveSection((cur) => (cur === "moneyOut" && moType === nextType ? null : "moneyOut"));
+      setMoType(nextType);
+    } else {
+      setActiveSection((cur) => (cur === key ? null : key));
+    }
   }
 
   // Realtime — reflect Dropbox filing state on overheads without a manual
@@ -397,24 +410,31 @@ export default function AdminPnL() {
           <span className="text-label-gold text-[#ecd39c]">P&amp;L</span>
         </div>
         <p className="mt-3 text-sm text-recessive">
-          Money out, money in, and cash-basis VAT for {currentQuarter.label}.
+          Revenue, costs, and cash-basis VAT for {currentQuarter.label}.
         </p>
       </div>
 
-      {/* Summary band — figures lead the surface */}
+      {/* Summary — the P&L spine leads the surface */}
       <section className="ssr-zone mb-4">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-6 bg-gold-muted" />
-          <h2 className="text-label">Summary</h2>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">Summary</h2>
+          </div>
+          <p className="text-xs text-recessive">{currentQuarter.label} · VAT-inclusive</p>
         </div>
         <FinanceSummary
-          moneyOut={moneyOut}
-          payables={payablesSummary}
-          moneyIn={moneyIn}
-          vat={{ netEstimate: currentVat.netVat }}
+          revenue={revenue}
+          variableCost={variableCost}
+          fixedCost={fixedCost}
+          grossProfit={grossProfit}
+          operatingProfit={operatingProfit}
+          outstandingIn={moneyInTotals.outstanding}
+          outstandingOut={moneyOutTotals.outstanding + payablesSummary.outstanding}
+          vatNet={currentVat.netVat}
           currentQuarter={currentQuarter}
           active={activeSection}
-          onSelect={(k) => setActiveSection((cur) => (cur === k ? null : k))}
+          onSelect={handleSelectSection}
         />
       </section>
 
@@ -429,191 +449,130 @@ export default function AdminPnL() {
         </section>
       )}
 
-      {/* Money OUT — shown when its summary frame is selected */}
+      {/* Money OUT — one ledger over fixed (overheads) + variable (payables) */}
       {activeSection === "moneyOut" && (
-      <section className="ssr-zone mb-4">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">Money Out</h2>
+        <section className="ssr-zone mb-4">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Money Out</h2>
+            </div>
+            <div className="flex items-baseline gap-6">
+              <p className="text-xs text-recessive">
+                Fixed &amp; variable · variable is a read-only Airtable mirror, outside your VAT return
+                {lastSyncedAt && <> · synced {formatDate(lastSyncedAt)}</>}
+              </p>
+              <button
+                type="button"
+                onClick={handleRefreshPayables}
+                disabled={refreshingPayables}
+                className="whitespace-nowrap text-xs text-gold hover:underline underline-offset-4 disabled:opacity-50"
+              >
+                {refreshingPayables ? "Syncing…" : "Refresh from Airtable"}
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-recessive">Overheads · cash basis</p>
-        </div>
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        <Input
-          placeholder="Search supplier…"
-          value={ovSearch}
-          onChange={(e) => setOvSearch(e.target.value)}
-          className="rounded-sm max-w-xs"
-        />
-        <Select value={ovStatus} onValueChange={(v) => setOvStatus(v as OverheadStatusFilter)}>
-          <SelectTrigger className="rounded-sm w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="unpaid">Unpaid</SelectItem>
-            <SelectItem value="paid">Paid</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={ovQuarter} onValueChange={(v) => setOvQuarter(v as QuarterFilter)}>
-          <SelectTrigger className="rounded-sm w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All quarters</SelectItem>
-            <SelectItem value="current">{currentQuarter.label}</SelectItem>
-            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="ml-auto flex items-center gap-6">
-          <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
-          <button
-            type="button"
-            onClick={openCreateExpense}
-            className="text-sm text-gold hover:underline underline-offset-4"
-          >
-            New expense
-          </button>
-        </div>
-      </div>
-        <OverheadTable
-          rows={filteredOverheads}
-          categories={categories}
-          loading={loading}
-          onRowClick={openOverheadDetail}
-        />
-      </section>
-      )}
-
-      {/* Payables — shown when its summary frame is selected */}
-      {activeSection === "payables" && (
-      <section className="ssr-zone mb-4">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">Payables</h2>
+          <div className="mb-4 flex flex-wrap items-center gap-4">
+            <Input
+              placeholder="Search name…"
+              value={moSearch}
+              onChange={(e) => setMoSearch(e.target.value)}
+              className="rounded-sm max-w-xs"
+            />
+            <Select value={moType} onValueChange={(v) => setMoType(v as MoneyOutTypeFilter)}>
+              <SelectTrigger className="rounded-sm w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All costs</SelectItem>
+                <SelectItem value="fixed">Operational fixed</SelectItem>
+                <SelectItem value="variable">Variable production</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={moStatus} onValueChange={(v) => setMoStatus(v as MoneyOutStatusFilter)}>
+              <SelectTrigger className="rounded-sm w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unknown">Unknown</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={moQuarter} onValueChange={(v) => setMoQuarter(v as QuarterFilter)}>
+              <SelectTrigger className="rounded-sm w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All quarters</SelectItem>
+                <SelectItem value="current">{currentQuarter.label}</SelectItem>
+                <SelectItem value="previous">{previousQuarter.label}</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="ml-auto flex items-center gap-6">
+              <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
+              <button
+                type="button"
+                onClick={openCreateExpense}
+                className="text-sm text-gold hover:underline underline-offset-4"
+              >
+                New expense
+              </button>
+            </div>
           </div>
-          <div className="flex items-baseline gap-6">
-          <p className="text-xs text-recessive">
-            Read-only mirror of Kieran's Airtable · not part of your VAT return
-            {lastSyncedAt && (
-              <>
-                {" "}· last synced {formatDate(lastSyncedAt)}
-              </>
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={handleRefreshPayables}
-            disabled={refreshingPayables}
-            className="text-xs text-gold hover:underline underline-offset-4 disabled:opacity-50"
-          >
-            {refreshingPayables ? "Syncing…" : "Refresh from Airtable"}
-          </button>
-        </div>
-      </div>
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        <Input
-          placeholder="Search payee…"
-          value={paySearch}
-          onChange={(e) => setPaySearch(e.target.value)}
-          className="rounded-sm max-w-xs"
-        />
-        <Select value={paySource} onValueChange={(v) => setPaySource(v as PayableSourceFilter)}>
-          <SelectTrigger className="rounded-sm w-[220px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {PAYABLE_SOURCE_ORDER.map((s) => (
-              <SelectItem key={s} value={s}>
-                {PAYABLE_SOURCE_LABELS[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={payStatus} onValueChange={(v) => setPayStatus(v as PayableStatusFilter)}>
-          <SelectTrigger className="rounded-sm w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="unpaid">Unpaid</SelectItem>
-            <SelectItem value="partial">Partial</SelectItem>
-            <SelectItem value="paid">Paid</SelectItem>
-            <SelectItem value="unknown">Unknown</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={payQuarter} onValueChange={(v) => setPayQuarter(v as QuarterFilter)}>
-          <SelectTrigger className="rounded-sm w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All quarters</SelectItem>
-            <SelectItem value="current">{currentQuarter.label}</SelectItem>
-            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-        <PayablesTable
-          rows={filteredPayables}
-          loading={loading}
-          onRowClick={(p) => {
-            setSelectedPayable(p);
-            setPayableDetailOpen(true);
-          }}
-        />
-      </section>
+          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} />
+        </section>
       )}
 
       {/* Money IN — shown when its summary frame is selected */}
       {activeSection === "moneyIn" && (
-      <section className="ssr-zone mb-4">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">Money In</h2>
+        <section className="ssr-zone mb-4">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Money In</h2>
+            </div>
+            <p className="text-xs text-recessive">Invoices · cash basis</p>
           </div>
-          <p className="text-xs text-recessive">Invoices · cash basis</p>
-        </div>
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        <Input
-          placeholder="Search client or invoice #…"
-          value={invSearch}
-          onChange={(e) => setInvSearch(e.target.value)}
-          className="rounded-sm max-w-xs"
-        />
-        <Select value={invStatus} onValueChange={(v) => setInvStatus(v as InvoiceStatusFilter)}>
-          <SelectTrigger className="rounded-sm w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="paid">Paid</SelectItem>
-            <SelectItem value="overdue">Overdue</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="cancelled">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={invQuarter} onValueChange={(v) => setInvQuarter(v as QuarterFilter)}>
-          <SelectTrigger className="rounded-sm w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All quarters</SelectItem>
-            <SelectItem value="current">{currentQuarter.label}</SelectItem>
-            <SelectItem value="previous">{previousQuarter.label}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="ml-auto flex items-center gap-6">
-          <IncomeInvoiceUpload onSaved={fetchAll} />
-        </div>
-      </div>
-        <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
-      </section>
+          <div className="mb-4 flex flex-wrap items-center gap-4">
+            <Input
+              placeholder="Search client or invoice #…"
+              value={invSearch}
+              onChange={(e) => setInvSearch(e.target.value)}
+              className="rounded-sm max-w-xs"
+            />
+            <Select value={invStatus} onValueChange={(v) => setInvStatus(v as InvoiceStatusFilter)}>
+              <SelectTrigger className="rounded-sm w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={invQuarter} onValueChange={(v) => setInvQuarter(v as QuarterFilter)}>
+              <SelectTrigger className="rounded-sm w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All quarters</SelectItem>
+                <SelectItem value="current">{currentQuarter.label}</SelectItem>
+                <SelectItem value="previous">{previousQuarter.label}</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="ml-auto flex items-center gap-6">
+              <IncomeInvoiceUpload onSaved={fetchAll} />
+            </div>
+          </div>
+          <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
+        </section>
       )}
 
       {/* Dialogs rendered unconditionally at page root */}
