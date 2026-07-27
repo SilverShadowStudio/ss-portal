@@ -5,7 +5,7 @@ import {
 } from "../_shared/documents/invoicePdf.ts";
 
 // Bump when the invoice template design changes so cached PDFs are regenerated.
-const TEMPLATE_VERSION = "tmpl-v7";
+const TEMPLATE_VERSION = "tmpl-v8";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invoiceError } = await userClient
       .from("invoices")
       .select(
-        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account",
+        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -113,6 +113,13 @@ Deno.serve(async (req) => {
           clientEmail = authUser?.user?.email ?? null;
         }
       }
+    }
+
+    let projectName: string | null = null;
+    if ((invoice as any).project_id) {
+      const { data: project } = await admin
+        .from("projects").select("name").eq("id", (invoice as any).project_id).maybeSingle();
+      projectName = project?.name ?? null;
     }
 
     const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
@@ -167,6 +174,8 @@ Deno.serve(async (req) => {
         vat_rate: invoice.vat_rate,
         vat_amount: invoice.vat_amount,
         bank_account: (invoice as any).bank_account,
+        project_name: projectName,
+        stripe_url: (invoice as any).stripe_checkout_url ?? null,
       });
 
       const { error: uploadError } = await admin.storage.from("agreements").upload(storagePath, pdfBytes, {

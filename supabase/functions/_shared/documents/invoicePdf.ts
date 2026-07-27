@@ -1,21 +1,13 @@
 // Server-side invoice PDF generator (V2). Native jsPDF text (selectable, not
-// rasterised) with continuation-aware pagination, sharing the Silvershadow PDF
-// infrastructure with quotationPdf.ts / agreementPdfV3.ts (./designTokens.ts,
-// ./pdfPrimitives.ts) and the embedded Tinos font (./tinosFonts.ts) for full
-// Unicode coverage of UK/EU client names and addresses.
-//
-// Intentionally a different visual language from the quotation: warm greige
-// ground, centred wordmark, gold display TOTAL DUE, INCLUDED treatment for
-// zero-amount lines, and a single centred confidentiality footer line. Only the
-// engine (mm units, Tinos, shared primitives) is shared.
+// rasterised). Apple-on-cream design matching the signed-off template:
+// centred wordmark, neutral sans (Helvetica), 3-column meta, Description block,
+// Item/Amount table, Net/VAT/Total-due, Revolut payment block + Stripe button,
+// and a centred studio-registration footer.
 
 // @ts-ignore - npm specifier resolved by Deno
 import { jsPDF } from "npm:jspdf@2.5.1";
 import { SILVERSHADOW_LOGO_DATA_URL } from "../brandLogo.ts";
 import { paintPageBackground } from "../brand.ts";
-import { PDF_MARGIN } from "./designTokens.ts";
-import { drawHairline, type PdfContext } from "./pdfPrimitives.ts";
-import { TINOS_BOLD_B64, TINOS_ITALIC_B64, TINOS_REGULAR_B64 } from "./tinosFonts.ts";
 
 export type BankAccountDetails = {
   id?: string;
@@ -71,32 +63,29 @@ export interface InvoicePdfInput {
   vat_rate?: number | null;
   vat_amount?: number | null;
   bank_account?: string | null;
-  // Explicit bank details (Generator one-offs); falls back to bank_account key.
   bank_details?: BankAccountDetails | null;
-  // Small muted sub-line under TOTAL DUE (e.g. downpayment / balance). TOTAL DUE
-  // itself always reflects the gross total.
   total_due_note?: string | null;
+  // Apple-design fields.
+  project_name?: string | null;
+  description?: string | null;
+  stripe_url?: string | null;
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Date(value).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
+    day: "numeric",
+    month: "long",
     year: "numeric",
   });
 }
 
-function currencySymbolAscii(currency: string): string {
+function currencySymbol(currency: string): string {
   switch (currency) {
-    case "GBP":
-      return "GBP ";
-    case "EUR":
-      return "EUR ";
-    case "USD":
-      return "$";
-    default:
-      return `${currency} `;
+    case "GBP": return "£"; // £
+    case "EUR": return "€"; // €
+    case "USD": return "$";
+    default: return `${currency} `;
   }
 }
 
@@ -105,383 +94,207 @@ function formatCurrencyPdf(amount: number, currency = "GBP"): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount || 0);
-  return `${currencySymbolAscii(currency)}${n}`;
+  return `${currencySymbol(currency)}${n}`;
 }
 
 function lineItemsTotal(items: InvoiceLineItem[]): number {
   return items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
 }
 
-// pt → mm for char-spacing values (jsPDF char space is in the current unit).
-const cs = (pt: number): number => pt * 0.352778;
-
 export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4", compress: true });
 
-  // Register Tinos (normal/bold/italic) for Unicode-capable client names.
-  pdf.addFileToVFS("Tinos-Regular.ttf", TINOS_REGULAR_B64);
-  pdf.addFont("Tinos-Regular.ttf", "Tinos", "normal");
-  pdf.addFileToVFS("Tinos-Bold.ttf", TINOS_BOLD_B64);
-  pdf.addFont("Tinos-Bold.ttf", "Tinos", "bold");
-  pdf.addFileToVFS("Tinos-Italic.ttf", TINOS_ITALIC_B64);
-  pdf.addFont("Tinos-Italic.ttf", "Tinos", "italic");
-
   const pageWidth = pdf.internal.pageSize.getWidth(); // 210
   const pageHeight = pdf.internal.pageSize.getHeight(); // 297
-  const margin = PDF_MARGIN.x; // 28
-  const contentWidth = pageWidth - margin * 2; // 154
+  const margin = 20;
+  const rightX = pageWidth - margin; // 190
+  const contentW = pageWidth - margin * 2; // 170
   const currency = invoice.currency || "GBP";
 
-  // Palette — aligned to the Silvershadow document design system.
-  const charcoal: [number, number, number] = [26, 24, 20]; // #1A1814 body dark
-  const muted: [number, number, number] = [120, 118, 112]; // greige muted
-  const hairline: [number, number, number] = [224, 224, 224]; // #E0E0E0 separators
-  const bgCream = "#EDE8E0"; // warm greige ground
-  const gold: [number, number, number] = [184, 154, 106]; // #B89A6A brand gold
+  // Apple-on-cream palette.
+  const ink: [number, number, number] = [29, 29, 31]; // #1D1D1F
+  const muted: [number, number, number] = [134, 134, 139]; // #86868B
+  const line: [number, number, number] = [216, 206, 186]; // #D8CEBA warm hairline
+  const blue: [number, number, number] = [0, 113, 227]; // #0071E3
+  const bgCream = "#EDE8E0";
 
-  // ensureSpace (shared) cuts content off at ctx.pageHeight - PDF_MARGIN.bottom;
-  // reserving 6mm keeps body content clear of the registered footer below.
-  const ctx: PdfContext = {
-    pdf,
-    pageWidth,
-    pageHeight: pageHeight - 6,
-    contentWidth,
-    ink: charcoal,
-    muted,
-    gold,
-    bodyFont: "helvetica",
-    metaFont: "helvetica",
-    backgroundColor: bgCream,
-  };
+  paintPageBackground(pdf, bgCream);
 
   const setT = (size: number, rgb: [number, number, number], weight: "normal" | "bold" = "normal") => {
     pdf.setFont("helvetica", weight);
     pdf.setFontSize(size);
     pdf.setTextColor(rgb[0], rgb[1], rgb[2]);
   };
+  const hair = (y: number, x1 = margin, x2 = rightX) => {
+    pdf.setDrawColor(line[0], line[1], line[2]);
+    pdf.setLineWidth(0.3);
+    pdf.line(x1, y, x2, y);
+  };
+  const deDash = (s: string) => s.replace(/\s[—–]\s/g, ", ").replace(/[—–]/g, "-");
 
-  paintPageBackground(pdf, bgCream);
+  // ---- Logo ----
+  const logoW = 58, logoH = logoW * (91 / 600);
+  try {
+    pdf.addImage(SILVERSHADOW_LOGO_DATA_URL, "PNG", (pageWidth - logoW) / 2, 30, logoW, logoH);
+  } catch {
+    setT(20, ink, "bold");
+    pdf.text("Silvershadow Studio", pageWidth / 2, 38, { align: "center" });
+  }
+  hair(52);
 
-  // ---- Header: centred wordmark ----
-  {
-    const logoW = 50;
-    const logoH = logoW * (91 / 600);
-    try {
-      pdf.addImage(SILVERSHADOW_LOGO_DATA_URL, "PNG", (pageWidth - logoW) / 2, 28, logoW, logoH);
-    } catch (e) {
-      console.error("[brandLogo] addImage failed:", e);
-      setT(24, charcoal);
-      pdf.text("Silvershadow Studio", pageWidth / 2, 36, { align: "center" });
-    }
+  // ---- Meta row (Invoice | Billed to | Contact + Project) ----
+  const metaY = 66;
+  const c1 = margin, c2 = margin + 60, c3 = margin + 118;
+  const cap = (t: string, x: number, y: number) => { setT(8, muted); pdf.text(t, x, y); };
+  const kv = (label: string, value: string, x: number, y: number) => {
+    setT(9, muted); pdf.text(label, x, y);
+    setT(9, ink); pdf.text(value, x + 13, y);
+  };
+
+  cap("Invoice", c1, metaY);
+  kv("No.", invoice.invoice_number || invoice.reference_number || "-", c1, metaY + 6.5);
+  kv("Issued", formatDate(invoice.issued_at || invoice.created_at), c1, metaY + 11.5);
+  kv("Due", invoice.due_date ? formatDate(invoice.due_date) : "On receipt", c1, metaY + 16.5);
+
+  cap("Billed to", c2, metaY);
+  const company = invoice.client_company || invoice.client_name || "-";
+  setT(10, ink); pdf.text(deDash(company), c2, metaY + 6.5);
+  setT(9, muted);
+  let by = metaY + 11.5;
+  const billLines: string[] = [];
+  if (invoice.client_address) invoice.client_address.split("\n").forEach((l) => l && billLines.push(l));
+  if (invoice.client_country) billLines.push(invoice.client_country);
+  if (invoice.client_registration) billLines.push(`Reg. No. ${invoice.client_registration}`);
+  billLines.forEach((l) => { pdf.text(deDash(l), c2, by); by += 4.4; });
+
+  let cy = metaY;
+  if (invoice.client_name) {
+    cap("Contact", c3, cy); cy += 6.5;
+    setT(10, ink); pdf.text(deDash(invoice.client_name), c3, cy); cy += 4.4;
+    if (invoice.client_position) { setT(9, muted); pdf.text(deDash(invoice.client_position), c3, cy); cy += 4.4; }
+    cy += 4;
+  }
+  if (invoice.project_name) {
+    cap("Project", c3, cy); cy += 6.5;
+    setT(10, ink); pdf.text(deDash(invoice.project_name), c3, cy); cy += 4.4;
   }
 
-  // ---- Meta strip (Invoice No. / Date Issued / Due Date) ----
-  const number = invoice.invoice_number || invoice.reference_number || "—";
-  const metaY = 62;
-  const colW = contentWidth / 3;
+  let y = Math.max(by, cy, metaY + 30) + 10;
 
-  const metaLabel = (label: string, x: number) => {
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text(label.toUpperCase(), x, metaY);
-    pdf.setCharSpace(0);
-  };
-  const metaValue = (value: string, x: number, rgb: [number, number, number] = charcoal) => {
-    setT(11, rgb);
-    pdf.text(value, x, metaY + 5.6);
-  };
-
-  metaLabel("Invoice No.", margin);
-  metaValue(String(number), margin);
-  metaLabel("Date Issued", margin + colW);
-  metaValue(formatDate(invoice.issued_at || invoice.created_at), margin + colW);
-  metaLabel("Due Date", margin + colW * 2);
-  metaValue(formatDate(invoice.due_date), margin + colW * 2);
-
-  // ---- Billed To (Client) — studio identity lives in the logo + footer ----
-  const billY = metaY + 21;
-
-  const sectionLabel = (text: string, x: number, y: number) => {
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text(text, x, y);
-    pdf.setCharSpace(0);
-  };
-
-  sectionLabel("BILLED TO", margin, billY);
-  let by = billY + 7.8;
-  const heroName = invoice.client_company || invoice.client_name;
-  if (heroName) {
-    setT(14, charcoal);
-    pdf.text(heroName, margin, by);
-    by += 5.6;
+  // ---- Description ----
+  if (invoice.description) {
+    cap("Description", margin, y); y += 5.6;
+    setT(9.5, ink);
+    const lines: string[] = pdf.splitTextToSize(deDash(invoice.description), contentW);
+    pdf.text(lines, margin, y, { lineHeightFactor: 1.35 });
+    y += lines.length * 4.6 + 8;
   }
-  setT(9.5, muted);
-  const clientLines: string[] = [];
-  if (invoice.client_address) {
-    invoice.client_address.split("\n").forEach((l) => l && clientLines.push(l));
-  }
-  if (invoice.client_country) clientLines.push(invoice.client_country);
-  if (invoice.client_registration) clientLines.push(`Reg. No. ${invoice.client_registration}`);
-  if (invoice.client_company && invoice.client_name) {
-    clientLines.push("");
-    clientLines.push(
-      invoice.client_position ? `${invoice.client_name}, ${invoice.client_position}` : invoice.client_name,
-    );
-  }
-  if (invoice.client_email) clientLines.push(invoice.client_email);
-  clientLines.forEach((line) => {
-    pdf.text(line, margin, by);
-    by += 4.2;
-  });
 
-  const blockBottom = by;
+  // ---- Items ----
+  const items = invoice.line_items.length > 0
+    ? invoice.line_items
+    : [{ description: "Services", quantity: 1, unit_price: invoice.amount }];
+  const safeBottom = pageHeight - 40;
 
-  // ---- Items table (paginated) ----
-  const items =
-    invoice.line_items.length > 0
-      ? invoice.line_items
-      : [{ description: "Services", quantity: 1, unit_price: invoice.amount }];
-
-  const safeBottom = ctx.pageHeight - PDF_MARGIN.bottom; // 261
-  const rowMinHeight = 22;
-  const descLineHeight = 5.3;
-  const subLineHeight = 4.9;
-  const descW = contentWidth - 60; // reserve right column for amount
-
-  const measuredRows = items.map((it) => {
-    const qty = Number(it.quantity) || 0;
-    const unit = Number(it.unit_price) || 0;
-    const lineTotal = qty * unit;
-    setT(12, charcoal);
-    const descLines: string[] = pdf.splitTextToSize(it.description || "—", descW);
-    const included = lineTotal === 0;
-    const hasSub = !included && (qty !== 0 || unit !== 0);
-    const blockHeight = descLines.length * descLineHeight + (hasSub ? subLineHeight : 0);
-    const height = Math.max(rowMinHeight, blockHeight + 11);
-    return { qty, unit, lineTotal, descLines, hasSub, included, height };
-  });
-
-  const TOTALS_HEIGHT = 48;
-  const NOTES_TOP_GAP = 12.7;
-
-  // Continuation-page header: small logo + "No. … continued".
-  const drawContinuationHeader = (): number => {
-    paintPageBackground(pdf, bgCream);
-    {
-      const logoW = 30;
-      const logoH = logoW * (91 / 600);
-      try {
-        pdf.addImage(SILVERSHADOW_LOGO_DATA_URL, "PNG", margin, 16, logoW, logoH);
-      } catch (e) {
-        console.error("[brandLogo] addImage failed:", e);
-      }
-    }
-    setT(9, muted);
-    pdf.text(`No. ${number}  ·  continued`, pageWidth - margin, 14, { align: "right" });
-    return 30;
+  const drawItemsHeader = (yy: number): number => {
+    setT(8, muted); pdf.text("Item", margin, yy);
+    pdf.text("Amount", rightX, yy, { align: "right" });
+    hair(yy + 3);
+    return yy + 3;
   };
 
-  const drawTableHeader = (y: number): number => {
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text("DESCRIPTION", margin, y);
-    pdf.text("AMOUNT", pageWidth - margin, y, { align: "right" });
-    pdf.setCharSpace(0);
-    drawHairline(ctx, y + 3.5, hairline, 0.18);
-    return y + 3.5;
-  };
-
-  let tableHeaderY = Math.max(by, billY + 28) + 14;
-  let rowTop = drawTableHeader(tableHeaderY);
-
-  for (let i = 0; i < measuredRows.length; i++) {
-    const row = measuredRows[i];
-    const isLast = i === measuredRows.length - 1;
-    const requiredSpace = row.height + (isLast ? TOTALS_HEIGHT : 0);
-
-    if (rowTop + requiredSpace > safeBottom) {
-      pdf.addPage();
-      rowTop = drawTableHeader(drawContinuationHeader());
-    }
-
-    const blockHeight = row.descLines.length * descLineHeight + (row.hasSub ? subLineHeight : 0);
-    const blockTop = rowTop + (row.height - blockHeight) / 2 + descLineHeight - 1.4;
-
-    setT(12, charcoal);
-    pdf.text(row.descLines, margin, blockTop, { lineHeightFactor: 1.15 });
-
-    if (row.hasSub) {
-      const subY = blockTop + (row.descLines.length - 1) * descLineHeight + subLineHeight;
-      setT(9, muted);
-      pdf.text(`${row.qty} x ${formatCurrencyPdf(row.unit, currency)}`, margin, subY);
-    }
-
-    if (row.included) {
-      setT(8, muted);
-      pdf.setCharSpace(cs(1.6));
-      pdf.text("INCLUDED", pageWidth - margin, rowTop + row.height / 2 + 1.4, { align: "right" });
-      pdf.setCharSpace(0);
+  y = drawItemsHeader(y + 2);
+  const descW = contentW - 42;
+  for (const it of items) {
+    const qty = Number(it.quantity) || 0, unit = Number(it.unit_price) || 0;
+    const total = qty * unit;
+    setT(10, ink);
+    const dl: string[] = pdf.splitTextToSize(deDash(it.description || "-"), descW);
+    const rowH = Math.max(11, dl.length * 4.9 + 6);
+    if (y + rowH > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = drawItemsHeader(24); }
+    const textY = y + 6.5;
+    setT(10, ink); pdf.text(dl, margin, textY, { lineHeightFactor: 1.25 });
+    if (total === 0) {
+      setT(9, muted); pdf.text("Included", rightX, textY, { align: "right" });
     } else {
-      setT(12, charcoal);
-      pdf.text(formatCurrencyPdf(row.lineTotal, currency), pageWidth - margin, rowTop + row.height / 2 + 1.4, {
-        align: "right",
-      });
+      setT(10, ink); pdf.text(formatCurrencyPdf(total, currency), rightX, textY, { align: "right" });
     }
-
-    rowTop += row.height;
-    drawHairline(ctx, rowTop, hairline, 0.18);
+    y += rowH;
+    hair(y);
   }
 
-  // ---- Totals block (right-aligned) ----
+  // ---- Totals ----
   const subtotal = Number(invoice.subtotal ?? lineItemsTotal(items));
   const vatRate = Number(invoice.vat_rate ?? 0);
   const vatAmount = Number(invoice.vat_amount ?? (subtotal * vatRate) / 100);
   const grand = Number(invoice.amount ?? subtotal + vatAmount);
 
-  if (rowTop + TOTALS_HEIGHT > safeBottom) {
-    pdf.addPage();
-    drawContinuationHeader();
-    rowTop = 30;
-  }
-
-  let ty = rowTop + 10;
-  const labelX = pageWidth - margin - 50;
-  const valueX = pageWidth - margin;
-
-  setT(10, muted);
-  pdf.text("Subtotal", labelX, ty, { align: "right" });
-  setT(10, charcoal);
-  pdf.text(formatCurrencyPdf(subtotal, currency), valueX, ty, { align: "right" });
-
-  ty += 6.3;
-  setT(10, muted);
-  pdf.text(`VAT (${vatRate}%)`, labelX, ty, { align: "right" });
-  setT(10, charcoal);
-  pdf.text(formatCurrencyPdf(vatAmount, currency), valueX, ty, { align: "right" });
-
-  ty += 5;
-  // Neutral rule beneath the breakdown.
-  pdf.setDrawColor(hairline[0], hairline[1], hairline[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(labelX - 14, ty, valueX, ty);
-
-  ty += 9;
-  setT(7.5, muted);
-  pdf.setCharSpace(cs(1.6));
-  pdf.text("TOTAL DUE", labelX, ty, { align: "right" });
-  pdf.setCharSpace(0);
-
-  ty += 10.6;
-  setT(22, charcoal, "bold");
-  pdf.text(formatCurrencyPdf(grand, currency), valueX, ty, { align: "right" });
-
-  // Optional sub-line under the gross total (downpayment / balance).
+  if (y + 40 > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = 24; }
+  y += 10;
+  const tLabelX = rightX - 44, tValX = rightX;
+  setT(9.5, muted); pdf.text("Net total", tLabelX, y, { align: "right" });
+  setT(9.5, ink); pdf.text(formatCurrencyPdf(subtotal, currency), tValX, y, { align: "right" });
+  y += 6;
+  setT(9.5, muted); pdf.text(`VAT @ ${vatRate}%`, tLabelX, y, { align: "right" });
+  setT(9.5, ink); pdf.text(formatCurrencyPdf(vatAmount, currency), tValX, y, { align: "right" });
+  y += 4;
+  hair(y, tLabelX - 14, tValX);
+  y += 7;
+  setT(11, muted); pdf.text("Total due", tLabelX, y, { align: "right" });
+  setT(14, ink, "bold"); pdf.text(formatCurrencyPdf(grand, currency), tValX, y, { align: "right" });
   if (invoice.total_due_note) {
-    ty += 5;
-    setT(8.5, muted);
-    pdf.text(invoice.total_due_note, valueX, ty, { align: "right" });
+    y += 5; setT(8.5, muted); pdf.text(deDash(invoice.total_due_note), tValX, y, { align: "right" });
   }
 
-  // ---- Notes (may also flow to a new page) ----
-  if (invoice.notes) {
-    const notesLines: string[] = pdf.splitTextToSize(invoice.notes, contentWidth);
-    const notesHeight = NOTES_TOP_GAP + notesLines.length * 4.6 + 5.6;
-
-    if (ty + notesHeight > safeBottom) {
-      pdf.addPage();
-      drawContinuationHeader();
-      ty = 30;
-    } else {
-      ty += NOTES_TOP_GAP;
-    }
-
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text("NOTES", margin, ty);
-    pdf.setCharSpace(0);
-    setT(10, charcoal);
-    pdf.text(notesLines, margin, ty + 5.6);
-    ty += 5.6 + notesLines.length * 4.6;
-  }
-
-  // ---- Payment Details (two-column) ----
+  // ---- Payment details + Stripe (left) · Terms (right) ----
   {
     const bank = invoice.bank_details || getBankAccount(invoice.bank_account);
-    const PAYMENT_HEIGHT = 72;
-    if (ty + PAYMENT_HEIGHT > safeBottom) {
-      pdf.addPage();
-      drawContinuationHeader();
-      ty = 30;
-    } else {
-      ty += 14;
-    }
-
-    drawHairline(ctx, ty, hairline, 0.18);
-    ty += 14;
-
-    setT(7.5, muted);
-    pdf.setCharSpace(cs(1.6));
-    pdf.text("PAYMENT DETAILS", margin, ty);
-    pdf.setCharSpace(0);
-    ty += 8.5;
-
-    const colLeftX = margin;
-    const colRightX2 = margin + contentWidth / 2 + 4;
-
-    const drawField = (label: string, value: string, x: number, y: number) => {
-      setT(7.5, muted);
-      pdf.setCharSpace(cs(1.6));
-      pdf.text(label.toUpperCase(), x, y);
-      pdf.setCharSpace(0);
-      setT(10, charcoal);
-      pdf.text(value, x, y + 4.9);
+    if (y + 52 > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = 24; }
+    y += 16;
+    hair(y);
+    y += 9;
+    const leftX = margin, rgtX = margin + 100;
+    cap("Payment details", leftX, y);
+    cap("Terms", rgtX, y);
+    let py = y + 6;
+    const field = (label: string, value: string) => {
+      setT(8.5, muted); pdf.text(label, leftX, py);
+      setT(9, ink); pdf.text(value, leftX + 28, py);
+      py += 5.2;
     };
+    if (bank.bankName) field("Bank", bank.bankName);
+    if (bank.sortCode) field("Sort code", bank.sortCode);
+    if (bank.accountNumber) field("Account", bank.accountNumber);
+    if (bank.swiftCode) field("SWIFT", bank.swiftCode);
+    if (bank.iban) field("IBAN", bank.iban);
+    field("Ref", invoice.invoice_number || invoice.reference_number || "-");
 
-    let leftY = ty;
-    if (bank.bankName) {
-      drawField("Bank Name", bank.bankName, colLeftX, leftY);
-      leftY += 11.3;
-    }
-    if (bank.sortCode) {
-      drawField("Sort Code", bank.sortCode, colLeftX, leftY);
-      leftY += 11.3;
-    }
-    if (bank.accountNumber) {
-      drawField("Account Number", bank.accountNumber, colLeftX, leftY);
-      leftY += 11.3;
-    }
+    setT(9, muted);
+    const terms = pdf.splitTextToSize(
+      "Payment due within 14 days. Late payment may be subject to interest under the Late Payment of Commercial Debts Act 1998.",
+      contentW - 100,
+    );
+    pdf.text(terms, rgtX, y + 6, { lineHeightFactor: 1.35 });
 
-    let rightY = ty;
-    if (bank.swiftCode) {
-      drawField("Swift Code", bank.swiftCode, colRightX2, rightY);
-      rightY += 11.3;
+    if (invoice.stripe_url) {
+      const bw = 54, bh = 9, bx = leftX, byy = py + 3;
+      pdf.setFillColor(blue[0], blue[1], blue[2]);
+      pdf.roundedRect(bx, byy, bw, bh, 4.5, 4.5, "F");
+      setT(9, [255, 255, 255], "bold");
+      pdf.text("Pay online by card", bx + bw / 2, byy + bh / 2 + 1.1, { align: "center" });
+      pdf.link(bx, byy, bw, bh, { url: invoice.stripe_url });
     }
-    if (bank.iban) {
-      drawField("IBAN", bank.iban, colRightX2, rightY);
-      rightY += 11.3;
-    }
-
-    ty = Math.max(leftY, rightY);
   }
 
-  // ---- Footer on every page (single centred confidentiality line) ----
+  // ---- Footer (every page) ----
   const totalPages = pdf.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     pdf.setPage(p);
-
-    drawHairline(ctx, 262, hairline, 0.18);
-
+    hair(pageHeight - 30);
     setT(7.5, muted);
-    pdf.text(
-      "Silvershadow Studio Ltd   ·   332 Ladbroke Grove, London, W10 5AD, United Kingdom",
-      pageWidth / 2, 267.5, { align: "center" },
-    );
-    pdf.text(
-      "Registered in England & Wales 9178937   ·   VAT GB 232 8467 02",
-      pageWidth / 2, 272, { align: "center" },
-    );
-    pdf.text("silvershadowstudio.com", pageWidth / 2, 276.5, { align: "center" });
+    pdf.text("Silvershadow Studio Ltd   ·   332 Ladbroke Grove, London, W10 5AD, United Kingdom", pageWidth / 2, pageHeight - 24, { align: "center" });
+    pdf.text("Registered in England & Wales 9178937   ·   VAT GB 232 8467 02", pageWidth / 2, pageHeight - 19.5, { align: "center" });
+    pdf.text("silvershadowstudio.com", pageWidth / 2, pageHeight - 15, { align: "center" });
   }
 
   return new Uint8Array(pdf.output("arraybuffer"));
