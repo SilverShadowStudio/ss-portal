@@ -111,6 +111,13 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   const contentW = pageWidth - margin * 2; // 170
   const currency = invoice.currency || "GBP";
 
+  // Due date is always the invoice date + 14 days (our standard terms), so it
+  // can never precede issue even if a stale due_date is stored.
+  const invoiceDateStr = invoice.issued_at || invoice.created_at;
+  const dueDateObj = new Date(invoiceDateStr);
+  dueDateObj.setDate(dueDateObj.getDate() + 14);
+  const dueComputed = dueDateObj.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
   // Apple-on-cream palette.
   const ink: [number, number, number] = [29, 29, 31]; // #1D1D1F
   const muted: [number, number, number] = [134, 134, 139]; // #86868B
@@ -154,7 +161,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   cap("Invoice", c1, metaY);
   kv("No.", invoice.invoice_number || invoice.reference_number || "-", c1, metaY + 6.5);
   kv("Issued", formatDate(invoice.issued_at || invoice.created_at), c1, metaY + 11.5);
-  kv("Due", invoice.due_date ? formatDate(invoice.due_date) : "On receipt", c1, metaY + 16.5);
+  kv("Due", dueComputed, c1, metaY + 16.5);
 
   cap("Billed to", c2, metaY);
   const company = invoice.client_company || invoice.client_name || "-";
@@ -246,38 +253,51 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
     y += 5; setT(8.5, muted); pdf.text(deDash(invoice.total_due_note), tValX, y, { align: "right" });
   }
 
-  // ---- Payment details + Stripe (left) · Terms (right) ----
+  // ---- Remittance details + Stripe (left) · Terms (right) ----
   {
     const bank = invoice.bank_details || getBankAccount(invoice.bank_account);
-    if (y + 52 > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = 24; }
+    const ref = invoice.invoice_number || invoice.reference_number || "-";
+    if (y + 68 > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = 24; }
     y += 16;
     hair(y);
     y += 9;
     const leftX = margin, rgtX = margin + 100;
-    cap("Payment details", leftX, y);
+    cap("Remittance details", leftX, y);
     cap("Terms", rgtX, y);
+
     let py = y + 6;
     const field = (label: string, value: string) => {
       setT(8.5, muted); pdf.text(label, leftX, py);
-      setT(9, ink); pdf.text(value, leftX + 28, py);
+      setT(9, ink); pdf.text(value, leftX + 34, py);
       py += 5.2;
     };
+    field("Account name", "Silvershadow Studio Ltd");
     if (bank.bankName) field("Bank", bank.bankName);
+    field("Currency", currency);
     if (bank.sortCode) field("Sort code", bank.sortCode);
-    if (bank.accountNumber) field("Account", bank.accountNumber);
-    if (bank.swiftCode) field("SWIFT", bank.swiftCode);
+    if (bank.accountNumber) field("Account no.", bank.accountNumber);
+    if (bank.swiftCode) field("SWIFT/BIC", bank.swiftCode);
     if (bank.iban) field("IBAN", bank.iban);
-    field("Ref", invoice.invoice_number || invoice.reference_number || "-");
+    field("Payment reference", ref);
 
-    setT(9, muted);
-    const terms = pdf.splitTextToSize(
-      "Payment due within 14 days. Late payment may be subject to interest under the Late Payment of Commercial Debts Act 1998.",
-      contentW - 100,
-    );
-    pdf.text(terms, rgtX, y + 6, { lineHeightFactor: 1.35 });
+    // Terms (right column)
+    setT(8, muted);
+    let tyR = y + 6;
+    const paras = [
+      `Payment is due within 14 days of the invoice date, by ${dueComputed}.`,
+      "Please quote the payment reference above so the remittance can be allocated correctly.",
+      "Overdue sums accrue statutory interest and fixed compensation under the Late Payment of Commercial Debts (Interest) Act 1998.",
+      "All transfer, intermediary and currency exchange charges are borne by the Client. Sums invoiced must be received in full and without deduction.",
+    ];
+    for (const p of paras) {
+      const lines: string[] = pdf.splitTextToSize(p, contentW - 100);
+      pdf.text(lines, rgtX, tyR, { lineHeightFactor: 1.3 });
+      tyR += lines.length * 3.4 + 2.6;
+    }
 
+    // Stripe button under the remittance fields
     if (invoice.stripe_url) {
-      const bw = 54, bh = 9, bx = leftX, byy = py + 3;
+      const bw = 54, bh = 9, bx = leftX, byy = py + 4;
       pdf.setFillColor(blue[0], blue[1], blue[2]);
       pdf.roundedRect(bx, byy, bw, bh, 4.5, 4.5, "F");
       setT(9, [255, 255, 255], "bold");
