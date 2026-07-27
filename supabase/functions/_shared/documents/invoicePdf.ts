@@ -149,13 +149,13 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
     ink: charcoal,
     muted,
     gold,
-    bodyFont: "Tinos",
-    metaFont: "Tinos",
+    bodyFont: "helvetica",
+    metaFont: "helvetica",
     backgroundColor: bgCream,
   };
 
   const setT = (size: number, rgb: [number, number, number], weight: "normal" | "bold" = "normal") => {
-    pdf.setFont("Tinos", weight);
+    pdf.setFont("helvetica", weight);
     pdf.setFontSize(size);
     pdf.setTextColor(rgb[0], rgb[1], rgb[2]);
   };
@@ -198,9 +198,8 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   metaLabel("Due Date", margin + colW * 2);
   metaValue(formatDate(invoice.due_date), margin + colW * 2);
 
-  // ---- From (Silvershadow) + Billed To (Client) two-column block ----
+  // ---- Billed To (Client) — studio identity lives in the logo + footer ----
   const billY = metaY + 21;
-  const colRightX = margin + contentWidth / 2 + 4;
 
   const sectionLabel = (text: string, x: number, y: number) => {
     setT(7.5, muted);
@@ -209,26 +208,12 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
     pdf.setCharSpace(0);
   };
 
-  // FROM — Silvershadow
-  sectionLabel("FROM", margin, billY);
-  let fy = billY + 7.8;
-  setT(14, charcoal);
-  pdf.text("Silvershadow Studio Limited", margin, fy);
-  fy += 5.6;
-  setT(9.5, muted);
-  ["332 Ladbroke Grove", "London, W10 5AD", "England, United Kingdom", "Company No. 09178937", "silvershadowstudio.com"]
-    .forEach((line) => {
-      pdf.text(line, margin, fy);
-      fy += 4.2;
-    });
-
-  // BILLED TO — Client (client contact / attention folded in)
-  sectionLabel("BILLED TO", colRightX, billY);
+  sectionLabel("BILLED TO", margin, billY);
   let by = billY + 7.8;
   const heroName = invoice.client_company || invoice.client_name;
   if (heroName) {
     setT(14, charcoal);
-    pdf.text(heroName, colRightX, by);
+    pdf.text(heroName, margin, by);
     by += 5.6;
   }
   setT(9.5, muted);
@@ -241,17 +226,16 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   if (invoice.client_company && invoice.client_name) {
     clientLines.push("");
     clientLines.push(
-      invoice.client_position ? `${invoice.client_name} — ${invoice.client_position}` : invoice.client_name,
+      invoice.client_position ? `${invoice.client_name}, ${invoice.client_position}` : invoice.client_name,
     );
   }
   if (invoice.client_email) clientLines.push(invoice.client_email);
   clientLines.forEach((line) => {
-    pdf.text(line, colRightX, by);
+    pdf.text(line, margin, by);
     by += 4.2;
   });
 
-  const blockBottom = Math.max(fy, by);
-  by = blockBottom;
+  const blockBottom = by;
 
   // ---- Items table (paginated) ----
   const items =
@@ -377,9 +361,9 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   pdf.text(formatCurrencyPdf(vatAmount, currency), valueX, ty, { align: "right" });
 
   ty += 5;
-  // Gold accent rule beneath the breakdown — draws the eye to the total due.
-  pdf.setDrawColor(gold[0], gold[1], gold[2]);
-  pdf.setLineWidth(0.22);
+  // Neutral rule beneath the breakdown.
+  pdf.setDrawColor(hairline[0], hairline[1], hairline[2]);
+  pdf.setLineWidth(0.3);
   pdf.line(labelX - 14, ty, valueX, ty);
 
   ty += 9;
@@ -389,7 +373,7 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   pdf.setCharSpace(0);
 
   ty += 10.6;
-  setT(28, gold);
+  setT(22, charcoal, "bold");
   pdf.text(formatCurrencyPdf(grand, currency), valueX, ty, { align: "right" });
 
   // Optional sub-line under the gross total (downpayment / balance).
@@ -488,15 +472,16 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
 
     drawHairline(ctx, 262, hairline, 0.18);
 
-    setT(6.5, muted);
-    pdf.setCharSpace(cs(0.8));
+    setT(7.5, muted);
     pdf.text(
-      "Confidential — intended solely for the named recipient.   ·   Silvershadow Studio Limited   ·   silvershadowstudio.com",
-      pageWidth / 2,
-      268,
-      { align: "center" },
+      "Silvershadow Studio Ltd   ·   332 Ladbroke Grove, London, W10 5AD, United Kingdom",
+      pageWidth / 2, 267.5, { align: "center" },
     );
-    pdf.setCharSpace(0);
+    pdf.text(
+      "Registered in England & Wales 9178937   ·   VAT GB 232 8467 02",
+      pageWidth / 2, 272, { align: "center" },
+    );
+    pdf.text("silvershadowstudio.com", pageWidth / 2, 276.5, { align: "center" });
   }
 
   return new Uint8Array(pdf.output("arraybuffer"));
