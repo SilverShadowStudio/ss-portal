@@ -97,8 +97,6 @@ export interface AccountListProps {
   eyebrow: string;
   /** Sub-headline paragraph below the title. */
   subtitle: string;
-  /** Render in the three-tier redesign (gradient panel + tiles). */
-  panel?: boolean;
   /** Filter accounts by these types. */
   accountTypes: Array<"partnership" | "project" | "team">;
   /** Label for the primary action button (e.g. "Add Client"). */
@@ -221,7 +219,6 @@ export function AccountList({
   title,
   eyebrow,
   subtitle,
-  panel = false,
   accountTypes,
   addButtonLabel,
   showClientCode = false,
@@ -915,12 +912,7 @@ export function AccountList({
             <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold">{eyebrow}</span>
           </div>
-          {!panel && (
-            <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4 uppercase">
-              {title}
-            </h1>
-          )}
-          <p className={panel ? "mt-3 text-sm text-recessive" : "text-sm text-muted-foreground"}>{subtitle}</p>
+          <p className="mt-3 text-sm text-recessive">{subtitle}</p>
         </div>
         <Dialog
           open={isAddDialogOpen}
@@ -1386,40 +1378,26 @@ export function AccountList({
 
       {/* Directory — a light section holds the search + tiles.
           Dark tiles never sit on the gradient directly. */}
-      <div className={panel ? "ssr-zone" : ""}>
-        {panel ? (
-          <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
-            <div className="flex items-center gap-3">
-              <div className="h-px w-6 bg-gold-muted" />
-              <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
-            </div>
-            <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
-              <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="SEARCH"
-                aria-label="Search team members"
-                className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
-              />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
-            </div>
+      <div className="ssr-zone">
+        <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
           </div>
-        ) : (
-          <div className="mb-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder={`Search ${title.toLowerCase()}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+          <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="SEARCH"
+              aria-label={`Search ${title.toLowerCase()}`}
+              className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
           </div>
-        )}
+        </div>
 
       {/* List */}
       <div className="animate-fade-in" style={{ animationDelay: "0.15s" }}>
@@ -1428,7 +1406,7 @@ export function AccountList({
             <BrandLoader size="md" />
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className={(panel ? "ssr-tile" : "rounded-lg border border-border bg-card") + " p-12 text-center"}>
+          <div className="ssr-tile p-12 text-center">
             <p className="text-muted-foreground">
               {searchQuery ? `No ${title.toLowerCase()} match your search` : `No ${title.toLowerCase()} yet`}
             </p>
@@ -1439,7 +1417,7 @@ export function AccountList({
               const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
               return (
-                <div key={group.account_id} className={(panel ? "ssr-tile" : "rounded-xl border border-border bg-card shadow-sm") + " overflow-hidden"}>
+                <div key={group.account_id} className="ssr-tile overflow-hidden">
                   {/* Account header */}
                   <div
                     onClick={headerClickable ? () => navigate(`/admin/projects?client=${group.account_id}`) : undefined}

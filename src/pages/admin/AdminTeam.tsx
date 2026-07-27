@@ -10,7 +10,6 @@ export default function AdminTeam() {
   return (
     <AdminLayout panel>
       <AccountList
-        panel
         title="Team"
         eyebrow="Team Management"
         subtitle="Manage freelancers and team members."
