@@ -1384,6 +1384,15 @@ export function AccountList({
         </Dialog>
       </div>
 
+      {/* Directory — a light section holds the search + tiles.
+          Dark tiles never sit on the gradient directly. */}
+      <div className={panel ? "ssr-zone" : ""}>
+        {panel && (
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
+          </div>
+        )}
       {/* Search */}
       <div className="mb-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
         <div className="relative max-w-md">
@@ -1752,6 +1761,7 @@ export function AccountList({
             })}
           </div>
         )}
+      </div>
       </div>
 
       {/* Register Them — engagement contract draft form */}
