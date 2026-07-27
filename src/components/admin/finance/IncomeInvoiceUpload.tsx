@@ -127,6 +127,27 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
       toast({ title: "Not signed in", variant: "destructive" });
       return;
     }
+    // Duplicate guard — is this invoice likely already recorded? Match on the
+    // invoice number first, then fall back to same client name + same gross.
+    let existing: { invoice_number: string | null } | null = null;
+    if (form.invoiceNumber.trim()) {
+      const { data } = await supabase
+        .from("invoices").select("invoice_number").eq("invoice_number", form.invoiceNumber.trim()).limit(1);
+      if (data && data.length) existing = data[0] as { invoice_number: string | null };
+    }
+    if (!existing && form.clientName.trim()) {
+      const { data } = await supabase
+        .from("invoices").select("invoice_number").ilike("notes", `%${form.clientName.trim()}%`).eq("amount", gross).limit(1);
+      if (data && data.length) existing = data[0] as { invoice_number: string | null };
+    }
+    if (existing) {
+      const label = existing.invoice_number ? ` (${existing.invoice_number})` : "";
+      const ok = window.confirm(
+        `Possible duplicate: an invoice${label} for ${form.currency} ${gross.toFixed(2)} is already recorded. Add this one anyway?`,
+      );
+      if (!ok) { setSaving(false); return; }
+    }
+
     const paid = form.paid === "paid";
     const invoiceDate = form.invoiceDate || null;
     const { error } = await supabase.from("invoices").insert({
