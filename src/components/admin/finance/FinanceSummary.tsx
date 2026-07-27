@@ -1,4 +1,4 @@
-import { formatCurrency, type Quarter } from "@/lib/finance";
+import { formatCurrency } from "@/lib/finance";
 import { cn } from "@/lib/utils";
 
 export type FinanceSectionKey = "moneyIn" | "moneyOut" | "vat";
@@ -14,7 +14,8 @@ interface FinanceSummaryProps {
   outstandingIn: number;
   outstandingOut: number;
   vatNet: number;
-  currentQuarter: Quarter;
+  /** Quarter label shown on the VAT tile (VAT stays quarterly). */
+  vatLabel: string;
   active?: FinanceSectionKey | null;
   /** Which Money-out kind the open section is filtered to (for tile highlight). */
   moneyOutType?: "all" | MoneyOutKind;
@@ -31,7 +32,7 @@ export function FinanceSummary({
   outstandingIn,
   outstandingOut,
   vatNet,
-  currentQuarter,
+  vatLabel,
   active,
   moneyOutType,
   onSelect,
@@ -87,7 +88,7 @@ export function FinanceSummary({
           )}
         >
           <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">
-            VAT {currentQuarter.label} · est.
+            VAT {vatLabel} · est.
           </p>
           <p
             className={cn(

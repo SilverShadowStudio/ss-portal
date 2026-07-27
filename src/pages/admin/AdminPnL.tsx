@@ -29,12 +29,12 @@ import {
 } from "@/components/invoices/InvoiceViewer";
 import {
   buildMoneyOutRows,
-  computeQuarterPayables,
   computeQuarterVat,
-  dateInQuarter,
   formatDate,
   getCurrentQuarter,
   getPreviousQuarter,
+  outstandingFor,
+  payablePeriodDate,
   type ExpenseCategory,
   type MoneyInInvoice,
   type MoneyOutRow,
@@ -47,7 +47,7 @@ import {
   SUPABASE_PUBLISHABLE_KEY,
 } from "@/integrations/supabase/client";
 
-type QuarterFilter = "current" | "previous" | "all";
+type PeriodKey = "current_q" | "previous_q" | "year" | "all";
 type MoneyOutTypeFilter = "all" | MoneyOutKind;
 type MoneyOutStatusFilter = "all" | PayablePaidStatus;
 type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
@@ -59,18 +59,19 @@ export default function AdminPnL() {
   const [loading, setLoading] = useState(true);
 
   // Which detail section is open below the summary (null = none; click a
-  // summary line to open it, click it again to close).
+  // summary tile to open it, click it again to close).
   const [activeSection, setActiveSection] = useState<FinanceSectionKey | null>(null);
+
+  // Period drives the whole page — the spine figures and both detail tables.
+  const [periodKey, setPeriodKey] = useState<PeriodKey>("current_q");
 
   // Money out — one ledger over overheads (fixed) + payables (variable).
   const [moType, setMoType] = useState<MoneyOutTypeFilter>("all");
   const [moSearch, setMoSearch] = useState("");
   const [moStatus, setMoStatus] = useState<MoneyOutStatusFilter>("all");
-  const [moQuarter, setMoQuarter] = useState<QuarterFilter>("all");
 
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<InvoiceStatusFilter>("all");
-  const [invQuarter, setInvQuarter] = useState<QuarterFilter>("all");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Overhead | null>(null);
@@ -96,6 +97,38 @@ export default function AdminPnL() {
 
   const currentQuarter = useMemo(() => getCurrentQuarter(), []);
   const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
+
+  // The active period as a concrete date range. `all` bypasses date bounds.
+  const period = useMemo(() => {
+    switch (periodKey) {
+      case "previous_q":
+        return { start: previousQuarter.start, end: previousQuarter.end, label: previousQuarter.label, all: false };
+      case "year": {
+        const y = currentQuarter.year;
+        return {
+          start: new Date(y, 0, 1, 0, 0, 0, 0),
+          end: new Date(y, 11, 31, 23, 59, 59, 999),
+          label: String(y),
+          all: false,
+        };
+      }
+      case "all":
+        return { start: new Date(0), end: new Date(8640000000000000), label: "All time", all: true };
+      case "current_q":
+      default:
+        return { start: currentQuarter.start, end: currentQuarter.end, label: currentQuarter.label, all: false };
+    }
+  }, [periodKey, currentQuarter, previousQuarter]);
+
+  const inPeriod = useMemo(() => {
+    return (dateStr: string | null | undefined) => {
+      if (period.all) return true;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      return d >= period.start && d <= period.end;
+    };
+  }, [period]);
 
   async function fetchAll() {
     setLoading(true);
@@ -230,20 +263,17 @@ export default function AdminPnL() {
     return moneyOutRows.filter((r) => {
       if (moType !== "all" && r.kind !== moType) return false;
       if (moStatus !== "all" && r.status !== moStatus) return false;
-      if (moQuarter === "current" && !dateInQuarter(r.date, currentQuarter)) return false;
-      if (moQuarter === "previous" && !dateInQuarter(r.date, previousQuarter)) return false;
+      if (!inPeriod(r.date)) return false;
       if (moSearch.trim() && !r.name.toLowerCase().includes(moSearch.trim().toLowerCase()))
         return false;
       return true;
     });
-  }, [moneyOutRows, moType, moStatus, moQuarter, moSearch, currentQuarter, previousQuarter]);
+  }, [moneyOutRows, moType, moStatus, moSearch, inPeriod]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter((r) => {
       if (invStatus !== "all" && r.status !== invStatus) return false;
-      const dateForQuarterFilter = r.paid_at ?? r.issued_at ?? r.created_at;
-      if (invQuarter === "current" && !dateInQuarter(dateForQuarterFilter, currentQuarter)) return false;
-      if (invQuarter === "previous" && !dateInQuarter(dateForQuarterFilter, previousQuarter)) return false;
+      if (!inPeriod(r.issued_at ?? r.created_at)) return false;
       if (invSearch.trim()) {
         const q = invSearch.trim().toLowerCase();
         const co = (r.account_company ?? "").toLowerCase();
@@ -252,33 +282,49 @@ export default function AdminPnL() {
       }
       return true;
     });
-  }, [invoices, invStatus, invQuarter, invSearch, currentQuarter, previousQuarter]);
+  }, [invoices, invStatus, invSearch, inPeriod]);
 
-  // ---- Summary spine (this-quarter totals, VAT-inclusive) -----------------
-  const moneyOutTotals = useMemo(() => {
-    const outstanding = overheads
-      .filter((r) => r.payment_status === "unpaid")
-      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
-    const totalThisQuarter = overheads
-      .filter((r) => dateInQuarter(r.invoice_date, currentQuarter))
-      .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0);
-    return { outstanding, totalThisQuarter };
-  }, [overheads, currentQuarter]);
-
-  const moneyInTotals = useMemo(() => {
-    const outstanding = invoices
-      .filter((i) => i.status === "sent" || i.status === "overdue" || i.status === "pending")
-      .reduce((s, i) => s + Number(i.amount ?? 0), 0);
-    const totalThisQuarter = invoices
-      .filter((i) => dateInQuarter(i.issued_at ?? i.created_at, currentQuarter))
-      .reduce((s, i) => s + Number(i.amount ?? 0), 0);
-    return { outstanding, totalThisQuarter };
-  }, [invoices, currentQuarter]);
-
-  const payablesSummary = useMemo(
-    () => computeQuarterPayables(payables, currentQuarter),
-    [payables, currentQuarter],
+  // ---- Summary spine (selected period, VAT-inclusive) ---------------------
+  // Outstanding is "as of now" — it deliberately ignores the period.
+  const outstandingIn = useMemo(
+    () =>
+      invoices
+        .filter((i) => i.status === "sent" || i.status === "overdue" || i.status === "pending")
+        .reduce((s, i) => s + Number(i.amount ?? 0), 0),
+    [invoices],
   );
+  const outstandingOut = useMemo(
+    () =>
+      overheads
+        .filter((r) => r.payment_status === "unpaid")
+        .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0) +
+      payables.reduce((s, p) => s + outstandingFor(p), 0),
+    [overheads, payables],
+  );
+
+  const revenue = useMemo(
+    () =>
+      invoices
+        .filter((i) => inPeriod(i.issued_at ?? i.created_at))
+        .reduce((s, i) => s + Number(i.amount ?? 0), 0),
+    [invoices, inPeriod],
+  );
+  const fixedCost = useMemo(
+    () =>
+      overheads
+        .filter((o) => inPeriod(o.invoice_date))
+        .reduce((s, o) => s + Number(o.gross_amount ?? 0), 0),
+    [overheads, inPeriod],
+  );
+  const variableCost = useMemo(
+    () =>
+      payables
+        .filter((p) => inPeriod(payablePeriodDate(p)))
+        .reduce((s, p) => s + Number(p.invoice_total ?? 0), 0),
+    [payables, inPeriod],
+  );
+  const grossProfit = revenue - variableCost;
+  const operatingProfit = grossProfit - fixedCost;
 
   const currentVat = useMemo(
     () => computeQuarterVat(invoices, overheads, currentQuarter),
@@ -288,12 +334,10 @@ export default function AdminPnL() {
     () => computeQuarterVat(invoices, overheads, previousQuarter),
     [invoices, overheads, previousQuarter],
   );
-
-  const revenue = moneyInTotals.totalThisQuarter;
-  const variableCost = payablesSummary.totalThisQuarter;
-  const fixedCost = moneyOutTotals.totalThisQuarter;
-  const grossProfit = revenue - variableCost;
-  const operatingProfit = grossProfit - fixedCost;
+  // VAT is quarterly: reflect the selected quarter when one is picked, else
+  // the live current-quarter estimate (year / all-time aren't a VAT period).
+  const summaryVat = periodKey === "previous_q" ? closedVat : currentVat;
+  const summaryVatLabel = periodKey === "previous_q" ? previousQuarter.label : currentQuarter.label;
 
   // ---- Row-click / open handlers -----------------------------------------
   function openMoneyOutRow(r: MoneyOutRow) {
@@ -351,7 +395,7 @@ export default function AdminPnL() {
     fetchAll();
   }
 
-  // Clicking a summary line opens/closes a detail section. Cost lines also
+  // Clicking a summary tile opens/closes a detail section. Cost tiles also
   // pre-filter Money out to fixed / variable.
   function handleSelectSection(key: FinanceSectionKey, kind?: MoneyOutKind) {
     if (key === "moneyOut") {
@@ -410,7 +454,7 @@ export default function AdminPnL() {
           <span className="text-label-gold text-[#ecd39c]">P&amp;L</span>
         </div>
         <p className="mt-3 text-sm text-recessive">
-          Revenue, costs, and cash-basis VAT for {currentQuarter.label}.
+          Revenue, costs, and cash-basis VAT — choose the period below.
         </p>
       </div>
 
@@ -421,7 +465,20 @@ export default function AdminPnL() {
             <div className="h-px w-6 bg-gold-muted" />
             <h2 className="text-label">Summary</h2>
           </div>
-          <p className="text-xs text-recessive">{currentQuarter.label} · VAT-inclusive</p>
+          <div className="flex items-center gap-3">
+            <Select value={periodKey} onValueChange={(v) => setPeriodKey(v as PeriodKey)}>
+              <SelectTrigger className="h-8 w-[150px] rounded-sm text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current_q">{currentQuarter.label}</SelectItem>
+                <SelectItem value="previous_q">{previousQuarter.label}</SelectItem>
+                <SelectItem value="year">{currentQuarter.year}</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="whitespace-nowrap text-xs text-recessive">VAT-inclusive</span>
+          </div>
         </div>
         <FinanceSummary
           revenue={revenue}
@@ -429,17 +486,17 @@ export default function AdminPnL() {
           fixedCost={fixedCost}
           grossProfit={grossProfit}
           operatingProfit={operatingProfit}
-          outstandingIn={moneyInTotals.outstanding}
-          outstandingOut={moneyOutTotals.outstanding + payablesSummary.outstanding}
-          vatNet={currentVat.netVat}
-          currentQuarter={currentQuarter}
+          outstandingIn={outstandingIn}
+          outstandingOut={outstandingOut}
+          vatNet={summaryVat.netVat}
+          vatLabel={summaryVatLabel}
           active={activeSection}
           moneyOutType={moType}
           onSelect={handleSelectSection}
         />
       </section>
 
-      {/* VAT panel — shown when its summary frame is selected */}
+      {/* VAT panel — shown when its summary tile is selected */}
       {activeSection === "vat" && (
         <section className="ssr-zone mb-4">
           <div className="mb-6 flex items-center gap-3">
@@ -502,16 +559,6 @@ export default function AdminPnL() {
                 <SelectItem value="unknown">Unknown</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={moQuarter} onValueChange={(v) => setMoQuarter(v as QuarterFilter)}>
-              <SelectTrigger className="rounded-sm w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All quarters</SelectItem>
-                <SelectItem value="current">{currentQuarter.label}</SelectItem>
-                <SelectItem value="previous">{previousQuarter.label}</SelectItem>
-              </SelectContent>
-            </Select>
             <div className="ml-auto flex items-center gap-6">
               <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
               <button
@@ -556,16 +603,6 @@ export default function AdminPnL() {
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={invQuarter} onValueChange={(v) => setInvQuarter(v as QuarterFilter)}>
-              <SelectTrigger className="rounded-sm w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All quarters</SelectItem>
-                <SelectItem value="current">{currentQuarter.label}</SelectItem>
-                <SelectItem value="previous">{previousQuarter.label}</SelectItem>
               </SelectContent>
             </Select>
             <div className="ml-auto flex items-center gap-6">
