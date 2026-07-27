@@ -127,6 +127,14 @@ export function MoneyOutTable({ rows, loading, onRowClick }: MoneyOutTableProps)
                         Filing…
                       </span>
                     )}
+                    {r.kind === "fixed" && !r.filed && !r.filing && (
+                      <span
+                        className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
+                        title="No invoice PDF filed to Dropbox yet"
+                      >
+                        Not filed
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span

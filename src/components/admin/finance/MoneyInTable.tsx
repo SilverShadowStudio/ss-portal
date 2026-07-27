@@ -90,7 +90,17 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
                 onClick={() => onRowClick(r)}
                 className="cursor-pointer border-divider hover:bg-foreground/[0.03] transition-colors"
               >
-                <TableCell className="text-sm text-strong">{r.account_company ?? "—"}</TableCell>
+                <TableCell className="text-sm text-strong">
+                  {r.account_company ?? "—"}
+                  {!r.dropbox_path && (
+                    <span
+                      className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
+                      title="No invoice PDF filed to Dropbox yet"
+                    >
+                      Not filed
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm text-standard">
                   {r.invoice_number ?? r.reference_number ?? "—"}
                 </TableCell>

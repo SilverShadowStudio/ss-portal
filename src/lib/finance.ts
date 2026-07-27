@@ -281,6 +281,7 @@ export interface MoneyOutRow {
   approxPeriod: boolean; // variable row whose period is "≈ created"
   isReverseCharge: boolean;
   filing: boolean; // fixed row staged, awaiting Dropbox filing
+  filed: boolean; // has a filed Dropbox PDF (fixed rows only; variable = N/A)
   overhead?: Overhead;
   payable?: Payable;
 }
@@ -304,6 +305,7 @@ export function buildMoneyOutRows(
     approxPeriod: false,
     isReverseCharge: o.is_reverse_charge,
     filing: !!o.staging_storage_path && !o.dropbox_path,
+    filed: !!o.dropbox_path,
     overhead: o,
   }));
   const variable: MoneyOutRow[] = payables.map((p) => ({
@@ -320,6 +322,7 @@ export function buildMoneyOutRows(
     approxPeriod: APPROX_PERIOD_SOURCES.has(p.source_table) && !!p.period_date,
     isReverseCharge: false,
     filing: false,
+    filed: false,
     payable: p,
   }));
   return [...fixed, ...variable];
@@ -366,6 +369,7 @@ export interface MoneyInInvoice {
   stripe_checkout_url: string | null;
   project_id: string | null;
   user_id: string;
+  dropbox_path?: string | null;
 }
 
 export interface ReverseChargeItem {
