@@ -97,6 +97,8 @@ export interface AccountListProps {
   eyebrow: string;
   /** Sub-headline paragraph below the title. */
   subtitle: string;
+  /** Render in the three-tier redesign (gradient panel + tiles). */
+  panel?: boolean;
   /** Filter accounts by these types. */
   accountTypes: Array<"partnership" | "project" | "team">;
   /** Label for the primary action button (e.g. "Add Client"). */
@@ -219,6 +221,7 @@ export function AccountList({
   title,
   eyebrow,
   subtitle,
+  panel = false,
   accountTypes,
   addButtonLabel,
   showClientCode = false,
@@ -912,10 +915,12 @@ export function AccountList({
             <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold">{eyebrow}</span>
           </div>
-          <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4 uppercase">
-            {title}
-          </h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          {!panel && (
+            <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4 uppercase">
+              {title}
+            </h1>
+          )}
+          <p className={panel ? "mt-3 text-sm text-recessive" : "text-sm text-muted-foreground"}>{subtitle}</p>
         </div>
         <Dialog
           open={isAddDialogOpen}
@@ -1399,7 +1404,7 @@ export function AccountList({
             <BrandLoader size="md" />
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-12 text-center">
+          <div className={(panel ? "ssr-tile" : "rounded-lg border border-border bg-card") + " p-12 text-center"}>
             <p className="text-muted-foreground">
               {searchQuery ? `No ${title.toLowerCase()} match your search` : `No ${title.toLowerCase()} yet`}
             </p>
@@ -1410,7 +1415,7 @@ export function AccountList({
               const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
               return (
-                <div key={group.account_id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div key={group.account_id} className={(panel ? "ssr-tile" : "rounded-xl border border-border bg-card shadow-sm") + " overflow-hidden"}>
                   {/* Account header */}
                   <div
                     onClick={headerClickable ? () => navigate(`/admin/projects?client=${group.account_id}`) : undefined}

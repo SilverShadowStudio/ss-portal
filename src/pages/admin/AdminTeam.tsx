@@ -8,8 +8,9 @@ export default function AdminTeam() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   return (
-    <AdminLayout>
+    <AdminLayout panel>
       <AccountList
+        panel
         title="Team"
         eyebrow="Team Management"
         subtitle="Manage freelancers and team members."
