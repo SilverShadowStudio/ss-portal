@@ -565,9 +565,20 @@ export function AccountList({
         return (a.joined_at ?? "").localeCompare(b.joined_at ?? "");
       });
     }
-    return Array.from(byId.values()).sort((a, b) =>
-      a.company_name.localeCompare(b.company_name),
-    );
+    // Most recently connected account at the top, never-connected at the
+    // bottom, so it's clear at a glance who actually uses the portal.
+    const lastLogin = (g: AccountGroup): string | null =>
+      g.users.reduce<string | null>(
+        (max, u) => (u.last_login_at && (!max || u.last_login_at > max) ? u.last_login_at : max),
+        null,
+      );
+    return Array.from(byId.values()).sort((a, b) => {
+      const la = lastLogin(a), lb = lastLogin(b);
+      if (la && lb) return lb.localeCompare(la); // most recent first
+      if (la) return -1; // a has connected, b never → a above
+      if (lb) return 1; // b has connected, a never → b above
+      return a.company_name.localeCompare(b.company_name); // neither connected → alphabetical
+    });
   }, [accountUsers]);
 
   const filteredGroups = useMemo<AccountGroup[]>(() => {
@@ -906,16 +917,13 @@ export function AccountList({
   return (
     <>
       {/* Header */}
-      <div className="mb-10 flex items-end justify-between animate-fade-in">
+      <div className="mb-10 flex items-start justify-between animate-fade-in">
         <div>
           <div className="mb-4 flex items-center gap-3">
             <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold">{eyebrow}</span>
           </div>
-          <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground md:text-5xl mb-4 uppercase">
-            {title}
-          </h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          <p className="mt-3 text-sm text-recessive">{subtitle}</p>
         </div>
         <Dialog
           open={isAddDialogOpen}
@@ -932,13 +940,15 @@ export function AccountList({
             }
           }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 pt-1">
             {headerActions}
             <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                {addButtonLabel}
-              </Button>
+              <button
+                className="flex h-[38px] items-center gap-2.5 rounded-lg border border-[#C9A96A]/45 px-[18px] transition-colors duration-300 hover:border-[#C9A96A]/80 hover:bg-[#C9A96A]/[0.12] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#C9A96A]/60"
+              >
+                <Plus className="h-[13px] w-[13px] text-[#C9A96A]" strokeWidth={1.5} />
+                <span className="text-[11px] uppercase tracking-[0.18em] text-[#C9A96A]">{addButtonLabel}</span>
+              </button>
             </DialogTrigger>
           </div>
           <DialogContent
@@ -1379,18 +1389,28 @@ export function AccountList({
         </Dialog>
       </div>
 
-      {/* Search */}
-      <div className="mb-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={`Search ${title.toLowerCase()}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {/* Directory — a light section holds the search + tiles.
+          Dark tiles never sit on the gradient directly. */}
+      <div className="ssr-zone">
+        <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-6 bg-gold-muted" />
+            <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
+          </div>
+          <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="SEARCH"
+              aria-label={`Search ${title.toLowerCase()}`}
+              className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
+          </div>
         </div>
-      </div>
 
       {/* List */}
       <div className="animate-fade-in" style={{ animationDelay: "0.15s" }}>
@@ -1399,7 +1419,7 @@ export function AccountList({
             <BrandLoader size="md" />
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-12 text-center">
+          <div className="ssr-tile p-12 text-center">
             <p className="text-muted-foreground">
               {searchQuery ? `No ${title.toLowerCase()} match your search` : `No ${title.toLowerCase()} yet`}
             </p>
@@ -1410,7 +1430,7 @@ export function AccountList({
               const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
               return (
-                <div key={group.account_id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div key={group.account_id} className="ssr-tile overflow-hidden">
                   {/* Account header */}
                   <div
                     onClick={headerClickable ? () => navigate(`/admin/projects?client=${group.account_id}`) : undefined}
@@ -1747,6 +1767,7 @@ export function AccountList({
             })}
           </div>
         )}
+      </div>
       </div>
 
       {/* Register Them — engagement contract draft form */}

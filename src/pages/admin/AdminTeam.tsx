@@ -8,7 +8,7 @@ export default function AdminTeam() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   return (
-    <AdminLayout>
+    <AdminLayout panel>
       <AccountList
         title="Team"
         eyebrow="Team Management"

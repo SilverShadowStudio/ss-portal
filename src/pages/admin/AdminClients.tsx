@@ -3,7 +3,7 @@ import { AccountList } from "@/components/admin/AccountList";
 
 export default function AdminClients() {
   return (
-    <AdminLayout>
+    <AdminLayout panel>
       <AccountList
         title="Clients"
         eyebrow="Client Management"
