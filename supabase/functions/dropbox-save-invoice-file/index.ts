@@ -55,8 +55,8 @@ function sanitizeRef(s: string): string {
     .slice(0, 60) || "invoice";
 }
 
-function buildFilename(ref: string): string {
-  return `SilverShadowStudio_Invoice_${sanitizeRef(ref)}.pdf`;
+function buildFilename(ref: string, ext = ".pdf"): string {
+  return `SilverShadowStudio_Invoice_${sanitizeRef(ref)}${ext}`;
 }
 
 /** An ISO timestamp or date → the "Invoices-Outgoing_{YYYY-MM}_{Month}" folder. */
@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invErr } = await sb
       .from("invoices")
       .select(
-        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id, dropbox_path",
+        "id, type, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id, dropbox_path",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -247,55 +247,82 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Path (folder + filename) ───────────────────────────────────────────
+    // ── Path folder + ref ──────────────────────────────────────────────────
     const folder = buildFolderPath(invoice.issued_at ?? invoice.created_at);
     if (!folder) return json({ success: false, error: `invalid invoice date` }, 400);
     // NOTE: {ref} for the filename. Real invoice_numbers are e.g. BAL-{quote}-{suffix};
     // reference_number is the project/quotation ref. Uses invoice_number then
     // reference_number — swap this one line once the canonical scheme is fixed.
     const ref = invoice.invoice_number || invoice.reference_number || invoice.id;
-    const targetPath = `${folder}/${buildFilename(ref)}`;
 
-    // ── Generate the PDF (identical design to download-invoice-pdf) ─────────
-    // Project: prefer the direct link, else derive it from the quote.
-    let projectName: string | null = null;
-    let projId: string | null = (invoice as any).project_id ?? null;
-    if (!projId && (invoice as any).quotation_id) {
-      const { data: q } = await sb
-        .from("quotation_documents").select("project_id").eq("id", (invoice as any).quotation_id).maybeSingle();
-      projId = (q as any)?.project_id ?? null;
+    // ── PDF bytes ──────────────────────────────────────────────────────────
+    // External (uploaded) income invoices are raised outside the portal (Xero),
+    // so we file the ORIGINAL upload from Storage — a generated PDF would be
+    // blank (no client account). Portal invoices are generated in-house.
+    let pdfBytes: Uint8Array;
+    let fileExt = ".pdf";
+    if ((invoice as any).type === "external") {
+      const { data: files, error: listErr } = await sb.storage
+        .from("income-invoices").list("", { search: invoiceId, limit: 100 });
+      if (listErr) return json({ success: false, error: `storage list failed: ${listErr.message}` }, 500);
+      const orig = files?.find((f) => f.name.startsWith(invoiceId));
+      if (!orig) {
+        // Original not uploaded yet (e.g. the auto-file trigger fired on insert
+        // before the frontend finished uploading). The explicit call the upload
+        // flow makes after the upload will file it — skip quietly for now.
+        return json({ success: true, skipped: "awaiting_original" });
+      }
+      const { data: blob, error: dlErr } = await sb.storage
+        .from("income-invoices").download(orig.name);
+      if (dlErr || !blob) {
+        return json({ success: false, error: `original download failed: ${dlErr?.message ?? "no data"}` }, 500);
+      }
+      pdfBytes = new Uint8Array(await blob.arrayBuffer());
+      const dot = orig.name.lastIndexOf(".");
+      if (dot > -1) fileExt = orig.name.slice(dot).toLowerCase();
+    } else {
+      // ── Generate the PDF (identical design to download-invoice-pdf) ───────
+      // Project: prefer the direct link, else derive it from the quote.
+      let projectName: string | null = null;
+      let projId: string | null = (invoice as any).project_id ?? null;
+      if (!projId && (invoice as any).quotation_id) {
+        const { data: q } = await sb
+          .from("quotation_documents").select("project_id").eq("id", (invoice as any).quotation_id).maybeSingle();
+        projId = (q as any)?.project_id ?? null;
+      }
+      if (projId) {
+        const { data: project } = await sb
+          .from("projects").select("name").eq("id", projId).maybeSingle();
+        projectName = project?.name ?? null;
+      }
+      const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
+      pdfBytes = generateInvoicePdfV2({
+        invoice_number: invoice.invoice_number,
+        reference_number: invoice.reference_number,
+        amount: Number(invoice.amount),
+        currency: invoice.currency,
+        status: invoice.status,
+        due_date: invoice.due_date,
+        issued_at: invoice.issued_at,
+        created_at: invoice.created_at,
+        notes: invoice.notes,
+        line_items: items,
+        client_company: clientCompany,
+        client_name: clientName,
+        client_address: clientAddress,
+        client_country: clientCountry,
+        client_registration: clientRegistration,
+        client_email: clientEmail,
+        client_position: clientPosition,
+        subtotal: invoice.subtotal,
+        vat_rate: invoice.vat_rate,
+        vat_amount: invoice.vat_amount,
+        bank_account: (invoice as any).bank_account,
+        project_name: projectName,
+        stripe_url: (invoice as any).stripe_checkout_url ?? null,
+      });
     }
-    if (projId) {
-      const { data: project } = await sb
-        .from("projects").select("name").eq("id", projId).maybeSingle();
-      projectName = project?.name ?? null;
-    }
-    const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
-    const pdfBytes = generateInvoicePdfV2({
-      invoice_number: invoice.invoice_number,
-      reference_number: invoice.reference_number,
-      amount: Number(invoice.amount),
-      currency: invoice.currency,
-      status: invoice.status,
-      due_date: invoice.due_date,
-      issued_at: invoice.issued_at,
-      created_at: invoice.created_at,
-      notes: invoice.notes,
-      line_items: items,
-      client_company: clientCompany,
-      client_name: clientName,
-      client_address: clientAddress,
-      client_country: clientCountry,
-      client_registration: clientRegistration,
-      client_email: clientEmail,
-      client_position: clientPosition,
-      subtotal: invoice.subtotal,
-      vat_rate: invoice.vat_rate,
-      vat_amount: invoice.vat_amount,
-      bank_account: (invoice as any).bank_account,
-      project_name: projectName,
-      stripe_url: (invoice as any).stripe_checkout_url ?? null,
-    });
+    const targetPath = `${folder}/${buildFilename(ref, fileExt)}`;
 
     // ── Dropbox connection + namespace ─────────────────────────────────────
     const { data: conn } = await sb.from("dropbox_connections")

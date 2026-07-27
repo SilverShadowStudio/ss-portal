@@ -82,6 +82,9 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
+  // The original uploaded file (Xero PDF etc.). Retained so we can file it to
+  // Dropbox — policy: no P&L entry without a corresponding Dropbox file.
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const { toast } = useToast();
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -90,10 +93,12 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
 
   function openBlank() {
     setForm(EMPTY);
+    setSourceFile(null);
     setFormOpen(true);
   }
 
-  function handleExtracted(data: Record<string, unknown>) {
+  function handleExtracted(data: Record<string, unknown>, file?: File) {
+    setSourceFile(file ?? null);
     const net = num(data.net_total);
     const vat = num(data.vat_amount);
     const gross = num(data.gross_total);
@@ -150,7 +155,7 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
 
     const paid = form.paid === "paid";
     const invoiceDate = form.invoiceDate || null;
-    const { error } = await supabase.from("invoices").insert({
+    const { data: inserted, error } = await supabase.from("invoices").insert({
       user_id: userId,
       type: "external",
       status: paid ? "paid" : "sent",
@@ -164,13 +169,38 @@ export function IncomeInvoiceUpload({ onSaved }: Props) {
       currency: form.currency || "GBP",
       notes: form.clientName || null,
       line_items: form.lineItems ?? null,
-    } as never);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Couldn't save the income invoice", description: error.message, variant: "destructive" });
+    } as never).select("id").single();
+    if (error || !inserted) {
+      setSaving(false);
+      toast({ title: "Couldn't save the income invoice", description: error?.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Income invoice added" });
+
+    // File the original upload to Dropbox (policy: no P&L entry without a file).
+    // Manual entries have no source file — they stay "Not filed" until one is added.
+    const invoiceId = (inserted as { id: string }).id;
+    if (sourceFile) {
+      const ext = sourceFile.name.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() ?? ".pdf";
+      const { error: upErr } = await supabase.storage
+        .from("income-invoices")
+        .upload(`${invoiceId}${ext}`, sourceFile, { contentType: sourceFile.type, upsert: true });
+      if (upErr) {
+        toast({ title: "Recorded, but the file didn't upload", description: upErr.message, variant: "destructive" });
+      } else {
+        const { data: filed, error: fileErr } = await supabase.functions.invoke(
+          "dropbox-save-invoice-file",
+          { body: { invoice_id: invoiceId } },
+        );
+        if (fileErr || (filed as { success?: boolean })?.success === false) {
+          toast({ title: "Recorded, but filing to Dropbox failed", description: "Use “File to Dropbox” on the invoice to retry.", variant: "destructive" });
+        } else {
+          toast({ title: "Income invoice added & filed to Dropbox" });
+        }
+      }
+    } else {
+      toast({ title: "Income invoice added", description: "No file attached — it will show as “Not filed”." });
+    }
+    setSaving(false);
     setFormOpen(false);
     onSaved();
   }
