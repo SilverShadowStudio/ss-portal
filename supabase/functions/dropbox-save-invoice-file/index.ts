@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
     let projId: string | null = (invoice as any).project_id ?? null;
     if (!projId && (invoice as any).quotation_id) {
       const { data: q } = await sb
-        .from("quotations").select("project_id").eq("id", (invoice as any).quotation_id).maybeSingle();
+        .from("quotation_documents").select("project_id").eq("id", (invoice as any).quotation_id).maybeSingle();
       projId = (q as any)?.project_id ?? null;
     }
     if (projId) {

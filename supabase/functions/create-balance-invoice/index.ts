@@ -49,46 +49,65 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!roleRow) return json({ error: 'Forbidden' }, 403)
 
-  let body: { scene_id?: string }
+  let body: { scene_id?: string; invoice_id?: string }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON' }, 400)
   }
-  const sceneId = body?.scene_id
-  if (!sceneId || typeof sceneId !== 'string') {
-    return json({ error: 'scene_id required' }, 400)
+
+  // Resolve the source quotation + account/project from EITHER a deposit
+  // invoice (preferred — balances the same quotation) or a scene.
+  const QUOTE_COLS = 'id, account_id, user_id, project_id, quotation_number, reference_number, currency, gross_total, net_total, vat_rate, deposit_percentage, amount, signed_at'
+  let quotation: any = null
+  let accountId: string | null = null
+  let projectId: string | null = null
+  let userId: string | null = null
+  let sceneName: string | null = null
+
+  if (body.invoice_id) {
+    const { data: dep, error: depErr } = await admin
+      .from('invoices')
+      .select('id, account_id, project_id, quotation_id, user_id')
+      .eq('id', body.invoice_id)
+      .maybeSingle()
+    if (depErr || !dep) return json({ error: 'Invoice not found' }, 404)
+    if (!dep.quotation_id) return json({ error: 'This invoice is not linked to a quotation, so no balance can be raised' }, 422)
+    const { data: q, error: qErr } = await admin
+      .from('quotation_documents').select(QUOTE_COLS).eq('id', dep.quotation_id).maybeSingle()
+    if (qErr || !q) return json({ error: 'Linked quotation not found' }, 404)
+    quotation = q
+    accountId = q.account_id ?? dep.account_id ?? null
+    projectId = q.project_id ?? dep.project_id ?? null
+    userId = q.user_id ?? dep.user_id ?? null
+  } else if (body.scene_id) {
+    const { data: scene, error: sceneErr } = await admin
+      .from('scenes').select('id, name, project_id').eq('id', body.scene_id).maybeSingle()
+    if (sceneErr || !scene) return json({ error: 'Scene not found' }, 404)
+    const { data: project, error: projErr } = await admin
+      .from('projects').select('id, name, account_id, user_id').eq('id', scene.project_id).maybeSingle()
+    if (projErr || !project) return json({ error: 'Project not found' }, 404)
+    if (!project.account_id) return json({ error: 'Project has no account_id' }, 422)
+    const { data: q, error: qErr } = await admin
+      .from('quotation_documents').select(QUOTE_COLS)
+      .eq('account_id', project.account_id).eq('status', 'signed')
+      .order('signed_at', { ascending: false }).limit(1).maybeSingle()
+    if (qErr || !q) return json({ error: 'No signed quotation found for this account' }, 404)
+    quotation = q
+    accountId = project.account_id
+    projectId = project.id
+    userId = project.user_id
+    sceneName = scene.name
+  } else {
+    return json({ error: 'scene_id or invoice_id required' }, 400)
   }
 
-  // Resolve scene → project → account
-  const { data: scene, error: sceneErr } = await admin
-    .from('scenes')
-    .select('id, name, project_id')
-    .eq('id', sceneId)
-    .maybeSingle()
-  if (sceneErr || !scene) return json({ error: 'Scene not found' }, 404)
-
-  const { data: project, error: projErr } = await admin
-    .from('projects')
-    .select('id, name, account_id, user_id')
-    .eq('id', scene.project_id)
-    .maybeSingle()
-  if (projErr || !project) return json({ error: 'Project not found' }, 404)
-
-  const accountId = project.account_id
-  if (!accountId) return json({ error: 'Project has no account_id' }, 422)
-
-  // Most recent signed quotation for the account
-  const { data: quotation, error: qErr } = await admin
-    .from('quotation_documents')
-    .select('id, account_id, user_id, quotation_number, reference_number, currency, gross_total, net_total, vat_rate, deposit_percentage, amount, signed_at')
-    .eq('account_id', accountId)
-    .eq('status', 'signed')
-    .order('signed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (qErr || !quotation) {
-    return json({ error: 'No signed quotation found for this account' }, 404)
+  // Never raise a second balance invoice for the same quotation.
+  const { data: existingBal } = await admin
+    .from('invoices').select('id, invoice_number')
+    .eq('quotation_id', quotation.id).eq('type', 'balance').maybeSingle()
+  if (existingBal) {
+    return json({ success: false, alreadyExists: true, error: `A balance invoice already exists for this quotation (${existingBal.invoice_number}).`, invoiceId: existingBal.id, invoiceNumber: existingBal.invoice_number }, 200)
   }
 
   const grossTotal = Number(quotation.gross_total ?? quotation.amount ?? 0)
@@ -111,15 +130,15 @@ Deno.serve(async (req) => {
 
   const quotationNumber = quotation.quotation_number || quotation.reference_number || ''
   const suffix = Date.now().toString(36).toUpperCase().slice(-4)
-  const balanceInvoiceNumber = `BAL-${quotationNumber || sceneId.slice(0, 8)}-${suffix}`
+  const balanceInvoiceNumber = `BAL-${quotationNumber || quotation.id.slice(0, 8)}-${suffix}`
   const remainingPct = +(100 - depositPct).toFixed(2)
 
   const { data: invoice, error: invErr } = await admin
     .from('invoices')
     .insert({
       account_id: accountId,
-      user_id: quotation.user_id ?? project.user_id ?? null,
-      project_id: project.id,
+      user_id: userId ?? null,
+      project_id: projectId,
       invoice_number: balanceInvoiceNumber,
       reference_number: balanceInvoiceNumber,
       quotation_id: quotation.id,
@@ -134,7 +153,7 @@ Deno.serve(async (req) => {
       issued_at: issuedAt,
       notes: `${remainingPct}% balance for quotation ${quotationNumber}`,
       line_items: [{
-        description: `${remainingPct}% Balance — ${quotationNumber}${scene.name ? ` (${scene.name})` : ''}`,
+        description: `${remainingPct}% Balance - ${quotationNumber}${sceneName ? ` (${sceneName})` : ''}`,
         quantity: 1,
         unit_price: balanceAmount,
       }],

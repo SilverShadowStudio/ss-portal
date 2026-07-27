@@ -33,7 +33,7 @@ const BANK_ACCOUNTS: BankAccount[] = [
     iban: "GB91 REVO 0099 6974 0692 71",
   },
 ];
-import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2, FolderUp } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2, FolderUp, FilePlus2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,7 @@ interface InvoiceRow {
   vat_rate?: number | null;
   vat_amount?: number | null;
   stripe_checkout_url?: string | null;
+  type?: string | null;
 }
 
 const STATUSES = ["draft", "sent", "paid", "overdue", "cancelled"] as const;
@@ -89,6 +90,7 @@ export default function AdminInvoices() {
   const [createOpen, setCreateOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [filingId, setFilingId] = useState<string | null>(null);
+  const [balanceId, setBalanceId] = useState<string | null>(null);
   const [creatingLinkId, setCreatingLinkId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
@@ -241,6 +243,31 @@ export default function AdminInvoices() {
     }
   }
 
+  async function sendBalanceInvoice(r: InvoiceRow) {
+    setBalanceId(r.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-balance-invoice", {
+        body: { invoice_id: r.id },
+      });
+      if (error) {
+        let msg = error.message;
+        try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        toast({ title: "Couldn't create balance invoice", description: msg, variant: "destructive" });
+      } else if (data?.alreadyExists) {
+        toast({ title: "Balance already exists", description: data.error });
+      } else if (data?.success) {
+        toast({ title: "Balance invoice created", description: data.invoiceNumber });
+        fetchInvoices();
+      } else {
+        toast({ title: "Couldn't create balance invoice", description: data?.error || "Unknown error", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "Couldn't create balance invoice", description: e?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setBalanceId(null);
+    }
+  }
+
   async function createPaymentLink(id: string) {
     setCreatingLinkId(id);
     try {
@@ -379,6 +406,7 @@ export default function AdminInvoices() {
               filtered.map((r) => {
                 const downloading = downloadingId === r.id;
                 const filing = filingId === r.id;
+                const balance = balanceId === r.id;
                 return (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => viewInvoice(r)}>
                   <TableCell className="font-medium">{r.invoice_number || r.reference_number || "—"}</TableCell>
@@ -459,6 +487,16 @@ export default function AdminInvoices() {
                             )}
                             {filing ? "Filing…" : "File to Dropbox"}
                           </DropdownMenuItem>
+                          {r.type === "deposit" && (
+                            <DropdownMenuItem onClick={() => !balance && sendBalanceInvoice(r)} disabled={balance}>
+                              {balance ? (
+                                <BrandLoader size="sm" className="mr-2 h-4 w-4" />
+                              ) : (
+                                <FilePlus2 className="mr-2 h-4 w-4" />
+                              )}
+                              {balance ? "Creating…" : "Send Balance Invoice"}
+                            </DropdownMenuItem>
+                          )}
                           {r.status !== "sent" && (
                             <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>
                           )}
