@@ -50,6 +50,7 @@ export interface InvoicePdfInput {
   due_date: string | null;
   issued_at: string | null;
   created_at: string;
+  paid_at?: string | null;
   notes: string | null;
   line_items: InvoiceLineItem[];
   client_company?: string | null;

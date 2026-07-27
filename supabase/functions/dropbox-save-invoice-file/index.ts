@@ -17,10 +17,8 @@
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import {
-  generateInvoicePdfV2,
-  type InvoiceLineItem,
-} from "../_shared/documents/invoicePdf.ts";
+import { type InvoiceLineItem } from "../_shared/documents/invoicePdf.ts";
+import { generateInvoicePdfV3 } from "../_shared/documents/invoicePdfV3.ts";
 
 const DROPBOX_ROOT = "/03_Portal_Admin_Docs/03_Invoices/INV001_Receivable";
 
@@ -200,7 +198,7 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invErr } = await sb
       .from("invoices")
       .select(
-        "id, type, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id, dropbox_path",
+        "id, type, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, paid_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id, dropbox_path",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -296,7 +294,7 @@ Deno.serve(async (req) => {
         projectName = project?.name ?? null;
       }
       const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
-      pdfBytes = generateInvoicePdfV2({
+      pdfBytes = generateInvoicePdfV3({
         invoice_number: invoice.invoice_number,
         reference_number: invoice.reference_number,
         amount: Number(invoice.amount),
@@ -305,6 +303,7 @@ Deno.serve(async (req) => {
         due_date: invoice.due_date,
         issued_at: invoice.issued_at,
         created_at: invoice.created_at,
+        paid_at: (invoice as any).paid_at ?? null,
         notes: invoice.notes,
         line_items: items,
         client_company: clientCompany,
