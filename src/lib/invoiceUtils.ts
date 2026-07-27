@@ -118,6 +118,16 @@ export async function generateInvoicePdf(sourceElement: HTMLElement, fileName?: 
   };
 }
 
+/** File the invoice's PDF to Dropbox (INV001_Receivable). Returns the Dropbox path. */
+export async function fileInvoiceToDropbox(invoiceId: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("dropbox-save-invoice-file", {
+    body: { invoice_id: invoiceId },
+  });
+  if (error) throw error;
+  if (!data?.success) throw new Error(data?.error || "Filing failed");
+  return data.dropbox_path as string;
+}
+
 export async function downloadInvoicePdfFromBackend(invoiceId: string) {
   console.log("[invoice-download] opening diagnostic tab");
   const popup = window.open("", "_blank", "noopener,noreferrer");

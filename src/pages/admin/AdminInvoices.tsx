@@ -33,7 +33,7 @@ const BANK_ACCOUNTS: BankAccount[] = [
     iban: "GB91 REVO 0099 6974 0692 71",
   },
 ];
-import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2 } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2, FolderUp } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ import { InvoiceFormDialog } from "@/components/admin/InvoiceFormDialog";
 import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
 import {
   formatCurrency, formatDate, statusBadgeClasses, statusLabel,
-  downloadInvoicePdfFromBackend, type InvoiceLineItem,
+  downloadInvoicePdfFromBackend, fileInvoiceToDropbox, type InvoiceLineItem,
 } from "@/lib/invoiceUtils";
 
 interface InvoiceRow {
@@ -88,6 +88,7 @@ export default function AdminInvoices() {
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [filingId, setFilingId] = useState<string | null>(null);
   const [creatingLinkId, setCreatingLinkId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
@@ -228,6 +229,18 @@ export default function AdminInvoices() {
     }
   }
 
+  async function fileToDropbox(r: InvoiceRow) {
+    setFilingId(r.id);
+    try {
+      const path = await fileInvoiceToDropbox(r.id);
+      toast({ title: "Filed to Dropbox", description: path });
+    } catch (e: any) {
+      toast({ title: "Could not file to Dropbox", description: e?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setFilingId(null);
+    }
+  }
+
   async function createPaymentLink(id: string) {
     setCreatingLinkId(id);
     try {
@@ -365,6 +378,7 @@ export default function AdminInvoices() {
             ) : (
               filtered.map((r) => {
                 const downloading = downloadingId === r.id;
+                const filing = filingId === r.id;
                 return (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => viewInvoice(r)}>
                   <TableCell className="font-medium">{r.invoice_number || r.reference_number || "—"}</TableCell>
@@ -436,6 +450,14 @@ export default function AdminInvoices() {
                               <Download className="mr-2 h-4 w-4" />
                             )}
                             {downloading ? "Preparing PDF…" : "Download PDF"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => !filing && fileToDropbox(r)} disabled={filing}>
+                            {filing ? (
+                              <BrandLoader size="sm" className="mr-2 h-4 w-4" />
+                            ) : (
+                              <FolderUp className="mr-2 h-4 w-4" />
+                            )}
+                            {filing ? "Filing…" : "File to Dropbox"}
                           </DropdownMenuItem>
                           {r.status !== "sent" && (
                             <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>
