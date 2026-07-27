@@ -498,21 +498,18 @@ export default function AdminPnL() {
             <div className="h-px w-6 bg-gold-muted" />
             <h2 className="text-label">Summary</h2>
           </div>
-          <div className="flex items-center gap-3">
-            <Select value={period.key} onValueChange={setPeriodKey}>
-              <SelectTrigger className="h-8 w-[170px] rounded-sm text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {periodOptions.map((o) => (
-                  <SelectItem key={o.key} value={o.key}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="whitespace-nowrap text-xs text-recessive">VAT-inclusive</span>
-          </div>
+          <Select value={period.key} onValueChange={setPeriodKey}>
+            <SelectTrigger className="h-8 w-[170px] rounded-sm text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {periodOptions.map((o) => (
+                <SelectItem key={o.key} value={o.key}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <FinanceSummary
           revenue={revenue}
