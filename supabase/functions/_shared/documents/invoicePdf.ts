@@ -208,16 +208,16 @@ export function generateInvoicePdfV2(invoice: InvoicePdfInput): Uint8Array {
   for (const it of items) {
     const qty = Number(it.quantity) || 0, unit = Number(it.unit_price) || 0;
     const total = qty * unit;
-    setT(10, ink);
+    setT(7, ink); // item lines 30% smaller than the totals
     const dl: string[] = pdf.splitTextToSize(deDash(it.description || "-"), descW);
-    const rowH = Math.max(11, dl.length * 4.9 + 6);
+    const rowH = Math.max(8, dl.length * 3.4 + 5);
     if (y + rowH > safeBottom) { pdf.addPage(); paintPageBackground(pdf, bgCream); y = drawItemsHeader(24); }
-    const textY = y + 6.5;
-    setT(10, ink); pdf.text(dl, margin, textY, { lineHeightFactor: 1.25 });
+    const textY = y + 4.9;
+    setT(7, ink); pdf.text(dl, margin, textY, { lineHeightFactor: 1.2 });
     if (total === 0) {
-      setT(9, muted); pdf.text("Included", rightX, textY, { align: "right" });
+      setT(6.3, muted); pdf.text("Included", rightX, textY, { align: "right" });
     } else {
-      setT(10, ink); pdf.text(formatCurrencyPdf(total, currency), rightX, textY, { align: "right" });
+      setT(7, ink); pdf.text(formatCurrencyPdf(total, currency), rightX, textY, { align: "right" });
     }
     y += rowH;
     hair(y);
