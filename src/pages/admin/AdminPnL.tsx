@@ -355,10 +355,22 @@ export default function AdminPnL() {
     () => computeQuarterVat(invoices, overheads, previousQuarter),
     [invoices, overheads, previousQuarter],
   );
-  // VAT is quarterly — the tile always shows the live current-quarter estimate,
-  // regardless of the (often multi-quarter) P&L period selected above.
-  const summaryVat = currentVat;
-  const summaryVatLabel = currentQuarter.label;
+
+  // Net VAT for the SELECTED period (cash basis): output VAT on invoices paid
+  // in-period minus input VAT on overheads paid in-period (reverse-charge
+  // excluded). Because the spine is VAT-inclusive, subtracting this reconciles
+  // Operating profit down to a net-of-VAT Net profit.
+  const periodVat = useMemo(() => {
+    const output = invoices
+      .filter((i) => i.status === "paid" && inPeriod(i.paid_at))
+      .reduce((s, i) => s + Number(i.vat_amount ?? 0), 0);
+    const input = overheads
+      .filter((o) => o.payment_status === "paid" && inPeriod(o.payment_date) && !o.is_reverse_charge)
+      .reduce((s, o) => s + Number(o.vat_amount ?? 0), 0);
+    return output - input;
+  }, [invoices, overheads, inPeriod]);
+
+  const netProfit = operatingProfit - periodVat;
 
   // ---- Row-click / open handlers -----------------------------------------
   function openMoneyOutRow(r: MoneyOutRow) {
@@ -508,10 +520,11 @@ export default function AdminPnL() {
           fixedCost={fixedCost}
           grossProfit={grossProfit}
           operatingProfit={operatingProfit}
+          netProfit={netProfit}
           outstandingIn={outstandingIn}
           outstandingOut={outstandingOut}
-          vatNet={summaryVat.netVat}
-          vatLabel={summaryVatLabel}
+          vatNet={periodVat}
+          vatLabel={period.label}
           active={activeSection}
           moneyOutType={moType}
           onSelect={handleSelectSection}

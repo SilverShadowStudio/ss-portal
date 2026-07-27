@@ -5,16 +5,17 @@ export type FinanceSectionKey = "moneyIn" | "moneyOut" | "vat";
 export type MoneyOutKind = "fixed" | "variable";
 
 interface FinanceSummaryProps {
-  /** All figures are this-quarter totals, VAT-inclusive. */
+  /** All figures are for the selected period, VAT-inclusive. */
   revenue: number;
   variableCost: number;
   fixedCost: number;
   grossProfit: number;
   operatingProfit: number;
+  netProfit: number;
   outstandingIn: number;
   outstandingOut: number;
   vatNet: number;
-  /** Quarter label shown on the VAT tile (VAT stays quarterly). */
+  /** Period label shown on the VAT line. */
   vatLabel: string;
   active?: FinanceSectionKey | null;
   /** Which Money-out kind the open section is filtered to (for tile highlight). */
@@ -29,6 +30,7 @@ export function FinanceSummary({
   fixedCost,
   grossProfit,
   operatingProfit,
+  netProfit,
   outstandingIn,
   outstandingOut,
   vatNet,
@@ -38,79 +40,54 @@ export function FinanceSummary({
   onSelect,
 }: FinanceSummaryProps) {
   return (
-    <div className="space-y-5">
-      {/* The three sources — each a tile you click to open its development below */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SourceTile
-          label="Revenue"
-          value={revenue}
-          active={active === "moneyIn"}
-          onClick={() => onSelect?.("moneyIn")}
-        />
-        <SourceTile
-          label="Variable production cost"
-          paren="Airtable"
-          value={variableCost}
-          active={active === "moneyOut" && moneyOutType === "variable"}
-          onClick={() => onSelect?.("moneyOut", "variable")}
-        />
-        <SourceTile
-          label="Operational fixed cost"
-          paren="Overheads"
-          value={fixedCost}
-          active={active === "moneyOut" && moneyOutType === "fixed"}
-          onClick={() => onSelect?.("moneyOut", "fixed")}
-        />
-      </div>
+    <div className="space-y-2">
+      {/* The P&L waterfall — sources are clickable tiles, running totals read
+          out on the card between them. */}
+      <SourceTile
+        label="Revenue"
+        value={revenue}
+        active={active === "moneyIn"}
+        onClick={() => onSelect?.("moneyIn")}
+      />
+      <SourceTile
+        op="−"
+        label="Variable production cost"
+        paren="Airtable"
+        value={variableCost}
+        active={active === "moneyOut" && moneyOutType === "variable"}
+        onClick={() => onSelect?.("moneyOut", "variable")}
+      />
+      <ProfitReadout label="Gross profit" value={grossProfit} />
 
-      {/* Derived profits — on the section card itself, not in tiles */}
-      <div className="flex flex-wrap items-baseline justify-end gap-x-12 gap-y-3 border-t border-divider pt-5">
-        <ProfitReadout label="Gross profit" hint="Revenue − variable" value={grossProfit} />
-        <ProfitReadout
-          label="Operating profit"
-          hint="Gross − fixed"
-          value={operatingProfit}
-          strong
-        />
-      </div>
+      <SourceTile
+        op="−"
+        label="Operational fixed cost"
+        paren="Overheads"
+        value={fixedCost}
+        active={active === "moneyOut" && moneyOutType === "fixed"}
+        onClick={() => onSelect?.("moneyOut", "fixed")}
+      />
+      <ProfitReadout label="Operating profit" value={operatingProfit} />
 
-      {/* Secondary reads — VAT (clickable) and outstanding balances */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => onSelect?.("vat")}
-          aria-pressed={active === "vat"}
-          className={cn(
-            "ssr-tile w-full p-5 text-left transition-all duration-200",
-            active === "vat"
-              ? "ring-1 ring-gold/60"
-              : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
-          )}
-        >
-          <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">
-            VAT {vatLabel} · est.
-          </p>
-          <p
-            className={cn(
-              "font-serif text-lg tabular-nums",
-              vatNet !== 0 ? "text-gold" : "text-strong",
-            )}
-          >
-            {formatCurrency(vatNet)}
-          </p>
-          <p className="mt-2 text-[10px] uppercase tracking-[0.24em] text-gold-muted">
-            In progress · cash basis
-          </p>
-        </button>
+      <SourceTile
+        op="−"
+        label="VAT"
+        paren={vatLabel}
+        value={vatNet}
+        active={active === "vat"}
+        onClick={() => onSelect?.("vat")}
+      />
+      <ProfitReadout label="Net profit" value={netProfit} strong />
 
-        <div className="ssr-tile p-5">
-          <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40 mb-3">
-            Outstanding
-          </p>
-          <div className="space-y-2">
-            <Row label="Owed to you" value={formatCurrency(outstandingIn)} />
-            <Row label="You owe" value={formatCurrency(outstandingOut)} />
-          </div>
+      {/* Outstanding — "as of now", independent of the period */}
+      <div className="ssr-tile px-5 py-4">
+        <p className="mb-3 flex items-baseline gap-2 text-[10px] uppercase tracking-[0.24em] text-foreground/45">
+          <span className="w-3 shrink-0" />
+          Outstanding
+        </p>
+        <div className="grid grid-cols-2 gap-4 pl-5">
+          <Row label="Owed to you" value={formatCurrency(outstandingIn)} />
+          <Row label="You owe" value={formatCurrency(outstandingOut)} />
         </div>
       </div>
     </div>
@@ -118,12 +95,14 @@ export function FinanceSummary({
 }
 
 function SourceTile({
+  op,
   label,
   paren,
   value,
   active,
   onClick,
 }: {
+  op?: string;
   label: string;
   paren?: string;
   value: number;
@@ -136,50 +115,54 @@ function SourceTile({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "group ssr-tile w-full p-5 text-left transition-all duration-200",
-        active
-          ? "ring-1 ring-gold/60"
-          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
+        "group ssr-tile flex w-full items-baseline justify-between gap-4 px-5 py-4 text-left transition-all duration-200",
+        active ? "ring-1 ring-gold/60" : "hover:ring-1 hover:ring-white/10",
       )}
     >
-      <p className="mb-3 flex items-baseline gap-1.5 text-[9px] uppercase tracking-[0.28em] text-foreground/40">
-        <span>{label}</span>
-        {paren && <span className="text-foreground/25">({paren})</span>}
-      </p>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-serif text-2xl text-strong tabular-nums">
-          {formatCurrency(value)}
-        </span>
+      <span className="flex items-baseline gap-2 min-w-0">
+        <span className="w-3 shrink-0 text-sm text-recessive">{op ?? ""}</span>
+        <span className="text-[10px] uppercase tracking-[0.24em] text-foreground/50">{label}</span>
+        {paren && (
+          <span className="text-[10px] uppercase tracking-[0.24em] text-foreground/25">
+            ({paren})
+          </span>
+        )}
         <span className="text-xs text-gold opacity-0 transition-opacity group-hover:opacity-100">
           →
         </span>
-      </div>
+      </span>
+      <span className="shrink-0 font-serif text-xl text-strong tabular-nums">
+        {formatCurrency(value)}
+      </span>
     </button>
   );
 }
 
 function ProfitReadout({
   label,
-  hint,
   value,
   strong,
 }: {
   label: string;
-  hint?: string;
   value: number;
   strong?: boolean;
 }) {
   return (
-    <div className="flex items-baseline gap-3">
-      <span className="text-[10px] uppercase tracking-[0.24em] text-foreground/40">{label}</span>
-      {hint && (
-        <span className="hidden text-[10px] uppercase tracking-[0.2em] text-foreground/25 md:inline">
-          {hint}
+    <div className="flex items-baseline justify-between gap-4 px-5 py-1.5">
+      <span className="flex items-baseline gap-2">
+        <span className="w-3 shrink-0 text-sm text-recessive">=</span>
+        <span
+          className={cn(
+            "uppercase tracking-[0.24em]",
+            strong ? "text-[11px] text-gold" : "text-[10px] text-foreground/55",
+          )}
+        >
+          {label}
         </span>
-      )}
+      </span>
       <span
         className={cn(
-          "font-serif tabular-nums",
+          "shrink-0 font-serif tabular-nums",
           strong ? "text-3xl text-gold" : "text-2xl text-strong",
         )}
       >
