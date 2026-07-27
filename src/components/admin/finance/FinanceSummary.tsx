@@ -12,8 +12,6 @@ interface FinanceSummaryProps {
   grossProfit: number;
   operatingProfit: number;
   netProfit: number;
-  outstandingIn: number;
-  outstandingOut: number;
   vatNet: number;
   /** Period label shown on the VAT line. */
   vatLabel: string;
@@ -31,8 +29,6 @@ export function FinanceSummary({
   grossProfit,
   operatingProfit,
   netProfit,
-  outstandingIn,
-  outstandingOut,
   vatNet,
   vatLabel,
   active,
@@ -78,18 +74,6 @@ export function FinanceSummary({
         onClick={() => onSelect?.("vat")}
       />
       <ProfitReadout label="Net profit" value={netProfit} strong />
-
-      {/* Outstanding — "as of now", independent of the period */}
-      <div className="ssr-tile px-5 py-4">
-        <p className="mb-3 flex items-baseline gap-2 text-[10px] uppercase tracking-[0.24em] text-foreground/45">
-          <span className="w-3 shrink-0" />
-          Outstanding
-        </p>
-        <div className="grid grid-cols-2 gap-4 pl-5">
-          <Row label="Owed to you" value={formatCurrency(outstandingIn)} />
-          <Row label="You owe" value={formatCurrency(outstandingOut)} />
-        </div>
-      </div>
     </div>
   );
 }
@@ -168,15 +152,6 @@ function ProfitReadout({
       >
         {formatCurrency(value)}
       </span>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <span className="text-xs text-recessive">{label}</span>
-      <span className="font-serif text-lg text-strong tabular-nums">{value}</span>
     </div>
   );
 }

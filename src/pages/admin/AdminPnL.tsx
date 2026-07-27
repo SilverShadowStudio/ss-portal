@@ -22,6 +22,7 @@ import {
 import { VatIndicator } from "@/components/admin/finance/VatIndicator";
 import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
 import { MoneyOutTable } from "@/components/admin/finance/MoneyOutTable";
+import { OutstandingCards } from "@/components/admin/finance/OutstandingCards";
 import { PayableDetail } from "@/components/admin/finance/PayableDetail";
 import {
   InvoiceViewer,
@@ -518,8 +519,6 @@ export default function AdminPnL() {
           grossProfit={grossProfit}
           operatingProfit={operatingProfit}
           netProfit={netProfit}
-          outstandingIn={outstandingIn}
-          outstandingOut={outstandingOut}
           vatNet={periodVat}
           vatLabel={period.label}
           active={activeSection}
@@ -644,6 +643,15 @@ export default function AdminPnL() {
           <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
         </section>
       )}
+
+      {/* Outstanding — standing balances, independent of the selected period */}
+      <section className="ssr-zone mb-4">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="h-px w-6 bg-gold-muted" />
+          <h2 className="text-label">Outstanding</h2>
+        </div>
+        <OutstandingCards receivable={outstandingIn} payable={outstandingOut} />
+      </section>
 
       {/* Dialogs rendered unconditionally at page root */}
       <OverheadForm
