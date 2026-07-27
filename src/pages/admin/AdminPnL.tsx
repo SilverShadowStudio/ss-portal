@@ -47,10 +47,17 @@ import {
   SUPABASE_PUBLISHABLE_KEY,
 } from "@/integrations/supabase/client";
 
-type PeriodKey = "current_q" | "previous_q" | "year" | "all";
+type PeriodKey = "current_q" | "prev_q_ytd" | "year" | "prev_years";
 type MoneyOutTypeFilter = "all" | MoneyOutKind;
 type MoneyOutStatusFilter = "all" | PayablePaidStatus;
 type InvoiceStatusFilter = "all" | "draft" | "sent" | "paid" | "overdue" | "pending" | "cancelled";
+
+// Label for the "earlier quarters this year" preset (excludes the current one).
+function prevQuartersLabel(q: number, year: number): string {
+  if (q <= 1) return `Earlier in ${year}`;
+  if (q === 2) return `Q1 ${year}`;
+  return `Q1–Q${q - 1} ${year}`;
+}
 
 export default function AdminPnL() {
   const [overheads, setOverheads] = useState<Overhead[]>([]);
@@ -98,31 +105,39 @@ export default function AdminPnL() {
   const currentQuarter = useMemo(() => getCurrentQuarter(), []);
   const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
 
-  // The active period as a concrete date range. `all` bypasses date bounds.
+  // The active period as a concrete date range.
   const period = useMemo(() => {
+    const y = currentQuarter.year;
     switch (periodKey) {
-      case "previous_q":
-        return { start: previousQuarter.start, end: previousQuarter.end, label: previousQuarter.label, all: false };
-      case "year": {
-        const y = currentQuarter.year;
+      case "prev_q_ytd":
+        // Completed quarters earlier this year — 1 Jan up to the current quarter.
+        return {
+          start: new Date(y, 0, 1, 0, 0, 0, 0),
+          end: new Date(currentQuarter.start.getTime() - 1),
+          label: prevQuartersLabel(currentQuarter.q, y),
+        };
+      case "year":
+        // The whole current year, since 1 January (includes the current quarter).
         return {
           start: new Date(y, 0, 1, 0, 0, 0, 0),
           end: new Date(y, 11, 31, 23, 59, 59, 999),
           label: String(y),
-          all: false,
         };
-      }
-      case "all":
-        return { start: new Date(0), end: new Date(8640000000000000), label: "All time", all: true };
+      case "prev_years":
+        // Everything before this year.
+        return {
+          start: new Date(0),
+          end: new Date(y - 1, 11, 31, 23, 59, 59, 999),
+          label: `Before ${y}`,
+        };
       case "current_q":
       default:
-        return { start: currentQuarter.start, end: currentQuarter.end, label: currentQuarter.label, all: false };
+        return { start: currentQuarter.start, end: currentQuarter.end, label: currentQuarter.label };
     }
-  }, [periodKey, currentQuarter, previousQuarter]);
+  }, [periodKey, currentQuarter]);
 
   const inPeriod = useMemo(() => {
     return (dateStr: string | null | undefined) => {
-      if (period.all) return true;
       if (!dateStr) return false;
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return false;
@@ -334,10 +349,10 @@ export default function AdminPnL() {
     () => computeQuarterVat(invoices, overheads, previousQuarter),
     [invoices, overheads, previousQuarter],
   );
-  // VAT is quarterly: reflect the selected quarter when one is picked, else
-  // the live current-quarter estimate (year / all-time aren't a VAT period).
-  const summaryVat = periodKey === "previous_q" ? closedVat : currentVat;
-  const summaryVatLabel = periodKey === "previous_q" ? previousQuarter.label : currentQuarter.label;
+  // VAT is quarterly — the tile always shows the live current-quarter estimate,
+  // regardless of the (often multi-quarter) P&L period selected above.
+  const summaryVat = currentVat;
+  const summaryVatLabel = currentQuarter.label;
 
   // ---- Row-click / open handlers -----------------------------------------
   function openMoneyOutRow(r: MoneyOutRow) {
@@ -467,14 +482,16 @@ export default function AdminPnL() {
           </div>
           <div className="flex items-center gap-3">
             <Select value={periodKey} onValueChange={(v) => setPeriodKey(v as PeriodKey)}>
-              <SelectTrigger className="h-8 w-[150px] rounded-sm text-xs">
+              <SelectTrigger className="h-8 w-[170px] rounded-sm text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="current_q">{currentQuarter.label}</SelectItem>
-                <SelectItem value="previous_q">{previousQuarter.label}</SelectItem>
+                <SelectItem value="prev_q_ytd">
+                  {prevQuartersLabel(currentQuarter.q, currentQuarter.year)}
+                </SelectItem>
                 <SelectItem value="year">{currentQuarter.year}</SelectItem>
-                <SelectItem value="all">All time</SelectItem>
+                <SelectItem value="prev_years">Before {currentQuarter.year}</SelectItem>
               </SelectContent>
             </Select>
             <span className="whitespace-nowrap text-xs text-recessive">VAT-inclusive</span>
