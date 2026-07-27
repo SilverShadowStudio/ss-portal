@@ -200,11 +200,15 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invErr } = await sb
       .from("invoices")
       .select(
-        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id",
+        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id, dropbox_path",
       )
       .eq("id", invoiceId)
       .maybeSingle();
     if (invErr || !invoice) return json({ success: false, error: "invoice not found" }, 404);
+    // Already filed — skip (the auto-file trigger fires on any UPDATE while unfiled).
+    if ((invoice as any).dropbox_path) {
+      return json({ success: true, skipped: "already_filed", dropbox_path: (invoice as any).dropbox_path });
+    }
 
     let clientCompany: string | null = null;
     let clientAddress: string | null = null;
@@ -313,6 +317,8 @@ Deno.serve(async (req) => {
     const up = await uploadToDropbox(accessToken, namespaceId, targetPath, pdfBytes);
     if (!up.ok) return json({ success: false, error: up.error }, 502);
 
+    // Record the filed path so the row reads as filed and the trigger stops firing.
+    await sb.from("invoices").update({ dropbox_path: up.path }).eq("id", invoiceId);
     return json({ success: true, dropbox_path: up.path });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
