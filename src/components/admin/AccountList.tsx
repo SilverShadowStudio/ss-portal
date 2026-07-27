@@ -1387,24 +1387,39 @@ export function AccountList({
       {/* Directory — a light section holds the search + tiles.
           Dark tiles never sit on the gradient directly. */}
       <div className={panel ? "ssr-zone" : ""}>
-        {panel && (
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
+        {panel ? (
+          <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
+            </div>
+            <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
+              <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="SEARCH"
+                aria-label="Search team members"
+                className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
+              />
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
+            </div>
+          </div>
+        ) : (
+          <div className="mb-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={`Search ${title.toLowerCase()}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
         )}
-      {/* Search */}
-      <div className="mb-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={`Search ${title.toLowerCase()}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
 
       {/* List */}
       <div className="animate-fade-in" style={{ animationDelay: "0.15s" }}>
