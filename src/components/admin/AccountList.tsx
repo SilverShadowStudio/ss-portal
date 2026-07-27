@@ -565,9 +565,20 @@ export function AccountList({
         return (a.joined_at ?? "").localeCompare(b.joined_at ?? "");
       });
     }
-    return Array.from(byId.values()).sort((a, b) =>
-      a.company_name.localeCompare(b.company_name),
-    );
+    // Most recently connected account at the top, never-connected at the
+    // bottom, so it's clear at a glance who actually uses the portal.
+    const lastLogin = (g: AccountGroup): string | null =>
+      g.users.reduce<string | null>(
+        (max, u) => (u.last_login_at && (!max || u.last_login_at > max) ? u.last_login_at : max),
+        null,
+      );
+    return Array.from(byId.values()).sort((a, b) => {
+      const la = lastLogin(a), lb = lastLogin(b);
+      if (la && lb) return lb.localeCompare(la); // most recent first
+      if (la) return -1; // a has connected, b never → a above
+      if (lb) return 1; // b has connected, a never → b above
+      return a.company_name.localeCompare(b.company_name); // neither connected → alphabetical
+    });
   }, [accountUsers]);
 
   const filteredGroups = useMemo<AccountGroup[]>(() => {
