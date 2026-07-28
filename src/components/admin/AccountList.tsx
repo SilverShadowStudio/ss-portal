@@ -279,6 +279,11 @@ export function AccountList({
   const [presignedEmail, setPresignedEmail] = useState("");
   const [presignedSigningDate, setPresignedSigningDate] = useState("");
   const [presignedSubjectLine, setPresignedSubjectLine] = useState("");
+  // Freelancer vs Employee: Employee = fixed salary (accounting only). Drives
+  // Position + gross annual salary, and later feeds Debts → Salaries.
+  const [presignedEmploymentType, setPresignedEmploymentType] = useState<"freelancer" | "employee">("freelancer");
+  const [presignedPosition, setPresignedPosition] = useState("");
+  const [presignedSalary, setPresignedSalary] = useState("");
   const [presignedPdfFile, setPresignedPdfFile] = useState<File | null>(null);
   const [isPresignedUploading, setIsPresignedUploading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -620,6 +625,9 @@ export function AccountList({
     setPresignedEmail("");
     setPresignedSigningDate("");
     setPresignedSubjectLine("");
+    setPresignedEmploymentType("freelancer");
+    setPresignedPosition("");
+    setPresignedSalary("");
     setPresignedPdfFile(null);
   };
 
@@ -652,6 +660,10 @@ export function AccountList({
       toast({ title: "PDF must be 10 MB or smaller", variant: "destructive" });
       return;
     }
+    if (presignedEmploymentType === "employee" && (!presignedPosition.trim() || !(parseFloat(presignedSalary.replace(/[^0-9.]/g, "")) > 0))) {
+      toast({ title: "Position and gross annual salary are required for an employee", variant: "destructive" });
+      return;
+    }
     setIsPresignedUploading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -664,6 +676,11 @@ export function AccountList({
       fd.append("signed_by_name", `${presignedFirstName.trim()} ${presignedLastName.trim()}`.trim());
       fd.append("signing_date", presignedSigningDate);
       if (presignedSubjectLine.trim()) fd.append("subject_line", presignedSubjectLine.trim());
+      fd.append("employment_type", presignedEmploymentType);
+      if (presignedEmploymentType === "employee") {
+        fd.append("position", presignedPosition.trim());
+        fd.append("gross_salary_annual", String(parseFloat(presignedSalary.replace(/[^0-9.]/g, ""))));
+      }
       fd.append("pdf", presignedPdfFile);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/team-contract-upload-presigned`, {
         method: "POST",
@@ -1109,6 +1126,39 @@ export function AccountList({
                     Upload a contract that was signed before joining the portal. A portal invite will be sent after upload.
                   </p>
                   <div className="space-y-4 pt-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Engagement *</label>
+                      <select
+                        value={presignedEmploymentType}
+                        onChange={(e) => setPresignedEmploymentType(e.target.value as "freelancer" | "employee")}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <option value="freelancer">Freelancer — paid per work (Airtable self-bills)</option>
+                        <option value="employee">Employee — fixed salary (payroll)</option>
+                      </select>
+                    </div>
+                    {presignedEmploymentType === "employee" && (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Position *</label>
+                          <Input
+                            value={presignedPosition}
+                            onChange={(e) => setPresignedPosition(e.target.value)}
+                            placeholder="Production Director"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Gross annual salary * <span className="opacity-50">(£)</span></label>
+                          <Input
+                            inputMode="decimal"
+                            value={presignedSalary}
+                            onChange={(e) => setPresignedSalary(e.target.value)}
+                            placeholder="45000"
+                          />
+                          <p className="text-[10px] text-muted-foreground/70">Gross — the portal derives net &amp; true cost from payslips.</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">First name *</label>

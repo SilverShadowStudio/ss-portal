@@ -70,6 +70,10 @@ Deno.serve(async (req) => {
   const signedByName = (formData.get("signed_by_name") as string | null)?.trim();
   const signingDate = (formData.get("signing_date") as string | null)?.trim();
   const subjectLine = (formData.get("subject_line") as string | null)?.trim() || "Pre-signed engagement contract";
+  const employmentType = ((formData.get("employment_type") as string | null)?.trim() || "freelancer") === "employee" ? "employee" : "freelancer";
+  const position = (formData.get("position") as string | null)?.trim() || null;
+  const grossSalaryRaw = (formData.get("gross_salary_annual") as string | null)?.trim();
+  const grossSalaryAnnual = grossSalaryRaw ? Number(grossSalaryRaw) : null;
   const pdfFile = formData.get("pdf") as File | null;
 
   // Required field validation
@@ -107,6 +111,18 @@ Deno.serve(async (req) => {
     console.error("[team-contract-upload-presigned] provisioning failed:", e);
     return json({ error: (e as Error)?.message ?? "Provisioning failed" }, 500);
   }
+
+  // ── Persist employment classification on the account ────────────────────────
+  // Freelancer = paid per Airtable self-bills; Employee = fixed salary (payroll),
+  // which feeds Debts → Salaries. Non-fatal: capture failure shouldn't block the
+  // contract upload.
+  await admin.from("accounts").update({
+    team_role: position ?? undefined,
+    employment_type: employmentType,
+    position: employmentType === "employee" ? position : null,
+    gross_salary_annual: employmentType === "employee" ? grossSalaryAnnual : null,
+    salary_start_date: employmentType === "employee" ? signingDate : null,
+  }).eq("id", accountId).then(() => {}, (e) => console.error("[team-contract-upload-presigned] account employment update failed:", e));
 
   // ── Create signed contract row (storage_path filled after upload) ───────────
   const { data: contractRow, error: insertErr } = await admin
