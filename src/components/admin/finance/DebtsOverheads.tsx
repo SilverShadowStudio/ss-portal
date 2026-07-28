@@ -11,6 +11,8 @@ const money = (n: number, c = "GBP") =>
   (c === "GBP" ? "£" : c === "EUR" ? "€" : c === "USD" ? "$" : `${c} `) +
   new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+// A debt is overdue or due within a week (null due = treat as due now).
+const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Date.now() + 7 * 86_400_000;
 
 /** Debts → Overheads: the unpaid overhead bills already recorded in the P&L. */
 export function DebtsOverheads() {
@@ -23,7 +25,7 @@ export function DebtsOverheads() {
     const { data } = await supabase.from("overheads")
       .select("id, supplier_name, description, category_code, gross_amount, currency, due_date, payment_status")
       .order("due_date", { ascending: true });
-    setRows(((data ?? []) as OH[]).filter((o) => o.payment_status !== "paid" && Number(o.gross_amount) > 0));
+    setRows(((data ?? []) as OH[]).filter((o) => o.payment_status !== "paid" && Number(o.gross_amount) > 0 && isDebtDue(o.due_date)));
     setLoading(false);
   }
   useEffect(() => { load(); }, []);

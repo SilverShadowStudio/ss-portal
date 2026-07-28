@@ -15,6 +15,8 @@ const money = (n: number, c = "GBP") =>
   (c === "GBP" ? "£" : c === "EUR" ? "€" : c === "USD" ? "$" : `${c} `) +
   new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+// A debt is overdue or due within a week (null due = treat as due now).
+const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Date.now() + 7 * 86_400_000;
 
 interface Tax {
   id: string; tax_type: string; period_label: string | null; amount: number; currency: string;
@@ -35,23 +37,22 @@ export function DebtsTaxes() {
     const { data } = await supabase.from("taxes")
       .select("id, tax_type, period_label, amount, currency, due_date, payment_status, document_path")
       .order("due_date", { ascending: true });
-    // Unpaid first, then by due date.
-    const list = ((data ?? []) as Tax[]).sort((a, b) => (a.payment_status === "paid" ? 1 : 0) - (b.payment_status === "paid" ? 1 : 0));
-    setRows(list);
+    // Debts only: unpaid AND overdue or due within a week (due date asc).
+    setRows(((data ?? []) as Tax[]).filter((t) => t.payment_status !== "paid" && isDebtDue(t.due_date)));
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
 
-  const total = rows.filter((r) => r.payment_status !== "paid").reduce((s, r) => s + Number(r.amount || 0), 0);
+  const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
 
-  async function markPaid(r: Tax, paid: boolean) {
+  async function markPaid(r: Tax) {
     setSaving(r.id);
     const { error } = await supabase.from("taxes")
-      .update({ payment_status: paid ? "paid" : "unpaid", payment_date: paid ? new Date().toISOString().slice(0, 10) : null })
-      .eq("id", r.id);
+      .update({ payment_status: "paid", payment_date: new Date().toISOString().slice(0, 10) }).eq("id", r.id);
     setSaving(null);
     if (error) { toast({ title: "Couldn't update", description: error.message, variant: "destructive" }); return; }
-    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, payment_status: paid ? "paid" : "unpaid" } : x));
+    setRows((prev) => prev.filter((x) => x.id !== r.id));
+    toast({ title: "Tax marked paid" });
   }
 
   async function view(r: Tax) {
@@ -117,28 +118,23 @@ export function DebtsTaxes() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const paid = r.payment_status === "paid";
-                return (
-                  <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
-                    <td className="px-4 py-3 text-strong">{typeLabel(r.tax_type)}</td>
-                    <td className="px-4 py-3 text-standard">{r.period_label ?? "—"}</td>
-                    <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${paid ? "text-white/35" : "text-strong"}`}>{money(Number(r.amount), r.currency ?? "GBP")}</td>
-                    <td className="px-4 py-3">
-                      {r.document_path
-                        ? <button onClick={() => view(r)} className="text-white/45 hover:text-gold" title="View document"><Paperclip className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
-                        : <span className="text-white/20">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
-                        : paid
-                          ? <span className="inline-flex items-center gap-3"><span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span><button onClick={() => markPaid(r, false)} className="text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-white/60">Undo</button></span>
-                          : <button onClick={() => markPaid(r, true)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
-                    </td>
-                  </tr>
-                );
-              })}
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
+                  <td className="px-4 py-3 text-strong">{typeLabel(r.tax_type)}</td>
+                  <td className="px-4 py-3 text-standard">{r.period_label ?? "—"}</td>
+                  <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-strong">{money(Number(r.amount), r.currency ?? "GBP")}</td>
+                  <td className="px-4 py-3">
+                    {r.document_path
+                      ? <button onClick={() => view(r)} className="text-white/45 hover:text-gold" title="View document"><Paperclip className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
+                      : <span className="text-white/20">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
+                      : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
