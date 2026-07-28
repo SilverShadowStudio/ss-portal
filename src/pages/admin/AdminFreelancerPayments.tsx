@@ -99,20 +99,22 @@ export default function AdminFreelancerPayments() {
       <div className="mb-10">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">Freelancer payments</span>
+          <span className="text-label-gold text-[#ecd39c]">Debts</span>
         </div>
-        <p className="mt-3 text-sm text-recessive">
-          Amounts due to freelancers, per period. Marking paid or partial writes straight to Airtable — {money(outstandingTotal)} outstanding.
-        </p>
+        <p className="mt-3 text-sm text-recessive">What the studio owes, by category.</p>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><BrandLoader size="md" /></div>
       ) : (
+       <>
         <section className="ssr-zone">
-          <div className="mb-5 flex items-center gap-3 border-b border-white/[0.07] pb-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">Debts &amp; payments</h2>
+          <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Freelancers</h2>
+            </div>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(outstandingTotal)} outstanding</span>
           </div>
 
           {sortedRows.length === 0 ? (
@@ -183,7 +185,24 @@ export default function AdminFreelancerPayments() {
             </div>
           )}
         </section>
+
+        <EmptySection title="Salaries" />
+        <EmptySection title="Overheads" />
+        <EmptySection title="Taxes" />
+       </>
       )}
     </AdminLayout>
+  );
+}
+
+function EmptySection({ title }: { title: string }) {
+  return (
+    <section className="ssr-zone">
+      <div className="mb-5 flex items-center gap-3 border-b border-white/[0.07] pb-3">
+        <div className="h-px w-6 bg-gold-muted" />
+        <h2 className="text-label">{title}</h2>
+      </div>
+      <div className="ssr-tile p-10 text-center text-recessive text-sm">Not set up yet.</div>
+    </section>
   );
 }
