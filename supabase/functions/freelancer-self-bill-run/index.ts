@@ -10,7 +10,7 @@
 //   scene_manager_invoice → Scene Manager Day Logs (per day:  days × rate)
 //   photographer_invoice  → Photographer Timesheet (per session: hours × rate)
 //
-// Auth: admin JWT, OR cron marker `x-cron-name: freelancer-self-bill`.
+// Auth: admin JWT, OR shared cron secret via X-Cron-Secret (like payables-sync).
 // Input JSON: { period_year?, period_month?, dry_run?: boolean }.
 //   Default period = the previous calendar month. dry_run (default false when
 //   called explicitly) generates PDFs and reports, without filing or recording.
@@ -26,7 +26,7 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-name",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 function json(d: Record<string, unknown>, s = 200) { return new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 
@@ -130,8 +130,10 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const sb = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  // Auth: cron marker OR admin JWT.
-  const isCron = req.headers.get("x-cron-name") === "freelancer-self-bill";
+  // Auth: shared cron secret (pg_cron) OR admin JWT. Mirrors payables-sync.
+  const cronSecret = Deno.env.get("PAYABLES_CRON_SECRET") ?? "";
+  const provided = req.headers.get("x-cron-secret") ?? "";
+  const isCron = cronSecret.length > 0 && provided.length === cronSecret.length && provided === cronSecret;
   if (!isCron) {
     const auth = req.headers.get("Authorization") ?? "";
     if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
