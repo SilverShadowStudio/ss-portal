@@ -48,7 +48,7 @@ function num(v: unknown): number | null {
 }
 function str(v: unknown): string { const u = unwrap(v); return u == null || typeof u === "object" ? "" : String(u); }
 
-interface Line { description: string; qty: number | null; unit: string; rate: number | null; amount: number }
+interface Line { description: string; date: string | null; qty: number | null; unit: string; rate: number | null; amount: number }
 async function atFetch(pat: string, url: string): Promise<Record<string, unknown>> {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${pat}` } });
   if (!r.ok) throw new Error(`Airtable ${r.status}`);
@@ -70,8 +70,9 @@ async function fetchLineItems(pat: string, baseId: string, source: string, invoi
       const qty = num(fl[m.qty]), rate = num(fl[m.rate]);
       let amount = num(fl[m.amount]);
       if (amount == null && qty != null && rate != null) amount = Math.round(qty * rate * 100) / 100;
-      const description = (m.date ? `${str(fl[m.date])} — ${str(fl[m.desc])}` : str(fl[m.desc])) || "Work item";
-      lines.push({ description, qty, unit: m.unit, rate, amount: amount ?? 0 });
+      const dateVal = m.date ? (str(fl[m.date]) || null) : null;
+      const description = str(fl[m.desc]) || "Work item";
+      lines.push({ description, date: dateVal, qty, unit: m.unit, rate, amount: amount ?? 0 });
     }
   }
   // Newest first for date-based logs; keep model order otherwise.

@@ -3,7 +3,14 @@ import { ClientLayout } from "@/components/ClientLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 
-interface Line { description: string; qty: number | null; unit: string; rate: number | null; amount: number }
+interface Line { description: string; date: string | null; qty: number | null; unit: string; rate: number | null; amount: number }
+
+function niceDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" });
+}
 interface Period {
   key: string; role: string; period_label: string;
   total: number; amount_paid: number; balance: number; paid_status: string | null; lines: Line[];
@@ -105,7 +112,11 @@ export default function Earnings() {
                   {p.lines.map((l, i) => (
                     <div key={i} className="flex items-baseline justify-between gap-6 px-6 py-3.5 border-b border-white/[0.05] last:border-0">
                       <div className="min-w-0">
-                        <p className="text-standard truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
+                        <p className="text-standard truncate" style={{ fontSize: 13.5 }}>
+                          {niceDate(l.date)
+                            ? <>{niceDate(l.date)}<span className="text-white/25 mx-2.5">|</span>{l.description}</>
+                            : l.description}
+                        </p>
                         {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
                       </div>
                       <p className="text-strong shrink-0 tabular-nums" style={{ fontSize: 13.5 }}>{money(l.amount, ccy)}</p>
