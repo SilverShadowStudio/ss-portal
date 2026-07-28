@@ -151,7 +151,7 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
   const drawItemHeads = (y: number) => { micro("DESCRIPTION", LEFT, y); micro(`AMOUNT, ${currency}`, RIGHT, y, "r"); rule(LEFT, RIGHT, y - 4, 0.35, HAIR); };
 
   // ── Item layout + pagination (mirrors invoicePdfV3) ─────────────────────────
-  const P1_TOP = 178.5, PN_TOP = 243.4, ITEM_FLOOR = 92;
+  const P1_TOP = 178.5, PN_TOP = 236.5, ITEM_FLOOR = 92;
   type Placed = { l: SelfBillLine; page: number; y: number };
   const placed: Placed[] = [];
   let page = 0, cursor = P1_TOP;
@@ -172,7 +172,7 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
     if (pg > 0) doc.addPage();
     drawHeader(pg < totalsPage);
     if (pg === 0) { drawParties(); drawItemHeads(190); }
-    else if (placed.some((p) => p.page === pg)) drawItemHeads(255);
+    else if (placed.some((p) => p.page === pg)) drawItemHeads(248); // clear below the header rule (255)
     for (const p of placed.filter((x) => x.page === pg)) {
       left(fit(p.l.description, "reg", SIZE.itemTitle, 118), LEFT, p.y, "reg", SIZE.itemTitle, INK);
       right(money(p.l.amount), RIGHT, p.y, "reg", SIZE.itemTitle, INK);
