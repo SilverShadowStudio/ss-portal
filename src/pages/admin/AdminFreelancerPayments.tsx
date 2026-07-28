@@ -3,6 +3,8 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const ROLE: Record<string, string> = {
@@ -24,6 +26,15 @@ interface Row {
 function money(n: number) {
   return "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
+
+const COLUMNS: SortableColumn<Row>[] = [
+  { id: "name",   accessor: (r) => r.payee_name ?? "", type: "text" },
+  { id: "role",   accessor: (r) => ROLE[r.source_table] ?? "", type: "text" },
+  { id: "period", accessor: (r) => (r.period_year ?? 0) * 100 + (r.period_month ?? 0), type: "number" },
+  { id: "total",  accessor: (r) => r.invoice_total, type: "number" },
+  { id: "paid",   accessor: (r) => r.amount_paid, type: "number" },
+  { id: "due",    accessor: (r) => r.balance, type: "number" },
+];
 
 export default function AdminFreelancerPayments() {
   const { toast } = useToast();
@@ -61,13 +72,8 @@ export default function AdminFreelancerPayments() {
 
   const outstandingTotal = useMemo(() => rows.reduce((s, r) => s + r.balance, 0), [rows]);
 
-  // Outstanding first, then by name, then most-recent period.
-  const sorted = useMemo(() => [...rows].sort((a, b) => {
-    if ((b.balance > 0 ? 1 : 0) !== (a.balance > 0 ? 1 : 0)) return (b.balance > 0 ? 1 : 0) - (a.balance > 0 ? 1 : 0);
-    const n = (a.payee_name ?? "").localeCompare(b.payee_name ?? "");
-    if (n) return n;
-    return (b.period_year ?? 0) - (a.period_year ?? 0) || (b.period_month ?? 0) - (a.period_month ?? 0);
-  }), [rows]);
+  // Default: largest outstanding first. Any column is click-sortable (asc↔desc).
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Row>(rows, COLUMNS, { key: "due", dir: "desc" });
 
   async function pay(row: Row, action: "paid" | "partial" | "unpaid", amount?: number) {
     setSaving(row.airtable_record_id);
@@ -109,20 +115,24 @@ export default function AdminFreelancerPayments() {
             <h2 className="text-label">Debts &amp; payments</h2>
           </div>
 
-          {sorted.length === 0 ? (
+          {sortedRows.length === 0 ? (
             <div className="ssr-tile p-10 text-center text-recessive text-sm">No freelancer invoices found.</div>
           ) : (
             <div className="ssr-tile overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/[0.08] text-left">
-                    {["Freelancer", "Role", "Period", "Total", "Paid", "Due", ""].map((h, i) => (
-                      <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i >= 3 && i <= 5 ? "text-right" : ""}`}>{h}</th>
-                    ))}
+                  <tr className="border-b border-white/[0.08]">
+                    <SortableTh id="name"   label="Freelancer" activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4" />
+                    <SortableTh id="role"   label="Role"       activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4" />
+                    <SortableTh id="period" label="Period"     activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4" />
+                    <SortableTh id="total"  label="Total"      activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4 text-right" />
+                    <SortableTh id="paid"   label="Paid"       activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4 text-right" />
+                    <SortableTh id="due"    label="Due"        activeKey={sortKey} dir={sortDir} onClick={toggle} className="px-4 text-right" />
+                    <th className="px-4" />
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r) => {
+                  {sortedRows.map((r) => {
                     const key = r.airtable_record_id;
                     const busy = saving === key;
                     const period = r.period_year && r.period_month ? `${MONTHS[r.period_month - 1]} ${r.period_year}` : "—";
