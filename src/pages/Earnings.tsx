@@ -18,10 +18,9 @@ function money(n: number, ccy: string) {
   const sym = ccy === "GBP" ? "£" : ccy === "EUR" ? "€" : ccy === "USD" ? "$" : `${ccy} `;
   return sym + new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
-function qtyLabel(l: Line) {
+function qtyLabel(l: Line, ccy: string) {
   if (l.qty == null || l.rate == null) return "";
-  const q = Number(l.qty).toLocaleString("en-GB");
-  return `${q} ${l.unit} × ${l.rate}`;
+  return `${Number(l.qty).toLocaleString("en-GB")} ${l.unit} × ${money(l.rate, ccy)}`;
 }
 
 export default function Earnings() {
@@ -40,90 +39,82 @@ export default function Earnings() {
   const ccy = data?.currency ?? "GBP";
 
   return (
-    <ClientLayout>
-      {/* Header */}
-      <div className="mb-14 animate-fade-in">
-        <h1 className="font-serif font-normal text-foreground" style={{ fontSize: "2.6rem", letterSpacing: "-0.005em" }}>
-          Earnings
-        </h1>
-        <p className="mt-3 font-sans uppercase text-foreground/45" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
-          {data?.role ? `${data.role} · your work in detail` : "Your work in detail"} — live from Airtable
+    <ClientLayout panel>
+      {/* Page header — gold eyebrow */}
+      <div className="mb-10 animate-fade-in">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="h-px w-12 bg-gold-muted" />
+          <span className="text-label-gold">Earnings</span>
+        </div>
+        <p className="mt-3 text-sm text-recessive">
+          {data?.role ? `${data.role} — your work in detail, ` : "Your work in detail, "}live from Airtable
         </p>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><BrandLoader size="md" /></div>
       ) : error ? (
-        <p className="font-serif italic text-foreground/45 py-4 border-t border-border/30" style={{ fontSize: 13 }}>
-          We couldn&rsquo;t load your earnings just now. Please try again shortly.
-        </p>
+        <div className="ssr-zone"><div className="ssr-tile p-10 text-center text-recessive">We couldn&rsquo;t load your earnings just now. Please try again shortly.</div></div>
       ) : !data || data.periods.length === 0 ? (
-        <p className="font-serif italic text-foreground/45 py-4 border-t border-border/30" style={{ fontSize: 13 }}>
-          No earnings recorded yet. Your work will appear here as it&rsquo;s logged.
-        </p>
+        <div className="ssr-zone"><div className="ssr-tile p-10 text-center text-recessive">No earnings recorded yet. Your work will appear here as it&rsquo;s logged.</div></div>
       ) : (
         <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
           {/* ── Summary ───────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-14">
-            {[
-              { label: "Total earned", value: data.totals.earned, tone: "text-foreground" },
-              { label: "Paid", value: data.totals.paid, tone: "text-gold" },
-              { label: "Outstanding", value: data.totals.outstanding, tone: "text-foreground" },
-            ].map((s) => (
-              <div key={s.label} className="ssr-tile" style={{ padding: "22px 24px" }}>
-                <p className="font-sans uppercase text-foreground/45" style={{ fontSize: 9, letterSpacing: "0.24em" }}>{s.label}</p>
-                <p className={`font-serif ${s.tone} mt-3 tabular-nums`} style={{ fontSize: "1.9rem", letterSpacing: "-0.01em" }}>
-                  {money(s.value, ccy)}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Periods ───────────────────────────────────────────────── */}
-          <div className="space-y-12">
-            {data.periods.map((p) => (
-              <section key={p.key}>
-                {/* Period header */}
-                <div className="flex items-end justify-between gap-4 border-b border-border/40 pb-3">
-                  <div>
-                    <p className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>{p.role}</p>
-                    <h2 className="font-serif font-normal text-foreground mt-1" style={{ fontSize: "1.5rem", letterSpacing: "-0.005em" }}>
-                      {p.period_label}
-                    </h2>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-serif text-foreground tabular-nums" style={{ fontSize: "1.25rem" }}>{money(p.total, ccy)}</p>
-                    <p className="font-sans uppercase mt-1" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
-                      {p.balance <= 0.005
-                        ? <span className="text-gold">Paid</span>
-                        : <span className="text-foreground/45">{money(p.balance, ccy)} outstanding</span>}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Line items */}
-                {p.lines.length === 0 ? (
-                  <p className="font-serif italic text-foreground/35 py-4" style={{ fontSize: 12.5 }}>
-                    Detail not available for this period.
+          <div className="ssr-zone">
+            <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Summary</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { label: "Total earned", value: data.totals.earned, gold: false },
+                { label: "Paid", value: data.totals.paid, gold: true },
+                { label: "Outstanding", value: data.totals.outstanding, gold: false },
+              ].map((s) => (
+                <div key={s.label} className="ssr-tile p-6">
+                  <p className="text-label text-white/45">{s.label}</p>
+                  <p className={`mt-3 font-serif tabular-nums ${s.gold ? "text-gold" : "text-strong"}`} style={{ fontSize: "1.85rem", letterSpacing: "-0.01em" }}>
+                    {money(s.value, ccy)}
                   </p>
-                ) : (
-                  <div>
-                    {p.lines.map((l, i) => (
-                      <div key={i} className="flex items-baseline justify-between gap-6 py-3 border-b border-border/20">
-                        <div className="min-w-0">
-                          <p className="font-serif text-foreground truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
-                          {qtyLabel(l) && (
-                            <p className="font-sans text-foreground/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l)}</p>
-                          )}
-                        </div>
-                        <p className="font-serif text-foreground shrink-0 tabular-nums" style={{ fontSize: 13.5 }}>{money(l.amount, ccy)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* ── Per-period breakdown ──────────────────────────────────── */}
+          {data.periods.map((p) => (
+            <div key={p.key} className="ssr-zone">
+              <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-px w-6 bg-gold-muted" />
+                  <h2 className="text-label">{p.period_label}</h2>
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/35">{p.role}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="font-serif text-strong tabular-nums" style={{ fontSize: "1.05rem" }}>{money(p.total, ccy)}</span>
+                  {p.balance <= 0.005
+                    ? <span className="text-[9px] uppercase tracking-[0.22em] text-gold">Paid</span>
+                    : <span className="text-[9px] uppercase tracking-[0.22em] text-white/40">{money(p.balance, ccy)} due</span>}
+                </div>
+              </div>
+
+              {p.lines.length === 0 ? (
+                <div className="ssr-tile p-6 text-center text-recessive text-sm">Detail not available for this period.</div>
+              ) : (
+                <div className="ssr-tile overflow-hidden">
+                  {p.lines.map((l, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-6 px-6 py-3.5 border-b border-white/[0.05] last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-standard truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
+                        {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                      </div>
+                      <p className="text-strong shrink-0 tabular-nums" style={{ fontSize: 13.5 }}>{money(l.amount, ccy)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </ClientLayout>

@@ -365,18 +365,18 @@ export default function Documents() {
   if (accountType === "team") {
     const DOC_LABELS: Record<string, string> = {
       nda:               "Mutual Non-Disclosure Agreement",
-      service_agreement: "Freelance Service Agreement",
+      service_agreement: "Freelance Services & Confidentiality Agreement",
     };
 
     return (
-      <ClientLayout>
-        <div className="mb-16 animate-fade-in">
-          <h1 className="font-serif font-normal text-foreground" style={{ fontSize: "2.6rem", letterSpacing: "-0.005em" }}>
-            Documents
-          </h1>
-          <p className="mt-3 font-sans uppercase text-foreground/45" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
-            Your signed agreements
-          </p>
+      <ClientLayout panel>
+        {/* Page header — gold eyebrow */}
+        <div className="mb-10 animate-fade-in">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px w-12 bg-gold-muted" />
+            <span className="text-label-gold">Documents</span>
+          </div>
+          <p className="mt-3 text-sm text-recessive">Your signed agreements</p>
         </div>
 
         {loading ? (
@@ -384,40 +384,48 @@ export default function Documents() {
             <BrandLoader size="md" />
           </div>
         ) : freelancerDocuments.length === 0 ? (
-          <p className="font-serif text-foreground/35 text-sm py-4 border-t border-border/30 animate-fade-in">
-            Your signed agreements will appear here once onboarding is complete.
-          </p>
+          <div className="ssr-zone animate-fade-in">
+            <div className="ssr-tile p-10 text-center text-recessive text-sm">
+              Your signed agreements will appear here once onboarding is complete.
+            </div>
+          </div>
         ) : (
-          <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-            {freelancerDocuments.map((doc) => (
-              <div key={doc.id} className="flex items-center gap-5 py-4 border-t border-border/30">
-                <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-serif text-foreground" style={{ fontSize: 14 }}>
-                    {DOC_LABELS[doc.document_type] ?? doc.document_type}
-                  </p>
-                  <p className="font-sans uppercase text-foreground/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
-                    {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}
-                    {doc.signed_by_name ? ` · ${doc.signed_by_name}` : ""}
-                  </p>
+          <div className="ssr-zone animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Signed agreements</h2>
+            </div>
+            <div className="ssr-tile overflow-hidden">
+              {freelancerDocuments.map((doc) => (
+                <div key={doc.id} className="flex items-center gap-5 px-6 py-4 border-b border-white/[0.05] last:border-0">
+                  <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-standard" style={{ fontSize: 14 }}>
+                      {DOC_LABELS[doc.document_type] ?? doc.document_type}
+                    </p>
+                    <p className="font-sans uppercase text-white/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+                      {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}
+                      {doc.signed_by_name ? ` · ${doc.signed_by_name}` : ""}
+                    </p>
+                  </div>
+                  {doc.pdf_url && (
+                    <button
+                      onClick={() => handleFreelancerDownload(doc)}
+                      disabled={downloadingId === doc.id}
+                      className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors disabled:opacity-40"
+                      style={{ fontSize: 10, letterSpacing: "0.16em" }}
+                    >
+                      {downloadingId === doc.id ? (
+                        <BrandLoader size="sm" className="h-3 w-3" />
+                      ) : (
+                        <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
+                      )}
+                      <span className="font-sans uppercase">Download</span>
+                    </button>
+                  )}
                 </div>
-                {doc.pdf_url && (
-                  <button
-                    onClick={() => handleFreelancerDownload(doc)}
-                    disabled={downloadingId === doc.id}
-                    className="flex items-center gap-1.5 text-foreground/40 hover:text-gold transition-colors disabled:opacity-40"
-                    style={{ fontSize: 10, letterSpacing: "0.16em" }}
-                  >
-                    {downloadingId === doc.id ? (
-                      <BrandLoader size="sm" className="h-3 w-3" />
-                    ) : (
-                      <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                    )}
-                    <span className="font-sans uppercase">Download</span>
-                  </button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </ClientLayout>

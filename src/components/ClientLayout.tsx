@@ -8,9 +8,12 @@ import { cn } from "@/lib/utils";
 interface ClientLayoutProps {
   children: ReactNode;
   fullWidth?: boolean;
+  /** Opt-in: render children inside the redesigned gradient panel (three-tier
+   *  Page → Section → Tile system), matching the admin portal. */
+  panel?: boolean;
 }
 
-export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps) {
+export function ClientLayout({ children, fullWidth = false, panel = false }: ClientLayoutProps) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-sidebar-expanded");
@@ -31,23 +34,29 @@ export function ClientLayout({ children, fullWidth = false }: ClientLayoutProps)
   }, [user]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
       <ClientSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
       <NotificationBell />
 
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
-        <div
-          className={cn(
-            // Desktop: standard padding
-            "py-10",
-            fullWidth ? "px-8" : "mx-auto max-w-6xl px-8",
-            // Mobile: smaller padding, extra bottom for tab bar
-            "md:py-10 py-8 px-5 md:px-8",
-            "pb-24 md:pb-10",
-          )}
-        >
-          {children}
-        </div>
+        {panel ? (
+          <div className="ssr-panelwrap pb-24 md:pb-4">
+            <div className="ssr-panel">{children}</div>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              // Desktop: standard padding
+              "py-10",
+              fullWidth ? "px-8" : "mx-auto max-w-6xl px-8",
+              // Mobile: smaller padding, extra bottom for tab bar
+              "md:py-10 py-8 px-5 md:px-8",
+              "pb-24 md:pb-10",
+            )}
+          >
+            {children}
+          </div>
+        )}
       </main>
     </div>
   );
