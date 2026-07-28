@@ -980,16 +980,6 @@ export function AccountList({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setTeamAddMode("template-pick"); fetchTeamTemplates(); }}
-                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
-                    >
-                      <p className="text-sm text-foreground">Add member with contract to sign</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Create an engagement contract. Member signs it in the portal before starting work.
-                      </p>
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setTeamAddMode("presigned")}
                       className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
