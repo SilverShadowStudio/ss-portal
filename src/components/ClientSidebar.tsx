@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import {
   CalendarDays, Inbox, Images, FileText, Users, Wallet,
-  LayoutDashboard, Package, Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
+  LayoutDashboard, Package, Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -31,7 +30,6 @@ interface ClientSidebarProps {
 export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
   const { user, signOut, accountType, isClientManager } = useAuth();
   const [profile, setProfile] = useState<{
     first_name: string | null;
@@ -71,8 +69,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [
-        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
-        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), separatorAfter: true, Icon: expanded ? ChevronsLeft : ChevronsRight },
         { label: "Log off", onClick: handleSignOut, Icon: LogOut },
       ]
     : [
@@ -94,8 +91,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
           ? ([{ label: "Team", onClick: () => navigate("/team"), active: location.pathname === "/team", Icon: Users }] as SidebarAccountMenuItem[])
           : []),
         { label: "Settings",   onClick: () => navigate("/account"),    active: location.pathname === "/account",    separatorAfter: true, Icon: Settings },
-        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), Icon: expanded ? ChevronsLeft : ChevronsRight },
-        { label: theme === "dark" ? "Light mode" : "Dark mode", onClick: toggleTheme, separatorAfter: true, Icon: theme === "dark" ? Sun : Moon },
+        { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), separatorAfter: true, Icon: expanded ? ChevronsLeft : ChevronsRight },
         { label: "Log off",    onClick: handleSignOut, Icon: LogOut },
       ];
 
