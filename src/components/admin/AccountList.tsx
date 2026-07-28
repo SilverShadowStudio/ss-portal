@@ -276,7 +276,6 @@ export function AccountList({
   // Pre-signed upload form state
   const [presignedName, setPresignedName] = useState("");
   const [presignedEmail, setPresignedEmail] = useState("");
-  const [presignedSignedByName, setPresignedSignedByName] = useState("");
   const [presignedSigningDate, setPresignedSigningDate] = useState("");
   const [presignedSubjectLine, setPresignedSubjectLine] = useState("");
   const [presignedPdfFile, setPresignedPdfFile] = useState<File | null>(null);
@@ -617,7 +616,6 @@ export function AccountList({
   const resetPresignedForm = () => {
     setPresignedName("");
     setPresignedEmail("");
-    setPresignedSignedByName("");
     setPresignedSigningDate("");
     setPresignedSubjectLine("");
     setPresignedPdfFile(null);
@@ -640,7 +638,7 @@ export function AccountList({
   };
 
   const handlePresignedUpload = async () => {
-    if (!presignedName.trim() || !presignedEmail.trim() || !presignedSignedByName.trim() || !presignedSigningDate || !presignedPdfFile) {
+    if (!presignedName.trim() || !presignedEmail.trim() || !presignedSigningDate || !presignedPdfFile) {
       toast({ title: "All fields are required", variant: "destructive" });
       return;
     }
@@ -659,7 +657,7 @@ export function AccountList({
       const fd = new FormData();
       fd.append("email", presignedEmail.trim().toLowerCase());
       fd.append("name", presignedName.trim());
-      fd.append("signed_by_name", presignedSignedByName.trim());
+      fd.append("signed_by_name", presignedName.trim());
       fd.append("signing_date", presignedSigningDate);
       if (presignedSubjectLine.trim()) fd.append("subject_line", presignedSubjectLine.trim());
       fd.append("pdf", presignedPdfFile);
@@ -1129,15 +1127,7 @@ export function AccountList({
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Signatory name *</label>
-                        <Input
-                          value={presignedSignedByName}
-                          onChange={(e) => setPresignedSignedByName(e.target.value)}
-                          placeholder="Name as signed on paper"
-                        />
-                      </div>
+                    <div className="grid grid-cols-1 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Date signed *</label>
                         <Input
