@@ -1,9 +1,9 @@
 // freelancer-self-bill-run/index.ts
 //
 // Generates self-billed invoices for freelancers for a given month, files each
-// to Dropbox, and records it in public.self_bill_invoices. Per Fred: files to
-// Dropbox only — it does NOT email freelancers (emailing is a separate, opt-in
-// step once a real run has been reviewed).
+// to Dropbox, records it in public.self_bill_invoices, emails each freelancer
+// their self-bill (unless body.email === false or a dry run), and emails the
+// studio admin a run summary. dry_run generates + reports only (no side effects).
 //
 // Line items are pulled live from Airtable:
 //   modeller_invoices     → Models              (per model:  hours × rate)
@@ -122,6 +122,51 @@ async function dropboxUpload(token: string, ns: string | null, path: string, byt
 }
 function sanitize(s: string): string { return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[/\\:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "supplier"; }
 
+// ── Email (Resend) ────────────────────────────────────────────────────────────
+const FROM_ADDRESS = "Silver Shadow Studio <portal@silvershadowstudio.com>";
+const ADMIN_EMAIL = "fred@silvershadowstudio.com";
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = ""; const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+async function sendEmail(to: string, subject: string, html: string, attachment?: { filename: string; content: string }): Promise<{ ok: boolean; error?: string }> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) return { ok: false, error: "RESEND_API_KEY not set" };
+  const payload: Record<string, unknown> = { from: FROM_ADDRESS, to: [to], subject, html };
+  if (attachment) payload.attachments = [attachment];
+  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  return r.ok ? { ok: true } : { ok: false, error: `resend ${r.status}: ${await r.text()}` };
+}
+function freelancerEmailHtml(firstName: string, periodLabel: string, invoiceNumber: string): string {
+  return `<div style="font-family:Georgia,serif;color:#1b1916;max-width:520px;margin:0 auto;padding:24px;background:#EDE8E0">
+    <p style="font-size:15px">Hi ${firstName || "there"},</p>
+    <p style="font-size:14px;line-height:1.6">Please find attached your self-billed invoice for <strong>${periodLabel}</strong> (ref ${invoiceNumber}), raised by Silvershadow Studio Limited on your behalf under our self-billing agreement.</p>
+    <p style="font-size:14px;line-height:1.6">You do not need to raise your own invoice for this work — payment will be made to the bank details on your profile. If anything looks incorrect, just reply to this email.</p>
+    <p style="font-size:14px;line-height:1.6">Thank you for your work this month.</p>
+    <p style="font-size:13px;color:#766f65;margin-top:24px">Silvershadow Studio Limited · silvershadowstudio.com</p>
+  </div>`;
+}
+function summaryEmailHtml(periodLabel: string, generated: Record<string, unknown>[], skipped: Record<string, unknown>[]): string {
+  const money = (n: unknown) => `£${(Number(n) || 0).toFixed(2)}`;
+  const gRows = generated.length
+    ? generated.map((g) => `<tr><td style="padding:4px 12px 4px 0">${g.name}</td><td style="padding:4px 12px 4px 0">${g.invoiceNumber}${g.emailed ? " ✉" : ""}</td><td style="padding:4px 0;text-align:right">${money(g.gross)}</td></tr>`).join("")
+    : `<tr><td style="padding:4px 0;color:#766f65">None</td></tr>`;
+  const sRows = skipped.length
+    ? skipped.map((s) => `<tr><td style="padding:4px 12px 4px 0">${s.name}</td><td style="padding:4px 0;color:#766f65">${s.reason}</td></tr>`).join("")
+    : `<tr><td style="padding:4px 0;color:#766f65">None</td></tr>`;
+  return `<div style="font-family:Georgia,serif;color:#1b1916;max-width:560px;margin:0 auto;padding:24px;background:#EDE8E0">
+    <p style="font-size:15px"><strong>Self-bill run — ${periodLabel}</strong></p>
+    <p style="font-size:13px;color:#766f65">${generated.length} billed &amp; filed · ${skipped.length} skipped</p>
+    <p style="font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:#766f65;margin-top:20px">Billed (✉ = emailed)</p>
+    <table style="font-size:13px;border-collapse:collapse;width:100%">${gRows}</table>
+    <p style="font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:#766f65;margin-top:20px">Skipped</p>
+    <table style="font-size:13px;border-collapse:collapse;width:100%">${sRows}</table>
+    <p style="font-size:12px;color:#766f65;margin-top:24px">Skips are usually freelancers without a completed portal profile (no address/bank/country to bill against). They are picked up automatically once onboarded.</p>
+  </div>`;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -150,6 +195,9 @@ Deno.serve(async (req) => {
   const year = Number(body.period_year) || prev.getUTCFullYear();
   const month = Number(body.period_month) || (prev.getUTCMonth() + 1); // 1-12
   const doDry = body.dry_run === true;
+  // Real runs email each freelancer their self-bill unless explicitly disabled.
+  const doEmail = !doDry && body.email !== false;
+  let emailed = 0;
 
   const pat = Deno.env.get("AIRTABLE_PAT");
   const base = Deno.env.get("AIRTABLE_BASE_ID");
@@ -243,9 +291,32 @@ Deno.serve(async (req) => {
         role_label: roleLabel(source), net, vat_amount: vat, gross: net + vat, currency: input.currency,
         line_count: lines.length, dropbox_path: up.path,
       });
-      generated.push({ ...record, dropbox_path: up.path });
+
+      // Email the freelancer their self-bill (filing already succeeded above).
+      let didEmail = false, emailError: string | undefined;
+      const to = prof.email || email;
+      if (doEmail && to) {
+        const res = await sendEmail(
+          to, `Your self-billed invoice — ${MONTHS[month - 1]} ${year}`,
+          freelancerEmailHtml(input.freelancer.first_name, `${MONTHS[month - 1]} ${year}`, invoiceNumber),
+          { filename, content: toBase64(pdf) },
+        );
+        if (res.ok) {
+          didEmail = true; emailed += 1;
+          await sb.from("self_bill_invoices").update({ emailed_at: new Date().toISOString() })
+            .eq("source_table", source).eq("payee_email", email).eq("period_year", year).eq("period_month", month);
+        } else emailError = res.error;
+      }
+      generated.push({ ...record, dropbox_path: up.path, emailed: didEmail, ...(emailError ? { emailError } : {}) });
     }
   }
 
-  return json({ period: `${MONTHS[month - 1]} ${year}`, dryRun: doDry, generated_count: generated.length, skipped_count: skipped.length, generated, skipped });
+  // Summary to the studio admin on every real run (even if nothing was billed).
+  if (!doDry) {
+    const periodLabel = `${MONTHS[month - 1]} ${year}`;
+    await sendEmail(ADMIN_EMAIL, `Self-bill run — ${periodLabel}: ${generated.length} billed, ${skipped.length} skipped`, summaryEmailHtml(periodLabel, generated, skipped))
+      .catch(() => {});
+  }
+
+  return json({ period: `${MONTHS[month - 1]} ${year}`, dryRun: doDry, generated_count: generated.length, emailed_count: emailed, skipped_count: skipped.length, generated, skipped });
 });
