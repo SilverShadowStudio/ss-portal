@@ -290,6 +290,18 @@ export default function Onboarding() {
     bankName: "", accountHolder: "", sortCode: "", accountNumber: "",
   });
   const [touched, setTouched] = useState<Touched>({});
+  const [roleLocked, setRoleLocked] = useState(false);
+
+  // The admin sets the role at invite (accounts.team_role). If present, pre-fill
+  // and lock it so the team member can't change it.
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("account_members").select("accounts(team_role)").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => {
+        const preset = (data as { accounts?: { team_role?: string | null } } | null)?.accounts?.team_role;
+        if (preset) { setForm((f) => ({ ...f, role: preset })); setRoleLocked(true); }
+      });
+  }, [user]);
 
   const showError = (field: keyof FormData) =>
     !!touched[field] && REQUIRED_FIELDS.includes(field) && !form[field].trim();
@@ -395,14 +407,18 @@ export default function Onboarding() {
                 <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
                   {FIELD_LABELS.role}{REQUIRED_FIELDS.includes("role") && <span className="ml-1 text-gold">*</span>}
                 </label>
-                <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
-                  <option value="" disabled>Select a role…</option>
-                  <option value="Scene Manager">Scene Manager</option>
-                  <option value="Modeller">Modeller</option>
-                  <option value="Art Director">Art Director</option>
-                  <option value="Photographer">Photographer</option>
-                </select>
-                {showError("role") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
+                {roleLocked ? (
+                  <p className="w-full border-0 border-b border-border bg-transparent py-3 text-foreground text-sm">{form.role}</p>
+                ) : (
+                  <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
+                    <option value="" disabled>Select a role…</option>
+                    <option value="Scene Manager">Scene Manager</option>
+                    <option value="Modeller">Modeller</option>
+                    <option value="Art Director">Art Director</option>
+                    <option value="Photographer">Photographer</option>
+                  </select>
+                )}
+                {!roleLocked && showError("role") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
               </div>
             </div>
           </section>

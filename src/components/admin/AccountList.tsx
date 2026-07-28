@@ -307,6 +307,7 @@ export function AccountList({
 
   // Team-only simple invite state.
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
 
   // Airtable pre-flight match panel. Populated by a debounced lookup on
   // the company-name input — surfaces existing Clients rows so the admin
@@ -739,6 +740,10 @@ export function AccountList({
         toast({ title: "Please enter an email address", variant: "destructive" });
         return;
       }
+      if (!inviteRole) {
+        toast({ title: "Please select a role", variant: "destructive" });
+        return;
+      }
       setIsCreating(true);
       try {
         const ok = await postInvite({
@@ -746,9 +751,11 @@ export function AccountList({
           company: { companyName: email },
           contact: { email },
           accountType: "team",
+          role: inviteRole,
         });
         if (ok) {
           setInviteEmail("");
+          setInviteRole("");
           setResultBanner({ email });
           setIsAddDialogOpen(false);
           fetchAccounts();
@@ -996,7 +1003,7 @@ export function AccountList({
                     <DialogTitle>Add member only</DialogTitle>
                   </DialogHeader>
                   <p className="text-xs text-muted-foreground mt-1">
-                    They'll enter their name and details during onboarding.
+                    They'll enter their name and details during onboarding — you set their role here.
                   </p>
                   <div className="space-y-4 pt-2">
                     <div className="space-y-1">
@@ -1009,6 +1016,20 @@ export function AccountList({
                         autoFocus
                         placeholder="contact@company.com"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Role *</label>
+                      <select
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <option value="" disabled>Select a role…</option>
+                        <option value="Scene Manager">Scene Manager</option>
+                        <option value="Modeller">Modeller</option>
+                        <option value="Art Director">Art Director</option>
+                        <option value="Photographer">Photographer</option>
+                      </select>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isCreating} className="text-muted-foreground">

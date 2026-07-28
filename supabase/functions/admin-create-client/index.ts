@@ -77,6 +77,7 @@ interface RequestBody {
   company?: CompanyDetails
   contact: ContactDetails
   accountType?: 'partnership' | 'project' | 'team'
+  role?: string
   tempPassword?: string
   accountId?: string
   clientCode?: string
@@ -436,6 +437,8 @@ Deno.serve(async (req) => {
         owner_user_id: invitedUserId,
         account_type: accountType,
         client_code: clientCode,
+        // Admin-set role for team members — locks their role at onboarding.
+        ...(typeof body.role === "string" && body.role ? { team_role: body.role } : {}),
         ...(airtableClientId ? { airtable_client_id: airtableClientId } : {}),
       } as Record<string, unknown>)
       .select('id, company_name')
