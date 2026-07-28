@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { DebtsOverheads } from "@/components/admin/finance/DebtsOverheads";
+import { DebtsTaxes } from "@/components/admin/finance/DebtsTaxes";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const ROLE: Record<string, string> = {
@@ -186,23 +188,23 @@ export default function AdminFreelancerPayments() {
           )}
         </section>
 
-        <EmptySection title="Salaries" />
-        <EmptySection title="Overheads" />
-        <EmptySection title="Taxes" />
+        <EmptySection title="Salaries" note="Payroll model to be scoped — employees, PAYE/NI, hours and bonuses." />
+        <DebtsOverheads />
+        <DebtsTaxes />
        </>
       )}
     </AdminLayout>
   );
 }
 
-function EmptySection({ title }: { title: string }) {
+function EmptySection({ title, note }: { title: string; note?: string }) {
   return (
     <section className="ssr-zone">
       <div className="mb-5 flex items-center gap-3 border-b border-white/[0.07] pb-3">
         <div className="h-px w-6 bg-gold-muted" />
         <h2 className="text-label">{title}</h2>
       </div>
-      <div className="ssr-tile p-10 text-center text-recessive text-sm">Not set up yet.</div>
+      <div className="ssr-tile p-10 text-center text-recessive text-sm">{note ?? "Not set up yet."}</div>
     </section>
   );
 }
