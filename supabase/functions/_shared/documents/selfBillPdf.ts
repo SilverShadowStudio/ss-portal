@@ -117,10 +117,11 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
     return t + "…";
   };
 
-  const sublineFor = (l: SelfBillLine): string => {
-    if (l.qty != null && l.rate != null) return `${(+l.qty).toLocaleString("en-GB")} ${l.unit || ""} × ${symbol(currency)}${money(l.rate)}`.replace("  ", " ").trim();
-    return "";
-  };
+  // Line-item columns: Description | Qty | Rate | Amount (each on its own axis).
+  const QTY_X = 116, RATE_X = 150, DESC_W = QTY_X - LEFT - 10;
+  const firstUnit = (rawLines.find((l) => l.unit)?.unit || "").toLowerCase();
+  const unitHeader = firstUnit.startsWith("day") ? "DAYS" : firstUnit ? "HOURS" : "QTY";
+  const qtyStr = (q: number) => (+q).toLocaleString("en-GB");
 
   // ── Per-page chrome ─────────────────────────────────────────────────────────
   const drawHeader = (continued: boolean) => {
@@ -148,7 +149,13 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
     micro("ISSUED", RIGHT, 247, "r"); right(fmtDate(input.issued_at), RIGHT, 240.4, "medosf", SIZE.body, INK);
     micro("PERIOD", RIGHT, 226, "r"); right(periodLabel, RIGHT, 219.4, "medosf", SIZE.body, INK);
   };
-  const drawItemHeads = (y: number) => { micro("DESCRIPTION", LEFT, y); micro(`AMOUNT, ${currency}`, RIGHT, y, "r"); rule(LEFT, RIGHT, y - 4, 0.35, HAIR); };
+  const drawItemHeads = (y: number) => {
+    micro("DESCRIPTION", LEFT, y);
+    micro(unitHeader, QTY_X, y, "r");
+    micro("RATE", RATE_X, y, "r");
+    micro(`AMOUNT, ${currency}`, RIGHT, y, "r");
+    rule(LEFT, RIGHT, y - 4, 0.35, HAIR);
+  };
 
   // ── Item layout + pagination (mirrors invoicePdfV3) ─────────────────────────
   const P1_TOP = 178.5, PN_TOP = 236.5, ITEM_FLOOR = 92;
@@ -156,13 +163,12 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
   const placed: Placed[] = [];
   let page = 0, cursor = P1_TOP;
   for (const l of rawLines) {
-    const sub = sublineFor(l); const step = sub ? 13 : 9;
     if (cursor < ITEM_FLOOR) { page++; cursor = PN_TOP; }
-    placed.push({ l, page, y: cursor }); cursor -= step;
+    placed.push({ l, page, y: cursor }); cursor -= 9;   // single-line rows now
   }
   const lastItemsPage = placed.length ? placed[placed.length - 1].page : 0;
   const lowest = placed.length
-    ? Math.min(...placed.filter((p) => p.page === lastItemsPage).map((p) => (sublineFor(p.l) ? p.y - 5 : p.y)))
+    ? Math.min(...placed.filter((p) => p.page === lastItemsPage).map((p) => p.y))
     : P1_TOP;
   let netY = lowest - 11.5;
   let totalsPage = lastItemsPage;
@@ -174,10 +180,11 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
     if (pg === 0) { drawParties(); drawItemHeads(190); }
     else if (placed.some((p) => p.page === pg)) drawItemHeads(248); // clear below the header rule (255)
     for (const p of placed.filter((x) => x.page === pg)) {
-      left(fit(p.l.description, "reg", SIZE.itemTitle, 118), LEFT, p.y, "reg", SIZE.itemTitle, INK);
-      right(money(p.l.amount), RIGHT, p.y, "reg", SIZE.itemTitle, INK);
-      const sub = sublineFor(p.l);
-      if (sub) left(sub, LEFT, p.y - 5, "textosf", SIZE.itemSub, SECONDARY);
+      const l = p.l;
+      left(fit(l.description, "reg", SIZE.itemTitle, DESC_W), LEFT, p.y, "reg", SIZE.itemTitle, INK);
+      if (l.qty != null) right(qtyStr(l.qty), QTY_X, p.y, "reg", SIZE.body, SECONDARY);
+      if (l.rate != null) right(`${symbol(currency)}${money(l.rate)}`, RATE_X, p.y, "reg", SIZE.body, SECONDARY);
+      right(money(l.amount), RIGHT, p.y, "reg", SIZE.itemTitle, INK);
     }
 
     if (pg === totalsPage) {
