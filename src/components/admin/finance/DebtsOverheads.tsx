@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
+import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 
 interface OH {
   id: string; supplier_name: string | null; description: string | null; category_code: string | null;
   gross_amount: number; currency: string | null; due_date: string | null; payment_status: string | null;
-  justPaid?: boolean;
+  justPaid?: boolean; paidAt?: number;
 }
 const money = (n: number, c = "GBP") =>
   (c === "GBP" ? "£" : c === "EUR" ? "€" : c === "USD" ? "$" : `${c} `) +
@@ -23,6 +23,7 @@ export function DebtsOverheads() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const grace = useGraceTimers();
+  const now = useNowTicker(rows.some((r) => r.justPaid));
 
   async function load() {
     const { data } = await supabase.from("overheads")
@@ -42,7 +43,7 @@ export function DebtsOverheads() {
     setSaving(null);
     if (error) { toast({ title: "Couldn't mark paid", description: error.message, variant: "destructive" }); return; }
     // Keep it 5 min so a mistake can be reverted, then drop it.
-    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true } : x));
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true, paidAt: Date.now() } : x));
     grace.schedule(r.id, GRACE_MS, () => setRows((prev) => prev.filter((x) => x.id !== r.id)));
   }
 
@@ -86,7 +87,7 @@ export function DebtsOverheads() {
                     {saving === r.id
                       ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
                       : r.justPaid
-                        ? <span className="inline-flex items-center gap-3"><span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
                         : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                   </td>
                 </tr>

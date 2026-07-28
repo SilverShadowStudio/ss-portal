@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
+import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 
 const TYPES = [{ v: "vat", l: "VAT" }, { v: "corporation_tax", l: "Corporation Tax" }, { v: "paye_ni", l: "PAYE / NI" }];
 const typeLabel = (t: string) => TYPES.find((x) => x.v === t)?.l ?? t;
@@ -22,7 +22,7 @@ const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Dat
 interface Tax {
   id: string; tax_type: string; period_label: string | null; amount: number; currency: string;
   due_date: string | null; payment_status: string; document_path: string | null;
-  justPaid?: boolean;
+  justPaid?: boolean; paidAt?: number;
 }
 
 export function DebtsTaxes() {
@@ -35,6 +35,7 @@ export function DebtsTaxes() {
   const [form, setForm] = useState({ tax_type: "vat", period_label: "", amount: "", due_date: "" });
   const [file, setFile] = useState<File | null>(null);
   const grace = useGraceTimers();
+  const now = useNowTicker(rows.some((r) => r.justPaid));
 
   async function load() {
     const { data } = await supabase.from("taxes")
@@ -55,7 +56,7 @@ export function DebtsTaxes() {
     setSaving(null);
     if (error) { toast({ title: "Couldn't update", description: error.message, variant: "destructive" }); return; }
     // Keep it 5 min so a mistake can be reverted, then drop it.
-    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true } : x));
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true, paidAt: Date.now() } : x));
     grace.schedule(r.id, GRACE_MS, () => setRows((prev) => prev.filter((x) => x.id !== r.id)));
   }
 
@@ -145,7 +146,7 @@ export function DebtsTaxes() {
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
                       : r.justPaid
-                        ? <span className="inline-flex items-center gap-3"><span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
                         : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                   </td>
                 </tr>

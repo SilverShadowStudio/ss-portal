@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
-import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
+import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 import { DebtsOverheads } from "@/components/admin/finance/DebtsOverheads";
 import { DebtsTaxes } from "@/components/admin/finance/DebtsTaxes";
 
@@ -25,6 +25,7 @@ interface Row {
   balance: number;
   paid_status: string | null;
   justPaid?: boolean;   // fully paid, still in the 5-min revert window
+  paidAt?: number;      // when it was marked paid (for the countdown)
 }
 
 function money(n: number) {
@@ -93,6 +94,7 @@ export default function AdminFreelancerPayments() {
   // Default: largest outstanding first. Any column is click-sortable (asc↔desc).
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Row>(rows, COLUMNS, { key: "due", dir: "desc" });
   const grace = useGraceTimers();
+  const now = useNowTicker(rows.some((r) => r.justPaid));
 
   async function pay(row: Row, action: "paid" | "partial" | "unpaid", amount?: number) {
     setSaving(row.airtable_record_id);
@@ -105,7 +107,7 @@ export default function AdminFreelancerPayments() {
       const fullyPaid = d.balance <= 0.005;
       const id = row.airtable_record_id;
       setRows((prev) => prev.map((r) => r.airtable_record_id === id
-        ? { ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status, justPaid: fullyPaid } : r));
+        ? { ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status, justPaid: fullyPaid, paidAt: fullyPaid ? Date.now() : undefined } : r));
       // Fully paid: keep it 5 min so a mistake can be reverted, then drop it.
       if (fullyPaid) grace.schedule(id, GRACE_MS, () => setRows((prev) => prev.filter((r) => r.airtable_record_id !== id)));
       else grace.cancel(id);
@@ -189,7 +191,7 @@ export default function AdminFreelancerPayments() {
                             <BrandLoader size="sm" className="h-3 w-3 inline-block" />
                           ) : r.justPaid ? (
                             <span className="inline-flex items-center gap-3">
-                              <span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span>
+                              <span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span>
                               <button onClick={() => pay(r, "unpaid")} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button>
                             </span>
                           ) : (

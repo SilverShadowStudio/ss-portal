@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Per-id timers for a "grace" window — e.g. keep a just-actioned row visible
@@ -17,3 +17,20 @@ export function useGraceTimers() {
 }
 
 export const GRACE_MS = 5 * 60 * 1000;
+
+/** Re-renders once a second while `active` (for live countdowns); returns now(ms). */
+export function useNowTicker(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
+
+/** ms → "M:SS" */
+export function formatCountdown(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
