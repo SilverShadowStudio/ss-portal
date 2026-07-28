@@ -980,9 +980,12 @@ export function AccountList({
                       onClick={() => setTeamAddMode("invite")}
                       className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
-                      <p className="text-sm text-foreground">Add members</p>
+                      <p className="text-sm text-foreground">Add member</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Send a portal invite. No contract — they set a password and sign the NDA + service agreement during onboarding.
+                        The member gets an invite, sets a password, adds their details, and signs.
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        They sign the agreement in the portal.
                       </p>
                     </button>
                     <button
@@ -990,9 +993,12 @@ export function AccountList({
                       onClick={() => setTeamAddMode("presigned")}
                       className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
-                      <p className="text-sm text-foreground">Add member with pre-signed contract</p>
+                      <p className="text-sm text-foreground">Add member with existing agreement</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Upload a contract that was already signed on paper. Stored as a historical record. Portal invite still sent.
+                        The member gets an invite, sets a password, and adds their details.
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        You upload a signed agreement.
                       </p>
                     </button>
                   </div>
@@ -1000,7 +1006,7 @@ export function AccountList({
               ) : teamAddMode === "invite" ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Add members</DialogTitle>
+                    <DialogTitle>Add member</DialogTitle>
                   </DialogHeader>
                   <p className="text-xs text-muted-foreground mt-1">
                     They'll enter their name and details during onboarding — you set their role here.
@@ -1098,7 +1104,7 @@ export function AccountList({
               ) : teamAddMode === "presigned" ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Upload pre-signed contract</DialogTitle>
+                    <DialogTitle>Add member with existing agreement</DialogTitle>
                   </DialogHeader>
                   <p className="text-xs text-muted-foreground mt-1">
                     Upload a contract that was signed before joining the portal. A portal invite will be sent after upload.
