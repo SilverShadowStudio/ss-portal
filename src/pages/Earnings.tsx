@@ -110,15 +110,21 @@ export default function Earnings() {
               ) : (
                 <div className="ssr-tile overflow-hidden">
                   {p.lines.map((l, i) => (
-                    <div key={i} className="flex items-baseline justify-between gap-6 px-6 py-3.5 border-b border-white/[0.05] last:border-0">
-                      <div className="min-w-0">
-                        <p className="text-standard truncate" style={{ fontSize: 13.5 }}>
-                          {niceDate(l.date)
-                            ? <>{niceDate(l.date)}<span className="text-white/25 mx-2.5">|</span>{l.description}</>
-                            : l.description}
-                        </p>
-                        {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
-                      </div>
+                    <div key={i} className="flex items-baseline gap-6 px-6 py-3.5 border-b border-white/[0.05] last:border-0">
+                      {l.date ? (
+                        <>
+                          <div className="w-[200px] shrink-0">
+                            <p className="text-standard" style={{ fontSize: 13.5 }}>{niceDate(l.date)}</p>
+                            {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                          </div>
+                          <p className="text-standard flex-1 min-w-0 truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
+                        </>
+                      ) : (
+                        <div className="flex-1 min-w-0">
+                          <p className="text-standard truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
+                          {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                        </div>
+                      )}
                       <p className="text-strong shrink-0 tabular-nums" style={{ fontSize: 13.5 }}>{money(l.amount, ccy)}</p>
                     </div>
                   ))}

@@ -75,7 +75,8 @@ async function fetchLineItems(pat: string, baseId: string, source: string, invoi
       lines.push({ description, date: dateVal, qty, unit: m.unit, rate, amount: amount ?? 0 });
     }
   }
-  // Newest first for date-based logs; keep model order otherwise.
+  // Chronological: latest date at the top, earliest at the bottom.
+  lines.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   return lines;
 }
 
