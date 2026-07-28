@@ -8,6 +8,7 @@ import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ProtectedClient } from "@/components/ProtectedClient";
 import { ManagerOnlyRoute } from "@/components/ManagerOnlyRoute";
+import { NonTeamRoute } from "@/components/NonTeamRoute";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
 import { RootRedirect } from "@/components/RootRedirect";
 import Index from "./pages/Index";
@@ -142,7 +143,9 @@ const App = () => (
               path="/delivery"
               element={
                 <ProtectedClient>
-                  <Delivery />
+                  <NonTeamRoute>
+                    <Delivery />
+                  </NonTeamRoute>
                 </ProtectedClient>
               }
             />
@@ -160,7 +163,9 @@ const App = () => (
               path="/portfolio"
               element={
                 <ProtectedClient>
-                  <Portfolio />
+                  <NonTeamRoute>
+                    <Portfolio />
+                  </NonTeamRoute>
                 </ProtectedClient>
               }
             />
@@ -168,7 +173,9 @@ const App = () => (
               path="/lanes"
               element={
                 <ProtectedClient>
-                  <Lanes />
+                  <NonTeamRoute>
+                    <Lanes />
+                  </NonTeamRoute>
                 </ProtectedClient>
               }
             />
@@ -176,7 +183,9 @@ const App = () => (
               path="/timeline"
               element={
                 <ProtectedClient>
-                  <Timeline />
+                  <NonTeamRoute>
+                    <Timeline />
+                  </NonTeamRoute>
                 </ProtectedClient>
               }
             />

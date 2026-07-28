@@ -7,6 +7,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 /**
  * Root route redirector. Sends authenticated users to the right home:
  *   • admins → /admin
+ *   • team members → /earnings
  *   • clients → /portfolio
  * Unauthenticated users go to /auth.
  */
@@ -21,13 +22,14 @@ export function RootRedirect() {
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data: roleData }, { data: memberData }] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+        supabase.from("account_members").select("accounts(account_type)").eq("user_id", user.id).maybeSingle(),
+      ]);
       if (cancelled) return;
-      setTarget(data?.role === "admin" ? "/admin" : "/portfolio");
+      if (roleData?.role === "admin") { setTarget("/admin"); return; }
+      const accountType = (memberData as { accounts?: { account_type?: string } } | null)?.accounts?.account_type;
+      setTarget(accountType === "team" ? "/earnings" : "/portfolio");
     })();
     return () => { cancelled = true; };
   }, [user]);
