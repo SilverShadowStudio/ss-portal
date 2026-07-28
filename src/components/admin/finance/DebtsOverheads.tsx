@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
 
 interface OH {
   id: string; supplier_name: string | null; description: string | null; category_code: string | null;
   gross_amount: number; currency: string | null; due_date: string | null; payment_status: string | null;
+  justPaid?: boolean;
 }
 const money = (n: number, c = "GBP") =>
   (c === "GBP" ? "£" : c === "EUR" ? "€" : c === "USD" ? "$" : `${c} `) +
@@ -20,6 +22,7 @@ export function DebtsOverheads() {
   const [rows, setRows] = useState<OH[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const grace = useGraceTimers();
 
   async function load() {
     const { data } = await supabase.from("overheads")
@@ -38,8 +41,18 @@ export function DebtsOverheads() {
       .update({ payment_status: "paid", payment_date: new Date().toISOString().slice(0, 10) }).eq("id", r.id);
     setSaving(null);
     if (error) { toast({ title: "Couldn't mark paid", description: error.message, variant: "destructive" }); return; }
-    setRows((prev) => prev.filter((x) => x.id !== r.id));
-    toast({ title: "Overhead marked paid" });
+    // Keep it 5 min so a mistake can be reverted, then drop it.
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true } : x));
+    grace.schedule(r.id, GRACE_MS, () => setRows((prev) => prev.filter((x) => x.id !== r.id)));
+  }
+
+  async function revert(r: OH) {
+    setSaving(r.id);
+    const { error } = await supabase.from("overheads").update({ payment_status: "unpaid", payment_date: null }).eq("id", r.id);
+    setSaving(null);
+    if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
+    grace.cancel(r.id);
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: false } : x));
   }
 
   return (
@@ -64,7 +77,7 @@ export function DebtsOverheads() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
+                <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
                   <td className="px-4 py-3 text-strong">{r.supplier_name ?? "—"}</td>
                   <td className="px-4 py-3 text-recessive text-[12px]">{r.description || r.category_code || "—"}</td>
                   <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
@@ -72,7 +85,9 @@ export function DebtsOverheads() {
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {saving === r.id
                       ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
-                      : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                      : r.justPaid
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                   </td>
                 </tr>
               ))}

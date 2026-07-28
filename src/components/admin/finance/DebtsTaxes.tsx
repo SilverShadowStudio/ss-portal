@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
 
 const TYPES = [{ v: "vat", l: "VAT" }, { v: "corporation_tax", l: "Corporation Tax" }, { v: "paye_ni", l: "PAYE / NI" }];
 const typeLabel = (t: string) => TYPES.find((x) => x.v === t)?.l ?? t;
@@ -21,6 +22,7 @@ const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Dat
 interface Tax {
   id: string; tax_type: string; period_label: string | null; amount: number; currency: string;
   due_date: string | null; payment_status: string; document_path: string | null;
+  justPaid?: boolean;
 }
 
 export function DebtsTaxes() {
@@ -32,6 +34,7 @@ export function DebtsTaxes() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ tax_type: "vat", period_label: "", amount: "", due_date: "" });
   const [file, setFile] = useState<File | null>(null);
+  const grace = useGraceTimers();
 
   async function load() {
     const { data } = await supabase.from("taxes")
@@ -51,8 +54,18 @@ export function DebtsTaxes() {
       .update({ payment_status: "paid", payment_date: new Date().toISOString().slice(0, 10) }).eq("id", r.id);
     setSaving(null);
     if (error) { toast({ title: "Couldn't update", description: error.message, variant: "destructive" }); return; }
-    setRows((prev) => prev.filter((x) => x.id !== r.id));
-    toast({ title: "Tax marked paid" });
+    // Keep it 5 min so a mistake can be reverted, then drop it.
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true } : x));
+    grace.schedule(r.id, GRACE_MS, () => setRows((prev) => prev.filter((x) => x.id !== r.id)));
+  }
+
+  async function revert(r: Tax) {
+    setSaving(r.id);
+    const { error } = await supabase.from("taxes").update({ payment_status: "unpaid", payment_date: null }).eq("id", r.id);
+    setSaving(null);
+    if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
+    grace.cancel(r.id);
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: false } : x));
   }
 
   async function view(r: Tax) {
@@ -119,7 +132,7 @@ export function DebtsTaxes() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
+                <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
                   <td className="px-4 py-3 text-strong">{typeLabel(r.tax_type)}</td>
                   <td className="px-4 py-3 text-standard">{r.period_label ?? "—"}</td>
                   <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
@@ -131,7 +144,9 @@ export function DebtsTaxes() {
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
-                      : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                      : r.justPaid
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                   </td>
                 </tr>
               ))}

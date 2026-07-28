@@ -980,7 +980,7 @@ export function AccountList({
                       onClick={() => setTeamAddMode("invite")}
                       className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
                     >
-                      <p className="text-sm text-foreground">Add member only</p>
+                      <p className="text-sm text-foreground">Add members</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         Send a portal invite. No contract — they set a password and sign the NDA + service agreement during onboarding.
                       </p>
@@ -1000,7 +1000,7 @@ export function AccountList({
               ) : teamAddMode === "invite" ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Add member only</DialogTitle>
+                    <DialogTitle>Add members</DialogTitle>
                   </DialogHeader>
                   <p className="text-xs text-muted-foreground mt-1">
                     They'll enter their name and details during onboarding — you set their role here.

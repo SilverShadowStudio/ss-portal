@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { useGraceTimers, GRACE_MS } from "@/hooks/useGraceTimers";
 import { DebtsOverheads } from "@/components/admin/finance/DebtsOverheads";
 import { DebtsTaxes } from "@/components/admin/finance/DebtsTaxes";
 
@@ -23,11 +24,14 @@ interface Row {
   amount_paid: number;
   balance: number;
   paid_status: string | null;
+  justPaid?: boolean;   // fully paid, still in the 5-min revert window
 }
 
 function money(n: number) {
   return "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
+// Airtable stores names hyphen/underscore-joined ("Maycon-Santos") — show spaces.
+const humanName = (s: string | null) => (s ?? "—").replace(/[_-]+/g, " ");
 
 // A freelancer's monthly amount falls due at the end of that month.
 function periodEnd(y: number | null, m: number | null): string | null {
@@ -88,6 +92,7 @@ export default function AdminFreelancerPayments() {
 
   // Default: largest outstanding first. Any column is click-sortable (asc↔desc).
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Row>(rows, COLUMNS, { key: "due", dir: "desc" });
+  const grace = useGraceTimers();
 
   async function pay(row: Row, action: "paid" | "partial" | "unpaid", amount?: number) {
     setSaving(row.airtable_record_id);
@@ -97,12 +102,13 @@ export default function AdminFreelancerPayments() {
       });
       if (error || (data as { success?: boolean })?.success === false) throw new Error(error?.message ?? "Failed");
       const d = data as { amount_paid: number; balance: number; paid_status: string };
-      // Fully paid rows leave the debts list; partials stay with the new balance.
-      setRows((prev) => prev.flatMap((r) => {
-        if (r.airtable_record_id !== row.airtable_record_id) return [r];
-        if (d.balance <= 0.005) return [];
-        return [{ ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status }];
-      }));
+      const fullyPaid = d.balance <= 0.005;
+      const id = row.airtable_record_id;
+      setRows((prev) => prev.map((r) => r.airtable_record_id === id
+        ? { ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status, justPaid: fullyPaid } : r));
+      // Fully paid: keep it 5 min so a mistake can be reverted, then drop it.
+      if (fullyPaid) grace.schedule(id, GRACE_MS, () => setRows((prev) => prev.filter((r) => r.airtable_record_id !== id)));
+      else grace.cancel(id);
       setPartialFor(null); setPartialAmt("");
       toast({ title: "Payment recorded in Airtable" });
     } catch (e) {
@@ -157,8 +163,8 @@ export default function AdminFreelancerPayments() {
                     const busy = saving === key;
                     const period = r.period_year && r.period_month ? `${MONTHS[r.period_month - 1]} ${r.period_year}` : "—";
                     return (
-                      <tr key={key} className="border-b border-white/[0.05] last:border-0">
-                        <td className="px-4 py-3 text-strong">{r.payee_name ?? "—"}</td>
+                      <tr key={key} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
+                        <td className="px-4 py-3 text-strong">{humanName(r.payee_name)}</td>
                         <td className="px-4 py-3 text-recessive text-[12px]">{ROLE[r.source_table]}</td>
                         <td className="px-4 py-3 text-standard">{period}</td>
                         <td className="px-4 py-3 text-right text-standard tabular-nums">{money(r.invoice_total)}</td>
@@ -181,6 +187,11 @@ export default function AdminFreelancerPayments() {
                             </span>
                           ) : busy ? (
                             <BrandLoader size="sm" className="h-3 w-3 inline-block" />
+                          ) : r.justPaid ? (
+                            <span className="inline-flex items-center gap-3">
+                              <span className="text-[9px] uppercase tracking-[0.2em] text-gold">Paid</span>
+                              <button onClick={() => pay(r, "unpaid")} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button>
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-3">
                               {r.paid_status === "partial" && <span className="text-[9px] uppercase tracking-[0.2em] text-[#c98a6a]">Partial</span>}
