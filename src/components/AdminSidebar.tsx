@@ -6,7 +6,7 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Landmark, ScrollText, TrendingUp,
+  FileText, Landmark, ScrollText, TrendingUp, HandCoins,
   Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
@@ -45,7 +45,8 @@ const SECTIONS: SidebarNavSection[] = [
   {
     title: "Finance",
     items: [
-      { path: "/admin/finance/pnl",      label: "P&L",      Icon: TrendingUp, indent: true },
+      { path: "/admin/finance/pnl",         label: "P&L",         Icon: TrendingUp, indent: true },
+      { path: "/admin/finance/freelancers", label: "Freelancers", Icon: HandCoins,  indent: true },
     ],
   },
 ];

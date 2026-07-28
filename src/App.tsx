@@ -56,6 +56,7 @@ import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import AdminTeam from "./pages/admin/AdminTeam";
 import AdminTeamContracts from "./pages/admin/AdminTeamContracts";
 import AdminPnL from "./pages/admin/AdminPnL";
+import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import {
@@ -378,6 +379,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminPnL />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/finance/freelancers"
+              element={
+                <AdminProtectedRoute>
+                  <AdminFreelancerPayments />
                 </AdminProtectedRoute>
               }
             />
