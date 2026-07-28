@@ -274,7 +274,8 @@ export function AccountList({
   const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
   const [teamTemplatesLoading, setTeamTemplatesLoading] = useState(false);
   // Pre-signed upload form state
-  const [presignedName, setPresignedName] = useState("");
+  const [presignedFirstName, setPresignedFirstName] = useState("");
+  const [presignedLastName, setPresignedLastName] = useState("");
   const [presignedEmail, setPresignedEmail] = useState("");
   const [presignedSigningDate, setPresignedSigningDate] = useState("");
   const [presignedSubjectLine, setPresignedSubjectLine] = useState("");
@@ -614,7 +615,8 @@ export function AccountList({
   };
 
   const resetPresignedForm = () => {
-    setPresignedName("");
+    setPresignedFirstName("");
+    setPresignedLastName("");
     setPresignedEmail("");
     setPresignedSigningDate("");
     setPresignedSubjectLine("");
@@ -638,7 +640,7 @@ export function AccountList({
   };
 
   const handlePresignedUpload = async () => {
-    if (!presignedName.trim() || !presignedEmail.trim() || !presignedSigningDate || !presignedPdfFile) {
+    if (!presignedFirstName.trim() || !presignedLastName.trim() || !presignedEmail.trim() || !presignedSigningDate || !presignedPdfFile) {
       toast({ title: "All fields are required", variant: "destructive" });
       return;
     }
@@ -656,8 +658,10 @@ export function AccountList({
       if (!session) throw new Error("No session");
       const fd = new FormData();
       fd.append("email", presignedEmail.trim().toLowerCase());
-      fd.append("name", presignedName.trim());
-      fd.append("signed_by_name", presignedName.trim());
+      fd.append("first_name", presignedFirstName.trim());
+      fd.append("last_name", presignedLastName.trim());
+      fd.append("name", `${presignedFirstName.trim()} ${presignedLastName.trim()}`.trim());
+      fd.append("signed_by_name", `${presignedFirstName.trim()} ${presignedLastName.trim()}`.trim());
       fd.append("signing_date", presignedSigningDate);
       if (presignedSubjectLine.trim()) fd.append("subject_line", presignedSubjectLine.trim());
       fd.append("pdf", presignedPdfFile);
@@ -966,48 +970,42 @@ export function AccountList({
             {isTeamOnly ? (
               teamAddMode === "choice" ? (
                 <>
-                  <DialogHeader>
-                    <DialogTitle>Add team member</DialogTitle>
+                  <DialogHeader className="space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px w-10 bg-gold-muted" />
+                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add team member</DialogTitle>
+                    </div>
                   </DialogHeader>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Choose how to bring this team member on.
-                  </p>
-                  <div className="space-y-3 pt-3">
-                    <button
-                      type="button"
-                      onClick={() => setTeamAddMode("invite")}
-                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
-                    >
-                      <p className="text-sm text-foreground">Add member</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        The member gets an invite, sets a password, adds their details, and signs.
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                        They sign the agreement in the portal.
-                      </p>
+                  <p className="text-sm text-foreground/45 mt-3">Choose how to bring this team member on.</p>
+                  <div className="space-y-3 pt-4">
+                    <button type="button" onClick={() => setTeamAddMode("invite")} className="group w-full text-left ssr-tile ssr-tile-hover p-5 transition-colors">
+                      <div className="mb-2.5 flex items-center gap-2.5">
+                        <div className="h-px w-5 bg-gold-muted" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-white/85 transition-colors group-hover:text-[#ecd39c]">Add member</span>
+                      </div>
+                      <p className="text-[13px] text-white/70">The member gets an invite, sets a password, adds their details, and signs.</p>
+                      <p className="mt-0.5 text-[12px] text-white/40">They sign the agreement in the portal.</p>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setTeamAddMode("presigned")}
-                      className="w-full text-left rounded-sm border border-input p-4 hover:border-gold/50 hover:bg-muted/30 transition-colors"
-                    >
-                      <p className="text-sm text-foreground">Add member with existing agreement</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        The member gets an invite, sets a password, and adds their details.
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                        You upload a signed agreement.
-                      </p>
+                    <button type="button" onClick={() => setTeamAddMode("presigned")} className="group w-full text-left ssr-tile ssr-tile-hover p-5 transition-colors">
+                      <div className="mb-2.5 flex items-center gap-2.5">
+                        <div className="h-px w-5 bg-gold-muted" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-white/85 transition-colors group-hover:text-[#ecd39c]">Add member with existing agreement</span>
+                      </div>
+                      <p className="text-[13px] text-white/70">The member gets an invite, sets a password, and adds their details.</p>
+                      <p className="mt-0.5 text-[12px] text-white/40">You upload a signed agreement.</p>
                     </button>
                   </div>
                 </>
               ) : teamAddMode === "invite" ? (
                 <>
-                  <DialogHeader>
-                    <DialogTitle>Add member</DialogTitle>
+                  <DialogHeader className="space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px w-10 bg-gold-muted" />
+                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add member</DialogTitle>
+                    </div>
                   </DialogHeader>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    They'll enter their name and details during onboarding — you set their role here.
+                  <p className="text-sm text-foreground/45 mt-3">
+                    They&rsquo;ll enter their name and details during onboarding — you set their role here.
                   </p>
                   <div className="space-y-4 pt-2">
                     <div className="space-y-1">
@@ -1047,10 +1045,13 @@ export function AccountList({
                 </>
               ) : teamAddMode === "template-pick" ? (
                 <>
-                  <DialogHeader>
-                    <DialogTitle>Choose a contract template</DialogTitle>
+                  <DialogHeader className="space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px w-10 bg-gold-muted" />
+                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Choose a contract template</DialogTitle>
+                    </div>
                   </DialogHeader>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-foreground/45 mt-3">
                     Select a template to pre-populate the contract form, or start from blank.
                   </p>
                   <div className="space-y-3 pt-3">
@@ -1102,21 +1103,31 @@ export function AccountList({
               ) : teamAddMode === "presigned" ? (
                 <>
                   <DialogHeader>
-                    <DialogTitle>Add member with existing agreement</DialogTitle>
+                    <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add member with existing agreement</DialogTitle>
                   </DialogHeader>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-sm text-foreground/45 mt-3">
                     Upload a contract that was signed before joining the portal. A portal invite will be sent after upload.
                   </p>
                   <div className="space-y-4 pt-3">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Full name *</label>
+                        <label className="text-xs text-muted-foreground">First name *</label>
                         <Input
-                          value={presignedName}
-                          onChange={(e) => setPresignedName(e.target.value)}
-                          placeholder="Jane Smith"
+                          value={presignedFirstName}
+                          onChange={(e) => setPresignedFirstName(e.target.value)}
+                          placeholder="Jane"
                         />
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Last name *</label>
+                        <Input
+                          value={presignedLastName}
+                          onChange={(e) => setPresignedLastName(e.target.value)}
+                          placeholder="Smith"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Email *</label>
                         <Input
@@ -1126,8 +1137,6 @@ export function AccountList({
                           placeholder="jane@company.com"
                         />
                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs text-muted-foreground">Date signed *</label>
                         <Input
