@@ -110,8 +110,14 @@ Deno.serve(async (req) => {
   for (const row of rows ?? []) {
     const source = row.source_table as string;
     const total = Number(row.invoice_total) || 0;
-    const amtPaid = Number(row.amount_paid) || 0;
-    const bal = row.balance_remaining != null ? Number(row.balance_remaining) : Math.max(0, total - amtPaid);
+    // Airtable tracks payment via paid_status + Remaining Balance (which is £0
+    // once paid); the amount_paid field is left empty. So the balance is the
+    // source of truth, and paid is derived from it — keeping earned − paid =
+    // outstanding consistent across all three figures.
+    const bal = row.balance_remaining != null
+      ? Number(row.balance_remaining)
+      : (row.paid_status === "paid" ? 0 : total);
+    const amtPaid = Math.max(0, total - bal);
     earned += total; paid += amtPaid; outstanding += bal;
 
     let lines: Line[] = [];
