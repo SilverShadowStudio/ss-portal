@@ -152,6 +152,13 @@ function CountryCombobox({ value, onChange, onBlur, hasError }: {
   );
 }
 
+// ── Shared button styles ────────────────────────────────────────────────────────
+
+const SIGN_BTN = "font-sans uppercase text-background bg-foreground/85 hover:bg-foreground rounded-none inline-flex items-center justify-center transition-opacity duration-300 disabled:opacity-50 disabled:cursor-not-allowed";
+const SIGN_BTN_STYLE = { fontSize: "11px", letterSpacing: "0.28em", fontWeight: 500, height: "46px", paddingLeft: "40px", paddingRight: "40px" } as const;
+const BACK_BTN = "uppercase text-foreground/45 hover:text-foreground/75 transition-opacity duration-300";
+const BACK_BTN_STYLE = { fontSize: "10px", letterSpacing: "0.3em" } as const;
+
 // ── FSA page ───────────────────────────────────────────────────────────────────
 
 function FsaPage({ form, today, onBack, signing, onSign }: {
@@ -279,7 +286,7 @@ export default function Onboarding() {
     firstName: "", lastName: "", email: user?.email ?? "",
     role: "",
     flatNumber: "", houseNumber: "", streetName: "", city: "", postcode: "", country: "",
-    rateAmount: "", rateCurrency: "GBP", ratePeriod: "day",
+    rateAmount: "10", rateCurrency: "USD", ratePeriod: "hour",
     bankName: "", accountHolder: "", sortCode: "", accountNumber: "",
   });
   const [touched, setTouched] = useState<Touched>({});
@@ -370,7 +377,7 @@ export default function Onboarding() {
           <section>
             <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>01 — Personal Details</span></div>
             <div className="space-y-7">
-              {(["firstName", "lastName", "email", "role"] as const).map((field) => (
+              {(["firstName", "lastName", "email"] as const).map((field) => (
                 <div key={field} className="space-y-1.5" data-field={field}>
                   <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
                     {FIELD_LABELS[field]}{REQUIRED_FIELDS.includes(field) && <span className="ml-1 text-gold">*</span>}
@@ -384,6 +391,19 @@ export default function Onboarding() {
                   {showError(field) && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
                 </div>
               ))}
+              <div className="space-y-1.5" data-field="role">
+                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  {FIELD_LABELS.role}{REQUIRED_FIELDS.includes("role") && <span className="ml-1 text-gold">*</span>}
+                </label>
+                <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
+                  <option value="" disabled>Select a role…</option>
+                  <option value="Scene Manager">Scene Manager</option>
+                  <option value="Modeller">Modeller</option>
+                  <option value="Art Director">Art Director</option>
+                  <option value="Photographer">Photographer</option>
+                </select>
+                {showError("role") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
+              </div>
             </div>
           </section>
 
@@ -426,7 +446,7 @@ export default function Onboarding() {
               <div className="space-y-1.5">
                 <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS.ratePeriod}</label>
                 <select value={form.ratePeriod} onChange={(e) => handleChange("ratePeriod", e.target.value)} className={selectClass("ratePeriod")}>
-                  <option value="day">Per day</option><option value="week">Per week</option><option value="month">Per month</option>
+                  <option value="hour">Per hour</option><option value="day">Per day</option><option value="week">Per week</option><option value="month">Per month</option>
                 </select>
               </div>
             </div>
