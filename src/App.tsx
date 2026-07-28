@@ -18,6 +18,7 @@ import NewTask from "./pages/NewTask";
 import Messages from "./pages/Messages";
 import Total from "./pages/Total";
 import Documents from "./pages/Documents";
+import Earnings from "./pages/Earnings";
 import Account from "./pages/Account";
 import Team from "./pages/Team";
 import Invoices from "./pages/Invoices";
@@ -202,6 +203,14 @@ const App = () => (
                   <ManagerOnlyRoute>
                     <Documents />
                   </ManagerOnlyRoute>
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/earnings"
+              element={
+                <ProtectedClient>
+                  <Earnings />
                 </ProtectedClient>
               }
             />

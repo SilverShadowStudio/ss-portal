@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  CalendarDays, Inbox, Images, FileText, Users,
+  CalendarDays, Inbox, Images, FileText, Users, Wallet,
   LayoutDashboard, Package, Settings, Sun, Moon, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
@@ -19,6 +19,7 @@ const PROJECT_NAV: SidebarNavItem[] = [
 ];
 
 const TEAM_NAV: SidebarNavItem[] = [
+  { path: "/earnings",  label: "Earnings",   Icon: Wallet   },
   { path: "/documents", label: "Documents",  Icon: FileText },
 ];
 
@@ -44,11 +45,13 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     Promise.all([
       supabase.from("profiles").select("first_name, last_name, full_name, company").eq("user_id", user.id).maybeSingle(),
       supabase.from("account_members").select("accounts(company_name)").eq("user_id", user.id).maybeSingle(),
-    ]).then(([{ data: profileData }, { data: memberData }]) => {
+      // Team members' names live in freelancer_profiles, not profiles.
+      supabase.from("freelancer_profiles").select("first_name, last_name").eq("user_id", user.id).maybeSingle(),
+    ]).then(([{ data: profileData }, { data: memberData }, { data: freelancerData }]) => {
       const accountCompany = (memberData as any)?.accounts?.company_name ?? null;
       setProfile({
-        first_name: profileData?.first_name ?? null,
-        last_name: profileData?.last_name ?? null,
+        first_name: profileData?.first_name ?? freelancerData?.first_name ?? null,
+        last_name: profileData?.last_name ?? freelancerData?.last_name ?? null,
         full_name: profileData?.full_name ?? null,
         company: profileData?.company ?? accountCompany,
       });
