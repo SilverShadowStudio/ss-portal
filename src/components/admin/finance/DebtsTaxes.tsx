@@ -54,14 +54,15 @@ export function DebtsTaxes() {
     // Debts only: unpaid AND overdue or due within a week (due date asc).
     setRows(((data ?? []) as Tax[]).filter((t) => t.payment_status !== "paid" && isDebtDue(t.due_date)));
 
-    // Payroll PAYE/NI owed to HMRC per month (income tax + employee NI + employer
-    // NI + student loan; fall back to gross−net+employer NI if not itemised).
+    // Payroll PAYE/NI owed to HMRC per month = income tax + employee NI +
+    // student loan (fall back to gross−net if not itemised). Employer NI is
+    // excluded — the Employment Allowance covers it, so £0 is due to HMRC.
     const nameById = new Map<string, string>(((emps ?? []) as any[]).map((a) => [a.id, (a.company_name ?? "—").replace(/[_-]+/g, " ")]));
     setPayroll(((ps ?? []) as any[])
       .filter((p) => (!p.period_end || p.period_end <= isoTodayTx) && !p.tax_paid_at)
       .map((p) => {
-        const itemised = (Number(p.income_tax) || 0) + (Number(p.employee_ni) || 0) + (Number(p.employer_ni) || 0) + (Number(p.student_loan) || 0);
-        const fallback = Math.max(0, (Number(p.gross) || 0) - (Number(p.net) || 0)) + (Number(p.employer_ni) || 0);
+        const itemised = (Number(p.income_tax) || 0) + (Number(p.employee_ni) || 0) + (Number(p.student_loan) || 0);
+        const fallback = Math.max(0, (Number(p.gross) || 0) - (Number(p.net) || 0));
         return { id: p.id, account_id: p.account_id, employee: nameById.get(p.account_id) ?? "Employee", period_label: p.period_label ?? p.period_end ?? "—", period_end: p.period_end, amount: p.income_tax != null ? itemised : fallback, document_path: p.document_path ?? null, filed: !!p.document_path || !!p.dropbox_path };
       })
       .filter((r) => r.amount > 0)

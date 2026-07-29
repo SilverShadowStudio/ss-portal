@@ -314,9 +314,11 @@ export interface MoneyOutRow {
   salary?: MoneyOutSalary; // present on payroll rows → carries the missing-payslip flag
 }
 
+// Real cost of employment. Employer NI is excluded: the Employment Allowance
+// (£10,500/yr) covers the company's Employers' NI in full, so it nets to £0 —
+// the true cost is gross salary + any employer pension.
 export function payslipEmployerCost(p: PayslipCost): number {
-  if (p.employer_cost != null) return Number(p.employer_cost) || 0;
-  return (Number(p.gross) || 0) + (Number(p.employer_ni) || 0) + (Number(p.employer_pension) || 0);
+  return (Number(p.gross) || 0) + (Number(p.employer_pension) || 0);
 }
 
 export function buildMoneyOutRows(
