@@ -40,22 +40,27 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     last_name: string | null;
     full_name: string | null;
     company: string | null;
+    role: string | null;
   } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     Promise.all([
       supabase.from("profiles").select("first_name, last_name, full_name, company").eq("user_id", user.id).maybeSingle(),
-      supabase.from("account_members").select("accounts(company_name)").eq("user_id", user.id).maybeSingle(),
+      supabase.from("account_members").select("accounts(company_name, position, team_role)").eq("user_id", user.id).maybeSingle(),
       // Team members' names live in freelancer_profiles, not profiles.
-      supabase.from("freelancer_profiles").select("first_name, last_name").eq("user_id", user.id).maybeSingle(),
+      supabase.from("freelancer_profiles").select("first_name, last_name, role").eq("user_id", user.id).maybeSingle(),
     ]).then(([{ data: profileData }, { data: memberData }, { data: freelancerData }]) => {
-      const accountCompany = (memberData as any)?.accounts?.company_name ?? null;
+      const acct = (memberData as any)?.accounts;
+      // Team members show their position/role under the name — employee position,
+      // else invite role, else the freelancer profile role.
+      const teamRole = acct?.position || acct?.team_role || (freelancerData as any)?.role || null;
       setProfile({
         first_name: profileData?.first_name ?? freelancerData?.first_name ?? null,
         last_name: profileData?.last_name ?? freelancerData?.last_name ?? null,
         full_name: profileData?.full_name ?? null,
-        company: profileData?.company ?? accountCompany,
+        company: profileData?.company ?? acct?.company_name ?? null,
+        role: teamRole,
       });
     });
   }, [user]);
@@ -113,7 +118,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
       sections={[{ items: navItems }]}
       accountMenuItems={accountMenuItems}
       accountDisplayName={displayName}
-      accountSubLabel={accountType === "team" ? "Team" : (profile?.company ?? null)}
+      accountSubLabel={accountType === "team" ? (profile?.role ?? "Team") : (profile?.company ?? null)}
       accountInitials={initials}
       showMobileTabBar
       expanded={expanded}

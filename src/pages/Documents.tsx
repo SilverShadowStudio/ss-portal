@@ -267,11 +267,27 @@ export default function Documents() {
 
   async function fetchFreelancerDocs() {
     try {
-      const { data } = await supabase
-        .from("freelancer_documents")
-        .select("id, document_type, signed_at, signed_by_name, pdf_url")
-        .order("document_type", { ascending: true });
-      setFreelancerDocuments((data || []) as FreelancerDocument[]);
+      // Portal-signed docs (FSA/NDA) live in freelancer_documents; a member who
+      // joined with an ALREADY-signed contract has it in team_contracts instead.
+      const [{ data: fdocs }, { data: contracts }] = await Promise.all([
+        supabase
+          .from("freelancer_documents")
+          .select("id, document_type, signed_at, signed_by_name, pdf_url")
+          .order("document_type", { ascending: true }),
+        supabase
+          .from("team_contracts")
+          .select("id, signed_at, signed_by_name, storage_path")
+          .eq("status", "signed")
+          .not("storage_path", "is", null),
+      ]);
+      const contractDocs: FreelancerDocument[] = ((contracts || []) as Array<Record<string, unknown>>).map((c) => ({
+        id: c.id as string,
+        document_type: "service_agreement",
+        signed_at: (c.signed_at as string) ?? null,
+        signed_by_name: (c.signed_by_name as string) ?? null,
+        pdf_url: c.storage_path as string,
+      }));
+      setFreelancerDocuments([...((fdocs || []) as FreelancerDocument[]), ...contractDocs]);
     } catch {
       toast({ title: "Could not load documents", variant: "destructive" });
     } finally {
