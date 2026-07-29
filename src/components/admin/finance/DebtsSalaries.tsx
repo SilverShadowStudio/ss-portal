@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { estimatePayroll, estimateMonthlyEmployerOnCosts, TAX_YEAR } from "@/lib/payrollEstimate";
+import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 
 interface EmployeeRow {
   id: string;
@@ -18,6 +19,9 @@ interface EmployeeRow {
 interface Payslip {
   id: string; account_id: string; period_label: string | null; period_end: string | null;
   gross: number | null; net: number | null; employer_cost: number | null; document_path: string | null;
+  income_tax: number | null; employee_ni: number | null; employer_ni: number | null; student_loan: number | null;
+  salary_paid_at: string | null;
+  justPaid?: boolean; paidAt?: number;
 }
 
 const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n || 0));
@@ -52,7 +56,7 @@ function parseCsvRecords(text: string): string[][] {
 
 interface TrackerRow {
   period_label: string; period_end: string;
-  gross: number; income_tax: number; employee_ni: number; net: number; employer_ni: number;
+  gross: number; income_tax: number; employee_ni: number; student_loan: number; net: number; employer_ni: number;
 }
 
 /** Extract data rows (columns: Month, Yearly, MonthlyPay, BackPay, Tax, NI, StudentLoan, TaxableGross, EmployerNI, TakeHome). */
@@ -71,6 +75,7 @@ function parseTracker(text: string): TrackerRow[] {
       gross: num(rec[2]) + num(rec[3]),   // monthly pay + back pay
       income_tax: num(rec[4]),
       employee_ni: num(rec[5]),
+      student_loan: num(rec[6]),
       net: num(rec[9]),                   // take-home
       employer_ni: num(rec[8]),
     });
@@ -101,7 +106,7 @@ export function DebtsSalaries() {
   async function load() {
     const [{ data: accts }, { data: ps }] = await Promise.all([
       supabase.from("accounts").select("id, company_name, position, gross_salary_annual").eq("employment_type", "employee"),
-      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path").order("period_end", { ascending: false }),
+      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path, income_tax, employee_ni, employer_ni, student_loan, salary_paid_at").order("period_end", { ascending: false }),
     ]);
     setRows(((accts ?? []) as any[])
       .filter((a) => Number(a.gross_salary_annual) > 0)
@@ -111,10 +116,30 @@ export function DebtsSalaries() {
   }
   useEffect(() => { load(); }, []);
 
-  // "Actual paid" counts only months up to today — later tracker rows are forecast.
-  const paidSlips = (accountId: string) => slips.filter((s) => s.account_id === accountId && (!s.period_end || s.period_end <= isoToday));
-  const actualFor = (accountId: string) => paidSlips(accountId).reduce((sum, s) => sum + Number(s.employer_cost || 0), 0);
-  const countFor = (accountId: string) => paidSlips(accountId).length;
+  const grace = useGraceTimers();
+  const now = useNowTicker(slips.some((s) => s.justPaid));
+  const empName = (id: string) => rows.find((r) => r.id === id)?.name ?? "—";
+
+  // Unpaid NET salary for due months (period_end ≤ today), oldest first — the
+  // salary owed to employees. (Tax owed to HMRC lives in Debts → Taxes.)
+  const owed = slips
+    .filter((s) => Number(s.net) > 0 && (!s.period_end || s.period_end <= isoToday) && (!s.salary_paid_at || s.justPaid))
+    .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? ""));
+  const totalOwed = owed.filter((s) => !s.justPaid).reduce((sum, s) => sum + Number(s.net || 0), 0);
+
+  async function markSalaryPaid(s: Payslip) {
+    const iso = new Date().toISOString();
+    const { error } = await supabase.from("payslips").update({ salary_paid_at: iso }).eq("id", s.id);
+    if (error) { toast({ title: "Couldn't mark paid", description: error.message, variant: "destructive" }); return; }
+    setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: true, paidAt: Date.now(), salary_paid_at: iso } : x));
+    grace.schedule(s.id, GRACE_MS, () => setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: false } : x)));
+  }
+  async function revertSalary(s: Payslip) {
+    const { error } = await supabase.from("payslips").update({ salary_paid_at: null }).eq("id", s.id);
+    if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
+    grace.cancel(s.id);
+    setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: false, salary_paid_at: null } : x));
+  }
 
   async function importTracker(emp: EmployeeRow, file: File) {
     setImportingId(emp.id);
@@ -131,6 +156,7 @@ export function DebtsSalaries() {
         gross: r.gross,
         income_tax: r.income_tax,
         employee_ni: r.employee_ni,
+        student_loan: r.student_loan,
         net: r.net,
         employer_ni: r.employer_ni,
         employer_pension: 0,
@@ -233,7 +259,7 @@ export function DebtsSalaries() {
     <section className="ssr-zone">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
         <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Salaries</h2></div>
-        <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(totalProvision)}/yr provision</span>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(totalOwed)} owed · {money(totalProvision)}/yr provision</span>
       </div>
 
       {loading ? (
@@ -242,56 +268,62 @@ export function DebtsSalaries() {
         <div className="ssr-tile p-10 text-center text-recessive text-sm">No employees yet. Add one via Team → Add member → existing agreement, set Engagement to “Employee”.</div>
       ) : (
         <>
-          <div className="ssr-tile overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/[0.08]">
-                  {["Employee", "Position", "Gross / yr", "Est cost / mo", "Actual paid", "Payslips", ""].map((h, i) => (
-                    <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i >= 2 && i <= 4 ? "text-right" : ""}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const e = estimatePayroll(r.gross_salary_annual);
-                  const actual = actualFor(r.id);
-                  const n = countFor(r.id);
-                  return (
-                    <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
-                      <td className="px-4 py-3 text-strong">{r.name}</td>
-                      <td className="px-4 py-3 text-recessive text-[12px]">{r.position ?? "—"}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-standard">{money(e.gross)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-standard">{money2(e.employerCost / 12)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-strong">{n ? money(actual) : <span className="text-white/25">—</span>}</td>
-                      <td className="px-4 py-3 text-recessive text-[12px]">{n || 0}</td>
+          {/* Employees + their import / payslip actions */}
+          <div className="mb-4 flex flex-wrap gap-2">
+            {rows.map((r) => {
+              const e = estimatePayroll(r.gross_salary_annual);
+              return (
+                <div key={r.id} className="flex items-center gap-3 rounded-sm border border-white/[0.07] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-strong">{r.name}</p>
+                    <p className="text-[10px] text-recessive">{r.position ?? "Employee"} · net {money2(e.net / 12)}/mo</p>
+                  </div>
+                  <label className="ml-2 inline-flex cursor-pointer items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
+                    {importingId === r.id ? <BrandLoader size="sm" className="h-3 w-3" /> : <Upload className="h-3 w-3" strokeWidth={1.5} />}
+                    Import
+                    <input type="file" accept=".csv,text/csv" className="hidden" disabled={importingId === r.id}
+                      onChange={(e2) => { const file = e2.target.files?.[0]; if (file) importTracker(r, file); e2.target.value = ""; }} />
+                  </label>
+                  <button onClick={() => openFor(r)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+                    <Plus className="h-3 w-3" strokeWidth={1.5} />Payslip
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Net salary owed, by month */}
+          {owed.length === 0 ? (
+            <div className="ssr-tile p-8 text-center text-recessive text-sm">No salary owed — every due month is paid. Import a tracker or add a payslip to populate.</div>
+          ) : (
+            <div className="ssr-tile overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.08]">
+                    {["Employee", "Month", "Net owed", ""].map((h, i) => (
+                      <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 2 ? "text-right" : ""}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {owed.map((s) => (
+                    <tr key={s.id} className={`border-b border-white/[0.05] last:border-0 ${s.justPaid ? "opacity-45" : ""}`}>
+                      <td className="px-4 py-3 text-strong">{empName(s.account_id)}</td>
+                      <td className="px-4 py-3 text-standard">{s.period_label ?? s.period_end ?? "—"}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-strong">{money2(Number(s.net))}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-4">
-                          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
-                            {importingId === r.id
-                              ? <BrandLoader size="sm" className="h-3 w-3" />
-                              : <Upload className="h-3 w-3" strokeWidth={1.5} />}
-                            Import tracker
-                            <input
-                              type="file"
-                              accept=".csv,text/csv"
-                              className="hidden"
-                              disabled={importingId === r.id}
-                              onChange={(e) => { const file = e.target.files?.[0]; if (file) importTracker(r, file); e.target.value = ""; }}
-                            />
-                          </label>
-                          <button onClick={() => openFor(r)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
-                            <Plus className="h-3 w-3" strokeWidth={1.5} />Payslip
-                          </button>
-                        </div>
+                        {s.justPaid
+                          ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((s.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertSalary(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                          : <button onClick={() => markSalaryPaid(s)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">
-            Est cost = gross + employer NI + employer pension ({TAX_YEAR} estimate). Actual paid = sum of recorded payslips. Add a payslip to true it up.
+            Net take-home owed to employees. The PAYE/NI owed to HMRC shows in Taxes. {TAX_YEAR} provision = {money(totalProvision)}/yr.
           </p>
         </>
       )}

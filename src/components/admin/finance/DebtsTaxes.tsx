@@ -19,15 +19,20 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB
 // A debt is overdue or due within a week (null due = treat as due now).
 const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Date.now() + 7 * 86_400_000;
 
+const isoTodayTx = new Date().toISOString().slice(0, 10);
+
 interface Tax {
   id: string; tax_type: string; period_label: string | null; amount: number; currency: string;
   due_date: string | null; payment_status: string; document_path: string | null;
   justPaid?: boolean; paidAt?: number;
 }
+// PAYE/NI owed to HMRC for a month, derived from a payslip (not the taxes table).
+interface PayrollTaxRow { id: string; employee: string; period_label: string; period_end: string | null; amount: number; justPaid?: boolean; paidAt?: number; }
 
 export function DebtsTaxes() {
   const { toast } = useToast();
   const [rows, setRows] = useState<Tax[]>([]);
+  const [payroll, setPayroll] = useState<PayrollTaxRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -35,19 +40,54 @@ export function DebtsTaxes() {
   const [form, setForm] = useState({ tax_type: "vat", period_label: "", amount: "", due_date: "" });
   const [file, setFile] = useState<File | null>(null);
   const grace = useGraceTimers();
-  const now = useNowTicker(rows.some((r) => r.justPaid));
+  const now = useNowTicker(rows.some((r) => r.justPaid) || payroll.some((p) => p.justPaid));
 
   async function load() {
-    const { data } = await supabase.from("taxes")
-      .select("id, tax_type, period_label, amount, currency, due_date, payment_status, document_path")
-      .order("due_date", { ascending: true });
+    const [{ data }, { data: ps }, { data: emps }] = await Promise.all([
+      supabase.from("taxes")
+        .select("id, tax_type, period_label, amount, currency, due_date, payment_status, document_path")
+        .order("due_date", { ascending: true }),
+      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, income_tax, employee_ni, employer_ni, student_loan, tax_paid_at"),
+      supabase.from("accounts").select("id, company_name").eq("employment_type", "employee"),
+    ]);
     // Debts only: unpaid AND overdue or due within a week (due date asc).
     setRows(((data ?? []) as Tax[]).filter((t) => t.payment_status !== "paid" && isDebtDue(t.due_date)));
+
+    // Payroll PAYE/NI owed to HMRC per month (income tax + employee NI + employer
+    // NI + student loan; fall back to gross−net+employer NI if not itemised).
+    const nameById = new Map<string, string>(((emps ?? []) as any[]).map((a) => [a.id, (a.company_name ?? "—").replace(/[_-]+/g, " ")]));
+    setPayroll(((ps ?? []) as any[])
+      .filter((p) => (!p.period_end || p.period_end <= isoTodayTx) && !p.tax_paid_at)
+      .map((p) => {
+        const itemised = (Number(p.income_tax) || 0) + (Number(p.employee_ni) || 0) + (Number(p.employer_ni) || 0) + (Number(p.student_loan) || 0);
+        const fallback = Math.max(0, (Number(p.gross) || 0) - (Number(p.net) || 0)) + (Number(p.employer_ni) || 0);
+        return { id: p.id, employee: nameById.get(p.account_id) ?? "Employee", period_label: p.period_label ?? p.period_end ?? "—", period_end: p.period_end, amount: p.income_tax != null ? itemised : fallback };
+      })
+      .filter((r) => r.amount > 0)
+      .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? "")));
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
 
-  const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0)
+    + payroll.filter((p) => !p.justPaid).reduce((s, p) => s + p.amount, 0);
+
+  async function markPayrollPaid(r: PayrollTaxRow) {
+    setSaving(r.id);
+    const { error } = await supabase.from("payslips").update({ tax_paid_at: new Date().toISOString() }).eq("id", r.id);
+    setSaving(null);
+    if (error) { toast({ title: "Couldn't update", description: error.message, variant: "destructive" }); return; }
+    setPayroll((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true, paidAt: Date.now() } : x));
+    grace.schedule(r.id, GRACE_MS, () => setPayroll((prev) => prev.filter((x) => x.id !== r.id)));
+  }
+  async function revertPayroll(r: PayrollTaxRow) {
+    setSaving(r.id);
+    const { error } = await supabase.from("payslips").update({ tax_paid_at: null }).eq("id", r.id);
+    setSaving(null);
+    if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
+    grace.cancel(r.id);
+    setPayroll((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: false } : x));
+  }
 
   async function markPaid(r: Tax) {
     setSaving(r.id);
@@ -119,7 +159,7 @@ export function DebtsTaxes() {
 
       {loading ? (
         <div className="flex justify-center py-10"><BrandLoader size="sm" /></div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && payroll.length === 0 ? (
         <div className="ssr-tile p-10 text-center text-recessive text-sm">No tax liabilities recorded. Add one with the scan or HMRC screenshot.</div>
       ) : (
         <div className="ssr-tile overflow-x-auto">
@@ -132,6 +172,21 @@ export function DebtsTaxes() {
               </tr>
             </thead>
             <tbody>
+              {payroll.map((r) => (
+                <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
+                  <td className="px-4 py-3 text-strong">PAYE / NI</td>
+                  <td className="px-4 py-3 text-standard">{r.employee} · {r.period_label}</td>
+                  <td className="px-4 py-3 text-standard">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-strong">{money(r.amount)}</td>
+                  <td className="px-4 py-3"><span className="text-white/20">—</span></td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
+                      : r.justPaid
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertPayroll(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        : <button onClick={() => markPayrollPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                  </td>
+                </tr>
+              ))}
               {rows.map((r) => (
                 <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
                   <td className="px-4 py-3 text-strong">{typeLabel(r.tax_type)}</td>
