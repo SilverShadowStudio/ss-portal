@@ -1044,7 +1044,7 @@ export function AccountList({
           <DialogContent
             className={
               isTeamOnly
-                ? "sm:max-w-md max-h-[90vh] overflow-y-auto"
+                ? "sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden"
                 : "max-h-[85vh] overflow-y-auto sm:max-w-2xl"
             }
           >
@@ -1193,7 +1193,7 @@ export function AccountList({
                     Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite.
                   </p>
 
-                  <div className="space-y-6 pt-4">
+                  <div className="min-w-0 space-y-6 pt-4">
                     {/* Engagement — segmented toggle */}
                     <div className="space-y-2">
                       <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Engagement</span>
