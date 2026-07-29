@@ -1657,6 +1657,9 @@ export function AccountList({
             {filteredGroups.map((group) => {
               const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
+              // Team accounts are one person — show their real name as the title
+              // (and drop the duplicate name in the row below).
+              const headerTitle = isTeamOnly ? (fullNameOf(group.users[0]) || group.company_name) : group.company_name;
               return (
                 <div key={group.account_id} className="ssr-tile overflow-hidden">
                   {/* Account header */}
@@ -1670,7 +1673,7 @@ export function AccountList({
                     <div className="flex items-center gap-3 min-w-0">
                       <HeaderIcon className="h-3.5 w-3.5 text-gold shrink-0" />
                       <h3 className="font-serif text-sm uppercase tracking-wide text-foreground truncate">
-                        {group.company_name}
+                        {headerTitle}
                       </h3>
                       {showClientCode && group.client_code && (
                         <span
@@ -1755,17 +1758,20 @@ export function AccountList({
                           className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
+                            {/* Team title already shows the name — don't repeat it here. */}
+                            {!isTeamOnly && (
+                              <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
+                            )}
                             {u.position && (
                               <p
-                                className="font-sans uppercase text-foreground/40 mt-0.5"
+                                className={`font-sans uppercase text-foreground/40 ${isTeamOnly ? "" : "mt-0.5"}`}
                                 style={{ fontSize: 9, letterSpacing: "0.18em" }}
                               >
                                 {u.position}
                               </p>
                             )}
                             {u.email && (
-                              <p className="mt-1 truncate text-xs text-muted-foreground">{u.email}</p>
+                              <p className={`truncate text-xs text-muted-foreground ${u.position || !isTeamOnly ? "mt-1" : ""}`}>{u.email}</p>
                             )}
                           </div>
 
