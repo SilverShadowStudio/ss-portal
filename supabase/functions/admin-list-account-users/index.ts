@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     // 1. Accounts (optionally filtered by type)
     let accountsQuery = admin
       .from('accounts')
-      .select('id, company_name, account_type, created_at, client_code, archived_at')
+      .select('id, company_name, account_type, created_at, client_code, archived_at, position, team_role')
       .order('company_name', { ascending: true })
     if (allowedTypes && allowedTypes.length) {
       accountsQuery = accountsQuery.in('account_type', allowedTypes)
@@ -109,6 +109,12 @@ Deno.serve(async (req) => {
       : { data: [] as any[] }
     const profileByUser = new Map<string, any>((profiles ?? []).map((p: any) => [p.user_id, p]))
 
+    // 3b. Team members' names/roles live in freelancer_profiles, not profiles.
+    const { data: fprofiles } = userIds.length
+      ? await admin.from('freelancer_profiles').select('user_id, first_name, last_name, role').in('user_id', userIds)
+      : { data: [] as any[] }
+    const fpByUser = new Map<string, any>((fprofiles ?? []).map((p: any) => [p.user_id, p]))
+
     // 4. Last session_start per user (most recent across all sessions)
     const { data: lastSessions } = userIds.length
       ? await admin
@@ -140,6 +146,7 @@ Deno.serve(async (req) => {
     const rows: AccountUserRow[] = memberRows.map((m: any) => {
       const a = accountById.get(m.account_id)
       const p = profileByUser.get(m.user_id) ?? null
+      const fp = fpByUser.get(m.user_id) ?? null
       // Prefer cached account_members.last_login_at; fall back to live MAX(client_activity).
       const lastLogin = m.last_login_at ?? lastSessionByUser.get(m.user_id) ?? null
       return {
@@ -151,10 +158,12 @@ Deno.serve(async (req) => {
         archived_at:        a?.archived_at ?? null,
         user_id:            m.user_id,
         email:              emailByUser.get(m.user_id) ?? null,
+        // Team names live in freelancer_profiles; clients in profiles.
         full_name:          p?.full_name ?? null,
-        first_name:         p?.first_name ?? null,
-        last_name:          p?.last_name ?? null,
-        position:           p?.position ?? null,
+        first_name:         p?.first_name ?? fp?.first_name ?? null,
+        last_name:          p?.last_name ?? fp?.last_name ?? null,
+        // Team position: employee position, else invite role, else profile role.
+        position:           a?.position ?? a?.team_role ?? p?.position ?? fp?.role ?? null,
         member_role:        m.role ?? null,
         joined_at:          m.joined_at ?? null,
         last_login_at:      lastLogin,

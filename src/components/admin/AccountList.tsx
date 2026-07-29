@@ -193,13 +193,13 @@ function CircleButton({
             onClick={onClick}
             aria-pressed={active}
             className={
-              "group flex h-8 w-8 items-center justify-center rounded-sm border transition-colors shrink-0 " +
+              "group relative flex h-9 w-9 items-center justify-center rounded-[11px] shrink-0 transition-all duration-200 ease-out " +
               (active
-                ? "border-[#C9A96A]/60 bg-[#C9A96A]/[0.10] text-[#ecd39c]"
-                : "border-white/10 bg-white/[0.02] text-white/45 hover:border-[#C9A96A]/45 hover:bg-white/[0.04] hover:text-[#ecd39c]")
+                ? "bg-gradient-to-b from-[#C9A96A]/25 to-[#C9A96A]/[0.08] text-[#ecd39c] ring-1 ring-inset ring-[#C9A96A]/40 shadow-[0_0_14px_-3px_rgba(201,169,106,0.45)]"
+                : "bg-white/[0.03] text-white/35 ring-1 ring-inset ring-white/[0.06] hover:-translate-y-px hover:bg-[#C9A96A]/[0.12] hover:text-[#ecd39c] hover:ring-[#C9A96A]/30 hover:shadow-[0_0_16px_-3px_rgba(201,169,106,0.5)]")
             }
           >
-            <Icon className="h-[15px] w-[15px]" strokeWidth={1.5} />
+            <Icon className="h-[15px] w-[15px] transition-transform duration-200 ease-out group-hover:scale-110" strokeWidth={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top">{label}</TooltipContent>
@@ -1756,19 +1756,17 @@ export function AccountList({
                         >
                           <div className="min-w-0 flex-1">
                             <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
-                            {(u.position || u.member_role) && (
+                            {u.position && (
                               <p
                                 className="font-sans uppercase text-foreground/40 mt-0.5"
                                 style={{ fontSize: 9, letterSpacing: "0.18em" }}
                               >
-                                {u.position ?? u.member_role}
+                                {u.position}
                               </p>
                             )}
-                          </div>
-
-                          <div className="hidden md:flex items-center gap-2 min-w-0 max-w-[240px]">
-                            <Mail className="h-3 w-3 text-foreground/30 shrink-0" />
-                            <span className="text-xs text-muted-foreground truncate">{u.email ?? "—"}</span>
+                            {u.email && (
+                              <p className="mt-1 truncate text-xs text-muted-foreground">{u.email}</p>
+                            )}
                           </div>
 
                           <div className="text-right shrink-0 min-w-[120px]">
