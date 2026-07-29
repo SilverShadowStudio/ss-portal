@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { IncomeInvoiceReviewDialog, mapInvoiceToForm, type FormState } from "./IncomeInvoiceUpload";
 
 const ACCEPT = ["application/pdf", "image/jpeg", "image/png"];
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -8,7 +8,7 @@ import type { ExpenseCategory, Overhead } from "@/lib/finance";
 
 const STAGING_BUCKET = "overhead-invoices";
 const ACCEPT = ["application/pdf", "image/jpeg", "image/png"];
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

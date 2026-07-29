@@ -15,7 +15,11 @@ function json(data: Record<string, unknown>, status = 200) {
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png']
 // Primary model with PDF/image document support; fall back to the alias proven
 // in parse-signature if the primary errors.
-const PRIMARY_MODEL = 'claude-sonnet-4-6'
+// Both point at the proven model used across the app (parse-signature etc.).
+// The old primary 'claude-sonnet-4-6' was an invalid id that always 400'd, so
+// every parse silently ran on the fallback with no real backup. With the retry
+// loop this now gives up to 6 attempts (3 per "model") on a known-good model.
+const PRIMARY_MODEL = 'claude-sonnet-4-5'
 const FALLBACK_MODEL = 'claude-sonnet-4-5'
 
 const INVOICE_SCHEMA = `{
@@ -358,20 +362,45 @@ Deno.serve(async (req) => {
   // with exponential backoff + jitter, then fall back to the second model.
   const dt = documentType as DocumentType
   const TRANSIENT = [429, 500, 502, 503, 529]
-  async function callWithRetries(model: string): Promise<Response | null> {
+  type Attempt = { ok: true; res: Response } | { ok: false; status: number; body: string }
+  async function callWithRetries(model: string): Promise<Attempt> {
+    let last: { status: number; body: string } = { status: 0, body: '' }
     for (let i = 0; i < 3; i++) {
-      const res = await callAnthropic(anthropicKey, model, dt, mime, base64, categories)
-      if (res.ok) return res
+      let res: Response
+      try {
+        res = await callAnthropic(anthropicKey, model, dt, mime, base64, categories)
+      } catch (e) {
+        last = { status: 0, body: `fetch failed: ${e instanceof Error ? e.message : String(e)}` }
+        console.error(`Anthropic ${model} attempt ${i + 1} threw:`, last.body)
+        if (i === 2) return { ok: false, ...last }
+        await new Promise((r) => setTimeout(r, 500 * 2 ** i + Math.floor(Math.random() * 300)))
+        continue
+      }
+      if (res.ok) return { ok: true, res }
       const body = await res.text().catch(() => '')
-      console.error(`Anthropic ${model} attempt ${i + 1} → ${res.status}: ${body.slice(0, 200)}`)
-      if (!TRANSIENT.includes(res.status) || i === 2) return null
+      last = { status: res.status, body }
+      console.error(`Anthropic ${model} attempt ${i + 1} → ${res.status}: ${body.slice(0, 300)}`)
+      if (!TRANSIENT.includes(res.status) || i === 2) return { ok: false, ...last }
       await new Promise((r) => setTimeout(r, 500 * 2 ** i + Math.floor(Math.random() * 300)))
     }
-    return null
+    return { ok: false, ...last }
   }
-  let res = await callWithRetries(PRIMARY_MODEL)
-  if (!res) res = await callWithRetries(FALLBACK_MODEL)
-  if (!res) return json({ success: false, error: 'Could not read the document — the model was busy, please retry.' }, 502)
+  let res: Response
+  const primary = await callWithRetries(PRIMARY_MODEL)
+  if (primary.ok) {
+    res = primary.res
+  } else {
+    const fb = await callWithRetries(FALLBACK_MODEL)
+    if (fb.ok) {
+      res = fb.res
+    } else {
+      // Surface the REAL upstream error so failures are diagnosable, not "non-2xx".
+      const worst = fb.status || primary.status
+      const detail = (fb.body || primary.body || '').replace(/\s+/g, ' ').slice(0, 240)
+      console.error(`parse-document: both models failed. status=${worst} detail=${detail}`)
+      return json({ success: false, error: `Model couldn't read it (upstream ${worst || 'error'}): ${detail || 'no detail'}` }, 200)
+    }
+  }
 
   const anthropicData = await res.json()
   // Guard against a truncated response (hit max_tokens) — its JSON is incomplete.
