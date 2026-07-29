@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { mapExtractedToOverhead } from "./OverheadUploadFlow";
-import type { ExpenseCategory } from "@/lib/finance";
+import type { ExpenseCategory, Overhead } from "@/lib/finance";
 
 const STAGING_BUCKET = "overhead-invoices";
 const ACCEPT = ["application/pdf", "image/jpeg", "image/png"];
@@ -29,17 +29,19 @@ function humanTime(sec: number): string {
 
 interface Props {
   categories: ExpenseCategory[];
-  onComplete: () => void;
+  /** Called once every dropped file has been parsed + staged. The parent opens
+   *  the pre-filled review form for each in turn so Fred validates before save. */
+  onParsed: (items: Partial<Overhead>[]) => void;
 }
 
 /**
  * Bulk invoice drop zone for Money Out. Drop any number of invoices; each is
- * parsed by Claude (parse-document) and inserted straight into overheads with
- * the smart paid/unpaid default — the row's staging_storage_path triggers
- * Dropbox filing automatically. Shows a live progress bar and a throughput-based
- * ETA while parsing. Fred reviews/edits the rows in the table afterwards.
+ * parsed by Claude (parse-document) and its original staged to storage. A live
+ * progress bar + throughput-based ETA runs while parsing. When all are parsed,
+ * the pre-filled defaults are handed to the parent, which walks Fred through the
+ * usual review form for each one before saving — nothing is saved automatically.
  */
-export function BulkOverheadDropzone({ categories, onComplete }: Props) {
+export function BulkOverheadDropzone({ categories, onParsed }: Props) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -62,7 +64,9 @@ export function BulkOverheadDropzone({ categories, onComplete }: Props) {
   const activeCats = categories.filter((c) => c.active);
   const activeCodes = new Set(activeCats.map((c) => c.code));
 
-  async function processOne(file: File, createdBy: string | null) {
+  // Parse one invoice and stage its original. Returns the pre-filled overhead
+  // defaults (incl. staging path) for the review form — nothing is saved here.
+  async function processOne(file: File): Promise<Partial<Overhead>> {
     const base64 = await fileToBase64(file);
     const { data, error } = await supabase.functions.invoke("parse-document", {
       body: {
@@ -89,32 +93,13 @@ export function BulkOverheadDropzone({ categories, onComplete }: Props) {
       }
     }
 
-    // Stage the original so the row can be filed to Dropbox by the DB trigger.
+    // Stage the original so the review form's save can file it to Dropbox.
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();
     const stagingPath = `staging/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from(STAGING_BUCKET).upload(stagingPath, file, { contentType: file.type, upsert: false });
     if (upErr) throw upErr;
-
-    const { error: insErr } = await supabase.from("overheads" as any).insert({
-      supplier_name: defaults.supplier_name ?? file.name.replace(/\.[a-z0-9]+$/i, ""),
-      category_code: defaults.category_code ?? null,
-      description: defaults.description ?? null,
-      currency: "GBP",
-      net_amount: defaults.net_amount ?? 0,
-      vat_amount: defaults.vat_amount ?? 0,
-      gross_amount: defaults.gross_amount ?? 0,
-      vat_treatment: defaults.vat_treatment ?? "standard",
-      invoice_number: defaults.invoice_number ?? null,
-      invoice_date: defaults.invoice_date ?? null,
-      due_date: defaults.due_date ?? null,
-      payment_date: defaults.payment_date ?? null,
-      payment_status: defaults.payment_date ? "paid" : "unpaid",
-      source: "dropzone",
-      staging_storage_path: stagingPath,
-      created_by: createdBy,
-    });
-    if (upErr) throw upErr;
-    if (insErr) throw insErr;
+    defaults.staging_storage_path = stagingPath;
+    return defaults;
   }
 
   const run = useCallback(async (files: File[]) => {
@@ -129,15 +114,14 @@ export function BulkOverheadDropzone({ categories, onComplete }: Props) {
     setEta(null);
 
     const startTs = Date.now();
-    const { data: userData } = await supabase.auth.getUser();
-    const createdBy = userData.user?.id ?? null;
+    const parsed: Partial<Overhead>[] = [];
 
     let idx = 0, completed = 0, failures = 0;
     const worker = async () => {
       while (true) {
         const i = idx++;
         if (i >= accepted.length) break;
-        try { await processOne(accepted[i], createdBy); }
+        try { parsed.push(await processOne(accepted[i])); }
         catch { failures++; setFailed(failures); }
         completed++;
         setDone(completed);
@@ -151,13 +135,14 @@ export function BulkOverheadDropzone({ categories, onComplete }: Props) {
 
     setProcessing(false);
     setFinishedAt(Date.now());
-    const ok = accepted.length - failures;
-    toast({
-      title: `${ok} invoice${ok === 1 ? "" : "s"} added`,
-      description: failures > 0 ? `${failures} couldn't be read — try those individually.` : "Review them in the table below.",
-      variant: failures > 0 ? "destructive" : undefined,
-    });
-    onComplete();
+    if (failures > 0) {
+      toast({
+        title: `${failures} invoice${failures === 1 ? "" : "s"} couldn't be read`,
+        description: "Parsed the rest — try the failed ones individually.",
+        variant: "destructive",
+      });
+    }
+    if (parsed.length > 0) onParsed(parsed);
   }, [categories]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-clear the "done" summary after a few seconds.
@@ -218,8 +203,8 @@ export function BulkOverheadDropzone({ categories, onComplete }: Props) {
           {failed > 0
             ? <AlertTriangle className="h-4 w-4 text-[#C9A96A]" strokeWidth={1.5} />
             : <Check className="h-4 w-4 text-[#C9A96A]" strokeWidth={1.5} />}
-          <span className="text-sm text-standard">{total - failed} added{failed > 0 ? ` · ${failed} to retry` : ""}</span>
-          <span className="text-[11px] text-white/35">— drop more to continue</span>
+          <span className="text-sm text-standard">{total - failed} parsed{failed > 0 ? ` · ${failed} failed` : ""}</span>
+          <span className="text-[11px] text-white/35">— review each to save</span>
         </div>
       ) : (
         <div className="flex items-center justify-center gap-3 text-center">

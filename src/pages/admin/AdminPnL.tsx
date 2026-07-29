@@ -89,6 +89,13 @@ export default function AdminPnL() {
   // Non-null == an upload was staged to `overhead-invoices/staging/...` and
   // still needs cleanup if the review gate closes without a save.
   const pendingStagingPathRef = useRef<string | null>(null);
+  // Bulk-drop review queue: parsed invoices awaiting Fred's per-invoice
+  // validation. The form advances to the next on save OR skip (cancel).
+  const reviewQueueRef = useRef<Partial<Overhead>[]>([]);
+  const reviewTotalRef = useRef(0);
+  const reviewPosRef = useRef(0);
+  const justSavedRef = useRef(false);
+  const [reviewLabel, setReviewLabel] = useState<string | null>(null);
 
   const [overheadDetailOpen, setOverheadDetailOpen] = useState(false);
   const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
@@ -395,7 +402,38 @@ export default function AdminPnL() {
     setFormOpen(true);
   }
 
+  // ── Bulk-drop review queue ────────────────────────────────────────────────
+  function startReviewQueue(items: Partial<Overhead>[]) {
+    if (!items.length) return;
+    reviewTotalRef.current = items.length;
+    reviewPosRef.current = 1;
+    reviewQueueRef.current = items.slice(1);
+    setReviewLabel(items.length > 1 ? `1 of ${items.length}` : null);
+    openCreateExpenseFromUpload(items[0]);
+  }
+
+  function advanceReviewQueue() {
+    const next = reviewQueueRef.current.shift();
+    if (next) {
+      reviewPosRef.current += 1;
+      setReviewLabel(reviewTotalRef.current > 1 ? `${reviewPosRef.current} of ${reviewTotalRef.current}` : null);
+      openCreateExpenseFromUpload(next);
+    } else {
+      reviewTotalRef.current = 0;
+      reviewPosRef.current = 0;
+      setReviewLabel(null);
+    }
+  }
+
+  function clearReviewQueue() {
+    reviewQueueRef.current = [];
+    reviewTotalRef.current = 0;
+    reviewPosRef.current = 0;
+    setReviewLabel(null);
+  }
+
   function openCreateExpense() {
+    clearReviewQueue();
     setEditing(null);
     setPrefillDefaults(null);
     pendingStagingPathRef.current = null;
@@ -411,21 +449,30 @@ export default function AdminPnL() {
     setFormOpen(true);
   }
 
-  async function handleOverheadFormOpenChange(nextOpen: boolean) {
-    setFormOpen(nextOpen);
-    // Closing without a save leaves an orphaned staged upload — clean it.
-    if (!nextOpen) {
+  function handleOverheadFormOpenChange(nextOpen: boolean) {
+    if (nextOpen) { setFormOpen(true); return; }
+    setFormOpen(false);
+    const saved = justSavedRef.current;
+    justSavedRef.current = false;
+    // Closing without a save leaves an orphaned staged upload — clean it
+    // (fire-and-forget so the queue can advance seamlessly in the same tick).
+    if (!saved) {
       const orphan = pendingStagingPathRef.current;
       pendingStagingPathRef.current = null;
       if (orphan) {
-        const { error } = await supabase.storage.from("overhead-invoices").remove([orphan]);
-        if (error) console.warn("[AdminPnL] failed to clean up staged file", error);
+        void supabase.storage.from("overhead-invoices").remove([orphan]).then(
+          ({ error }) => { if (error) console.warn("[AdminPnL] failed to clean up staged file", error); },
+        );
       }
     }
+    // Advance to the next queued invoice (skip on cancel, next on save).
+    if (reviewQueueRef.current.length > 0) advanceReviewQueue();
+    else if (reviewTotalRef.current > 0) clearReviewQueue();
   }
 
   function handleOverheadSaved() {
     // Save owns the staging path now — clear the ref before onOpenChange fires.
+    justSavedRef.current = true;
     pendingStagingPathRef.current = null;
     fetchAll();
   }
@@ -609,7 +656,7 @@ export default function AdminPnL() {
             </div>
           </div>
           <div className="mb-5">
-            <BulkOverheadDropzone categories={categories} onComplete={fetchAll} />
+            <BulkOverheadDropzone categories={categories} onParsed={startReviewQueue} />
           </div>
           <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} />
         </section>
@@ -672,6 +719,7 @@ export default function AdminPnL() {
         defaultValues={prefillDefaults}
         categories={categories}
         onSaved={handleOverheadSaved}
+        queueLabel={reviewLabel}
       />
       <OverheadDetail
         open={overheadDetailOpen}

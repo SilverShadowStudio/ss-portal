@@ -74,6 +74,8 @@ interface OverheadFormProps {
   defaultValues?: Partial<Overhead> | null;
   categories: ExpenseCategory[];
   onSaved: () => void;
+  /** When set (e.g. "2 of 7"), shows a bulk-review position in the header. */
+  queueLabel?: string | null;
 }
 
 interface FormState {
@@ -152,6 +154,7 @@ export function OverheadForm({
   defaultValues,
   categories,
   onSaved,
+  queueLabel,
 }: OverheadFormProps) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -327,6 +330,7 @@ export function OverheadForm({
         <DialogHeader>
           <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">
             {mode === "edit" ? "Edit expense" : "New expense"}
+            {queueLabel && <span className="ml-2 text-[#C9A96A]">· reviewing {queueLabel}</span>}
           </p>
           <DialogTitle className="font-serif font-normal text-2xl">
             {mode === "edit" ? initial?.supplier_name || "Expense" : "Record an expense"}
