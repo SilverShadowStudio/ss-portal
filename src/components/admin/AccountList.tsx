@@ -1171,7 +1171,7 @@ export function AccountList({
                     <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add member with existing agreement</DialogTitle>
                   </DialogHeader>
                   <p className="text-sm text-foreground/45 mt-3">
-                    Upload a contract that was signed before joining the portal. A portal invite will be sent after upload.
+                    Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite.
                   </p>
                   <div className="space-y-4 pt-3">
                     <div className="space-y-1">
@@ -1184,6 +1184,50 @@ export function AccountList({
                         <option value="freelancer">Freelancer — paid per work (Airtable self-bills)</option>
                         <option value="employee">Employee — fixed salary (payroll)</option>
                       </select>
+                    </div>
+
+                    {/* Contract first — read it to prefill everything below */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Contract PDF *</label>
+                      <div
+                        className="flex items-center gap-3 rounded-sm border border-input px-3 py-2.5 cursor-pointer hover:border-gold/50 transition-colors"
+                        onClick={() => document.getElementById("presigned-pdf-input")?.click()}
+                      >
+                        <span className="text-sm text-muted-foreground flex-1 truncate">
+                          {presignedPdfFile ? presignedPdfFile.name : "Click to select PDF…"}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">Browse</span>
+                      </div>
+                      <input
+                        id="presigned-pdf-input"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); }}
+                      />
+                      {presignedPdfFile && (
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <p className="text-[10px] text-muted-foreground">
+                            {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleParseAgreement}
+                            disabled={isParsingAgreement}
+                            className="rounded-sm bg-[#C9A96A] px-4 py-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-black transition-colors hover:bg-[#ecd39c] disabled:opacity-40"
+                          >
+                            {isParsingAgreement ? "Reading…" : agreementParsed ? "Re-read agreement" : "Read agreement to prefill"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Details — filled from the agreement, to review before sending */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="h-px w-6 bg-gold-muted" />
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        {agreementParsed ? "From the agreement — check before sending" : "Member details"}
+                      </span>
                     </div>
                     {presignedEmploymentType === "employee" && (
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1251,43 +1295,6 @@ export function AccountList({
                         onChange={(e) => setPresignedSubjectLine(e.target.value)}
                         placeholder="e.g. Scene Manager Engagement"
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Contract PDF *</label>
-                      <div
-                        className="flex items-center gap-3 rounded-sm border border-input px-3 py-2.5 cursor-pointer hover:border-gold/50 transition-colors"
-                        onClick={() => document.getElementById("presigned-pdf-input")?.click()}
-                      >
-                        <span className="text-sm text-muted-foreground flex-1 truncate">
-                          {presignedPdfFile ? presignedPdfFile.name : "Click to select PDF…"}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">Browse</span>
-                      </div>
-                      <input
-                        id="presigned-pdf-input"
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        className="hidden"
-                        onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); }}
-                      />
-                      {presignedPdfFile && (
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-[10px] text-muted-foreground">
-                            {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                          <button
-                            type="button"
-                            onClick={handleParseAgreement}
-                            disabled={isParsingAgreement}
-                            className="text-[11px] uppercase tracking-[0.15em] font-medium border border-input bg-background px-3 py-1.5 rounded-sm hover:bg-muted transition-colors disabled:opacity-40"
-                          >
-                            {isParsingAgreement ? "Reading…" : agreementParsed ? "Re-read agreement" : "Read agreement to prefill"}
-                          </button>
-                        </div>
-                      )}
-                      {agreementParsed && (
-                        <p className="text-[10px] text-[#ecd39c]/80">Details read from the agreement — review and edit above before sending.</p>
-                      )}
                     </div>
                     <div className="flex gap-2 pt-1">
                       <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isPresignedUploading} className="text-muted-foreground">
