@@ -34,7 +34,8 @@ const INVOICE_SCHEMA = `{
   "gross_total": number,
   "currency": "GBP" | "EUR" | "USD",
   "downpayment_percent": number | null,
-  "downpayment_amount": number | null
+  "downpayment_amount": number | null,
+  "invoice_kind": "deposit" | "balance" | "standalone"
 }`
 
 const QUOTATION_SCHEMA = `{
@@ -212,11 +213,38 @@ function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[])
       `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
     )
   }
-  const schema = documentType === 'invoice' ? INVOICE_SCHEMA : QUOTATION_SCHEMA
+  if (documentType === 'invoice') {
+    return (
+      `You are a data extractor for the SALES invoices a CGI / architectural-visualisation studio ` +
+      `raises to its clients. Read the attached invoice and extract its fields into JSON matching ` +
+      `EXACTLY this schema:\n${INVOICE_SCHEMA}\n\n` +
+      `Field semantics:\n` +
+      `- client_company / client_name = the CLIENT being billed (the recipient), NOT the studio ` +
+      `(Silver Shadow Studio) which issued it.\n` +
+      `- net_total / vat_amount / gross_total = the amounts on THIS invoice. gross_total is the ` +
+      `headline amount due on this invoice.\n` +
+      `- invoice_kind = which stage of billing this invoice is. Decide from the document's own ` +
+      `wording and structure, then the numbering:\n` +
+      `    • "deposit" — an upfront / advance / down-payment invoice for PART of the project value ` +
+      `(look for "Deposit", "Downpayment", "Advance", "Payment on account", "50% to commence", or ` +
+      `a stated downpayment_percent/amount). A balance is expected to follow.\n` +
+      `    • "balance" — the remaining / final payment (look for "Balance", "Balance due", "Final ` +
+      `invoice", "Remaining 50%", or text referencing a deposit already paid / less deposit).\n` +
+      `    • "standalone" — a single invoice for the full amount with no deposit/balance split.\n` +
+      `  Numbering convention as a secondary signal: a trailing "-A" (e.g. KAT025-A) is usually the ` +
+      `deposit and "-B"/"-C" (KAT025-B) the balance. Prefer the document's wording; use the suffix ` +
+      `only to break ties. If genuinely unclear, return "standalone".\n` +
+      `- downpayment_percent / downpayment_amount = the deposit proportion/amount if the invoice ` +
+      `states or implies one; else null.\n` +
+      `- Return null for any other field that cannot be determined.\n\n` +
+      `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
+      `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
+    )
+  }
   return (
     `You are a data extractor for a CGI / architectural-visualisation studio. ` +
     `Read the attached ${documentType} document and extract its fields into JSON matching EXACTLY this schema:\n` +
-    `${schema}\n\n` +
+    `${QUOTATION_SCHEMA}\n\n` +
     `Return ONLY valid JSON matching this exact schema. Do not include any explanation, markdown, or commentary. ` +
     `If a field cannot be determined from the document, return null for that field. ` +
     `Numbers must be returned as JSON numbers, not strings. Dates must be ISO format (YYYY-MM-DD).`

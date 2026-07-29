@@ -32,6 +32,8 @@ import { friendlyDbError } from "@/lib/dbErrors";
  *   • FormState / EMPTY_INCOME_FORM / mapInvoiceToForm — for the bulk flow.
  */
 
+export type InvoiceKind = "deposit" | "balance" | "standalone";
+
 export interface FormState {
   clientName: string;
   invoiceNumber: string;
@@ -42,6 +44,7 @@ export interface FormState {
   gross: string;
   currency: string;
   paid: "paid" | "unpaid";
+  kind: InvoiceKind;
   lineItems: unknown;
 }
 
@@ -55,6 +58,7 @@ export const EMPTY_INCOME_FORM: FormState = {
   gross: "",
   currency: "GBP",
   paid: "paid",
+  kind: "standalone",
   lineItems: null,
 };
 
@@ -74,14 +78,25 @@ function isoDate(v: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
 }
 
+function invoiceKind(v: unknown, invoiceNumber: string): InvoiceKind {
+  const k = str(v).toLowerCase();
+  if (k === "deposit" || k === "balance" || k === "standalone") return k;
+  // Fall back to the studio's -A (deposit) / -B,-C (balance) numbering convention.
+  const suffix = invoiceNumber.trim().match(/-([A-Za-z])\d*$/)?.[1]?.toUpperCase();
+  if (suffix === "A") return "deposit";
+  if (suffix && suffix >= "B" && suffix <= "Z") return "balance";
+  return "standalone";
+}
+
 /** Map parse-document's INVOICE_SCHEMA output to the review form. */
 export function mapInvoiceToForm(data: Record<string, unknown>): FormState {
   const net = num(data.net_total);
   const vat = num(data.vat_amount);
   const gross = num(data.gross_total);
+  const invoiceNumber = str(data.invoice_number);
   return {
     clientName: str(data.client_company) || str(data.client_name),
-    invoiceNumber: str(data.invoice_number),
+    invoiceNumber,
     invoiceDate: isoDate(data.invoice_date),
     dueDate: isoDate(data.due_date),
     net: net != null ? String(net) : "",
@@ -89,6 +104,7 @@ export function mapInvoiceToForm(data: Record<string, unknown>): FormState {
     gross: gross != null ? String(gross) : "",
     currency: str(data.currency) || "GBP",
     paid: "paid",
+    kind: invoiceKind(data.invoice_kind, invoiceNumber),
     lineItems: data.line_items ?? null,
   };
 }
@@ -158,6 +174,7 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
       paid_at: paid ? invoiceDate : null,
       currency: form.currency || "GBP",
       notes: form.clientName || null,
+      invoice_kind: form.kind,
       line_items: form.lineItems ?? null,
     } as never).select("id").single();
     if (error || !inserted) {
@@ -247,6 +264,17 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
               <SelectContent>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Kind</Label>
+            <Select value={form.kind} onValueChange={(v) => set("kind", v as InvoiceKind)}>
+              <SelectTrigger className="rounded-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="deposit">Deposit / downpayment</SelectItem>
+                <SelectItem value="balance">Balance</SelectItem>
+                <SelectItem value="standalone">Standalone (full)</SelectItem>
               </SelectContent>
             </Select>
           </div>

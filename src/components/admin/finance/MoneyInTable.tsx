@@ -22,12 +22,20 @@ const TYPE_LABELS: Record<string, string> = {
   deposit: "Deposit",
   balance: "Balance",
   standalone: "Standalone",
+  external: "External",
 };
+
+// For portal invoices the stage is `type`; for external ones it's `invoice_kind`.
+function typeDisplay(r: MoneyInInvoice): string {
+  if (r.type && r.type !== "external") return TYPE_LABELS[r.type] ?? r.type;
+  if (r.invoice_kind) return TYPE_LABELS[r.invoice_kind] ?? r.invoice_kind;
+  return r.type ? TYPE_LABELS[r.type] ?? r.type : "—";
+}
 
 const COLUMNS: SortableColumn<MoneyInInvoice>[] = [
   { id: "client", accessor: (r) => r.account_company ?? "", type: "text" },
   { id: "number", accessor: (r) => r.invoice_number ?? r.reference_number ?? "", type: "text" },
-  { id: "type", accessor: (r) => (r.type ? TYPE_LABELS[r.type] ?? r.type : ""), type: "text" },
+  { id: "type", accessor: (r) => typeDisplay(r), type: "text" },
   { id: "net", accessor: (r) => r.subtotal, type: "number" },
   { id: "vat", accessor: (r) => r.vat_amount, type: "number" },
   { id: "gross", accessor: (r) => r.amount, type: "number" },
@@ -105,7 +113,7 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
                   {r.invoice_number ?? r.reference_number ?? "—"}
                 </TableCell>
                 <TableCell className="text-sm text-standard">
-                  {r.type ? TYPE_LABELS[r.type] ?? r.type : "—"}
+                  {typeDisplay(r)}
                 </TableCell>
                 <TableCell className="text-sm text-standard text-right tabular-nums">
                   {r.subtotal != null ? formatCurrency(r.subtotal, r.currency ?? "GBP") : "—"}

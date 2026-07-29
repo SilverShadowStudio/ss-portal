@@ -422,6 +422,7 @@ export interface MoneyInInvoice {
   currency: string | null;
   status: string;
   type: string | null;
+  invoice_kind?: string | null; // external invoices: deposit | balance | standalone
   paid_at: string | null;
   due_date: string | null;
   issued_at: string | null;
