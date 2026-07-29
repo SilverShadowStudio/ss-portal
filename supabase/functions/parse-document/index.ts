@@ -271,7 +271,9 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2048,
+      // Generous ceiling — a detailed invoice with many line items can exceed
+      // 2048 tokens of JSON, which truncates the output into unparseable JSON.
+      max_tokens: 4096,
       system: systemPrompt(documentType, categories),
       messages: [
         {
@@ -364,14 +366,28 @@ Deno.serve(async (req) => {
   }
 
   const anthropicData = await res.json()
+  // Guard against a truncated response (hit max_tokens) — its JSON is incomplete.
+  const stopReason: string | undefined = anthropicData.stop_reason
   const text: string = anthropicData.content?.[0]?.text ?? ''
-  const raw = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '')
-  let parsed: Record<string, unknown>
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    console.error('Could not parse Anthropic response as JSON:', text)
-    return json({ success: false, error: 'Could not parse the extracted data' }, 200)
+  const raw = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim()
+
+  // Parse defensively: direct parse, then the outermost {...} block in case the
+  // model wrapped the JSON in any prose despite instructions.
+  function tryParse(s: string): Record<string, unknown> | null {
+    try { return JSON.parse(s); } catch { /* fall through */ }
+    const first = s.indexOf('{'), last = s.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      try { return JSON.parse(s.slice(first, last + 1)); } catch { /* nope */ }
+    }
+    return null;
+  }
+  const parsed = tryParse(raw);
+  if (!parsed) {
+    console.error(`Could not parse Anthropic response as JSON (stop_reason=${stopReason}):`, text.slice(0, 500))
+    const hint = stopReason === 'max_tokens'
+      ? 'The document was too long to read in one pass.'
+      : 'The extracted data was not valid.'
+    return json({ success: false, error: `Could not read the document — ${hint}` }, 200)
   }
 
   return json({ success: true, data: parsed })

@@ -85,13 +85,14 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
 
     const startTs = Date.now();
     const parsed: Parsed[] = [];
+    const failedNames: string[] = [];
     let idx = 0, completed = 0, failures = 0;
     const worker = async () => {
       while (true) {
         const i = idx++;
         if (i >= accepted.length) break;
         try { parsed.push(await processOne(accepted[i])); }
-        catch { failures++; setFailed(failures); }
+        catch { failures++; setFailed(failures); failedNames.push(accepted[i].name); }
         completed++;
         setDone(completed);
         const elapsed = (Date.now() - startTs) / 1000;
@@ -104,7 +105,8 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
     setProcessing(false);
     setFinishedAt(Date.now());
     if (failures > 0) {
-      toast({ title: `${failures} invoice${failures === 1 ? "" : "s"} couldn't be read`, description: "Parsed the rest — try the failed ones individually.", variant: "destructive" });
+      const names = failedNames.join(", ");
+      toast({ title: `${failures} invoice${failures === 1 ? "" : "s"} couldn't be read`, description: `${names} — parsed the rest; try ${failures === 1 ? "this one" : "these"} on its own via New income invoice.`, variant: "destructive" });
     }
     if (parsed.length > 0) { setQueue(parsed); setQIndex(0); setReviewOpen(true); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
