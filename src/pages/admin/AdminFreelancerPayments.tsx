@@ -91,6 +91,11 @@ export default function AdminFreelancerPayments() {
   useEffect(() => { load(); }, []);
 
   const outstandingTotal = useMemo(() => rows.reduce((s, r) => s + r.balance, 0), [rows]);
+  // Section totals reported up by the child sections, summed into a grand total.
+  const [salTotal, setSalTotal] = useState(0);
+  const [ohTotal, setOhTotal] = useState(0);
+  const [taxTotal, setTaxTotal] = useState(0);
+  const grandTotal = outstandingTotal + salTotal + ohTotal + taxTotal;
 
   // Default: largest outstanding first. Any column is click-sortable (asc↔desc).
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Row>(rows, COLUMNS, { key: "due", dir: "desc" });
@@ -124,11 +129,19 @@ export default function AdminFreelancerPayments() {
   return (
     <AdminLayout panel>
       <div className="mb-10">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">Debts</span>
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-12 bg-gold-muted" />
+            <span className="text-label-gold text-[#ecd39c]">Debts</span>
+          </div>
+          {!loading && (
+            <div className="text-right">
+              <p className="text-[9px] uppercase tracking-[0.28em] text-white/35">Total owed</p>
+              <p className="font-serif text-2xl text-strong tabular-nums leading-none mt-1">{money(grandTotal)}</p>
+            </div>
+          )}
         </div>
-        <p className="mt-3 text-sm text-recessive">What the studio owes, by category.</p>
+        <p className="mt-3 text-sm text-recessive">What the studio owes, by category — freelancers, salaries, overheads and taxes.</p>
       </div>
 
       {loading ? (
@@ -212,9 +225,9 @@ export default function AdminFreelancerPayments() {
           )}
         </section>
 
-        <DebtsSalaries />
-        <DebtsOverheads />
-        <DebtsTaxes />
+        <DebtsSalaries onTotal={setSalTotal} />
+        <DebtsOverheads onTotal={setOhTotal} />
+        <DebtsTaxes onTotal={setTaxTotal} />
        </>
       )}
     </AdminLayout>

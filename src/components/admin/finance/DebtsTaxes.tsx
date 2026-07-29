@@ -45,7 +45,7 @@ interface Tax {
 // PAYE/NI owed to HMRC for a month, derived from a payslip (not the taxes table).
 interface PayrollTaxRow { id: string; account_id: string; employee: string; period_label: string; period_end: string | null; amount: number; document_path: string | null; filed: boolean; justPaid?: boolean; paidAt?: number; }
 
-export function DebtsTaxes() {
+export function DebtsTaxes({ onTotal }: { onTotal?: (n: number) => void } = {}) {
   const { toast } = useToast();
   const [rows, setRows] = useState<Tax[]>([]);
   const [payroll, setPayroll] = useState<PayrollTaxRow[]>([]);
@@ -90,6 +90,7 @@ export function DebtsTaxes() {
 
   const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0)
     + payroll.filter((p) => !p.justPaid).reduce((s, p) => s + p.amount, 0);
+  useEffect(() => { onTotal?.(total); }, [total, onTotal]);
 
   const combined = useMemo<UnifiedTaxRow[]>(() => {
     const p: UnifiedTaxRow[] = payroll.map((r) => ({ key: `p:${r.id}`, kind: "payroll", typeKey: "paye_ni", typeLabel: "PAYE / NI", period: `${r.employee} · ${r.period_label}`, due: r.period_end, amount: r.amount, currency: "GBP", payroll: r }));

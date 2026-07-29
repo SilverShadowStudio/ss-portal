@@ -93,7 +93,7 @@ function parseTracker(text: string): TrackerRow[] {
  * provision; uploaded payslips give the actual employer cost paid to date, so
  * the two can be compared. See payrollEstimate.
  */
-export function DebtsSalaries() {
+export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {}) {
   const { toast } = useToast();
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [slips, setSlips] = useState<Payslip[]>([]);
@@ -166,6 +166,7 @@ export function DebtsSalaries() {
     .filter((s) => Number(s.net) > 0 && (!s.period_end || s.period_end <= isoToday) && (!s.salary_paid_at || s.justPaid))
     .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? ""));
   const totalOwed = owed.filter((s) => !s.justPaid).reduce((sum, s) => sum + Number(s.net || 0), 0);
+  useEffect(() => { onTotal?.(totalOwed); }, [totalOwed, onTotal]);
 
   const hasDoc = (s: Payslip) => !!s.document_path || !!s.dropbox_path;
   const salColumns = useMemo<SortableColumn<Payslip>[]>(() => [

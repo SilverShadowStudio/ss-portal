@@ -29,7 +29,7 @@ const COLUMNS: SortableColumn<OH>[] = [
 ];
 
 /** Debts → Overheads: the unpaid overhead bills already recorded in the P&L. */
-export function DebtsOverheads() {
+export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = {}) {
   const { toast } = useToast();
   const [rows, setRows] = useState<OH[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +57,7 @@ export function DebtsOverheads() {
   const fx = useFx();
   // Unpaid overheads are live-rate; convert foreign to GBP for the header total.
   const total = rows.reduce((s, r) => s + fx.gbp(Number(r.gross_amount || 0), r.currency ?? "GBP", null), 0);
+  useEffect(() => { onTotal?.(total); }, [total, onTotal]);
 
   async function markPaid(r: OH) {
     setSaving(r.id);
