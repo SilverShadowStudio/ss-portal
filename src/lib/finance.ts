@@ -267,6 +267,33 @@ export function computeQuarterPayables(
 
 export type MoneyOutKind = "fixed" | "variable";
 
+// A month of payroll, surfaced in the money-out ledger as an operational fixed
+// cost. `amount` is the full cost to the studio (employer cost = gross + employer
+// NI + employer pension), not the net paid to the employee.
+export interface PayslipCost {
+  id: string;
+  account_id: string;
+  employee_name: string;
+  period_end: string | null;
+  period_label: string | null;
+  gross: number | null;
+  employer_ni: number | null;
+  employer_pension: number | null;
+  employer_cost: number | null;
+  document_path: string | null;
+  dropbox_path: string | null;
+  salary_paid_at: string | null;
+  tax_paid_at: string | null;
+}
+
+export interface MoneyOutSalary {
+  id: string;
+  accountId: string;
+  employeeName: string;
+  periodEnd: string | null;
+  documentPath: string | null;
+}
+
 export interface MoneyOutRow {
   key: string;
   kind: MoneyOutKind;
@@ -284,12 +311,19 @@ export interface MoneyOutRow {
   filed: boolean; // has a filed Dropbox PDF (fixed rows only; variable = N/A)
   overhead?: Overhead;
   payable?: Payable;
+  salary?: MoneyOutSalary; // present on payroll rows → carries the missing-payslip flag
+}
+
+export function payslipEmployerCost(p: PayslipCost): number {
+  if (p.employer_cost != null) return Number(p.employer_cost) || 0;
+  return (Number(p.gross) || 0) + (Number(p.employer_ni) || 0) + (Number(p.employer_pension) || 0);
 }
 
 export function buildMoneyOutRows(
   overheads: Overhead[],
   payables: Payable[],
   categoryLabel: (code: string | null) => string | null,
+  payslips: PayslipCost[] = [],
 ): MoneyOutRow[] {
   const fixed: MoneyOutRow[] = overheads.map((o) => ({
     key: `o:${o.id}`,
@@ -325,7 +359,33 @@ export function buildMoneyOutRows(
     filed: false,
     payable: p,
   }));
-  return [...fixed, ...variable];
+  const salaries: MoneyOutRow[] = payslips.map((p) => {
+    const hasDoc = !!p.document_path || !!p.dropbox_path;
+    return {
+      key: `s:${p.id}`,
+      kind: "fixed" as const,
+      name: p.employee_name,
+      detail: "Payroll — Salary",
+      date: p.period_end,
+      net: null,
+      vat: null,
+      amount: payslipEmployerCost(p),
+      status: (p.salary_paid_at && p.tax_paid_at ? "paid" : "unpaid") as PayablePaidStatus,
+      dueDate: null,
+      approxPeriod: false,
+      isReverseCharge: false,
+      filing: false,
+      filed: hasDoc,
+      salary: {
+        id: p.id,
+        accountId: p.account_id,
+        employeeName: p.employee_name,
+        periodEnd: p.period_end,
+        documentPath: p.document_path,
+      },
+    };
+  });
+  return [...fixed, ...variable, ...salaries];
 }
 
 // UK VAT return + payment deadline: 1 month + 7 days after the quarter end.

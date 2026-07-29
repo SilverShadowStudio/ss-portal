@@ -127,12 +127,20 @@ export function MoneyOutTable({ rows, loading, onRowClick }: MoneyOutTableProps)
                         Filing…
                       </span>
                     )}
-                    {r.kind === "fixed" && !r.filed && !r.filing && (
+                    {r.kind === "fixed" && !r.salary && !r.filed && !r.filing && (
                       <span
                         className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
                         title="No invoice PDF filed to Dropbox yet"
                       >
                         Not filed
+                      </span>
+                    )}
+                    {r.salary && !r.filed && (
+                      <span
+                        className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#d8a184]"
+                        title="No payslip filed — click the row to upload this month's payslip"
+                      >
+                        Payslip missing
                       </span>
                     )}
                   </TableCell>

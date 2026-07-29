@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { estimatePayroll, estimateMonthlyEmployerOnCosts, TAX_YEAR } from "@/lib/payrollEstimate";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 import { BulkPayslipDropzone } from "./BulkPayslipDropzone";
+import { PayslipFlag } from "./PayslipFlag";
 
 interface EmployeeRow {
   id: string;
@@ -19,7 +20,7 @@ interface EmployeeRow {
 }
 interface Payslip {
   id: string; account_id: string; period_label: string | null; period_end: string | null;
-  gross: number | null; net: number | null; employer_cost: number | null; document_path: string | null;
+  gross: number | null; net: number | null; employer_cost: number | null; document_path: string | null; dropbox_path: string | null;
   income_tax: number | null; employee_ni: number | null; employer_ni: number | null; student_loan: number | null;
   salary_paid_at: string | null;
   justPaid?: boolean; paidAt?: number;
@@ -129,7 +130,7 @@ export function DebtsSalaries() {
   async function load() {
     const [{ data: accts }, { data: ps }] = await Promise.all([
       supabase.from("accounts").select("id, company_name, position, gross_salary_annual").eq("employment_type", "employee"),
-      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path, income_tax, employee_ni, employer_ni, student_loan, salary_paid_at").order("period_end", { ascending: false }),
+      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path, dropbox_path, income_tax, employee_ni, employer_ni, student_loan, salary_paid_at").order("period_end", { ascending: false }),
     ]);
     setRows(((accts ?? []) as any[])
       .filter((a) => Number(a.gross_salary_annual) > 0)
@@ -345,8 +346,8 @@ export function DebtsSalaries() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.08]">
-                    {["Employee", "Month", "Net owed", ""].map((h, i) => (
-                      <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 2 ? "text-right" : ""}`}>{h}</th>
+                    {["Employee", "Month", "Net owed", "Payslip", ""].map((h, i) => (
+                      <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 2 ? "text-right" : i === 3 ? "text-center" : ""}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -356,6 +357,10 @@ export function DebtsSalaries() {
                       <td className="px-4 py-3 text-strong">{empName(s.account_id)}</td>
                       <td className="px-4 py-3 text-standard">{s.period_label ?? s.period_end ?? "—"}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-strong">{money2(Number(s.net))}</td>
+                      <td className="px-4 py-3 text-center">
+                        <PayslipFlag payslipId={s.id} accountId={s.account_id} employeeName={empName(s.account_id)} periodEnd={s.period_end}
+                          documentPath={s.document_path} filed={!!s.document_path || !!s.dropbox_path} onDone={load} />
+                      </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {s.justPaid
                           ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((s.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertSalary(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>

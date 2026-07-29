@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
+import { PayslipFlag } from "./PayslipFlag";
 
 const TYPES = [{ v: "vat", l: "VAT" }, { v: "corporation_tax", l: "Corporation Tax" }, { v: "paye_ni", l: "PAYE / NI" }];
 const typeLabel = (t: string) => TYPES.find((x) => x.v === t)?.l ?? t;
@@ -27,7 +28,7 @@ interface Tax {
   justPaid?: boolean; paidAt?: number;
 }
 // PAYE/NI owed to HMRC for a month, derived from a payslip (not the taxes table).
-interface PayrollTaxRow { id: string; employee: string; period_label: string; period_end: string | null; amount: number; justPaid?: boolean; paidAt?: number; }
+interface PayrollTaxRow { id: string; account_id: string; employee: string; period_label: string; period_end: string | null; amount: number; document_path: string | null; filed: boolean; justPaid?: boolean; paidAt?: number; }
 
 export function DebtsTaxes() {
   const { toast } = useToast();
@@ -47,7 +48,7 @@ export function DebtsTaxes() {
       supabase.from("taxes")
         .select("id, tax_type, period_label, amount, currency, due_date, payment_status, document_path")
         .order("due_date", { ascending: true }),
-      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, income_tax, employee_ni, employer_ni, student_loan, tax_paid_at"),
+      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, income_tax, employee_ni, employer_ni, student_loan, tax_paid_at, document_path, dropbox_path"),
       supabase.from("accounts").select("id, company_name").eq("employment_type", "employee"),
     ]);
     // Debts only: unpaid AND overdue or due within a week (due date asc).
@@ -61,7 +62,7 @@ export function DebtsTaxes() {
       .map((p) => {
         const itemised = (Number(p.income_tax) || 0) + (Number(p.employee_ni) || 0) + (Number(p.employer_ni) || 0) + (Number(p.student_loan) || 0);
         const fallback = Math.max(0, (Number(p.gross) || 0) - (Number(p.net) || 0)) + (Number(p.employer_ni) || 0);
-        return { id: p.id, employee: nameById.get(p.account_id) ?? "Employee", period_label: p.period_label ?? p.period_end ?? "—", period_end: p.period_end, amount: p.income_tax != null ? itemised : fallback };
+        return { id: p.id, account_id: p.account_id, employee: nameById.get(p.account_id) ?? "Employee", period_label: p.period_label ?? p.period_end ?? "—", period_end: p.period_end, amount: p.income_tax != null ? itemised : fallback, document_path: p.document_path ?? null, filed: !!p.document_path || !!p.dropbox_path };
       })
       .filter((r) => r.amount > 0)
       .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? "")));
@@ -178,7 +179,10 @@ export function DebtsTaxes() {
                   <td className="px-4 py-3 text-standard">{r.employee} · {r.period_label}</td>
                   <td className="px-4 py-3 text-standard">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-strong">{money(r.amount)}</td>
-                  <td className="px-4 py-3"><span className="text-white/20">—</span></td>
+                  <td className="px-4 py-3">
+                    <PayslipFlag payslipId={r.id} accountId={r.account_id} employeeName={r.employee} periodEnd={r.period_end}
+                      documentPath={r.document_path} filed={r.filed} onDone={load} />
+                  </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
                       : r.justPaid

@@ -39,13 +39,16 @@ import {
   getPreviousQuarter,
   outstandingFor,
   payablePeriodDate,
+  payslipEmployerCost,
   type ExpenseCategory,
   type MoneyInInvoice,
   type MoneyOutRow,
   type Overhead,
   type Payable,
   type PayablePaidStatus,
+  type PayslipCost,
 } from "@/lib/finance";
+import { attachPayslip, viewPayslip } from "@/lib/payslipAttach";
 import {
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY,
@@ -66,7 +69,13 @@ export default function AdminPnL() {
   const [overheads, setOverheads] = useState<Overhead[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [invoices, setInvoices] = useState<MoneyInInvoice[]>([]);
+  const [payslips, setPayslips] = useState<PayslipCost[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Salary rows in the money-out ledger carry a "payslip missing" flag; clicking
+  // one opens this hidden picker to upload that month's payslip.
+  const salaryAttachInputRef = useRef<HTMLInputElement>(null);
+  const salaryAttachTargetRef = useRef<{ id: string; accountId: string; employeeName: string; periodEnd: string | null } | null>(null);
 
   // Which detail section is open below the summary (null = none; click a
   // summary tile to open it, click it again to close).
@@ -116,8 +125,24 @@ export default function AdminPnL() {
   const currentQuarter = useMemo(() => getCurrentQuarter(), []);
   const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
 
-  // Presets: current quarter, then each earlier quarter of this year
-  // (descending), then the whole year, then everything before this year.
+  // Prior years that actually carry data — a year with nothing recorded is
+  // never offered as a period.
+  const dataYears = useMemo<Set<number>>(() => {
+    const years = new Set<number>();
+    const add = (d: string | null | undefined) => {
+      if (!d) return;
+      const dt = new Date(d);
+      if (!isNaN(dt.getTime())) years.add(dt.getFullYear());
+    };
+    invoices.forEach((i) => add(i.issued_at ?? i.created_at));
+    overheads.forEach((o) => add(o.invoice_date));
+    payables.forEach((p) => add(payablePeriodDate(p)));
+    payslips.forEach((p) => add(p.period_end));
+    return years;
+  }, [invoices, overheads, payables, payslips]);
+
+  // Presets: the current quarter, then each earlier quarter of this year, then
+  // every prior year (with data) as its own entry — most recent first.
   const periodOptions = useMemo<PeriodOption[]>(() => {
     const y = currentQuarter.year;
     const opts: PeriodOption[] = [
@@ -136,20 +161,16 @@ export default function AdminPnL() {
         end: new Date(y, (q - 1) * 3 + 3, 0, 23, 59, 59, 999),
       });
     }
-    opts.push({
-      key: `year:${y}`,
-      label: String(y),
-      start: new Date(y, 0, 1, 0, 0, 0, 0),
-      end: new Date(y, 11, 31, 23, 59, 59, 999),
-    });
-    opts.push({
-      key: "prev_years",
-      label: `Before ${y}`,
-      start: new Date(0),
-      end: new Date(y - 1, 11, 31, 23, 59, 59, 999),
-    });
+    for (const yr of Array.from(dataYears).filter((v) => v < y).sort((a, b) => b - a)) {
+      opts.push({
+        key: `year:${yr}`,
+        label: String(yr),
+        start: new Date(yr, 0, 1, 0, 0, 0, 0),
+        end: new Date(yr, 11, 31, 23, 59, 59, 999),
+      });
+    }
     return opts;
-  }, [currentQuarter]);
+  }, [currentQuarter, dataYears]);
 
   const period = periodOptions.find((o) => o.key === periodKey) ?? periodOptions[0];
 
@@ -168,10 +189,14 @@ export default function AdminPnL() {
       { data: ovs, error: ovErr },
       { data: cats, error: cErr },
       { data: invs, error: iErr },
+      { data: slips },
+      { data: emps },
     ] = await Promise.all([
       supabase.from("overheads" as any).select("*").order("invoice_date", { ascending: false }),
       supabase.from("expense_categories" as any).select("*").order("code"),
       supabase.from("invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("payslips").select("id, account_id, period_end, period_label, gross, employer_ni, employer_pension, employer_cost, document_path, dropbox_path, salary_paid_at, tax_paid_at"),
+      supabase.from("accounts").select("id, company_name").eq("employment_type", "employee"),
     ]);
     if (ovErr) toast({ title: "Failed to load overheads", description: ovErr.message, variant: "destructive" });
     if (cErr) toast({ title: "Failed to load categories", description: cErr.message, variant: "destructive" });
@@ -190,6 +215,23 @@ export default function AdminPnL() {
         .in("id", accountIds);
       accountsMap = Object.fromEntries((accs ?? []).map((a: any) => [a.id, a.company_name]));
     }
+
+    const empName = new Map<string, string>(((emps ?? []) as any[]).map((a) => [a.id, (a.company_name ?? "—").replace(/[_-]+/g, " ")]));
+    setPayslips(((slips ?? []) as any[]).map((p) => ({
+      id: p.id,
+      account_id: p.account_id,
+      employee_name: empName.get(p.account_id) ?? "Employee",
+      period_end: p.period_end,
+      period_label: p.period_label,
+      gross: p.gross,
+      employer_ni: p.employer_ni,
+      employer_pension: p.employer_pension,
+      employer_cost: p.employer_cost,
+      document_path: p.document_path,
+      dropbox_path: p.dropbox_path,
+      salary_paid_at: p.salary_paid_at,
+      tax_paid_at: p.tax_paid_at,
+    })) as PayslipCost[]);
 
     setOverheads(overheadsList);
     setCategories(catsList);
@@ -287,8 +329,8 @@ export default function AdminPnL() {
       buildMoneyOutRows(overheads, payables, (code) => {
         const c = code ? catByCode.get(code) : null;
         return c ? `${c.code} — ${c.name}` : code;
-      }),
-    [overheads, payables, catByCode],
+      }, payslips),
+    [overheads, payables, catByCode, payslips],
   );
 
   const filteredMoneyOut = useMemo(() => {
@@ -341,12 +383,16 @@ export default function AdminPnL() {
         .reduce((s, i) => s + Number(i.amount ?? 0), 0),
     [invoices, inPeriod],
   );
+  // Operational fixed cost = overheads + payroll (employer cost per month).
   const fixedCost = useMemo(
     () =>
       overheads
         .filter((o) => inPeriod(o.invoice_date))
-        .reduce((s, o) => s + Number(o.gross_amount ?? 0), 0),
-    [overheads, inPeriod],
+        .reduce((s, o) => s + Number(o.gross_amount ?? 0), 0) +
+      payslips
+        .filter((p) => inPeriod(p.period_end))
+        .reduce((s, p) => s + payslipEmployerCost(p), 0),
+    [overheads, payslips, inPeriod],
   );
   const variableCost = useMemo(
     () =>
@@ -391,6 +437,27 @@ export default function AdminPnL() {
     } else if (r.payable) {
       setSelectedPayable(r.payable);
       setPayableDetailOpen(true);
+    } else if (r.salary) {
+      // Filed → view the PDF; missing → open the picker to attach this month's payslip.
+      if (r.salary.documentPath) {
+        void viewPayslip(r.salary.documentPath);
+      } else {
+        salaryAttachTargetRef.current = { id: r.salary.id, accountId: r.salary.accountId, employeeName: r.salary.employeeName, periodEnd: r.salary.periodEnd };
+        salaryAttachInputRef.current?.click();
+      }
+    }
+  }
+
+  async function handleSalaryAttachFile(file: File | undefined) {
+    const target = salaryAttachTargetRef.current;
+    salaryAttachTargetRef.current = null;
+    if (!file || !target) return;
+    try {
+      const { figuresUpdated } = await attachPayslip({ payslipId: target.id, accountId: target.accountId, employeeName: target.employeeName, periodEnd: target.periodEnd, file });
+      toast({ title: "Payslip attached", description: figuresUpdated ? "Figures updated and filed to Dropbox." : "Filed to Dropbox — figures kept." });
+      fetchAll();
+    } catch (e) {
+      toast({ title: "Couldn't attach the payslip", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
 
@@ -549,18 +616,23 @@ export default function AdminPnL() {
             <div className="h-px w-6 bg-gold-muted" />
             <h2 className="text-label">Summary</h2>
           </div>
-          <Select value={period.key} onValueChange={setPeriodKey}>
-            <SelectTrigger className="h-8 w-[170px] rounded-sm text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {periodOptions.map((o) => (
-                <SelectItem key={o.key} value={o.key}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Period — underline select, matching the Money Out / Revenue filters */}
+          <div className="group relative w-[130px] pb-[7px]">
+            <Select value={period.key} onValueChange={setPeriodKey}>
+              <SelectTrigger className="h-auto justify-end gap-2 rounded-none border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 focus:ring-0 focus:ring-offset-0 [&>svg]:text-[#C9A96A]/60 [&>svg]:opacity-100">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {periodOptions.map((o) => (
+                  <SelectItem key={o.key} value={o.key}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
+          </div>
         </div>
         <FinanceSummary
           revenue={revenue}
@@ -743,6 +815,15 @@ export default function AdminPnL() {
         </div>
         <OutstandingCards receivable={outstandingIn} payable={outstandingOut} />
       </section>
+
+      {/* Hidden picker for attaching a payslip to a money-out salary row */}
+      <input
+        ref={salaryAttachInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        className="hidden"
+        onChange={(e) => { void handleSalaryAttachFile(e.target.files?.[0] ?? undefined); e.target.value = ""; }}
+      />
 
       {/* Dialogs rendered unconditionally at page root */}
       <OverheadForm
