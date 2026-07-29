@@ -124,6 +124,13 @@ Deno.serve(async (req) => {
     salary_start_date: employmentType === "employee" ? signingDate : null,
   }).eq("id", accountId).then(() => {}, (e) => console.error("[team-contract-upload-presigned] account employment update failed:", e));
 
+  // Pre-signed members skip signing but still proofread their details at
+  // onboarding — mark the profile unconfirmed so the portal shows that step.
+  await admin.from("freelancer_profiles")
+    .update({ onboarding_confirmed: false })
+    .eq("id", profileId)
+    .then(() => {}, (e) => console.error("[team-contract-upload-presigned] onboarding flag update failed:", e));
+
   // ── Create signed contract row (storage_path filled after upload) ───────────
   const { data: contractRow, error: insertErr } = await admin
     .from("team_contracts")

@@ -291,16 +291,50 @@ export default function Onboarding() {
   });
   const [touched, setTouched] = useState<Touched>({});
   const [roleLocked, setRoleLocked] = useState(false);
+  // Pre-signed members proofread & confirm instead of signing (their paper
+  // agreement is already on file). Employees additionally have no rate/earnings.
+  const [preSignedMode, setPreSignedMode] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-  // The admin sets the role at invite (accounts.team_role). If present, pre-fill
-  // and lock it so the team member can't change it.
+  // Prefill from the invite (accounts.team_role/position) and, for a pre-signed
+  // member, from their existing profile — then lock the role.
   useEffect(() => {
     if (!user) return;
-    supabase.from("account_members").select("accounts(team_role)").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => {
-        const preset = (data as { accounts?: { team_role?: string | null } } | null)?.accounts?.team_role;
-        if (preset) { setForm((f) => ({ ...f, role: preset })); setRoleLocked(true); }
-      });
+    (async () => {
+      const [{ data: memberData }, { data: profileData }] = await Promise.all([
+        supabase.from("account_members").select("accounts(team_role, employment_type, position)").eq("user_id", user.id).maybeSingle(),
+        supabase.from("freelancer_profiles").select("first_name, last_name, email, role, onboarding_confirmed, flat_number, house_number, street_name, city, postcode, country, bank_name, account_holder, sort_code, account_number, day_rate, rate_currency, rate_period").eq("user_id", user.id).maybeSingle(),
+      ]);
+      const acct = (memberData as { accounts?: { team_role?: string | null; employment_type?: string | null; position?: string | null } } | null)?.accounts;
+      const preset = acct?.team_role || acct?.position || null;
+      if (preset) { setForm((f) => ({ ...f, role: preset })); setRoleLocked(true); }
+      setIsEmployee(acct?.employment_type === "employee");
+      const p = profileData as Record<string, any> | null;
+      if (p && p.onboarding_confirmed === false) {
+        setPreSignedMode(true);
+        setForm((f) => ({
+          ...f,
+          firstName: p.first_name ?? f.firstName,
+          lastName: p.last_name ?? f.lastName,
+          email: p.email ?? f.email,
+          role: preset ?? p.role ?? f.role,
+          flatNumber: p.flat_number ?? f.flatNumber,
+          houseNumber: p.house_number ?? f.houseNumber,
+          streetName: p.street_name ?? f.streetName,
+          city: p.city ?? f.city,
+          postcode: p.postcode ?? f.postcode,
+          country: p.country ?? f.country,
+          bankName: p.bank_name ?? f.bankName,
+          accountHolder: p.account_holder ?? f.accountHolder,
+          sortCode: p.sort_code ?? f.sortCode,
+          accountNumber: p.account_number ?? f.accountNumber,
+          rateAmount: p.day_rate != null ? String(p.day_rate) : f.rateAmount,
+          rateCurrency: p.rate_currency ?? f.rateCurrency,
+          ratePeriod: p.rate_period ?? f.ratePeriod,
+        }));
+      }
+    })();
   }, [user]);
 
   const showError = (field: keyof FormData) =>
@@ -328,6 +362,51 @@ export default function Onboarding() {
     const rateNum = parseFloat(form.rateAmount.replace(/[^0-9.]/g, ""));
     if (isNaN(rateNum) || rateNum <= 0) { toast({ title: "Please enter a valid rate amount", variant: "destructive" }); return; }
     setPage(2);
+  }
+
+  // Pre-signed members: proofread → confirm (no signature), then enter the portal.
+  async function handleConfirm() {
+    const required = REQUIRED_FIELDS.filter((f) => !(isEmployee && f === "rateAmount"));
+    const allTouched = required.reduce((a, f) => ({ ...a, [f]: true }), {} as Touched);
+    setTouched(allTouched);
+    const missing = required.filter((f) => !form[f].trim());
+    if (missing.length > 0) {
+      toast({ title: "Please complete all required fields", variant: "destructive" });
+      const el = document.querySelector(`[data-field="${missing[0]}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const rateNum = parseFloat(form.rateAmount.replace(/[^0-9.]/g, ""));
+    if (!isEmployee && (isNaN(rateNum) || rateNum <= 0)) { toast({ title: "Please enter a valid rate amount", variant: "destructive" }); return; }
+    setConfirming(true);
+    try {
+      const { error } = await supabase.functions.invoke("complete-team-onboarding", {
+        body: {
+          role:          form.role.trim(),
+          rateAmount:    isNaN(rateNum) ? 0 : rateNum,
+          rateCurrency:  form.rateCurrency,
+          ratePeriod:    form.ratePeriod,
+          flatNumber:    form.flatNumber.trim() || undefined,
+          houseNumber:   form.houseNumber.trim(),
+          streetName:    form.streetName.trim(),
+          city:          form.city.trim(),
+          postcode:      form.postcode.trim(),
+          country:       form.country.trim(),
+          bankName:      form.bankName.trim(),
+          accountHolder: form.accountHolder.trim(),
+          sortCode:      form.sortCode.trim(),
+          accountNumber: form.accountNumber.trim(),
+        },
+      });
+      if (error) throw error;
+      await refreshProfileStatus();
+      toast({ title: "You're all set" });
+      navigate(isEmployee ? "/documents" : "/earnings");
+    } catch (err: any) {
+      toast({ title: "Could not save your details", description: err.message, variant: "destructive" });
+    } finally {
+      setConfirming(false);
+    }
   }
 
   async function handleSign(sigDataUrl: string) {
@@ -378,8 +457,8 @@ export default function Onboarding() {
           <div className="flex items-start gap-4">
             <div className="w-0.5 self-stretch bg-gold" style={{ opacity: 0.4 }} />
             <div>
-              <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground">Join the Studio</h1>
-              <p className="mt-3 font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>Complete your details to sign your agreements</p>
+              <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground">{preSignedMode ? "Confirm your details" : "Join the Studio"}</h1>
+              <p className="mt-3 font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>{preSignedMode ? "Your agreement is already signed — check everything is right and confirm" : "Complete your details to sign your agreements"}</p>
             </div>
           </div>
         </div>
@@ -444,7 +523,8 @@ export default function Onboarding() {
             </div>
           </section>
 
-          {/* 03 Rate */}
+          {/* 03 Rate — employees are salaried, no per-work rate */}
+          {!isEmployee && (
           <section>
             <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>03 — Rate</span></div>
             <div className="grid grid-cols-3 gap-6">
@@ -467,6 +547,7 @@ export default function Onboarding() {
               </div>
             </div>
           </section>
+          )}
 
           {/* 04 Bank Details */}
           <section>
@@ -482,9 +563,15 @@ export default function Onboarding() {
             </div>
           </section>
 
-          <button onClick={handleNext} className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
-            Next — Review Agreements
-          </button>
+          {preSignedMode ? (
+            <button onClick={handleConfirm} disabled={confirming} className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors disabled:opacity-50" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
+              {confirming ? <><BrandLoader size="sm" className="h-3 w-3 mr-2" />Saving…</> : "Confirm & Enter Portal"}
+            </button>
+          ) : (
+            <button onClick={handleNext} className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
+              Next — Review Agreements
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -261,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           checkAccountAgreementForUser(authUser.id),
           supabase
             .from("freelancer_profiles")
-            .select("id")
+            .select("id, onboarding_confirmed")
             .eq("user_id", authUser.id)
             .maybeSingle(),
         ]);
@@ -275,7 +275,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMemberRole((member as any)?.role ?? null);
         // Team users sign the freelancer agreement, not the SSS-CA — skip that gate.
         setHasSignedAgreement(resolvedType === 'team' ? true : agreementResult === "signed");
-        setHasFreelancerProfile(resolvedType === 'team' ? !!fpRow : null);
+        // Pre-signed members have a profile from the start but must still
+        // proofread (onboarding_confirmed=false) — treat them as not-yet-onboarded.
+        setHasFreelancerProfile(resolvedType === 'team' ? (!!fpRow && (fpRow as any).onboarding_confirmed !== false) : null);
       } catch {
         if (!cancelled) {
           setAccountType(null);
