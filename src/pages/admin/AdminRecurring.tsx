@@ -260,7 +260,7 @@ export default function AdminRecurring() {
     { id: "start", accessor: (r) => r.start_date, type: "date" },
     { id: "next", accessor: (r) => { const d = nextOccurrence(r); return d ? d.toISOString() : null; }, type: "date" },
   ];
-  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Commitment>(filtered, COLUMNS, { key: "supplier", dir: "asc" });
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Commitment>(filtered, COLUMNS, { key: "next", dir: "asc" });
 
   return (
     <AdminLayout panel>
