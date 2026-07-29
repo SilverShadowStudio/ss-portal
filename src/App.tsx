@@ -20,6 +20,7 @@ import Messages from "./pages/Messages";
 import Total from "./pages/Total";
 import Documents from "./pages/Documents";
 import Earnings from "./pages/Earnings";
+import Salary from "./pages/Salary";
 import Account from "./pages/Account";
 import Team from "./pages/Team";
 import Invoices from "./pages/Invoices";
@@ -221,6 +222,14 @@ const App = () => (
               element={
                 <ProtectedClient>
                   <Earnings />
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/salary"
+              element={
+                <ProtectedClient>
+                  <Salary />
                 </ProtectedClient>
               }
             />

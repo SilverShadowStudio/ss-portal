@@ -96,9 +96,15 @@ export function DebtsSalaries() {
   const { toast } = useToast();
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [slips, setSlips] = useState<Payslip[]>([]);
+  const [pays, setPays] = useState<{ id: string; payslip_id: string; amount: number; paid_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [payslipFilter, setPayslipFilter] = useState<"all" | "missing" | "filed">("all");
+  // Part-payment dialog (a month paid in instalments).
+  const [partOpen, setPartOpen] = useState(false);
+  const [partTarget, setPartTarget] = useState<Payslip | null>(null);
+  const [partForm, setPartForm] = useState({ amount: "", date: isoToday });
+  const [partBusy, setPartBusy] = useState(false);
 
   // Add-payslip dialog
   const [open, setOpen] = useState(false);
@@ -140,8 +146,11 @@ export function DebtsSalaries() {
       .filter((a) => Number(a.gross_salary_annual) > 0)
       .map((a) => ({ id: a.id, name: (a.company_name ?? "—").replace(/[_-]+/g, " "), position: a.position, gross_salary_annual: Number(a.gross_salary_annual) })));
     setSlips((ps ?? []) as Payslip[]);
+    const { data: paysData } = await supabase.from("salary_payments").select("id, payslip_id, amount, paid_at");
+    setPays((paysData ?? []) as any[]);
     setLoading(false);
   }
+  const paidFor = (id: string) => pays.filter((p) => p.payslip_id === id).reduce((s, p) => s + Number(p.amount || 0), 0);
   useEffect(() => { load(); }, []);
 
   const grace = useGraceTimers();
@@ -174,15 +183,57 @@ export function DebtsSalaries() {
 
   async function markSalaryPaid(s: Payslip) {
     const iso = new Date().toISOString();
+    // Record the outstanding balance as a payment so the shared statement is
+    // complete, then settle the month.
+    const remaining = Number(s.net || 0) - paidFor(s.id);
+    const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+    if (remaining > 0.01) {
+      await supabase.from("salary_payments").insert({ payslip_id: s.id, amount: remaining, paid_at: iso.slice(0, 10), created_by: userId });
+    }
     const { error } = await supabase.from("payslips").update({ salary_paid_at: iso }).eq("id", s.id);
     if (error) { toast({ title: "Couldn't mark paid", description: error.message, variant: "destructive" }); return; }
+    setPays((prev) => remaining > 0.01 ? [...prev, { id: crypto.randomUUID(), payslip_id: s.id, amount: remaining, paid_at: iso.slice(0, 10) }] : prev);
     setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: true, paidAt: Date.now(), salary_paid_at: iso } : x));
     grace.schedule(s.id, GRACE_MS, () => setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: false } : x)));
   }
+
+  function openPartPay(s: Payslip) {
+    setPartTarget(s);
+    setPartForm({ amount: Math.max(0, Number(s.net || 0) - paidFor(s.id)).toFixed(2), date: isoToday });
+    setPartOpen(true);
+  }
+  async function savePartPay() {
+    if (!partTarget) return;
+    const amount = num(partForm.amount);
+    if (!(amount > 0)) { toast({ title: "Enter an amount", variant: "destructive" }); return; }
+    setPartBusy(true);
+    try {
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+      const { error } = await supabase.from("salary_payments").insert({ payslip_id: partTarget.id, amount, paid_at: partForm.date || isoToday, created_by: userId });
+      if (error) throw error;
+      // Settle the month once the instalments cover the net.
+      const net = Number(partTarget.net || 0);
+      if (paidFor(partTarget.id) + amount >= net - 0.01) {
+        await supabase.from("payslips").update({ salary_paid_at: new Date().toISOString() }).eq("id", partTarget.id);
+      }
+      toast({ title: "Payment recorded", description: `${money2(amount)} towards ${partTarget.period_label ?? "the month"}.` });
+      setPartOpen(false);
+      load();
+    } catch (e) {
+      toast({ title: "Couldn't record the payment", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setPartBusy(false);
+    }
+  }
   async function revertSalary(s: Payslip) {
+    // Undo "Mark paid": remove the balancing payment it recorded, then unsettle.
+    const { data: latest } = await supabase.from("salary_payments").select("id").eq("payslip_id", s.id).order("created_at", { ascending: false }).limit(1);
+    const latestId = (latest as { id: string }[] | null)?.[0]?.id;
+    if (latestId) await supabase.from("salary_payments").delete().eq("id", latestId);
     const { error } = await supabase.from("payslips").update({ salary_paid_at: null }).eq("id", s.id);
     if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
     grace.cancel(s.id);
+    if (latestId) setPays((prev) => prev.filter((p) => p.id !== latestId));
     setSlips((prev) => prev.map((x) => x.id === s.id ? { ...x, justPaid: false, salary_paid_at: null } : x));
   }
 
@@ -387,7 +438,10 @@ export function DebtsSalaries() {
                     <tr key={s.id} className={`border-b border-white/[0.05] last:border-0 ${s.justPaid ? "opacity-45" : ""}`}>
                       <td className="px-4 py-3 text-strong">{empName(s.account_id)}</td>
                       <td className="px-4 py-3 text-standard">{s.period_label ?? s.period_end ?? "—"}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-strong">{money2(Number(s.net))}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-strong">
+                        {money2(Number(s.net))}
+                        {paidFor(s.id) > 0.01 && <span className="ml-2 text-[10px] tabular-nums text-[#ecd39c]">{money2(paidFor(s.id))} paid</span>}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <PayslipFlag payslipId={s.id} accountId={s.account_id} employeeName={empName(s.account_id)} periodEnd={s.period_end}
                           documentPath={s.document_path} filed={!!s.document_path || !!s.dropbox_path} onDone={load} />
@@ -395,7 +449,10 @@ export function DebtsSalaries() {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {s.justPaid
                           ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((s.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertSalary(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
-                          : <button onClick={() => markSalaryPaid(s)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                          : <span className="inline-flex items-center gap-4">
+                              <button onClick={() => openPartPay(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">Part-pay</button>
+                              <button onClick={() => markSalaryPaid(s)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>
+                            </span>}
                       </td>
                     </tr>
                   ))}
@@ -460,6 +517,28 @@ export function DebtsSalaries() {
           <DialogFooter>
             <button type="button" onClick={() => setOpen(false)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
             <Button onClick={save} disabled={saving} className="rounded-sm">{saving ? "Saving…" : "Save payslip"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={partOpen} onOpenChange={setPartOpen}>
+        <DialogContent className="max-w-sm rounded-sm border-divider bg-background">
+          <DialogHeader>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Salaries · Instalment</p>
+            <DialogTitle className="font-serif font-normal text-2xl">Record a payment</DialogTitle>
+          </DialogHeader>
+          {partTarget && (
+            <p className="text-sm text-foreground/45">
+              {empName(partTarget.account_id)} · {partTarget.period_label ?? partTarget.period_end ?? ""} — net {money2(Number(partTarget.net || 0))}, {money2(paidFor(partTarget.id))} paid so far.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1.5"><Label>Amount (£)</Label><Input inputMode="decimal" value={partForm.amount} onChange={(e) => setPartForm((x) => ({ ...x, amount: e.target.value }))} className="rounded-sm" /></div>
+            <div className="space-y-1.5"><Label>Date paid</Label><Input type="date" value={partForm.date} onChange={(e) => setPartForm((x) => ({ ...x, date: e.target.value }))} className="rounded-sm" /></div>
+          </div>
+          <DialogFooter>
+            <button type="button" onClick={() => setPartOpen(false)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
+            <Button onClick={savePartPay} disabled={partBusy} className="rounded-sm">{partBusy ? "Saving…" : "Record payment"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

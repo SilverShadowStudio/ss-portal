@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  CalendarDays, Inbox, Images, FileText, Users, Wallet,
+  CalendarDays, Inbox, Images, FileText, Users, Wallet, Banknote,
   LayoutDashboard, Package, Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
@@ -21,8 +21,9 @@ const TEAM_NAV: SidebarNavItem[] = [
   { path: "/earnings",  label: "Earnings",   Icon: Wallet   },
   { path: "/documents", label: "Documents",  Icon: FileText },
 ];
-// Employees are salaried (payroll), not paid per work — no Earnings page yet.
+// Employees are salaried (payroll), not paid per work — Salary replaces Earnings.
 const TEAM_NAV_EMPLOYEE: SidebarNavItem[] = [
+  { path: "/salary",    label: "Salary",     Icon: Banknote },
   { path: "/documents", label: "Documents",  Icon: FileText },
 ];
 
