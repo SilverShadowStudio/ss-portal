@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -273,6 +273,9 @@ export function AccountList({
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
   // Portal-emails viewer, opened from the account-card mail icon.
   const [emailsModal, setEmailsModal] = useState<{ accountId: string; name: string } | null>(null);
+  // Admin edit of a team member's admin-owned info (name/engagement/position/salary/role).
+  const [editMember, setEditMember] = useState<null | { accountId: string; userId: string | null; firstName: string; lastName: string; engagement: "freelancer" | "employee"; position: string; salary: string; role: string }>(null);
+  const [savingMember, setSavingMember] = useState(false);
   // Templates for the template-pick step
   const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
   const [teamTemplatesLoading, setTeamTemplatesLoading] = useState(false);
@@ -841,6 +844,62 @@ export function AccountList({
       setTimeout(() => setCopied(null), 1500);
     } catch { /* ignore */ }
   };
+
+  // Open the edit-member dialog, pulling the current admin-owned fields.
+  async function openEditMember(group: AccountGroup) {
+    const u = group.users?.[0];
+    const { data: acct } = await supabase.from("accounts").select("employment_type, position, gross_salary_annual, team_role").eq("id", group.account_id).maybeSingle();
+    const { data: fp } = u ? await supabase.from("freelancer_profiles").select("role, day_rate").eq("user_id", u.user_id).maybeSingle() : { data: null } as any;
+    const a = acct as { employment_type?: string | null; position?: string | null; gross_salary_annual?: number | null; team_role?: string | null } | null;
+    const nameParts = (group.company_name || "").trim().split(/\s+/);
+    setEditMember({
+      accountId: group.account_id,
+      userId: u?.user_id ?? null,
+      firstName: u?.first_name ?? nameParts[0] ?? "",
+      lastName: u?.last_name ?? nameParts.slice(1).join(" ") ?? "",
+      engagement: a?.employment_type === "employee" ? "employee" : "freelancer",
+      position: a?.position ?? u?.position ?? "",
+      salary: a?.gross_salary_annual != null ? String(a.gross_salary_annual) : "",
+      role: (fp as { role?: string | null } | null)?.role ?? a?.team_role ?? "",
+    });
+  }
+
+  async function saveEditMember() {
+    if (!editMember) return;
+    const m = editMember;
+    if (!m.firstName.trim()) { toast({ title: "First name is required", variant: "destructive" }); return; }
+    const isEmp = m.engagement === "employee";
+    if (isEmp && (!m.position.trim() || !(parseFloat(m.salary.replace(/[^0-9.]/g, "")) > 0))) {
+      toast({ title: "Position and gross salary are required for an employee", variant: "destructive" }); return;
+    }
+    setSavingMember(true);
+    try {
+      const fullName = `${m.firstName.trim()} ${m.lastName.trim()}`.trim();
+      const { error: aErr } = await supabase.from("accounts").update({
+        company_name: fullName,
+        employment_type: m.engagement,
+        position: isEmp ? m.position.trim() || null : null,
+        gross_salary_annual: isEmp ? parseFloat(m.salary.replace(/[^0-9.]/g, "")) || null : null,
+        team_role: isEmp ? (m.position.trim() || null) : (m.role.trim() || null),
+      }).eq("id", m.accountId);
+      if (aErr) throw aErr;
+      if (m.userId) {
+        const { error: fErr } = await supabase.from("freelancer_profiles").update({
+          first_name: m.firstName.trim(),
+          last_name: m.lastName.trim(),
+          role: isEmp ? (m.position.trim() || null) : (m.role.trim() || null),
+        }).eq("user_id", m.userId);
+        if (fErr) throw fErr;
+      }
+      toast({ title: "Member updated" });
+      setEditMember(null);
+      fetchAccounts();
+    } catch (e: unknown) {
+      toast({ title: "Couldn't update member", description: (e as Error)?.message, variant: "destructive" });
+    } finally {
+      setSavingMember(false);
+    }
+  }
 
   // (Re)send a set-password link via Resend — bypasses Supabase's auth SMTP.
   async function handleSendInvite(accountId: string) {
@@ -1728,6 +1787,11 @@ export function AccountList({
                                 <Mail className="mr-2 h-4 w-4" /> Send invite
                               </DropdownMenuItem>
                             )}
+                            {isTeamOnly && (
+                              <DropdownMenuItem onClick={() => openEditMember(group)}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit member
+                              </DropdownMenuItem>
+                            )}
                             {showEditProfile && (
                               <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
                                 <Pencil className="mr-2 h-4 w-4" /> Edit profile
@@ -2109,6 +2173,45 @@ export function AccountList({
         open={!!emailsModal}
         onOpenChange={(o) => { if (!o) setEmailsModal(null); }}
       />
+
+      <Dialog open={!!editMember} onOpenChange={(o) => { if (!o) setEditMember(null); }}>
+        <DialogContent className="max-w-md rounded-sm border-divider bg-background">
+          <DialogHeader>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Team · Edit member</p>
+            <DialogTitle className="font-serif font-normal text-2xl">Edit member</DialogTitle>
+          </DialogHeader>
+          {editMember && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="space-y-1"><label className="text-xs text-muted-foreground">First name</label>
+                <Input value={editMember.firstName} onChange={(e) => setEditMember((m) => m && { ...m, firstName: e.target.value })} /></div>
+              <div className="space-y-1"><label className="text-xs text-muted-foreground">Last name</label>
+                <Input value={editMember.lastName} onChange={(e) => setEditMember((m) => m && { ...m, lastName: e.target.value })} /></div>
+              <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Engagement</label>
+                <select value={editMember.engagement} onChange={(e) => setEditMember((m) => m && { ...m, engagement: e.target.value as "freelancer" | "employee" })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                  <option value="freelancer">Freelancer — paid per work</option>
+                  <option value="employee">Employee — fixed salary</option>
+                </select></div>
+              {editMember.engagement === "employee" ? (
+                <>
+                  <div className="space-y-1"><label className="text-xs text-muted-foreground">Position</label>
+                    <Input value={editMember.position} onChange={(e) => setEditMember((m) => m && { ...m, position: e.target.value })} placeholder="Production Director" /></div>
+                  <div className="space-y-1"><label className="text-xs text-muted-foreground">Gross salary / yr (£)</label>
+                    <Input inputMode="decimal" value={editMember.salary} onChange={(e) => setEditMember((m) => m && { ...m, salary: e.target.value })} placeholder="45000" /></div>
+                </>
+              ) : (
+                <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Role</label>
+                  <Input value={editMember.role} onChange={(e) => setEditMember((m) => m && { ...m, role: e.target.value })} placeholder="Scene Manager / Modeller …" /></div>
+              )}
+              <p className="col-span-2 text-[10px] text-muted-foreground/70">Address, phone and bank stay the member’s own — they manage those in their Settings.</p>
+            </div>
+          )}
+          <DialogFooter>
+            <button type="button" onClick={() => setEditMember(null)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
+            <Button onClick={saveEditMember} disabled={savingMember} className="rounded-sm">{savingMember ? "Saving…" : "Save changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

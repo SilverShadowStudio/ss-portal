@@ -24,6 +24,7 @@ interface Payslip {
   id: string; account_id: string; period_label: string | null; period_end: string | null;
   gross: number | null; net: number | null; employer_cost: number | null; document_path: string | null; dropbox_path: string | null;
   income_tax: number | null; employee_ni: number | null; employer_ni: number | null; student_loan: number | null;
+  back_pay: number | null; taxable_gross_pay: number | null;
   salary_paid_at: string | null;
   justPaid?: boolean; paidAt?: number;
 }
@@ -114,6 +115,8 @@ export function DebtsSalaries() {
   const [saving, setSaving] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [f, setF] = useState({ period_label: "", period_end: "", gross: "", net: "", employer_ni: "", employer_pension: "" });
+  const [editSlip, setEditSlip] = useState<null | { id: string; period_label: string; gross: string; back_pay: string; income_tax: string; employee_ni: string; student_loan: string; taxable_gross_pay: string; net: string; employer_ni: string }>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   // Add salaried person (payroll-only — not a team member)
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -140,7 +143,7 @@ export function DebtsSalaries() {
   async function load() {
     const [{ data: accts }, { data: ps }] = await Promise.all([
       supabase.from("accounts").select("id, company_name, position, gross_salary_annual").eq("employment_type", "employee"),
-      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path, dropbox_path, income_tax, employee_ni, employer_ni, student_loan, salary_paid_at").order("period_end", { ascending: false }),
+      supabase.from("payslips").select("id, account_id, period_label, period_end, gross, net, employer_cost, document_path, dropbox_path, income_tax, employee_ni, employer_ni, student_loan, back_pay, taxable_gross_pay, salary_paid_at").order("period_end", { ascending: false }),
     ]);
     setRows(((accts ?? []) as any[])
       .filter((a) => Number(a.gross_salary_annual) > 0)
@@ -225,6 +228,39 @@ export function DebtsSalaries() {
       setPartBusy(false);
     }
   }
+  const strn = (n: number | null) => (n != null ? String(n) : "");
+  function openEditSlip(s: Payslip) {
+    setEditSlip({
+      id: s.id, period_label: s.period_label ?? "",
+      gross: strn(s.gross), back_pay: strn(s.back_pay), income_tax: strn(s.income_tax), employee_ni: strn(s.employee_ni),
+      student_loan: strn(s.student_loan), taxable_gross_pay: strn(s.taxable_gross_pay), net: strn(s.net), employer_ni: strn(s.employer_ni),
+    });
+  }
+  async function saveEditSlip() {
+    if (!editSlip) return;
+    const e = editSlip;
+    setSavingEdit(true);
+    const { error } = await supabase.from("payslips").update({
+      period_label: e.period_label.trim() || null,
+      gross: num(e.gross) || null, back_pay: num(e.back_pay) || null, income_tax: num(e.income_tax) || null,
+      employee_ni: num(e.employee_ni) || null, student_loan: num(e.student_loan) || null,
+      taxable_gross_pay: num(e.taxable_gross_pay) || null, net: num(e.net) || null, employer_ni: num(e.employer_ni) || null,
+    }).eq("id", e.id);
+    setSavingEdit(false);
+    if (error) { toast({ title: "Couldn't update payslip", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Payslip updated" });
+    setEditSlip(null);
+    load();
+  }
+  async function deleteSlip(s: Payslip) {
+    if (!window.confirm(`Delete the ${s.period_label ?? "this"} payslip for ${empName(s.account_id)}? This cannot be undone.`)) return;
+    if (s.document_path) await supabase.storage.from("payslips").remove([s.document_path]).catch(() => {});
+    const { error } = await supabase.from("payslips").delete().eq("id", s.id);
+    if (error) { toast({ title: "Couldn't delete payslip", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Payslip deleted" });
+    load();
+  }
+
   async function revertSalary(s: Payslip) {
     // Undo "Mark paid": remove the balancing payment it recorded, then unsettle.
     const { data: latest } = await supabase.from("salary_payments").select("id").eq("payslip_id", s.id).order("created_at", { ascending: false }).limit(1);
@@ -450,8 +486,10 @@ export function DebtsSalaries() {
                         {s.justPaid
                           ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((s.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertSalary(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
                           : <span className="inline-flex items-center gap-4">
+                              <button onClick={() => openEditSlip(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/80">Edit</button>
                               <button onClick={() => openPartPay(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">Part-pay</button>
                               <button onClick={() => markSalaryPaid(s)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>
+                              <button onClick={() => deleteSlip(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-rose-400">Delete</button>
                             </span>}
                       </td>
                     </tr>
@@ -466,6 +504,31 @@ export function DebtsSalaries() {
           </p>
         </>
       )}
+
+      <Dialog open={!!editSlip} onOpenChange={(o) => { if (!o) setEditSlip(null); }}>
+        <DialogContent className="max-w-lg rounded-sm border-divider bg-background">
+          <DialogHeader>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Salaries · Edit payslip</p>
+            <DialogTitle className="font-serif font-normal text-2xl">{editSlip?.period_label || "Payslip"}</DialogTitle>
+          </DialogHeader>
+          {editSlip && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="col-span-2 space-y-1.5"><Label>Period</Label><Input value={editSlip.period_label} onChange={(e) => setEditSlip((x) => x && { ...x, period_label: e.target.value })} className="rounded-sm" /></div>
+              {([
+                ["Gross (£)", "gross"], ["Back Pay (£)", "back_pay"], ["Tax (£)", "income_tax"], ["National Insurance (£)", "employee_ni"],
+                ["Student Loan (£)", "student_loan"], ["Taxable Gross Pay (£)", "taxable_gross_pay"], ["Net take-home (£)", "net"], ["Employer NI (£)", "employer_ni"],
+              ] as const).map(([label, key]) => (
+                <div key={key} className="space-y-1.5"><Label>{label}</Label>
+                  <Input inputMode="decimal" value={editSlip[key]} onChange={(e) => setEditSlip((x) => x && { ...x, [key]: e.target.value })} className="rounded-sm" /></div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <button type="button" onClick={() => setEditSlip(null)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
+            <Button onClick={saveEditSlip} disabled={savingEdit} className="rounded-sm">{savingEdit ? "Saving…" : "Save changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md rounded-sm border-divider bg-background">

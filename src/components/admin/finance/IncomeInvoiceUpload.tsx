@@ -117,13 +117,17 @@ interface ReviewProps {
   onSaved: () => void;
   /** e.g. "2 of 7" — shows the bulk-review position in the header. */
   queueLabel?: string | null;
+  /** When set, the dialog edits this existing invoice (update) and offers Delete. */
+  editId?: string | null;
+  onDeleted?: () => void;
 }
 
 /** The pre-filled income-invoice review form. Resets from `initial` on open or
  *  whenever `initial` changes (so a bulk queue can advance it in place). */
-export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceFile, onSaved, queueLabel }: ReviewProps) {
+export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceFile, onSaved, queueLabel, editId, onDeleted }: ReviewProps) {
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => { if (open) setForm(initial); }, [open, initial]);
@@ -139,6 +143,32 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     if (!userId) { setSaving(false); toast({ title: "Not signed in", variant: "destructive" }); return; }
+
+    // Edit mode: update the existing invoice and finish (no dup check, no filing).
+    if (editId) {
+      const paid = form.paid === "paid";
+      const invoiceDate = form.invoiceDate || null;
+      const { error } = await supabase.from("invoices").update({
+        status: paid ? "paid" : "sent",
+        amount: gross,
+        subtotal: num(form.net) ?? null,
+        vat_amount: num(form.vatAmount) ?? null,
+        invoice_number: form.invoiceNumber || null,
+        reference_number: form.invoiceNumber.trim() || `EXT-${editId.slice(0, 8).toUpperCase()}`,
+        issued_at: invoiceDate,
+        due_date: form.dueDate || null,
+        paid_at: paid ? invoiceDate : null,
+        currency: form.currency || "GBP",
+        notes: form.clientName || null,
+        invoice_kind: form.kind,
+      } as never).eq("id", editId);
+      setSaving(false);
+      if (error) { toast({ title: "Couldn't update the invoice", description: friendlyDbError(error.message), variant: "destructive" }); return; }
+      toast({ title: "Invoice updated" });
+      onSaved();
+      onOpenChange(false);
+      return;
+    }
 
     // Duplicate guard — match on invoice number, then client name + gross.
     let existing: { invoice_number: string | null } | null = null;
@@ -203,6 +233,20 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
     }
     setSaving(false);
     onSaved();
+    onOpenChange(false);
+  }
+
+  async function handleDelete() {
+    if (!editId) return;
+    if (!window.confirm("Delete this income invoice? This removes it from your P&L. This cannot be undone.")) return;
+    setDeleting(true);
+    // Best-effort remove the stored original (we don't track the extension).
+    await Promise.all(["pdf", "png", "jpg", "jpeg"].map((ext) => supabase.storage.from("income-invoices").remove([`${editId}.${ext}`]).catch(() => {})));
+    const { error } = await supabase.from("invoices").delete().eq("id", editId);
+    setDeleting(false);
+    if (error) { toast({ title: "Couldn't delete the invoice", description: friendlyDbError(error.message), variant: "destructive" }); return; }
+    toast({ title: "Invoice deleted" });
+    (onDeleted ?? onSaved)();
     onOpenChange(false);
   }
 
@@ -280,13 +324,20 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
           </div>
         </div>
 
-        <DialogFooter>
-          <button type="button" onClick={() => onOpenChange(false)} className="text-sm text-recessive hover:text-standard transition-colors">
-            Cancel
-          </button>
-          <Button onClick={handleSave} disabled={saving} className="rounded-sm">
-            {saving ? "Saving…" : "Save income invoice"}
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {editId ? (
+            <button type="button" onClick={handleDelete} disabled={deleting || saving} className="text-sm text-destructive/80 hover:text-destructive transition-colors disabled:opacity-40">
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          ) : <span />}
+          <div className="flex items-center gap-4">
+            <button type="button" onClick={() => onOpenChange(false)} className="text-sm text-recessive hover:text-standard transition-colors">
+              Cancel
+            </button>
+            <Button onClick={handleSave} disabled={saving} className="rounded-sm">
+              {saving ? "Saving…" : editId ? "Save changes" : "Save income invoice"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

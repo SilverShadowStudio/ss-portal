@@ -15,7 +15,7 @@ import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { BulkOverheadDropzone } from "@/components/admin/overheads/BulkOverheadDropzone";
 import { RecurringOverheadsDialog } from "@/components/admin/overheads/RecurringOverheadsDialog";
-import { IncomeInvoiceUpload } from "@/components/admin/finance/IncomeInvoiceUpload";
+import { IncomeInvoiceUpload, IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState as IncomeFormState } from "@/components/admin/finance/IncomeInvoiceUpload";
 import { BulkIncomeDropzone } from "@/components/admin/finance/BulkIncomeDropzone";
 import {
   FinanceSummary,
@@ -113,6 +113,7 @@ export default function AdminPnL() {
   const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
 
   const [invoiceViewing, setInvoiceViewing] = useState<InvoiceViewerData | null>(null);
+  const [editIncome, setEditIncome] = useState<{ id: string; initial: IncomeFormState } | null>(null);
 
   const [payables, setPayables] = useState<Payable[]>([]);
   const [payableBaseId, setPayableBaseId] = useState<string | null>(null);
@@ -590,6 +591,27 @@ export default function AdminPnL() {
   }, []);
 
   function openInvoiceViewer(r: MoneyInInvoice) {
+    // External (uploaded/manual) income invoices are editable — open the review
+    // form in edit mode. Portal-generated invoices stay in the read-only viewer.
+    if (r.type === "external") {
+      setEditIncome({
+        id: r.id,
+        initial: {
+          clientName: r.notes ?? "",
+          invoiceNumber: r.invoice_number ?? "",
+          invoiceDate: r.issued_at ?? "",
+          dueDate: r.due_date ?? "",
+          net: r.subtotal != null ? String(r.subtotal) : "",
+          vatAmount: r.vat_amount != null ? String(r.vat_amount) : "",
+          gross: r.amount != null ? String(r.amount) : "",
+          currency: r.currency ?? "GBP",
+          paid: r.status === "paid" ? "paid" : "unpaid",
+          kind: (r.invoice_kind as any) ?? "standalone",
+          lineItems: Array.isArray(r.line_items) ? r.line_items : null,
+        },
+      });
+      return;
+    }
     const items = Array.isArray(r.line_items) ? (r.line_items as any) : [];
     setInvoiceViewing({
       id: r.id,
@@ -862,6 +884,15 @@ export default function AdminPnL() {
         invoice={invoiceViewing}
         open={!!invoiceViewing}
         onOpenChange={(o) => !o && setInvoiceViewing(null)}
+      />
+      <IncomeInvoiceReviewDialog
+        open={!!editIncome}
+        onOpenChange={(o) => { if (!o) setEditIncome(null); }}
+        initial={editIncome?.initial ?? EMPTY_INCOME_FORM}
+        sourceFile={null}
+        editId={editIncome?.id ?? null}
+        onSaved={() => { setEditIncome(null); fetchAll(); }}
+        onDeleted={() => { setEditIncome(null); fetchAll(); }}
       />
       <PayableDetail
         open={payableDetailOpen}
