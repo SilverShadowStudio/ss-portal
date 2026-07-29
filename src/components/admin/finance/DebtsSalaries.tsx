@@ -268,6 +268,18 @@ export function DebtsSalaries() {
         created_by: (await supabase.auth.getUser()).data.user?.id ?? null,
       });
       if (error) throw error;
+      // File the PDF to Dropbox (non-fatal).
+      if (file) {
+        const b64 = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => { const s = r.result as string; const c = s.indexOf(","); resolve(c >= 0 ? s.slice(c + 1) : s); };
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+        await supabase.functions.invoke("dropbox-save-payslip", {
+          body: { pdf_base64: b64, mime: file.type, employee_name: target.name, period_end: f.period_end || "", payslip_id: id },
+        }).then(() => {}, () => {});
+      }
       toast({ title: "Payslip recorded" });
       setOpen(false);
       load();

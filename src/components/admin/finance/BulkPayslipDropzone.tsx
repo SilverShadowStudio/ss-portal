@@ -85,7 +85,7 @@ export function BulkPayslipDropzone({ employees, onDone }: { employees: Employee
     // Dedupe: replace the same person+month if re-imported.
     if (periodLabel) await supabase.from("payslips").delete().eq("account_id", emp.id).eq("period_label", periodLabel);
 
-    const { error: insErr } = await supabase.from("payslips").insert({
+    const { data: inserted, error: insErr } = await supabase.from("payslips").insert({
       account_id: emp.id,
       period_label: periodLabel,
       period_end: typeof p.period_end === "string" ? p.period_end : null,
@@ -98,8 +98,12 @@ export function BulkPayslipDropzone({ employees, onDone }: { employees: Employee
       employer_pension: p.employer_pension != null ? Number(p.employer_pension) : 0,
       employer_cost: gross + employerNi,
       created_by: userId,
-    });
+    }).select("id").single();
     if (insErr) throw insErr;
+    // File the PDF to Dropbox (non-fatal — the data is already saved).
+    await supabase.functions.invoke("dropbox-save-payslip", {
+      body: { pdf_base64: b64, mime: file.type, employee_name: emp.name, period_end: typeof p.period_end === "string" ? p.period_end : "", payslip_id: inserted?.id },
+    }).then(() => {}, () => {});
     return "saved";
   }
 
