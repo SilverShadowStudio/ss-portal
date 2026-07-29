@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,60 @@ const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { minimumFrac
 const money2 = (n: number) => "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 const num = (v: string) => { const n = parseFloat(String(v).replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
 
+// ── Accountant's Salary & Deductions Tracker CSV → payslip rows ──────────────
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const isoToday = new Date().toISOString().slice(0, 10);
+
+/** Parse CSV into records, respecting quoted fields + embedded newlines. */
+function parseCsvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let field = "", record: string[] = [], inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { record.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      record.push(field); field = "";
+      if (record.some((f) => f.trim() !== "")) records.push(record);
+      record = [];
+    } else field += c;
+  }
+  if (field !== "" || record.length) { record.push(field); if (record.some((f) => f.trim() !== "")) records.push(record); }
+  return records;
+}
+
+interface TrackerRow {
+  period_label: string; period_end: string;
+  gross: number; income_tax: number; employee_ni: number; net: number; employer_ni: number;
+}
+
+/** Extract data rows (columns: Month, Yearly, MonthlyPay, BackPay, Tax, NI, StudentLoan, TaxableGross, EmployerNI, TakeHome). */
+function parseTracker(text: string): TrackerRow[] {
+  const out: TrackerRow[] = [];
+  for (const rec of parseCsvRecords(text)) {
+    const m = (rec[0] || "").trim().match(/^([A-Za-z]{3})[a-z]*\s+(\d{4})$/);
+    if (!m || rec.length < 10) continue; // header/blank rows skipped
+    const mi = MONTHS.indexOf(m[1].toLowerCase());
+    if (mi < 0) continue;
+    const year = Number(m[2]);
+    const period_end = `${year}-${String(mi + 1).padStart(2, "0")}-${new Date(year, mi + 1, 0).getDate()}`;
+    out.push({
+      period_label: `${m[1]} ${year}`,
+      period_end,
+      gross: num(rec[2]) + num(rec[3]),   // monthly pay + back pay
+      income_tax: num(rec[4]),
+      employee_ni: num(rec[5]),
+      net: num(rec[9]),                   // take-home
+      employer_ni: num(rec[8]),
+    });
+  }
+  return out;
+}
+
 /**
  * Debts → Salaries. The forecast (gross → net + employer cost) gives the annual
  * provision; uploaded payslips give the actual employer cost paid to date, so
@@ -41,6 +95,7 @@ export function DebtsSalaries() {
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importingId, setImportingId] = useState<string | null>(null);
   const [f, setF] = useState({ period_label: "", period_end: "", gross: "", net: "", employer_ni: "", employer_pension: "" });
 
   async function load() {
@@ -56,8 +111,42 @@ export function DebtsSalaries() {
   }
   useEffect(() => { load(); }, []);
 
-  const actualFor = (accountId: string) => slips.filter((s) => s.account_id === accountId).reduce((sum, s) => sum + Number(s.employer_cost || 0), 0);
-  const countFor = (accountId: string) => slips.filter((s) => s.account_id === accountId).length;
+  // "Actual paid" counts only months up to today — later tracker rows are forecast.
+  const paidSlips = (accountId: string) => slips.filter((s) => s.account_id === accountId && (!s.period_end || s.period_end <= isoToday));
+  const actualFor = (accountId: string) => paidSlips(accountId).reduce((sum, s) => sum + Number(s.employer_cost || 0), 0);
+  const countFor = (accountId: string) => paidSlips(accountId).length;
+
+  async function importTracker(emp: EmployeeRow, file: File) {
+    setImportingId(emp.id);
+    try {
+      const rows = parseTracker(await file.text());
+      if (rows.length === 0) { toast({ title: "No monthly rows found in that CSV", variant: "destructive" }); return; }
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+      // Replace the periods present in the file so re-importing is clean.
+      await supabase.from("payslips").delete().eq("account_id", emp.id).in("period_label", rows.map((r) => r.period_label));
+      const { error } = await supabase.from("payslips").insert(rows.map((r) => ({
+        account_id: emp.id,
+        period_label: r.period_label,
+        period_end: r.period_end,
+        gross: r.gross,
+        income_tax: r.income_tax,
+        employee_ni: r.employee_ni,
+        net: r.net,
+        employer_ni: r.employer_ni,
+        employer_pension: 0,
+        employer_cost: r.gross + r.employer_ni,
+        created_by: userId,
+      })));
+      if (error) throw error;
+      const past = rows.filter((r) => r.period_end <= isoToday).length;
+      toast({ title: `Imported ${rows.length} months`, description: `${past} to date · ${rows.length - past} forecast, from the tracker.` });
+      load();
+    } catch (e) {
+      toast({ title: "Couldn't import the tracker", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setImportingId(null);
+    }
+  }
   const totalProvision = rows.reduce((s, r) => s + estimatePayroll(r.gross_salary_annual).employerCost, 0);
 
   function openFor(emp: EmployeeRow) {
@@ -176,9 +265,24 @@ export function DebtsSalaries() {
                       <td className="px-4 py-3 text-right tabular-nums text-strong">{n ? money(actual) : <span className="text-white/25">—</span>}</td>
                       <td className="px-4 py-3 text-recessive text-[12px]">{n || 0}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <button onClick={() => openFor(r)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
-                          <Plus className="h-3 w-3" strokeWidth={1.5} />Payslip
-                        </button>
+                        <div className="inline-flex items-center gap-4">
+                          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
+                            {importingId === r.id
+                              ? <BrandLoader size="sm" className="h-3 w-3" />
+                              : <Upload className="h-3 w-3" strokeWidth={1.5} />}
+                            Import tracker
+                            <input
+                              type="file"
+                              accept=".csv,text/csv"
+                              className="hidden"
+                              disabled={importingId === r.id}
+                              onChange={(e) => { const file = e.target.files?.[0]; if (file) importTracker(r, file); e.target.value = ""; }}
+                            />
+                          </label>
+                          <button onClick={() => openFor(r)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+                            <Plus className="h-3 w-3" strokeWidth={1.5} />Payslip
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
