@@ -90,9 +90,25 @@ const AGREEMENT_SCHEMA = `{
   "address": "string" | null
 }`
 
+// Monthly PAYE payslip → the actual net pay and employer cost, to true-up the
+// salary forecast. Employer NI / employer pension may not appear on every
+// payslip (they're sometimes only on the employer's payroll report).
+const PAYSLIP_SCHEMA = `{
+  "employee_name": "string" | null,
+  "period_label": "string" | null,
+  "period_end": "YYYY-MM-DD" | null,
+  "gross": number | null,
+  "income_tax": number | null,
+  "employee_ni": number | null,
+  "employee_pension": number | null,
+  "net": number | null,
+  "employer_ni": number | null,
+  "employer_pension": number | null
+}`
+
 interface CategoryChoice { code: string; name: string }
 
-type DocumentType = 'invoice' | 'quotation' | 'overhead' | 'agreement'
+type DocumentType = 'invoice' | 'quotation' | 'overhead' | 'agreement' | 'payslip'
 
 function formatCategoryList(categories: CategoryChoice[]): string {
   return categories
@@ -167,6 +183,27 @@ function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[])
       `Contracts usually do NOT include a home address or bank details — return null when absent; ` +
       `never guess.\n` +
       `- Return null for any field that cannot be determined from the document.\n\n` +
+      `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
+      `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
+    )
+  }
+  if (documentType === 'payslip') {
+    return (
+      `You are a data extractor for UK PAYE PAYSLIPS. Read the attached payslip for a SINGLE pay ` +
+      `period and extract its figures into JSON matching EXACTLY this schema:\n` +
+      `${PAYSLIP_SCHEMA}\n\n` +
+      `Field semantics (all amounts are for THIS period, not year-to-date):\n` +
+      `- gross = gross pay for the period (before deductions).\n` +
+      `- income_tax = PAYE income tax deducted. employee_ni = employee National Insurance ` +
+      `deducted. employee_pension = the employee's pension contribution deducted.\n` +
+      `- net = net / take-home pay for the period (what the employee actually receives).\n` +
+      `- employer_ni / employer_pension = the EMPLOYER's contributions, ONLY if the payslip shows ` +
+      `them (often labelled "Employer NI", "Employer's NIC", "Employer Pension"). Many payslips ` +
+      `do not — return null when absent, never guess.\n` +
+      `- period_label = a human label for the period (e.g. "August 2025", "Month 5"). period_end = ` +
+      `the pay date or period end date.\n` +
+      `- Read the CURRENT-PERIOD column, not the year-to-date (YTD) column.\n` +
+      `- Return null for any field that cannot be determined.\n\n` +
       `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
       `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
     )
@@ -259,8 +296,8 @@ Deno.serve(async (req) => {
   const documentType = body.document_type
   const base64 = body.file_data_base64
   const mime = body.file_mime_type
-  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead' && documentType !== 'agreement') {
-    return json({ success: false, error: 'document_type must be invoice, quotation, overhead, or agreement' }, 400)
+  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead' && documentType !== 'agreement' && documentType !== 'payslip') {
+    return json({ success: false, error: 'document_type must be invoice, quotation, overhead, agreement, or payslip' }, 400)
   }
   if (!base64 || typeof base64 !== 'string') {
     return json({ success: false, error: 'file_data_base64 is required' }, 400)

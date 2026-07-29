@@ -49,6 +49,16 @@ export interface PayrollEstimate {
 const clampBand = (amount: number, lower: number, upper: number) =>
   Math.max(0, Math.min(amount, upper) - lower);
 
+/**
+ * Estimate a single MONTHLY period's employer on-costs (NI + pension) from that
+ * period's gross — used to fill a payslip's employer figures when the document
+ * itself doesn't show them. Annualises the period, estimates, divides back.
+ */
+export function estimateMonthlyEmployerOnCosts(periodGross: number): { employerNi: number; employerPension: number } {
+  const e = estimatePayroll(Math.max(0, periodGross || 0) * 12);
+  return { employerNi: e.employerNi / 12, employerPension: e.employerPension / 12 };
+}
+
 function incomeTaxOn(gross: number): number {
   const taxable = Math.max(0, gross - RATES.personalAllowance);
   if (taxable <= 0) return 0;
