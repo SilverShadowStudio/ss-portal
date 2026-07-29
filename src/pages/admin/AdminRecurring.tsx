@@ -302,10 +302,9 @@ export default function AdminRecurring() {
                   <tr className="border-b border-white/[0.08]">
                     <SortTh id="supplier" label="Supplier" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="service" label="Service" activeKey={sortKey} dir={sortDir} onClick={toggle} />
-                    <SortTh id="fee" label="Fee" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                     <SortTh id="frequency" label="Period" activeKey={sortKey} dir={sortDir} onClick={toggle} />
-                    <SortTh id="start" label="Contract start" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="next" label="Next" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="fee" label="Fee" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -314,10 +313,9 @@ export default function AdminRecurring() {
                     <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.active ? "" : "opacity-45"}`}>
                       <td className="px-4 py-3 text-strong">{r.supplier_name}</td>
                       <td className="px-4 py-3 text-standard">{r.service ?? r.description ?? "—"}</td>
-                      <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency} rateDate={null} /><span className="ml-1.5 text-[10px] text-white/35">/{r.frequency === "annual" ? "yr" : r.frequency === "quarterly" ? "qtr" : "mo"}</span></td>
                       <td className="px-4 py-3 text-standard">{FREQ_LABEL[r.frequency] ?? r.frequency}</td>
-                      <td className="px-4 py-3 text-standard">{fmtDate(r.start_date)}</td>
                       <td className="px-4 py-3 text-standard tabular-nums">{(() => { const d = nextOccurrence(r); return d ? fmtDate(d.toISOString().slice(0, 10)) : "—"; })()}</td>
+                      <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency} rateDate={null} /><span className="ml-1.5 text-[10px] text-white/35">/{r.frequency === "annual" ? "yr" : r.frequency === "quarterly" ? "qtr" : "mo"}</span></td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold transition-colors" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
