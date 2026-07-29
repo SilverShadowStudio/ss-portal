@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Download, Eye, FileText } from "lucide-react";
+import { Download, Eye, FileText, X } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { cn } from "@/lib/utils";
@@ -176,6 +176,8 @@ interface FreelancerDocument {
   pdf_url: string | null;
   /** Per-document title (from team_contracts.subject_line); overrides the label. */
   title?: string | null;
+  /** Official filename as filed to Dropbox — used for download + preview title. */
+  official_name?: string | null;
 }
 
 export default function Documents() {
@@ -189,6 +191,8 @@ export default function Documents() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ name: string; url: string } | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<AgreementViewerData | null>(null);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationViewerData | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
@@ -278,7 +282,7 @@ export default function Documents() {
           .order("document_type", { ascending: true }),
         supabase
           .from("team_contracts")
-          .select("id, subject_line, signed_at, signed_by_name, storage_path")
+          .select("id, subject_line, signed_at, signed_by_name, storage_path, dropbox_path")
           .eq("status", "signed")
           .not("storage_path", "is", null),
       ]);
@@ -289,6 +293,8 @@ export default function Documents() {
         signed_by_name: (c.signed_by_name as string) ?? null,
         pdf_url: c.storage_path as string,
         title: (c.subject_line as string) ?? null,
+        // The official filename is the Dropbox file's basename.
+        official_name: (c.dropbox_path as string | null)?.split("/").pop() ?? null,
       }));
       setFreelancerDocuments([...((fdocs || []) as FreelancerDocument[]), ...contractDocs]);
     } catch {
@@ -298,14 +304,40 @@ export default function Documents() {
     }
   }
 
+  // The official filename — the Dropbox basename when filed, else a sensible
+  // constructed name so downloads never come out as "freelancer-service-agreement".
+  function officialFilename(doc: FreelancerDocument): string {
+    if (doc.official_name) return doc.official_name;
+    const slug = (s: string) => (s || "").normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-");
+    const name = slug(doc.signed_by_name || "");
+    const title = slug(doc.title || (doc.document_type === "nda" ? "Mutual NDA" : "Agreement"));
+    const date = doc.signed_at ? doc.signed_at.slice(0, 10) : "";
+    return [name, title, date, "SIGNED"].filter(Boolean).join("_") + ".pdf";
+  }
+
+  async function handleFreelancerPreview(doc: FreelancerDocument) {
+    if (!doc.pdf_url) return;
+    setPreviewLoadingId(doc.id);
+    try {
+      const { data, error } = await supabase.storage
+        .from("freelancer-documents")
+        .createSignedUrl(doc.pdf_url, 300);
+      if (error || !data?.signedUrl) throw error || new Error("No signed URL");
+      setPreviewPdf({ name: officialFilename(doc), url: data.signedUrl });
+    } catch {
+      toast({ title: "Could not open document", variant: "destructive" });
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }
+
   async function handleFreelancerDownload(doc: FreelancerDocument) {
     if (!doc.pdf_url) return;
     setDownloadingId(doc.id);
     try {
-      const fileName = doc.document_type === "nda" ? "mutual-nda.pdf" : "freelancer-service-agreement.pdf";
       const { data, error } = await supabase.storage
         .from("freelancer-documents")
-        .createSignedUrl(doc.pdf_url, 60, { download: fileName });
+        .createSignedUrl(doc.pdf_url, 60, { download: officialFilename(doc) });
       if (error || !data?.signedUrl) throw error || new Error("No signed URL");
       window.open(data.signedUrl, "_blank", "noopener,noreferrer");
     } catch {
@@ -416,34 +448,69 @@ export default function Documents() {
             </div>
             <div className="ssr-tile overflow-hidden">
               {freelancerDocuments.map((doc) => (
-                <div key={doc.id} className="flex items-center gap-5 px-6 py-4 border-b border-white/[0.05] last:border-0">
-                  <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-standard" style={{ fontSize: 14 }}>
-                      {doc.title || DOC_LABELS[doc.document_type] || doc.document_type}
-                    </p>
-                    <p className="font-sans uppercase text-white/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
-                      {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}
-                      {doc.signed_by_name ? ` · ${doc.signed_by_name}` : ""}
-                    </p>
-                  </div>
+                <div key={doc.id} className="group flex items-center gap-5 px-6 py-4 border-b border-white/[0.05] last:border-0">
+                  <button
+                    onClick={() => handleFreelancerPreview(doc)}
+                    disabled={!doc.pdf_url}
+                    className="flex flex-1 min-w-0 items-center gap-5 text-left"
+                  >
+                    <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-standard truncate transition-colors group-hover:text-gold" style={{ fontSize: 14 }}>
+                        {doc.title || DOC_LABELS[doc.document_type] || doc.document_type}
+                      </p>
+                      <p className="font-sans uppercase text-white/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+                        {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}
+                      </p>
+                    </div>
+                  </button>
                   {doc.pdf_url && (
-                    <button
-                      onClick={() => handleFreelancerDownload(doc)}
-                      disabled={downloadingId === doc.id}
-                      className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors disabled:opacity-40"
-                      style={{ fontSize: 10, letterSpacing: "0.16em" }}
-                    >
-                      {downloadingId === doc.id ? (
-                        <BrandLoader size="sm" className="h-3 w-3" />
-                      ) : (
-                        <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />
-                      )}
-                      <span className="font-sans uppercase">Download</span>
-                    </button>
+                    <div className="flex shrink-0 items-center gap-4" style={{ fontSize: 10, letterSpacing: "0.16em" }}>
+                      <button
+                        onClick={() => handleFreelancerPreview(doc)}
+                        disabled={previewLoadingId === doc.id}
+                        className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors disabled:opacity-40"
+                      >
+                        {previewLoadingId === doc.id
+                          ? <BrandLoader size="sm" className="h-3 w-3" />
+                          : <Eye style={{ width: 12, height: 12 }} strokeWidth={1.5} />}
+                        <span className="font-sans uppercase">Preview</span>
+                      </button>
+                      <button
+                        onClick={() => handleFreelancerDownload(doc)}
+                        disabled={downloadingId === doc.id}
+                        className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors disabled:opacity-40"
+                      >
+                        {downloadingId === doc.id
+                          ? <BrandLoader size="sm" className="h-3 w-3" />
+                          : <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} />}
+                        <span className="font-sans uppercase">Download</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {previewPdf && (
+          <div
+            className="fixed inset-0 z-[120] flex flex-col bg-black/85 backdrop-blur-sm animate-fade-in"
+            onClick={() => setPreviewPdf(null)}
+          >
+            <div className="flex items-center justify-between gap-4 px-6 py-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="h-px w-6 bg-gold-muted" />
+                <span className="truncate font-sans uppercase text-[#ecd39c]" style={{ fontSize: 11, letterSpacing: "0.16em" }}>{previewPdf.name}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-6">
+                <a href={previewPdf.url} target="_blank" rel="noopener noreferrer" className="font-sans uppercase text-white/50 hover:text-gold transition-colors" style={{ fontSize: 10, letterSpacing: "0.16em" }}>Open in tab</a>
+                <button onClick={() => setPreviewPdf(null)} className="text-white/50 hover:text-white transition-colors"><X className="h-5 w-5" strokeWidth={1.5} /></button>
+              </div>
+            </div>
+            <div className="flex-1 px-4 pb-4 sm:px-10 sm:pb-10" onClick={(e) => e.stopPropagation()}>
+              <iframe src={previewPdf.url} title={previewPdf.name} className="h-full w-full rounded-sm border border-white/10 bg-white shadow-2xl" />
             </div>
           </div>
         )}

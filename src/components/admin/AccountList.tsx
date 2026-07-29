@@ -1760,7 +1760,7 @@ export function AccountList({
                                 icon={FilePlus2}
                                 label="Upload a document"
                                 active={false}
-                                onClick={() => openUploadForMember(u, displayName)}
+                                onClick={() => openUploadForMember(u, group.company_name || displayName)}
                               />
                             )}
                             <CircleButton

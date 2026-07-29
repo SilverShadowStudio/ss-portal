@@ -256,14 +256,19 @@ Deno.serve(async (req) => {
       .then(() => {}, (e) => console.error("[team-contract-upload-presigned] onboarding flag update failed:", e));
   }
 
-  // For an existing member, file under their ACTUAL engagement (the frontend may
-  // pass a guess when just adding a document) so it lands in the right folder.
+  // For an existing member, file under their ACTUAL engagement + real name (the
+  // "add a document" flow may pass a guessed engagement and a display name that
+  // fell back to the email), so it lands in the right folder with the right name.
   let effectiveEmploymentType = employmentType;
+  let effectiveName = name;
   if (isExistingMember) {
-    const { data: acct } = await admin.from("accounts").select("employment_type").eq("id", accountId).maybeSingle();
+    const { data: acct } = await admin.from("accounts").select("employment_type, company_name").eq("id", accountId).maybeSingle();
     if (acct?.employment_type === "employee" || acct?.employment_type === "freelancer") {
       effectiveEmploymentType = acct.employment_type as "employee" | "freelancer";
     }
+    const { data: prof } = await admin.from("freelancer_profiles").select("first_name, last_name").eq("id", profileId).maybeSingle();
+    const realName = [prof?.first_name, prof?.last_name].filter(Boolean).join(" ").trim();
+    effectiveName = realName || (acct?.company_name as string | null) || name;
   }
 
   // ── Create signed contract row (storage_path filled after upload) ───────────
@@ -273,7 +278,7 @@ Deno.serve(async (req) => {
       account_id: accountId,
       profile_id: profileId,
       entity_type: "individual",
-      individual_full_name: name,
+      individual_full_name: effectiveName,
       recipient_email: email,
       subject_line: docTitle,
       scope_description: "See attached signed contract document.",
@@ -282,7 +287,7 @@ Deno.serve(async (req) => {
       status: "signed",
       is_pre_signed: true,
       signed_at: signedAt.toISOString(),
-      signed_by_name: signedByName,
+      signed_by_name: isExistingMember ? effectiveName : signedByName,
       signed_by_user_id: userId,
       created_by: user.id,
     } as Record<string, unknown>)
@@ -321,7 +326,7 @@ Deno.serve(async (req) => {
   // ── File to Dropbox (non-fatal) ─────────────────────────────────────────────
   let dropboxPath: string | null = null;
   try {
-    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType: effectiveEmploymentType, signingDate, docTitle });
+    const filed = await fileContractToDropbox(admin, pdfBytes, { name: effectiveName, employmentType: effectiveEmploymentType, signingDate, docTitle });
     if ("path" in filed) {
       dropboxPath = filed.path;
       await admin.from("team_contracts").update({ dropbox_path: dropboxPath, updated_at: new Date().toISOString() })
