@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Download, Eye, X } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useTableSort, type SortColumnType } from "@/hooks/useTableSort";
 
 interface Slip {
   id: string;
@@ -11,22 +12,33 @@ interface Slip {
   period_end: string | null;
   gross: number | null;
   net: number | null;
+  back_pay: number | null;
+  income_tax: number | null;
+  employee_ni: number | null;
+  student_loan: number | null;
+  taxable_gross_pay: number | null;
+  employer_ni: number | null;
   document_path: string | null;
   dropbox_path: string | null;
   salary_paid_at: string | null;
 }
 interface Payment { id: string; payslip_id: string; amount: number; paid_at: string; }
 
+// Breakdown columns render in this light blue — same hue as the "Breakdown" toggle.
+const BLUE = "#9dbfe4";
+
 const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
-const monthLabel = (s: Slip) => s.period_label
-  ?? (s.period_end ? new Date(s.period_end).toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : "—");
+// Always "January 2026" — full month + year, from the period end date.
+const monthLabel = (s: Slip) => (s.period_end
+  ? new Date(s.period_end).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+  : (s.period_label ?? "—"));
 
 /**
- * Employee-facing salary statement. Every month with its gross, net, due date,
- * payment(s) — including part-payments when a month was settled in instalments —
- * and the payslip itself. The one document employer and employee share.
- * RLS limits every query to the signed-in person's own account.
+ * Employee-facing salary statement. Summary shows the headline columns; the
+ * Breakdown toggle reveals the payslip deductions (tax, NI, student loan,
+ * employer NI…) between Gross and Net. Every column is sortable — Month sorts by
+ * date value, not alphabetically. RLS limits every query to the signed-in person.
  */
 export default function Salary() {
   const { toast } = useToast();
@@ -35,13 +47,14 @@ export default function Salary() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [mode, setMode] = useState<"summary" | "breakdown">("summary");
 
   useEffect(() => {
     (async () => {
       const { data: ps } = await supabase
         .from("payslips")
-        .select("id, period_label, period_end, gross, net, document_path, dropbox_path, salary_paid_at")
-        .order("period_end", { ascending: false });
+        .select("id, period_label, period_end, gross, net, back_pay, income_tax, employee_ni, student_loan, taxable_gross_pay, employer_ni, document_path, dropbox_path, salary_paid_at")
+        .order("period_end", { ascending: true });
       const list = (ps ?? []) as Slip[];
       setSlips(list);
       if (list.length) {
@@ -83,6 +96,59 @@ export default function Salary() {
     }
   }
 
+  // ── Column model. `breakdown` columns sit between Gross and Net and only show
+  //    in breakdown mode; every column with a `type` is sortable.
+  interface Col {
+    id: string;
+    label: string;
+    align: "left" | "right" | "center";
+    type?: SortColumnType;                 // omit → not sortable
+    accessor?: (s: Slip) => string | number | null | undefined;
+    render: (s: Slip) => ReactNode;
+    breakdown?: boolean;
+  }
+  const num = (v: number | null) => money(Number(v || 0));
+  const columns: Col[] = [
+    { id: "month", label: "Month", align: "left", type: "date", accessor: (s) => s.period_end, render: (s) => <span className="text-strong">{monthLabel(s)}</span> },
+    { id: "gross", label: "Gross", align: "right", type: "number", accessor: (s) => Number(s.gross || 0), render: (s) => <span className="tabular-nums text-standard">{num(s.gross)}</span> },
+    { id: "back_pay", label: "Back Pay", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.back_pay || 0), render: (s) => <span className="tabular-nums">{num(s.back_pay)}</span> },
+    { id: "income_tax", label: "Tax", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.income_tax || 0), render: (s) => <span className="tabular-nums">{num(s.income_tax)}</span> },
+    { id: "employee_ni", label: "National Insurance", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.employee_ni || 0), render: (s) => <span className="tabular-nums">{num(s.employee_ni)}</span> },
+    { id: "student_loan", label: "Student Loan", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.student_loan || 0), render: (s) => <span className="tabular-nums">{num(s.student_loan)}</span> },
+    { id: "taxable_gross_pay", label: "Taxable Gross Pay", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.taxable_gross_pay ?? s.gross ?? 0), render: (s) => <span className="tabular-nums">{num(s.taxable_gross_pay ?? s.gross)}</span> },
+    { id: "employer_ni", label: "Employer NI", align: "right", type: "number", breakdown: true, accessor: (s) => Number(s.employer_ni || 0), render: (s) => <span className="tabular-nums">{num(s.employer_ni)}</span> },
+    { id: "net", label: "Net", align: "right", type: "number", accessor: (s) => Number(s.net || 0), render: (s) => <span className="tabular-nums text-strong">{num(s.net)}</span> },
+    { id: "due", label: "Due", align: "left", type: "date", accessor: (s) => s.period_end, render: (s) => <span className="text-standard">{fmtDate(s.period_end)}</span> },
+    {
+      id: "payments", label: "Payments", align: "left", type: "number", accessor: (s) => paidFor(s.id),
+      render: (s) => {
+        const pays = paymentsFor(s.id);
+        return <span className="text-recessive text-[12px]">{pays.length === 0 ? (s.salary_paid_at ? fmtDate(s.salary_paid_at.slice(0, 10)) : "—") : pays.map((p) => `${fmtDate(p.paid_at)} · ${money(Number(p.amount))}`).join("  ·  ")}</span>;
+      },
+    },
+    {
+      id: "status", label: "Status", align: "left", type: "number", accessor: (s) => Number(s.net || 0) - paidFor(s.id),
+      render: (s) => {
+        const st = status(s);
+        return <span className={st.tone === "rest" ? "text-[11px] uppercase tracking-[0.16em] text-white/45" : st.tone === "part" ? "text-[11px] tabular-nums text-[#ecd39c]" : "text-[11px] uppercase tracking-[0.16em] text-[#C9A96A]"}>{st.label}</span>;
+      },
+    },
+    {
+      id: "payslip", label: "Payslip", align: "center",
+      render: (s) => busyId === s.id ? <BrandLoader size="sm" className="h-3.5 w-3.5 inline-block" /> : s.document_path ? (
+        <span className="inline-flex items-center gap-4" style={{ fontSize: 10, letterSpacing: "0.16em" }}>
+          <button onClick={() => openPayslip(s, false)} className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors"><Eye style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">View</span></button>
+          <button onClick={() => openPayslip(s, true)} className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors"><Download style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">PDF</span></button>
+        </span>
+      ) : <span className="text-white/20">—</span>,
+    },
+  ];
+  const visibleColumns = columns.filter((c) => mode === "breakdown" || !c.breakdown);
+  const sortCols = visibleColumns.filter((c) => c.type && c.accessor).map((c) => ({ id: c.id, accessor: c.accessor!, type: c.type! }));
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort(slips, sortCols, { key: "month", dir: "asc" });
+
+  const alignCls = (a: Col["align"]) => a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
+
   return (
     <ClientLayout panel>
       <div className="mb-10 animate-fade-in">
@@ -101,54 +167,45 @@ export default function Salary() {
         </div>
       ) : (
         <div className="ssr-zone animate-fade-in" style={{ animationDelay: "0.1s" }}>
-          <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">Monthly statement</h2>
+          <div className="mb-6 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
+            <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Monthly statement</h2></div>
+            {/* Minimal Summary / Breakdown toggle — Breakdown shares the columns' blue. */}
+            <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em]">
+              <button onClick={() => setMode("summary")} className={mode === "summary" ? "text-gold" : "text-white/35 hover:text-white/70 transition-colors"}>Summary</button>
+              <span className="text-white/20">/</span>
+              <button onClick={() => setMode("breakdown")} className={mode === "breakdown" ? "" : "text-white/35 hover:text-white/70 transition-colors"} style={mode === "breakdown" ? { color: BLUE } : undefined}>Breakdown</button>
+            </div>
           </div>
           <div className="ssr-tile overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.08]">
-                  {["Month", "Gross", "Net", "Due", "Payments", "Status", "Payslip"].map((h, i) => (
-                    <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 1 || i === 2 ? "text-right" : i === 6 ? "text-center" : ""}`}>{h}</th>
-                  ))}
+                  {visibleColumns.map((c) => {
+                    const sortable = !!(c.type && c.accessor);
+                    const active = sortKey === c.id;
+                    return (
+                      <th
+                        key={c.id}
+                        onClick={sortable ? () => toggle(c.id) : undefined}
+                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal ${alignCls(c.align)} ${sortable ? "cursor-pointer select-none hover:text-white/70" : ""} ${c.breakdown ? "" : "text-white/40"}`}
+                        style={c.breakdown ? { color: BLUE } : undefined}
+                      >
+                        {c.label}{active && <span aria-hidden className="ml-1">{sortDir === "asc" ? "▴" : "▾"}</span>}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {slips.map((s) => {
-                  const st = status(s);
-                  const pays = paymentsFor(s.id);
-                  return (
-                    <tr key={s.id} className="border-b border-white/[0.05] last:border-0">
-                      <td className="px-4 py-3 text-strong">{monthLabel(s)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-standard">{money(Number(s.gross || 0))}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-strong">{money(Number(s.net || 0))}</td>
-                      <td className="px-4 py-3 text-standard">{fmtDate(s.period_end)}</td>
-                      <td className="px-4 py-3 text-recessive text-[12px]">
-                        {pays.length === 0
-                          ? (s.salary_paid_at ? fmtDate(s.salary_paid_at.slice(0, 10)) : "—")
-                          : pays.map((p) => `${fmtDate(p.paid_at)} · ${money(Number(p.amount))}`).join("  ·  ")}
+                {sortedRows.map((s) => (
+                  <tr key={s.id} className="border-b border-white/[0.05] last:border-0">
+                    {visibleColumns.map((c) => (
+                      <td key={c.id} className={`px-4 py-3 ${alignCls(c.align)} ${c.align === "right" ? "tabular-nums" : ""}`} style={c.breakdown ? { color: BLUE } : undefined}>
+                        {c.render(s)}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={st.tone === "rest" ? "text-[11px] uppercase tracking-[0.16em] text-white/45" : st.tone === "part" ? "text-[11px] tabular-nums text-[#ecd39c]" : "text-[11px] uppercase tracking-[0.16em] text-[#C9A96A]"}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
-                        {busyId === s.id ? (
-                          <BrandLoader size="sm" className="h-3.5 w-3.5 inline-block" />
-                        ) : s.document_path ? (
-                          <span className="inline-flex items-center gap-4" style={{ fontSize: 10, letterSpacing: "0.16em" }}>
-                            <button onClick={() => openPayslip(s, false)} className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors"><Eye style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">View</span></button>
-                            <button onClick={() => openPayslip(s, true)} className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors"><Download style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">PDF</span></button>
-                          </span>
-                        ) : (
-                          <span className="text-white/20">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

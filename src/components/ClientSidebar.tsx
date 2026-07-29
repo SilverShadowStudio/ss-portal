@@ -23,8 +23,8 @@ const TEAM_NAV: SidebarNavItem[] = [
 ];
 // Employees are salaried (payroll), not paid per work — Salary replaces Earnings.
 const TEAM_NAV_EMPLOYEE: SidebarNavItem[] = [
-  { path: "/salary",    label: "Salary",     Icon: Banknote },
   { path: "/documents", label: "Documents",  Icon: FileText },
+  { path: "/salary",    label: "Salary",     Icon: Banknote },
 ];
 
 interface ClientSidebarProps {

@@ -1,6 +1,5 @@
 import { ReactNode, useState, useEffect } from "react";
 import { ClientSidebar } from "./ClientSidebar";
-import { NotificationBell } from "./NotificationBell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -36,7 +35,6 @@ export function ClientLayout({ children, fullWidth = false, panel = false }: Cli
   return (
     <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
       <ClientSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
-      <NotificationBell />
 
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         {panel ? (
