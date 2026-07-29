@@ -55,9 +55,10 @@ interface MoneyOutTableProps {
   rows: MoneyOutRow[];
   loading: boolean;
   onRowClick: (r: MoneyOutRow) => void;
+  onAttachInvoice?: (r: MoneyOutRow) => void;
 }
 
-export function MoneyOutTable({ rows, loading, onRowClick }: MoneyOutTableProps) {
+export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice }: MoneyOutTableProps) {
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<MoneyOutRow>(
     rows,
     COLUMNS,
@@ -128,12 +129,22 @@ export function MoneyOutTable({ rows, loading, onRowClick }: MoneyOutTableProps)
                       </span>
                     )}
                     {r.kind === "fixed" && !r.salary && !r.filed && !r.filing && (
-                      <span
-                        className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
-                        title="No invoice PDF filed to Dropbox yet"
-                      >
-                        Not filed
-                      </span>
+                      onAttachInvoice && r.overhead ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onAttachInvoice(r); }}
+                          className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#d8a184] hover:text-[#ecd39c] transition-colors"
+                          title="No invoice filed — click to upload it"
+                        >
+                          Invoice missing
+                        </button>
+                      ) : (
+                        <span
+                          className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#c98a6a]"
+                          title="No invoice PDF filed to Dropbox yet"
+                        >
+                          Not filed
+                        </span>
+                      )
                     )}
                     {r.salary && !r.filed && (
                       <span

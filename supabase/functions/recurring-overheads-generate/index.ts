@@ -25,23 +25,35 @@ interface Template {
   id: string; supplier_name: string; category_code: string | null; description: string | null;
   currency: string; net_amount: number; vat_amount: number; gross_amount: number; vat_treatment: string | null;
   day_of_month: number; start_date: string; end_date: string | null; active: boolean;
+  frequency: string | null; lead_days: number | null;
 }
 
-/** Every YYYY-MM from start's month to the earlier of (now, end_date). */
-function periodsFor(startDate: string, endDate: string | null): { key: string; y: number; m: number }[] {
-  const start = new Date(startDate + "T00:00:00Z");
-  const now = new Date();
-  const cap = endDate ? new Date(endDate + "T00:00:00Z") : now;
-  const last = now.getTime() < cap.getTime() ? now : cap;
-  const out: { key: string; y: number; m: number }[] = [];
-  let y = start.getUTCFullYear(), m = start.getUTCMonth(); // 0-based
-  const lastY = last.getUTCFullYear(), lastM = last.getUTCMonth();
-  // Guard against runaway loops (e.g. a bad far-past start_date).
+const daysInMonth = (y: number, m0: number) => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+
+/**
+ * Every occurrence date from the contract start to (now + lead_days), stepping
+ * by the cadence. lead_days lets a bill appear ahead of its period — rent set
+ * to ~20 days surfaces next month's 1st-of-month entry around the 15th.
+ * Each occurrence is dated on day_of_month of its month.
+ */
+function occurrencesFor(t: Template): { key: string; date: string; y: number; m: number }[] {
+  const step = t.frequency === "annual" ? 12 : t.frequency === "quarterly" ? 3 : 1;
+  const start = new Date(t.start_date + "T00:00:00Z");
+  const lead = Math.max(0, Number(t.lead_days) || 0);
+  const horizon = new Date(Date.now() + lead * 86_400_000);
+  const end = t.end_date ? new Date(t.end_date + "T00:00:00Z") : null;
+  const out: { key: string; date: string; y: number; m: number }[] = [];
+  let y = start.getUTCFullYear(), m = start.getUTCMonth();
   let safety = 0;
-  while ((y < lastY || (y === lastY && m <= lastM)) && safety < 240) {
-    out.push({ key: `${y}-${pad(m + 1)}`, y, m });
-    m++; if (m > 11) { m = 0; y++; }
+  while (safety < 600) {
     safety++;
+    const day = Math.min(t.day_of_month || 1, daysInMonth(y, m));
+    const d = new Date(Date.UTC(y, m, day));
+    if (d.getTime() > horizon.getTime()) break;
+    if (end && d.getTime() > end.getTime()) break;
+    // Don't bill before the contract starts.
+    if (d.getTime() >= start.getTime()) out.push({ key: `${y}-${pad(m + 1)}`, date: `${y}-${pad(m + 1)}-${pad(day)}`, y, m });
+    m += step; while (m > 11) { m -= 12; y++; }
   }
   return out;
 }
@@ -81,7 +93,7 @@ Deno.serve(async (req) => {
   const details: { template: string; created: string[] }[] = [];
 
   for (const t of (templates ?? []) as Template[]) {
-    const periods = periodsFor(t.start_date, t.end_date);
+    const periods = occurrencesFor(t);
     if (periods.length === 0) continue;
 
     // Which periods already have a generated overhead?
@@ -94,7 +106,7 @@ Deno.serve(async (req) => {
     const rowsToInsert = periods
       .filter((p) => !have.has(p.key))
       .map((p) => {
-        const due = `${p.y}-${pad(p.m + 1)}-${pad(t.day_of_month)}`;
+        const due = p.date;
         return {
           supplier_name: t.supplier_name,
           category_code: t.category_code,
@@ -106,6 +118,7 @@ Deno.serve(async (req) => {
           vat_treatment: t.vat_treatment,
           invoice_date: due, // tax point ~ due day for a recurring bill
           due_date: due,
+          // Every generated bill starts DUE — Fred ticks them off in Debts.
           payment_status: "unpaid",
           payment_date: null,
           source: "recurring",

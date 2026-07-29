@@ -461,6 +461,17 @@ export default function AdminPnL() {
     }
   }
 
+  // "Invoice missing" chip → open the overhead's edit form so its PDF can be
+  // attached (which files it to Dropbox), like the payslip-missing flow.
+  function attachOverheadInvoice(r: MoneyOutRow) {
+    if (!r.overhead) return;
+    setEditing(r.overhead);
+    setPrefillDefaults(null);
+    pendingStagingPathRef.current = null;
+    setFormMode("edit");
+    setFormOpen(true);
+  }
+
   function openOverheadEditFromDetail() {
     if (!selectedOverhead) return;
     setEditing(selectedOverhead);
@@ -751,7 +762,7 @@ export default function AdminPnL() {
           <div className="mb-5">
             <BulkOverheadDropzone categories={categories} onParsed={startReviewQueue} />
           </div>
-          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} />
+          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} />
         </section>
       )}
 

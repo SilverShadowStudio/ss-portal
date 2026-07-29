@@ -6,7 +6,7 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Landmark, ScrollText, TrendingUp, HandCoins,
+  FileText, Landmark, ScrollText, TrendingUp, HandCoins, Repeat,
   Settings, LogOut, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
@@ -47,6 +47,7 @@ const SECTIONS: SidebarNavSection[] = [
     items: [
       { path: "/admin/finance/pnl",         label: "P&L",         Icon: TrendingUp, indent: true },
       { path: "/admin/finance/freelancers", label: "Debts",       Icon: HandCoins,  indent: true },
+      { path: "/admin/finance/recurring",   label: "Recurring",   Icon: Repeat,     indent: true },
     ],
   },
 ];
