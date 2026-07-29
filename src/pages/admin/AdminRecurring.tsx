@@ -13,6 +13,7 @@ import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
 import { type ExpenseCategory, type VatTreatment } from "@/lib/finance";
 import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
+import { useFx } from "@/contexts/FxContext";
 
 interface Commitment {
   id: string;
@@ -252,6 +253,15 @@ export default function AdminRecurring() {
       return true;
     });
   }, [rows, search, freqFilter]);
+
+  // Annualised total (in £) + monthly average across the active commitments in
+  // view. Foreign currencies converted at the live rate.
+  const fx = useFx();
+  const ANNUAL_MULT: Record<string, number> = { monthly: 12, quarterly: 4, annual: 1 };
+  const activeInView = filtered.filter((r) => r.active);
+  const yearTotal = activeInView.reduce((sum, r) => sum + fx.gbp(Number(r.gross_amount) || 0, r.currency || "GBP", null) * (ANNUAL_MULT[r.frequency] ?? 12), 0);
+  const monthlyAvg = yearTotal / 12;
+
   const COLUMNS: SortableColumn<Commitment>[] = [
     { id: "supplier", accessor: (r) => r.supplier_name, type: "text" },
     { id: "service", accessor: (r) => r.service ?? r.description ?? "", type: "text" },
@@ -326,6 +336,16 @@ export default function AdminRecurring() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-4 border-t border-white/[0.07] pt-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">
+                {activeInView.length} active commitment{activeInView.length === 1 ? "" : "s"} in view · all converted to £
+              </p>
+              <p className="text-sm text-strong">
+                <span className="tabular-nums">{money(yearTotal)}</span><span className="text-[10px] text-white/40"> / yr</span>
+                <span className="mx-2 text-white/20">·</span>
+                <span className="tabular-nums">{money(monthlyAvg)}</span><span className="text-[10px] text-white/40"> / mo avg</span>
+              </p>
             </div>
             <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">Each generated bill starts due with an “invoice missing” flag until you upload the real invoice, in Money Out.</p>
           </>
