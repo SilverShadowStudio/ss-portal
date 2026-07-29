@@ -549,17 +549,23 @@ export default function AdminPnL() {
             </div>
             <div className="flex items-baseline gap-6">
               <p className="text-xs text-recessive">
-                Fixed &amp; variable · variable is a read-only Airtable mirror, outside your VAT return
-                {lastSyncedAt && <> · synced {formatDate(lastSyncedAt)}</>}
+                {moType === "fixed"
+                  ? "Overheads — entered and edited here in the portal"
+                  : moType === "variable"
+                  ? <>Variable production — read-only Airtable mirror, outside your VAT return{lastSyncedAt && <> · synced {formatDate(lastSyncedAt)}</>}</>
+                  : <>Fixed costs are entered here; variable production is a read-only Airtable mirror, outside your VAT return{lastSyncedAt && <> · synced {formatDate(lastSyncedAt)}</>}</>}
               </p>
-              <button
-                type="button"
-                onClick={handleRefreshPayables}
-                disabled={refreshingPayables}
-                className="whitespace-nowrap text-xs text-gold hover:underline underline-offset-4 disabled:opacity-50"
-              >
-                {refreshingPayables ? "Syncing…" : "Refresh from Airtable"}
-              </button>
+              {/* Airtable only backs the variable rows — hide the sync control when viewing fixed only. */}
+              {moType !== "fixed" && (
+                <button
+                  type="button"
+                  onClick={handleRefreshPayables}
+                  disabled={refreshingPayables}
+                  className="whitespace-nowrap text-xs text-gold hover:underline underline-offset-4 disabled:opacity-50"
+                >
+                  {refreshingPayables ? "Syncing…" : "Refresh from Airtable"}
+                </button>
+              )}
             </div>
           </div>
           <div className="mb-4 flex flex-wrap items-center gap-4">
