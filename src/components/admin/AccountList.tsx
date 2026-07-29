@@ -289,6 +289,7 @@ export function AccountList({
   const [isPresignedUploading, setIsPresignedUploading] = useState(false);
   const [isParsingAgreement, setIsParsingAgreement] = useState(false);
   const [agreementParsed, setAgreementParsed] = useState(false);
+  const [presignedDragging, setPresignedDragging] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   // Full client form state — unused fields are simply ignored when isTeamOnly.
@@ -1208,10 +1209,24 @@ export function AccountList({
                       <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Signed contract</span>
                       <div
                         onClick={() => document.getElementById("presigned-pdf-input")?.click()}
-                        className={`cursor-pointer rounded-sm border border-dashed px-4 py-4 transition-colors ${presignedPdfFile ? "border-[#C9A96A]/50 bg-white/[0.02]" : "border-white/15 hover:border-[#C9A96A]/45 hover:bg-white/[0.02]"}`}
+                        onDragOver={(e) => { e.preventDefault(); setPresignedDragging(true); }}
+                        onDragLeave={() => setPresignedDragging(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setPresignedDragging(false);
+                          const f = e.dataTransfer.files?.[0];
+                          if (!f) return;
+                          if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+                            setPresignedPdfFile(f);
+                            setAgreementParsed(false);
+                          } else {
+                            toast({ title: "Please drop a PDF", variant: "destructive" });
+                          }
+                        }}
+                        className={`cursor-pointer rounded-sm border border-dashed px-4 py-4 transition-colors ${presignedDragging ? "border-[#C9A96A]/70 bg-[#C9A96A]/[0.06]" : presignedPdfFile ? "border-[#C9A96A]/50 bg-white/[0.02]" : "border-white/15 hover:border-[#C9A96A]/45 hover:bg-white/[0.02]"}`}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className={`flex-1 truncate text-sm ${presignedPdfFile ? "text-foreground" : "text-foreground/45"}`}>
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <span className={`min-w-0 flex-1 truncate text-sm ${presignedPdfFile ? "text-foreground" : "text-foreground/45"}`}>
                             {presignedPdfFile ? presignedPdfFile.name : "Drop the signed contract, or click to browse"}
                           </span>
                           <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-foreground/40">
