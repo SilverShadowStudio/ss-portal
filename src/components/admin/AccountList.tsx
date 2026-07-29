@@ -289,6 +289,7 @@ export function AccountList({
   const [isPresignedUploading, setIsPresignedUploading] = useState(false);
   const [isParsingAgreement, setIsParsingAgreement] = useState(false);
   const [agreementParsed, setAgreementParsed] = useState(false);
+  const [parseMissing, setParseMissing] = useState<string[]>([]);
   const [presignedDragging, setPresignedDragging] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -633,7 +634,7 @@ export function AccountList({
     setPresignedPosition("");
     setPresignedSalary("");
     setPresignedPdfFile(null);
-    setAgreementParsed(false);
+    setAgreementParsed(false); setParseMissing([]);
   };
 
   // Read the uploaded agreement and pre-fill the review fields. Admin still
@@ -644,7 +645,7 @@ export function AccountList({
       return;
     }
     setIsParsingAgreement(true);
-    setAgreementParsed(false);
+    setAgreementParsed(false); setParseMissing([]);
     try {
       const file_data_base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -669,11 +670,24 @@ export function AccountList({
       setPresignedEmail((c) => keepOr(c, p.email));
       if (typeof p.signing_date === "string" && p.signing_date) setPresignedSigningDate((c) => c || (p.signing_date as string));
       setPresignedPosition((c) => keepOr(c, p.position));
-      if (p.gross_salary_annual != null && Number(p.gross_salary_annual) > 0) {
-        setPresignedSalary((c) => (c.trim() ? c : String(p.gross_salary_annual)));
+      const gotSalary = p.gross_salary_annual != null && Number(p.gross_salary_annual) > 0;
+      if (gotSalary) setPresignedSalary((c) => (c.trim() ? c : String(p.gross_salary_annual)));
+
+      // Report which key fields the document didn't contain, so it's clear what
+      // still needs typing (e.g. an equipment-loan doc has no salary/position).
+      const effectiveType = (p.employment_type === "employee" || p.employment_type === "freelancer")
+        ? p.employment_type : presignedEmploymentType;
+      const missing: string[] = [];
+      if (effectiveType === "employee") {
+        if (!(typeof p.position === "string" && p.position.trim())) missing.push("Position");
+        if (!gotSalary) missing.push("Gross salary");
       }
+      if (!(typeof p.email === "string" && p.email.trim())) missing.push("Email");
+      setParseMissing(missing);
       setAgreementParsed(true);
-      toast({ title: "Agreement read", description: "Review the prefilled details, then send the invite." });
+      toast(missing.length
+        ? { title: "Agreement read — a few fields to complete", description: `Not found in this document: ${missing.join(", ")}. Type those in, then send.` }
+        : { title: "Agreement read", description: "Review the prefilled details, then send the invite." });
     } catch (e: unknown) {
       toast({ title: "Couldn't read the agreement", description: (e as Error)?.message, variant: "destructive" });
     } finally {
@@ -1218,7 +1232,7 @@ export function AccountList({
                           if (!f) return;
                           if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
                             setPresignedPdfFile(f);
-                            setAgreementParsed(false);
+                            setAgreementParsed(false); setParseMissing([]);
                           } else {
                             toast({ title: "Please drop a PDF", variant: "destructive" });
                           }
@@ -1239,7 +1253,7 @@ export function AccountList({
                         type="file"
                         accept=".pdf,application/pdf"
                         className="hidden"
-                        onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); }}
+                        onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); setParseMissing([]); }}
                       />
                       {presignedPdfFile && (
                         <div className="flex justify-end pt-1">
@@ -1263,6 +1277,11 @@ export function AccountList({
                           {agreementParsed ? "From the agreement — check before sending" : "Member details"}
                         </span>
                       </div>
+                      {agreementParsed && parseMissing.length > 0 && (
+                        <p className="text-[11px] text-[#C9A96A]">
+                          Not found in this document — please type: {parseMissing.join(", ")}.
+                        </p>
+                      )}
 
                       {presignedEmploymentType === "employee" && (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
