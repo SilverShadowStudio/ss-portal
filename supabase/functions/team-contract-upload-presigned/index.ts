@@ -23,6 +23,10 @@ import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS } from "../_shared/emailTem
 
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://portal.silvershadowstudio.com";
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
+// Signed team agreements are filed here, split by engagement type, alongside the
+// rest of the studio's admin docs. Filename mirrors Fred's own convention:
+//   {First-Last}_Agreement-{Employment|Freelance}_{YYYY-MM-DD}_SIGNED.pdf
+const DROPBOX_CONTRACTS_ROOT = "/03_Portal_Admin_Docs/01_Team_Contracts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +44,64 @@ function buildPortalVerifyUrl(properties: Record<string, unknown> | undefined, f
   const params = new URLSearchParams({ token, type });
   if (redirectTo) params.set("redirect_to", redirectTo);
   return `${APP_BASE_URL}/auth/verify?${params.toString()}`;
+}
+
+// ── Dropbox (mirror dropbox-save-invoice-file / freelancer-self-bill-run) ────
+async function refreshToken(conn: Record<string, string>, sb: ReturnType<typeof createClient>): Promise<string | null> {
+  try {
+    const res = await fetch("https://api.dropboxapi.com/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${btoa(`${Deno.env.get("DROPBOX_APP_KEY")}:${Deno.env.get("DROPBOX_APP_SECRET")}`)}` },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: conn.refresh_token }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null;
+    await sb.from("dropbox_connections").update({ access_token: data.access_token, token_expires_at: expiresAt }).eq("id", conn.id);
+    return data.access_token;
+  } catch { return null; }
+}
+async function rootNamespace(token: string): Promise<string | null> {
+  const r = await fetch("https://api.dropboxapi.com/2/users/get_current_account", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null; return (await r.json())?.root_info?.root_namespace_id ?? null;
+}
+async function dropboxUpload(token: string, ns: string | null, path: string, bytes: Uint8Array): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  const r = await fetch("https://content.dropboxapi.com/2/files/upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream",
+      "Dropbox-API-Arg": JSON.stringify({ path, mode: "add", autorename: true, mute: true }),
+      ...(ns ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", namespace_id: ns }) } : {}),
+    },
+    body: bytes,
+  });
+  if (!r.ok) return { ok: false, error: `dropbox ${r.status}: ${await r.text()}` };
+  return { ok: true, path: (await r.json()).path_display ?? path };
+}
+function sanitize(s: string): string { return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[/\\:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "Member"; }
+
+// File a signed agreement PDF to Dropbox. Non-fatal — a Dropbox hiccup must not
+// fail the upload (the file already lives in Supabase storage).
+async function fileContractToDropbox(
+  admin: ReturnType<typeof createClient>,
+  pdfBytes: Uint8Array,
+  opts: { name: string; employmentType: string; signingDate: string },
+): Promise<{ path: string } | { error: string }> {
+  const { data: conn } = await admin.from("dropbox_connections")
+    .select("id, access_token, refresh_token, token_expires_at")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!conn) return { error: "no dropbox connection" };
+  let token = conn.access_token as string;
+  if (conn.token_expires_at && new Date(conn.token_expires_at as string).getTime() < Date.now()) {
+    token = (await refreshToken(conn as Record<string, string>, admin)) ?? "";
+  }
+  if (!token) return { error: "dropbox token unavailable" };
+  const ns = await rootNamespace(token);
+  const kind = opts.employmentType === "employee" ? "Employees" : "Freelancers";
+  const typeLabel = opts.employmentType === "employee" ? "Employment" : "Freelance";
+  const filename = `${sanitize(opts.name)}_Agreement-${typeLabel}_${opts.signingDate}_SIGNED.pdf`;
+  const up = await dropboxUpload(token, ns, `${DROPBOX_CONTRACTS_ROOT}/${kind}/${filename}`, pdfBytes);
+  return up.ok ? { path: up.path } : { error: up.error };
 }
 
 Deno.serve(async (req) => {
@@ -183,6 +245,21 @@ Deno.serve(async (req) => {
     updated_at: new Date().toISOString(),
   }).eq("id", contractId);
 
+  // ── File to Dropbox (non-fatal) ─────────────────────────────────────────────
+  let dropboxPath: string | null = null;
+  try {
+    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType, signingDate });
+    if ("path" in filed) {
+      dropboxPath = filed.path;
+      await admin.from("team_contracts").update({ dropbox_path: dropboxPath, updated_at: new Date().toISOString() })
+        .eq("id", contractId).then(() => {}, () => {}); // column may not exist yet — ignore
+    } else {
+      console.error("[team-contract-upload-presigned] dropbox filing skipped:", filed.error);
+    }
+  } catch (e) {
+    console.error("[team-contract-upload-presigned] dropbox filing error:", e);
+  }
+
   // ── Activity log ────────────────────────────────────────────────────────────
   await admin.from("activity_log").insert({
     actor_user_id: user.id,
@@ -191,7 +268,7 @@ Deno.serve(async (req) => {
     description: `Pre-signed contract uploaded for ${name}`,
     entity_type: "team_contract",
     entity_id: contractId,
-    metadata: { recipient_email: email, signed_by_name: signedByName },
+    metadata: { recipient_email: email, signed_by_name: signedByName, employment_type: employmentType, dropbox_path: dropboxPath },
   }).then(() => {}, () => {});
 
   // ── Portal invite email (non-fatal) ─────────────────────────────────────────
@@ -243,5 +320,5 @@ Deno.serve(async (req) => {
     console.error("[team-contract-upload-presigned] invite email failed:", e);
   }
 
-  return json({ success: true, contract_id: contractId, storage_path: storagePath, emailSent });
+  return json({ success: true, contract_id: contractId, storage_path: storagePath, dropbox_path: dropboxPath, emailSent });
 });
