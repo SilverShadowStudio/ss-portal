@@ -71,9 +71,28 @@ const OVERHEAD_SCHEMA = `{
   "category_code": "string" | null
 }`
 
+// Employment / freelance engagement contract → personal details to pre-fill a
+// new team member's onboarding. Contracts carry name/role/pay/dates but usually
+// NOT home address or bank details, so those default to null.
+const AGREEMENT_SCHEMA = `{
+  "first_name": "string" | null,
+  "last_name": "string" | null,
+  "position": "string" | null,
+  "employment_type": "employee" | "freelancer" | null,
+  "salary_amount": number | null,
+  "salary_period": "annual" | "monthly" | "daily" | "hourly" | null,
+  "salary_currency": "GBP" | "EUR" | "USD" | null,
+  "gross_salary_annual": number | null,
+  "start_date": "YYYY-MM-DD" | null,
+  "signing_date": "YYYY-MM-DD" | null,
+  "email": "string" | null,
+  "phone": "string" | null,
+  "address": "string" | null
+}`
+
 interface CategoryChoice { code: string; name: string }
 
-type DocumentType = 'invoice' | 'quotation' | 'overhead'
+type DocumentType = 'invoice' | 'quotation' | 'overhead' | 'agreement'
 
 function formatCategoryList(categories: CategoryChoice[]): string {
   return categories
@@ -118,6 +137,35 @@ function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[])
           `Travel; accountant, lawyer, consultant → Professional Fees. If nothing clearly fits, ` +
           `return null. Available categories:\n${formatCategoryList(categories)}\n`
         : ``) +
+      `- Return null for any field that cannot be determined from the document.\n\n` +
+      `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
+      `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
+    )
+  }
+  if (documentType === 'agreement') {
+    return (
+      `You are a data extractor for EMPLOYMENT and FREELANCE engagement CONTRACTS at a CGI / ` +
+      `architectural-visualisation studio. Read the attached signed agreement and extract the ` +
+      `contracted person's details into JSON matching EXACTLY this schema:\n` +
+      `${AGREEMENT_SCHEMA}\n\n` +
+      `Field semantics:\n` +
+      `- first_name / last_name = the individual being engaged (the employee or contractor), NOT ` +
+      `the studio, a director, or a witness.\n` +
+      `- position = their job title or role (e.g. "Production Director", "Scene Manager").\n` +
+      `- employment_type = "employee" if it is a contract/statement of employment (salary, PAYE, ` +
+      `holiday, notice period); "freelancer" if it is a contractor/services agreement (fees, ` +
+      `self-employed, invoices). Infer from the document's nature.\n` +
+      `- salary_amount = the headline pay figure stated, as a number. salary_period = its cadence ` +
+      `("annual" for "per annum", else "monthly" / "daily" / "hourly"). Salaries are GROSS.\n` +
+      `- gross_salary_annual = the annual gross figure. If pay is stated per annum, copy it here. ` +
+      `If stated monthly, multiply by 12. Only set this for employees; leave null for freelancers ` +
+      `paid per work. If a contract states an initial rate then a later increase, use the LATER ` +
+      `(ongoing) figure.\n` +
+      `- start_date = commencement / engagement start date. signing_date = the date the agreement ` +
+      `was signed (may differ from start_date).\n` +
+      `- email / phone / address = the person's contact details ONLY if explicitly present. ` +
+      `Contracts usually do NOT include a home address or bank details — return null when absent; ` +
+      `never guess.\n` +
       `- Return null for any field that cannot be determined from the document.\n\n` +
       `Return ONLY valid JSON matching this exact schema. No markdown, no explanation. ` +
       `Numbers as JSON numbers, not strings. Dates as ISO YYYY-MM-DD.`
@@ -211,8 +259,8 @@ Deno.serve(async (req) => {
   const documentType = body.document_type
   const base64 = body.file_data_base64
   const mime = body.file_mime_type
-  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead') {
-    return json({ success: false, error: 'document_type must be invoice, quotation, or overhead' }, 400)
+  if (documentType !== 'invoice' && documentType !== 'quotation' && documentType !== 'overhead' && documentType !== 'agreement') {
+    return json({ success: false, error: 'document_type must be invoice, quotation, overhead, or agreement' }, 400)
   }
   if (!base64 || typeof base64 !== 'string') {
     return json({ success: false, error: 'file_data_base64 is required' }, 400)

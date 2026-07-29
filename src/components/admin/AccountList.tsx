@@ -286,6 +286,8 @@ export function AccountList({
   const [presignedSalary, setPresignedSalary] = useState("");
   const [presignedPdfFile, setPresignedPdfFile] = useState<File | null>(null);
   const [isPresignedUploading, setIsPresignedUploading] = useState(false);
+  const [isParsingAgreement, setIsParsingAgreement] = useState(false);
+  const [agreementParsed, setAgreementParsed] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   // Full client form state — unused fields are simply ignored when isTeamOnly.
@@ -629,6 +631,52 @@ export function AccountList({
     setPresignedPosition("");
     setPresignedSalary("");
     setPresignedPdfFile(null);
+    setAgreementParsed(false);
+  };
+
+  // Read the uploaded agreement and pre-fill the review fields. Admin still
+  // reviews/edits before sending — this is the "preview before the invite".
+  const handleParseAgreement = async () => {
+    if (!presignedPdfFile) {
+      toast({ title: "Select the agreement PDF first", variant: "destructive" });
+      return;
+    }
+    setIsParsingAgreement(true);
+    setAgreementParsed(false);
+    try {
+      const file_data_base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const r = reader.result as string;
+          const comma = r.indexOf(",");
+          resolve(comma >= 0 ? r.slice(comma + 1) : r);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(presignedPdfFile);
+      });
+      const { data, error } = await supabase.functions.invoke("parse-document", {
+        body: { document_type: "agreement", file_data_base64, file_mime_type: presignedPdfFile.type },
+      });
+      if (error) throw error;
+      if (!data?.success || !data?.data) throw new Error(data?.error || "Could not read the agreement");
+      const p = data.data as Record<string, unknown>;
+      const keepOr = (cur: string, val: unknown) => (cur.trim() ? cur : (typeof val === "string" && val ? val : cur));
+      setPresignedFirstName((c) => keepOr(c, p.first_name));
+      setPresignedLastName((c) => keepOr(c, p.last_name));
+      if (p.employment_type === "employee" || p.employment_type === "freelancer") setPresignedEmploymentType(p.employment_type);
+      setPresignedEmail((c) => keepOr(c, p.email));
+      if (typeof p.signing_date === "string" && p.signing_date) setPresignedSigningDate((c) => c || (p.signing_date as string));
+      setPresignedPosition((c) => keepOr(c, p.position));
+      if (p.gross_salary_annual != null && Number(p.gross_salary_annual) > 0) {
+        setPresignedSalary((c) => (c.trim() ? c : String(p.gross_salary_annual)));
+      }
+      setAgreementParsed(true);
+      toast({ title: "Agreement read", description: "Review the prefilled details, then send the invite." });
+    } catch (e: unknown) {
+      toast({ title: "Couldn't read the agreement", description: (e as Error)?.message, variant: "destructive" });
+    } finally {
+      setIsParsingAgreement(false);
+    }
   };
 
   const fetchTeamTemplates = async () => {
@@ -1220,12 +1268,25 @@ export function AccountList({
                         type="file"
                         accept=".pdf,application/pdf"
                         className="hidden"
-                        onChange={(e) => setPresignedPdfFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); }}
                       />
                       {presignedPdfFile && (
-                        <p className="text-[10px] text-muted-foreground">
-                          {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[10px] text-muted-foreground">
+                            {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleParseAgreement}
+                            disabled={isParsingAgreement}
+                            className="text-[11px] uppercase tracking-[0.15em] font-medium border border-input bg-background px-3 py-1.5 rounded-sm hover:bg-muted transition-colors disabled:opacity-40"
+                          >
+                            {isParsingAgreement ? "Reading…" : agreementParsed ? "Re-read agreement" : "Read agreement to prefill"}
+                          </button>
+                        </div>
+                      )}
+                      {agreementParsed && (
+                        <p className="text-[10px] text-[#ecd39c]/80">Details read from the agreement — review and edit above before sending.</p>
                       )}
                     </div>
                     <div className="flex gap-2 pt-1">
