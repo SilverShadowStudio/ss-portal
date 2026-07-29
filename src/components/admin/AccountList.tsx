@@ -227,7 +227,8 @@ export function AccountList({
 }: AccountListProps) {
   const showEditProfile = !!accountActions?.editProfile;
   const showDelete = !!accountActions?.delete;
-  const showDropdown = showEditProfile || showDelete;
+  // Team pages always get the row menu so the "Send invite" item is reachable.
+  const showDropdown = showEditProfile || showDelete || (accountTypes.length === 1 && accountTypes[0] === "team");
   // The Clients page filters partnership/project; in that mode hide the
   // studio's own (mis-classified) account from the list.
   const filterStudioAccount =
@@ -837,6 +838,18 @@ export function AccountList({
       setTimeout(() => setCopied(null), 1500);
     } catch { /* ignore */ }
   };
+
+  // (Re)send a set-password link via Resend — bypasses Supabase's auth SMTP.
+  async function handleSendInvite(accountId: string) {
+    try {
+      const { data, error } = await supabase.functions.invoke("team-invite-send", { body: { account_id: accountId } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({ title: "Invite sent", description: `Set-password link emailed to ${data?.email ?? "the member"}.` });
+    } catch (e: unknown) {
+      toast({ title: "Couldn't send invite", description: (e as Error)?.message, variant: "destructive" });
+    }
+  }
 
   // Submit handler — dispatches to the right invite shape based on isTeamOnly.
   async function handleSubmit() {
@@ -1707,6 +1720,11 @@ export function AccountList({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            {isTeamOnly && (
+                              <DropdownMenuItem onClick={() => handleSendInvite(group.account_id)}>
+                                <Mail className="mr-2 h-4 w-4" /> Send invite
+                              </DropdownMenuItem>
+                            )}
                             {showEditProfile && (
                               <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
                                 <Pencil className="mr-2 h-4 w-4" /> Edit profile
