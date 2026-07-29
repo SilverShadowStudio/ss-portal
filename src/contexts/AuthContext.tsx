@@ -48,6 +48,8 @@ interface AuthContextType {
   exitGhostMode: () => Promise<void>;
   /** 'partnership' | 'project' | 'team' | null — null for admins or while loading. */
   accountType: 'partnership' | 'project' | 'team' | null;
+  /** For team members: 'employee' (fixed salary) vs 'freelancer' (paid per work). Null for non-team / while loading. Employees have no Earnings page. */
+  employmentType: 'employee' | 'freelancer' | null;
   /** The live user's account_members.role (e.g. 'owner' | 'client_invitee'). Null for admins or while loading. */
   memberRole: string | null;
   /** True when the live user is a client Manager (a member whose role is not 'client_invitee'). */
@@ -70,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [accountType, setAccountType] = useState<'partnership' | 'project' | 'team' | null>(null);
+  const [employmentType, setEmploymentType] = useState<'employee' | 'freelancer' | null>(null);
   const [memberRole, setMemberRole] = useState<string | null>(null);
   const [hasSignedAgreement, setHasSignedAgreement] = useState<boolean | null>(null);
   const [hasFreelancerProfile, setHasFreelancerProfile] = useState<boolean | null>(null);
@@ -223,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authUser) {
       setAccountType(null);
+      setEmploymentType(null);
       setMemberRole(null);
       setHasSignedAgreement(null);
       setHasFreelancerProfile(null);
@@ -241,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (roleRow) {
           setAccountType(null);
+          setEmploymentType(null);
           setMemberRole(null);
           setHasSignedAgreement(true);
           setHasFreelancerProfile(null);
@@ -250,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const [{ data: member }, agreementResult, { data: fpRow }] = await Promise.all([
           supabase
             .from("account_members")
-            .select("role, accounts(account_type)")
+            .select("role, accounts(account_type, employment_type)")
             .eq("user_id", authUser.id)
             .maybeSingle(),
           checkAccountAgreementForUser(authUser.id),
@@ -264,6 +269,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const at = (member as any)?.accounts?.account_type;
         const resolvedType = at === 'project' ? 'project' : at === 'partnership' ? 'partnership' : at === 'team' ? 'team' : null;
         setAccountType(resolvedType);
+        // Employees see Documents only; freelancers get Earnings too. Default to
+        // freelancer when unset so existing team members keep Earnings.
+        setEmploymentType(resolvedType === 'team' ? ((member as any)?.accounts?.employment_type === 'employee' ? 'employee' : 'freelancer') : null);
         setMemberRole((member as any)?.role ?? null);
         // Team users sign the freelancer agreement, not the SSS-CA — skip that gate.
         setHasSignedAgreement(resolvedType === 'team' ? true : agreementResult === "signed");
@@ -271,6 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!cancelled) {
           setAccountType(null);
+          setEmploymentType(null);
           setMemberRole(null);
           setHasSignedAgreement(null);
           setHasFreelancerProfile(null);
@@ -466,6 +475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         enterGhostMode,
         exitGhostMode,
         accountType,
+        employmentType,
         memberRole,
         isClientManager,
         hasSignedAgreement,

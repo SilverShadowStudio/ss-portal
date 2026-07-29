@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { ClientLayout } from "@/components/ClientLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Line { description: string; date: string | null; qty: number | null; unit: string; rate: number | null; amount: number }
 
@@ -31,6 +33,7 @@ function qtyLabel(l: Line, ccy: string) {
 }
 
 export default function Earnings() {
+  const { employmentType } = useAuth();
   const [data, setData] = useState<EarningsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,9 @@ export default function Earnings() {
   }, []);
 
   const ccy = data?.currency ?? "GBP";
+
+  // Employees are salaried — no Earnings page. Send them to Documents.
+  if (employmentType === "employee") return <Navigate to="/documents" replace />;
 
   return (
     <ClientLayout panel>

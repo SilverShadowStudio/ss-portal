@@ -21,6 +21,10 @@ const TEAM_NAV: SidebarNavItem[] = [
   { path: "/earnings",  label: "Earnings",   Icon: Wallet   },
   { path: "/documents", label: "Documents",  Icon: FileText },
 ];
+// Employees are salaried (payroll), not paid per work — no Earnings page yet.
+const TEAM_NAV_EMPLOYEE: SidebarNavItem[] = [
+  { path: "/documents", label: "Documents",  Icon: FileText },
+];
 
 interface ClientSidebarProps {
   expanded?: boolean;
@@ -30,7 +34,7 @@ interface ClientSidebarProps {
 export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, accountType, isClientManager } = useAuth();
+  const { user, signOut, accountType, employmentType, isClientManager } = useAuth();
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
@@ -62,7 +66,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   };
 
   const navItems = accountType === "team"
-    ? TEAM_NAV
+    ? (employmentType === "employee" ? TEAM_NAV_EMPLOYEE : TEAM_NAV)
     : accountType === "project"
     ? PROJECT_NAV
     : PARTNERSHIP_NAV;

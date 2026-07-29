@@ -24,12 +24,17 @@ export function RootRedirect() {
     (async () => {
       const [{ data: roleData }, { data: memberData }] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
-        supabase.from("account_members").select("accounts(account_type)").eq("user_id", user.id).maybeSingle(),
+        supabase.from("account_members").select("accounts(account_type, employment_type)").eq("user_id", user.id).maybeSingle(),
       ]);
       if (cancelled) return;
       if (roleData?.role === "admin") { setTarget("/admin"); return; }
-      const accountType = (memberData as { accounts?: { account_type?: string } } | null)?.accounts?.account_type;
-      setTarget(accountType === "team" ? "/earnings" : "/portfolio");
+      const account = (memberData as { accounts?: { account_type?: string; employment_type?: string } } | null)?.accounts;
+      if (account?.account_type === "team") {
+        // Employees have no Earnings page — send them to Documents.
+        setTarget(account.employment_type === "employee" ? "/documents" : "/earnings");
+        return;
+      }
+      setTarget("/portfolio");
     })();
     return () => { cancelled = true; };
   }, [user]);
