@@ -15,6 +15,7 @@ import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { BulkOverheadDropzone } from "@/components/admin/overheads/BulkOverheadDropzone";
 import { RecurringOverheadsDialog } from "@/components/admin/overheads/RecurringOverheadsDialog";
 import { IncomeInvoiceUpload } from "@/components/admin/finance/IncomeInvoiceUpload";
+import { BulkIncomeDropzone } from "@/components/admin/finance/BulkIncomeDropzone";
 import {
   FinanceSummary,
   type FinanceSectionKey,
@@ -696,6 +697,9 @@ export default function AdminPnL() {
             <div className="ml-auto flex items-center gap-6">
               <IncomeInvoiceUpload onSaved={fetchAll} />
             </div>
+          </div>
+          <div className="mb-5">
+            <BulkIncomeDropzone onSaved={fetchAll} />
           </div>
           <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
         </section>

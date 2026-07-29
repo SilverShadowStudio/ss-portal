@@ -33,6 +33,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
+import { friendlyDbError } from "@/lib/dbErrors";
 import {
   computeVat,
   computeReverseChargeVat,
@@ -292,8 +293,8 @@ export function OverheadForm({
     setSaving(false);
     if (error) {
       toast({
-        title: mode === "edit" ? "Update failed" : "Create failed",
-        description: error.message,
+        title: mode === "edit" ? "Couldn't update this expense" : "Couldn't record this expense",
+        description: friendlyDbError(error.message),
         variant: "destructive",
       });
       return;
