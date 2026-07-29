@@ -40,41 +40,69 @@ function json(data: Record<string, unknown>, status = 200): Response {
 
 // ── Filename + folder path builders ──────────────────────────────────────────
 
-/** Sanitize supplier name for Dropbox filename. Preserves casing per Fred's
- *  example (Roofoods_Invoice_..., not roofoods_invoice_...). */
-function sanitizeSupplier(s: string): string {
-  return s
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")   // diacritics
+// ── New AP filename convention ───────────────────────────────────────────────
+//   YYYY-MM-DD_AP_VENDOR_InvoiceNo_Description-Period_AmountCCY.ext
+//   e.g. 2026-07-03_AP_ADOBE_IEE2026012385380_Creative-Cloud-Jul26_31-19GBP.pdf
+// Underscores between fields; hyphens inside them. No spaces, slashes, or £.
+
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Short uppercase vendor code — the first meaningful token of the supplier. */
+function vendorCode(supplier: string): string {
+  const tokens = (supplier ?? "")
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
     .replace(/&/g, "and")
-    .replace(/[/\\:*?"<>|]/g, "")      // Dropbox-illegal path chars
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 60) || "Unknown-Supplier";
+    .trim().split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && /^(the|le|la)$/i.test(tokens[0])) tokens.shift();
+  const first = (tokens[0] ?? "").replace(/[^A-Za-z0-9]/g, "");
+  return (first || "VENDOR").toUpperCase().slice(0, 14);
 }
 
-/** Sanitize invoice number for filename. Same char rules; keeps hyphens. */
-function sanitizeInvoiceNumber(s: string): string {
-  return s
-    .replace(/[/\\:*?"<>|\s]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
+/** Invoice number for the filename; NOINV when absent. Hyphens kept. */
+function invoiceNoPart(s: string | null): string {
+  if (!s || !s.trim()) return "NOINV";
+  return s.replace(/[\s_/\\:*?"<>|]+/g, "-").replace(/[^A-Za-z0-9-]/g, "")
+    .replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "NOINV";
 }
 
-function buildFilename(
-  supplier: string,
-  invoiceNumber: string | null,
-  invoiceDate: string,
-  ext: string,
-): string {
-  const s   = sanitizeSupplier(supplier);
-  const inv = invoiceNumber ? sanitizeInvoiceNumber(invoiceNumber) : "";
-  const base = inv
-    ? `${s}_Invoice_${inv}_${invoiceDate}`
-    : `${s}_Invoice_${invoiceDate}`;
-  return `${base}.${ext}`;
+/** "2026-07-03" → "Jul26" (empty on a bad date). */
+function monthLabel(invoiceDate: string): string {
+  const m = invoiceDate.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!m) return "";
+  const mon = MONTH_ABBR[parseInt(m[2], 10) - 1] ?? "";
+  return mon ? `${mon}${m[1].slice(2)}` : "";
+}
+
+/** Description → hyphenated slug of its first few words ("what it was"). */
+function descSlug(description: string | null): string {
+  if (!description) return "";
+  return description
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim().split(/\s+/).filter(Boolean).slice(0, 5).join("-").slice(0, 40);
+}
+
+/** Gross + currency: (31.19, "GBP") → "31-19GBP". */
+function amountCcy(gross: number | null, currency: string | null): string {
+  const n = (Number(gross) || 0).toFixed(2).replace(".", "-");
+  const ccy = (currency || "GBP").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3) || "GBP";
+  return `${n}${ccy}`;
+}
+
+function buildFilename(row: {
+  supplier_name: string; invoice_number: string | null; invoice_date: string;
+  description: string | null; gross_amount: number | null; currency: string | null;
+}, ext: string): string {
+  const descPeriod = [descSlug(row.description) || "Expense", monthLabel(row.invoice_date)].filter(Boolean).join("-");
+  const parts = [
+    row.invoice_date,                              // YYYY-MM-DD
+    "AP",                                          // accounts payable
+    vendorCode(row.supplier_name),                 // VENDOR
+    invoiceNoPart(row.invoice_number),             // InvoiceNo
+    descPeriod,                                    // Description-Period
+    amountCcy(row.gross_amount, row.currency),     // AmountCCY
+  ];
+  return `${parts.join("_")}.${ext}`;
 }
 
 /** e.g. "2026-07-15" → "/03_Portal_Admin_Docs/03_Invoices/INV002_Payable/02_Overheads/Overheads_2026-07_July" */
@@ -224,7 +252,7 @@ Deno.serve(async (req) => {
 
   // ── Fetch the row (post-lock check) ──────────────────────────────────────
   const { data: row, error: fetchErr } = await sb.from("overheads")
-    .select("id, supplier_name, invoice_number, invoice_date, staging_storage_path, dropbox_path, dropbox_upload_in_progress, dropbox_upload_started_at")
+    .select("id, supplier_name, invoice_number, invoice_date, description, gross_amount, currency, staging_storage_path, dropbox_path, dropbox_upload_in_progress, dropbox_upload_started_at")
     .eq("id", overheadId)
     .maybeSingle();
   if (fetchErr || !row) {
@@ -322,7 +350,7 @@ Deno.serve(async (req) => {
       return await logAndReturn("failed", null, `invalid invoice_date: ${row.invoice_date}`, 400);
     }
     const stagingExt = (row.staging_storage_path.split(".").pop() || "bin").toLowerCase();
-    const filename   = buildFilename(row.supplier_name, row.invoice_number, row.invoice_date, stagingExt);
+    const filename   = buildFilename(row, stagingExt);
     const targetPath = `${folder}/${filename}`;
 
     // Fetch file bytes from Storage
