@@ -352,18 +352,26 @@ Deno.serve(async (req) => {
       .map((c) => ({ code: c.code, name: c.name }))
   }
 
-  // Call Claude — primary model, then fallback on any non-OK response.
+  // Call Claude with retries. Under the bulk drop zone's concurrent parses,
+  // Anthropic can transiently return 429/5xx (overloaded) — a single one-shot
+  // attempt then surfaced as "couldn't be read". Retry each model a few times
+  // with exponential backoff + jitter, then fall back to the second model.
   const dt = documentType as DocumentType
-  let res = await callAnthropic(anthropicKey, PRIMARY_MODEL, dt, mime, base64, categories)
-  if (!res.ok) {
-    const primaryErr = await res.text()
-    console.error(`Anthropic primary (${PRIMARY_MODEL}) error:`, primaryErr)
-    res = await callAnthropic(anthropicKey, FALLBACK_MODEL, dt, mime, base64, categories)
-    if (!res.ok) {
-      console.error(`Anthropic fallback (${FALLBACK_MODEL}) error:`, await res.text())
-      return json({ success: false, error: 'Could not read the document' }, 502)
+  const TRANSIENT = [429, 500, 502, 503, 529]
+  async function callWithRetries(model: string): Promise<Response | null> {
+    for (let i = 0; i < 3; i++) {
+      const res = await callAnthropic(anthropicKey, model, dt, mime, base64, categories)
+      if (res.ok) return res
+      const body = await res.text().catch(() => '')
+      console.error(`Anthropic ${model} attempt ${i + 1} → ${res.status}: ${body.slice(0, 200)}`)
+      if (!TRANSIENT.includes(res.status) || i === 2) return null
+      await new Promise((r) => setTimeout(r, 500 * 2 ** i + Math.floor(Math.random() * 300)))
     }
+    return null
   }
+  let res = await callWithRetries(PRIMARY_MODEL)
+  if (!res) res = await callWithRetries(FALLBACK_MODEL)
+  if (!res) return json({ success: false, error: 'Could not read the document — the model was busy, please retry.' }, 502)
 
   const anthropicData = await res.json()
   // Guard against a truncated response (hit max_tokens) — its JSON is incomplete.

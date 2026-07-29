@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Pencil, Trash2, RefreshCw, UploadCloud } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -73,6 +73,53 @@ export default function AdminRecurring() {
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [form, setForm] = useState({ ...EMPTY });
+  const [parsing, setParsing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Read an uploaded invoice and pre-fill the commitment fields. Nothing else —
+  // no saving, no filing. Timing (period/bill day/start) stays for Fred.
+  async function readInvoice(file: File) {
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) {
+      toast({ title: "PDF, JPEG or PNG only", variant: "destructive" });
+      return;
+    }
+    setParsing(true);
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => { const s = r.result as string; const c = s.indexOf(","); res(c >= 0 ? s.slice(c + 1) : s); };
+        r.onerror = () => rej(r.error);
+        r.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke("parse-document", {
+        body: { document_type: "overhead", file_data_base64: b64, file_mime_type: file.type, categories: cats.filter((c) => c.active).map((c) => ({ code: c.code, name: c.name })) },
+      });
+      if (error) throw error;
+      if (!data?.success || !data?.data) throw new Error(data?.error || "Could not read the invoice");
+      const p = data.data as Record<string, any>;
+      const gross = Number(p.gross_total) || 0;
+      const vat = Number(p.vat_amount) || 0;
+      const activeCodes = new Set(cats.filter((c) => c.active).map((c) => c.code));
+      const cat = typeof p.category_code === "string" && activeCodes.has(p.category_code) ? p.category_code : "";
+      const dueDay = typeof p.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.due_date)
+        ? String(Math.min(28, Math.max(1, parseInt(p.due_date.slice(8, 10), 10) || 1))) : undefined;
+      setForm((f) => ({
+        ...f,
+        supplier_name: (typeof p.supplier_name === "string" && p.supplier_name.trim()) || f.supplier_name,
+        service: (typeof p.description === "string" && p.description.trim()) || f.service,
+        amount: gross > 0 ? String(gross) : f.amount,
+        currency: (typeof p.currency === "string" && p.currency) || f.currency,
+        vat_treatment: vat > 0 ? "standard" : f.vat_treatment,
+        category_code: cat || f.category_code,
+        ...(dueDay ? { day_of_month: dueDay } : {}),
+      }));
+      toast({ title: "Invoice read", description: "Check the details, then set the period & timing." });
+    } catch (e) {
+      toast({ title: "Couldn't read the invoice", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setParsing(false);
+    }
+  }
 
   async function load() {
     const [{ data }, { data: c }] = await Promise.all([
@@ -271,6 +318,27 @@ export default function AdminRecurring() {
             <DialogTitle className="font-serif font-normal text-2xl">{form.id ? "Edit commitment" : "New commitment"}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) readInvoice(f); e.target.value = ""; }}
+              />
+              <div
+                onClick={() => !parsing && fileRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && !parsing) readInvoice(f); }}
+                className={`flex items-center justify-center gap-3 rounded-sm border border-dashed px-4 py-4 text-center transition-colors ${parsing ? "cursor-default border-white/15 bg-white/[0.02]" : "cursor-pointer border-white/15 bg-white/[0.02] hover:border-[#C9A96A]/40 hover:bg-white/[0.03]"}`}
+              >
+                {parsing ? (
+                  <><BrandLoader size="sm" className="h-4 w-4" /><span className="text-[11px] uppercase tracking-[0.18em] text-[#ecd39c]">Reading invoice…</span></>
+                ) : (
+                  <><UploadCloud className="h-4 w-4 text-white/35" strokeWidth={1.4} /><span className="text-[12px] text-standard">Drop an invoice to pre-fill<span className="text-white/35"> — Claude reads it. Optional.</span></span></>
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5"><Label>Supplier</Label><Input value={form.supplier_name} onChange={(e) => setForm((f) => ({ ...f, supplier_name: e.target.value }))} placeholder="e.g. Corona / Landlord" className="rounded-sm" /></div>
             <div className="space-y-1.5"><Label>Service</Label><Input value={form.service} onChange={(e) => setForm((f) => ({ ...f, service: e.target.value }))} placeholder="e.g. Render licence / Studio rent" className="rounded-sm" /></div>
             <div className="space-y-1.5"><Label>Fee (headline)</Label><Input inputMode="decimal" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="e.g. 1000" className="rounded-sm" /></div>
