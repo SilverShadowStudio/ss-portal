@@ -36,6 +36,26 @@ interface Commitment {
 const FREQ_LABEL: Record<string, string> = { monthly: "Monthly", quarterly: "Quarterly", annual: "Annual" };
 const money = (n: number, c = "GBP") => (c === "GBP" ? "£" : c === "EUR" ? "€" : c === "USD" ? "$" : `${c} `) + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0);
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+
+/** The next date this bill falls due, on/after today — mirrors the generator's
+ *  cadence (monthly/quarterly/annual on day_of_month, from the contract start).
+ *  Null if it has ended. */
+function nextOccurrence(r: { frequency: string; day_of_month: number; start_date: string; end_date?: string | null }): Date | null {
+  const step = r.frequency === "annual" ? 12 : r.frequency === "quarterly" ? 3 : 1;
+  const start = new Date(r.start_date + "T00:00:00");
+  if (isNaN(start.getTime())) return null;
+  const end = r.end_date ? new Date(r.end_date + "T00:00:00") : null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = Math.min(28, Math.max(1, r.day_of_month || 1));
+  let y = start.getFullYear(), m = start.getMonth();
+  for (let i = 0; i < 600; i++) {
+    const d = new Date(y, m, day);
+    if (end && d.getTime() > end.getTime()) return null;
+    if (d.getTime() >= today.getTime() && d.getTime() >= start.getTime()) return d;
+    m += step; while (m > 11) { m -= 12; y++; }
+  }
+  return null;
+}
 const num = (v: string) => { const n = parseFloat(String(v).replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
 
 // VAT treatments practical for recurring commitments (rent, SaaS, subscriptions).
@@ -238,6 +258,7 @@ export default function AdminRecurring() {
     { id: "fee", accessor: (r) => Number(r.gross_amount ?? 0), type: "number" },
     { id: "frequency", accessor: (r) => r.frequency, type: "text" },
     { id: "start", accessor: (r) => r.start_date, type: "date" },
+    { id: "next", accessor: (r) => { const d = nextOccurrence(r); return d ? d.toISOString() : null; }, type: "date" },
   ];
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Commitment>(filtered, COLUMNS, { key: "supplier", dir: "asc" });
 
@@ -284,6 +305,7 @@ export default function AdminRecurring() {
                     <SortTh id="fee" label="Fee" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                     <SortTh id="frequency" label="Period" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="start" label="Contract start" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="next" label="Next" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -295,6 +317,7 @@ export default function AdminRecurring() {
                       <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency} rateDate={null} /><span className="ml-1.5 text-[10px] text-white/35">/{r.frequency === "annual" ? "yr" : r.frequency === "quarterly" ? "qtr" : "mo"}</span></td>
                       <td className="px-4 py-3 text-standard">{FREQ_LABEL[r.frequency] ?? r.frequency}</td>
                       <td className="px-4 py-3 text-standard">{fmtDate(r.start_date)}</td>
+                      <td className="px-4 py-3 text-standard tabular-nums">{(() => { const d = nextOccurrence(r); return d ? fmtDate(d.toISOString().slice(0, 10)) : "—"; })()}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold transition-colors" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>

@@ -57,7 +57,6 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import AdminTeam from "./pages/admin/AdminTeam";
-import AdminTeamContracts from "./pages/admin/AdminTeamContracts";
 import AdminPnL from "./pages/admin/AdminPnL";
 import AdminRecurring from "./pages/admin/AdminRecurring";
 import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
@@ -467,14 +466,6 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminTeam />
-                </AdminProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/team/contracts"
-              element={
-                <AdminProtectedRoute>
-                  <AdminTeamContracts />
                 </AdminProtectedRoute>
               }
             />

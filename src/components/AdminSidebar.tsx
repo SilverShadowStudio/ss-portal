@@ -34,10 +34,8 @@ const SECTIONS: SidebarNavSection[] = [
   },
   {
     items: [
-      // Team's own listing page; matchActive excludes sub-routes so /admin/team/contracts
-      // doesn't dual-highlight Team and Agreements.
+      // Documents now live inline on each team member's card (Team page).
       { path: "/admin/team",               label: "Team",       Icon: UserPlus, matchActive: (p) => p === "/admin/team" },
-      { path: "/admin/team/contracts",     label: "Agreements", Icon: FileText, indent: true },
       { path: "/admin/team/invoices",      label: "Invoices",   Icon: Landmark, indent: true },
       { path: "/admin/production-tracker", label: "Tracker",    Icon: Activity, indent: true },
     ],

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { AccountEmailsModal } from "@/components/admin/AccountEmailsModal";
+import { TeamDocsPanel } from "@/components/admin/TeamDocsPanel";
 import {
   aggregateSessions,
   formatSessionDuration,
@@ -1989,7 +1990,10 @@ export function AccountList({
                           </div>
                         )}
 
-                        {isDocsOpen && (
+                        {isDocsOpen && isTeamOnly && (
+                          <TeamDocsPanel accountId={accountId} userId={u.user_id} memberName={displayName} />
+                        )}
+                        {isDocsOpen && !isTeamOnly && (
                           <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
                             <p
                               className="font-sans uppercase text-foreground/35 mb-2"
