@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { FxProvider } from "@/contexts/FxContext";
 import { BrandProvider } from "@/contexts/BrandContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ProtectedClient } from "@/components/ProtectedClient";
@@ -97,6 +98,7 @@ const App = () => (
       <TooltipProvider>
         <BrandProvider>
         <AuthProvider>
+        <FxProvider>
         <PWAInstallProvider>
           <Toaster />
         <Sonner />
@@ -481,6 +483,7 @@ const App = () => (
           </GhostModeShell>
           </BrowserRouter>
         </PWAInstallProvider>
+        </FxProvider>
         </AuthProvider>
         </BrandProvider>
       </TooltipProvider>

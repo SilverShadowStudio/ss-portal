@@ -49,6 +49,7 @@ import {
   type PayslipCost,
 } from "@/lib/finance";
 import { attachPayslip, viewPayslip } from "@/lib/payslipAttach";
+import { useFx } from "@/contexts/FxContext";
 import {
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY,
@@ -121,6 +122,7 @@ export default function AdminPnL() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const { toast } = useToast();
+  const fx = useFx();
 
   const currentQuarter = useMemo(() => getCurrentQuarter(), []);
   const previousQuarter = useMemo(() => getPreviousQuarter(currentQuarter), [currentQuarter]);
@@ -360,39 +362,41 @@ export default function AdminPnL() {
 
   // ---- Summary spine (selected period, VAT-inclusive) ---------------------
   // Outstanding is "as of now" — it deliberately ignores the period.
+  // Outstanding is "as of now" (unpaid) → live FX.
   const outstandingIn = useMemo(
     () =>
       invoices
         .filter((i) => i.status === "sent" || i.status === "overdue" || i.status === "pending")
-        .reduce((s, i) => s + Number(i.amount ?? 0), 0),
-    [invoices],
+        .reduce((s, i) => s + fx.gbp(Number(i.amount ?? 0), i.currency ?? "GBP", null), 0),
+    [invoices, fx],
   );
   const outstandingOut = useMemo(
     () =>
       overheads
         .filter((r) => r.payment_status === "unpaid")
-        .reduce((s, r) => s + Number(r.gross_amount ?? 0), 0) +
+        .reduce((s, r) => s + fx.gbp(Number(r.gross_amount ?? 0), r.currency ?? "GBP", null), 0) +
       payables.reduce((s, p) => s + outstandingFor(p), 0),
-    [overheads, payables],
+    [overheads, payables, fx],
   );
 
+  // Revenue — paid invoices lock to their paid date, unpaid use the live rate.
   const revenue = useMemo(
     () =>
       invoices
         .filter((i) => inPeriod(i.issued_at ?? i.created_at))
-        .reduce((s, i) => s + Number(i.amount ?? 0), 0),
-    [invoices, inPeriod],
+        .reduce((s, i) => s + fx.gbp(Number(i.amount ?? 0), i.currency ?? "GBP", i.status === "paid" ? i.paid_at : null), 0),
+    [invoices, inPeriod, fx],
   );
   // Operational fixed cost = overheads + payroll (employer cost per month).
   const fixedCost = useMemo(
     () =>
       overheads
         .filter((o) => inPeriod(o.invoice_date))
-        .reduce((s, o) => s + Number(o.gross_amount ?? 0), 0) +
+        .reduce((s, o) => s + fx.gbp(Number(o.gross_amount ?? 0), o.currency ?? "GBP", o.payment_status === "paid" ? o.payment_date : null), 0) +
       payslips
         .filter((p) => inPeriod(p.period_end))
         .reduce((s, p) => s + payslipEmployerCost(p), 0),
-    [overheads, payslips, inPeriod],
+    [overheads, payslips, inPeriod, fx],
   );
   const variableCost = useMemo(
     () =>
@@ -420,12 +424,12 @@ export default function AdminPnL() {
   const periodVat = useMemo(() => {
     const output = invoices
       .filter((i) => i.status === "paid" && inPeriod(i.paid_at))
-      .reduce((s, i) => s + Number(i.vat_amount ?? 0), 0);
+      .reduce((s, i) => s + fx.gbp(Number(i.vat_amount ?? 0), i.currency ?? "GBP", i.paid_at), 0);
     const input = overheads
       .filter((o) => o.payment_status === "paid" && inPeriod(o.payment_date) && !o.is_reverse_charge)
-      .reduce((s, o) => s + Number(o.vat_amount ?? 0), 0);
+      .reduce((s, o) => s + fx.gbp(Number(o.vat_amount ?? 0), o.currency ?? "GBP", o.payment_date), 0);
     return output - input;
-  }, [invoices, overheads, inPeriod]);
+  }, [invoices, overheads, inPeriod, fx]);
 
   const netProfit = operatingProfit - periodVat;
 

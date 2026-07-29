@@ -303,6 +303,8 @@ export interface MoneyOutRow {
   net: number | null;
   vat: number | null;
   amount: number; // gross_amount (fixed) / invoice_total (variable)
+  currency: string; // original currency of `amount`
+  rateDate: string | null; // FX lock date (payment date when paid) — null = live rate
   status: PayablePaidStatus; // fixed rows are only ever paid | unpaid
   dueDate: string | null;
   approxPeriod: boolean; // variable row whose period is "≈ created"
@@ -336,6 +338,8 @@ export function buildMoneyOutRows(
     net: o.net_amount,
     vat: o.vat_amount,
     amount: Number(o.gross_amount ?? 0),
+    currency: o.currency || "GBP",
+    rateDate: o.payment_status === "paid" ? o.payment_date : null,
     status: o.payment_status,
     dueDate: o.due_date,
     approxPeriod: false,
@@ -353,6 +357,8 @@ export function buildMoneyOutRows(
     net: null,
     vat: null,
     amount: Number(p.invoice_total ?? 0),
+    currency: "GBP",
+    rateDate: null,
     status: p.paid_status,
     dueDate: null,
     approxPeriod: APPROX_PERIOD_SOURCES.has(p.source_table) && !!p.period_date,
@@ -372,6 +378,8 @@ export function buildMoneyOutRows(
       net: null,
       vat: null,
       amount: payslipEmployerCost(p),
+      currency: "GBP",
+      rateDate: null,
       status: (p.salary_paid_at && p.tax_paid_at ? "paid" : "unpaid") as PayablePaidStatus,
       dueDate: null,
       approxPeriod: false,

@@ -5,6 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, SortTh } from "@/components/ui/TableToolbar";
+import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
+import { useFx } from "@/contexts/FxContext";
 
 interface OH {
   id: string; supplier_name: string | null; description: string | null; category_code: string | null;
@@ -52,7 +54,9 @@ export function DebtsOverheads() {
   }
   useEffect(() => { load(); }, []);
 
-  const total = rows.reduce((s, r) => s + Number(r.gross_amount || 0), 0);
+  const fx = useFx();
+  // Unpaid overheads are live-rate; convert foreign to GBP for the header total.
+  const total = rows.reduce((s, r) => s + fx.gbp(Number(r.gross_amount || 0), r.currency ?? "GBP", null), 0);
 
   async function markPaid(r: OH) {
     setSaving(r.id);
@@ -106,7 +110,7 @@ export function DebtsOverheads() {
                   <td className="px-4 py-3 text-strong">{r.supplier_name ?? "—"}</td>
                   <td className="px-4 py-3 text-recessive text-[12px]">{r.description || r.category_code || "—"}</td>
                   <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
-                  <td className="px-4 py-3 text-right text-strong tabular-nums">{money(Number(r.gross_amount), r.currency ?? "GBP")}</td>
+                  <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency ?? "GBP"} rateDate={null} /></td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {saving === r.id
                       ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />

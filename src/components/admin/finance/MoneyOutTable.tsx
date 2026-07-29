@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
 import { differenceInCalendarDays } from "date-fns";
 
 type Urgency = "overdue" | "due-soon" | null;
@@ -175,14 +176,14 @@ export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice }: Mo
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-standard text-right tabular-nums">
-                    {r.net != null ? formatCurrency(r.net) : "—"}
+                  <TableCell className="text-sm text-standard text-right">
+                    {r.net != null ? <CurrencyAmount amount={r.net} currency={r.currency} rateDate={r.rateDate} /> : "—"}
                   </TableCell>
-                  <TableCell className="text-sm text-standard text-right tabular-nums">
-                    {r.vat != null ? formatCurrency(r.vat) : "—"}
+                  <TableCell className="text-sm text-standard text-right">
+                    {r.vat != null ? <CurrencyAmount amount={r.vat} currency={r.currency} rateDate={r.rateDate} /> : "—"}
                   </TableCell>
-                  <TableCell className="text-sm text-strong text-right tabular-nums">
-                    {formatCurrency(r.amount)}
+                  <TableCell className="text-sm text-strong text-right">
+                    <CurrencyAmount amount={r.amount} currency={r.currency} rateDate={r.rateDate} />
                   </TableCell>
                   <TableCell>
                     {urgency === "overdue" ? (

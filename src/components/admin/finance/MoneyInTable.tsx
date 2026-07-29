@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { formatCurrency, formatDate, type MoneyInInvoice } from "@/lib/finance";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
 
 interface MoneyInTableProps {
   rows: MoneyInInvoice[];
@@ -115,14 +116,14 @@ export function MoneyInTable({ rows, loading, onRowClick }: MoneyInTableProps) {
                 <TableCell className="text-sm text-standard">
                   {typeDisplay(r)}
                 </TableCell>
-                <TableCell className="text-sm text-standard text-right tabular-nums">
-                  {r.subtotal != null ? formatCurrency(r.subtotal, r.currency ?? "GBP") : "—"}
+                <TableCell className="text-sm text-standard text-right">
+                  {r.subtotal != null ? <CurrencyAmount amount={r.subtotal} currency={r.currency ?? "GBP"} rateDate={r.status === "paid" ? r.paid_at : null} /> : "—"}
                 </TableCell>
-                <TableCell className="text-sm text-standard text-right tabular-nums">
-                  {r.vat_amount != null ? formatCurrency(r.vat_amount, r.currency ?? "GBP") : "—"}
+                <TableCell className="text-sm text-standard text-right">
+                  {r.vat_amount != null ? <CurrencyAmount amount={r.vat_amount} currency={r.currency ?? "GBP"} rateDate={r.status === "paid" ? r.paid_at : null} /> : "—"}
                 </TableCell>
-                <TableCell className="text-sm text-strong text-right tabular-nums">
-                  {formatCurrency(Number(r.amount ?? 0), r.currency ?? "GBP")}
+                <TableCell className="text-sm text-strong text-right">
+                  <CurrencyAmount amount={Number(r.amount ?? 0)} currency={r.currency ?? "GBP"} rateDate={r.status === "paid" ? r.paid_at : null} />
                 </TableCell>
                 <TableCell>
                   <span

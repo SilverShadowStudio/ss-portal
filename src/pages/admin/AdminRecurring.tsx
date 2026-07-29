@@ -11,7 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
-import { computeVat, type ExpenseCategory, type VatTreatment } from "@/lib/finance";
+import { type ExpenseCategory, type VatTreatment } from "@/lib/finance";
+import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
 
 interface Commitment {
   id: string;
@@ -244,7 +245,7 @@ export default function AdminRecurring() {
                     <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.active ? "" : "opacity-45"}`}>
                       <td className="px-4 py-3 text-strong">{r.supplier_name}</td>
                       <td className="px-4 py-3 text-standard">{r.service ?? r.description ?? "—"}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-strong">{money(Number(r.gross_amount), r.currency)}<span className="ml-1.5 text-[10px] text-white/35">/{r.frequency === "annual" ? "yr" : r.frequency === "quarterly" ? "qtr" : "mo"}</span></td>
+                      <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency} rateDate={null} /><span className="ml-1.5 text-[10px] text-white/35">/{r.frequency === "annual" ? "yr" : r.frequency === "quarterly" ? "qtr" : "mo"}</span></td>
                       <td className="px-4 py-3 text-standard">{FREQ_LABEL[r.frequency] ?? r.frequency}</td>
                       <td className="px-4 py-3 text-standard">{fmtDate(r.start_date)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
