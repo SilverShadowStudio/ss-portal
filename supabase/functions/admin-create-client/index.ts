@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS, InviteEmailConfig } from '../_shared/emailTemplates.ts'
+import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS, InviteEmailConfig, teamInviteBody } from '../_shared/emailTemplates.ts'
 import { loadBrand } from '../_shared/brand.ts'
 
 const corsHeaders = {
@@ -531,7 +531,7 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || EMAIL_INVITE_DEFAULTS.subject,
-            html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: body.contact?.firstName ?? null }),
+            html: buildInviteEmailHtml(companyName, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ...(accountType === 'team' ? { bodyCopy: teamInviteBody() } : {}), ctaUrl: undefined, firstName: body.contact?.firstName ?? null }),
             headers: {
               'X-Entity-Ref-ID': crypto.randomUUID(),
             },

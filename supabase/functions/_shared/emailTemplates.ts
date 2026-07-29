@@ -14,6 +14,15 @@ export const EMAIL_INVITE_DEFAULTS = {
   backgroundColor: '#EDE8E0',
 }
 
+// Team members (freelancers/employees) don't have projects or deliveries —
+// their portal is about their work, pay and documents. Freelancers see
+// earnings; employees see documents only.
+export function teamInviteBody(employmentType?: string): string {
+  return employmentType === 'employee'
+    ? 'Your Silver Shadow Studio portal is now ready.<br>You will find your agreements and documents within.'
+    : 'Your Silver Shadow Studio portal is now ready.<br>You will find your work, earnings<br>and documents within.'
+}
+
 export interface InviteEmailConfig {
   subject?: string
   illustrationUrl?: string

@@ -19,7 +19,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { provisionTeamMember, splitName } from "../_shared/teamProvisioning.ts";
-import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS } from "../_shared/emailTemplates.ts";
+import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS, teamInviteBody } from "../_shared/emailTemplates.ts";
 
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://portal.silvershadowstudio.com";
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -350,6 +350,7 @@ Deno.serve(async (req) => {
       const html = buildInviteEmailHtml(name, ctaUrl, {
         ...EMAIL_INVITE_DEFAULTS,
         ...emailConfig,
+        bodyCopy: teamInviteBody(employmentType), // team member — not projects/deliveries
         ctaUrl: undefined,
         firstName: first,
       });
