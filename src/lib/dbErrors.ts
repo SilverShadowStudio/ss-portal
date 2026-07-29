@@ -1,3 +1,9 @@
+/** True when the error is a "this row already exists" unique-constraint clash. */
+export function isDuplicateError(raw?: string | null): boolean {
+  const m = (raw || "").toLowerCase();
+  return m.includes("duplicate key") || m.includes("unique constraint") || m.includes("unique_idx") || m.includes("already exists");
+}
+
 /**
  * Turn raw Postgres/PostgREST error text into something a human can act on.
  * Falls back to the original message when we don't recognise it.

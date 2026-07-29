@@ -33,7 +33,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
-import { friendlyDbError } from "@/lib/dbErrors";
+import { friendlyDbError, isDuplicateError } from "@/lib/dbErrors";
 import {
   computeVat,
   computeReverseChargeVat,
@@ -292,6 +292,16 @@ export function OverheadForm({
 
     setSaving(false);
     if (error) {
+      // Already recorded (same supplier + invoice number) — don't block the
+      // bulk review; just say so and move straight on to the next invoice.
+      if (isDuplicateError(error.message)) {
+        toast({
+          title: "Already recorded — skipped",
+          description: `${form.supplier_name.trim() || "This invoice"}${form.invoice_number.trim() ? ` (${form.invoice_number.trim()})` : ""} is already in your books.`,
+        });
+        onOpenChange(false); // advances the review queue (and cleans the staged file)
+        return;
+      }
       toast({
         title: mode === "edit" ? "Couldn't update this expense" : "Couldn't record this expense",
         description: friendlyDbError(error.message),
