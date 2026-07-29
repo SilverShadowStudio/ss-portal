@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
 import { OverheadUploadFlow } from "@/components/admin/overheads/OverheadUploadFlow";
+import { RecurringOverheadsDialog } from "@/components/admin/overheads/RecurringOverheadsDialog";
 import { IncomeInvoiceUpload } from "@/components/admin/finance/IncomeInvoiceUpload";
 import {
   FinanceSummary,
@@ -592,6 +593,7 @@ export default function AdminPnL() {
             </Select>
             <div className="ml-auto flex items-center gap-6">
               <OverheadUploadFlow onExtracted={openCreateExpenseFromUpload} categories={categories} />
+              <RecurringOverheadsDialog categories={categories} onChange={fetchAll} />
               <button
                 type="button"
                 onClick={openCreateExpense}
