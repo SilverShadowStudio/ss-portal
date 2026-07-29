@@ -80,6 +80,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [
         { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), separatorAfter: true, Icon: expanded ? ChevronsLeft : ChevronsRight },
+        { label: "Settings", onClick: () => navigate("/settings"), active: location.pathname === "/settings", Icon: Settings },
         { label: "Log off", onClick: handleSignOut, Icon: LogOut },
       ]
     : [

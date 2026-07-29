@@ -22,6 +22,7 @@ import Total from "./pages/Total";
 import Documents from "./pages/Documents";
 import Earnings from "./pages/Earnings";
 import Salary from "./pages/Salary";
+import TeamSettings from "./pages/TeamSettings";
 import Account from "./pages/Account";
 import Team from "./pages/Team";
 import Invoices from "./pages/Invoices";
@@ -233,6 +234,14 @@ const App = () => (
               element={
                 <ProtectedClient>
                   <Salary />
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedClient>
+                  <TeamSettings />
                 </ProtectedClient>
               }
             />
