@@ -16,8 +16,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
-  Copy, Check, Trash2, Ghost, Pencil, FileText, Activity, Clock, FilePlus2,
-  Archive, ArchiveRestore,
+  Copy, Check, Trash2, Ghost, Pencil, FileText, Clock, FilePlus2,
+  Archive, ArchiveRestore, ChevronRight,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -259,6 +259,9 @@ export function AccountList({
   const [activityByAccount, setActivityByAccount] = useState<Map<string, ActivityRow[]>>(new Map());
   const [docsLoading, setDocsLoading] = useState<Set<string>>(new Set());
   const [activityLoading, setActivityLoading] = useState<Set<string>>(new Set());
+  // Sessions that have been expanded to reveal the activity that happened during them.
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+  const toggleSession = (id: string) => setExpandedSessions((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [searchQuery, setSearchQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -451,7 +454,8 @@ export function AccountList({
       return { userId, panel };
     });
     if (panel === "docs") fetchDocuments(accountId);
-    if (panel === "activity") fetchActivity(accountId);
+    // Sessions now expand to show their activity — load it alongside.
+    if (panel === "history") fetchActivity(accountId);
   }
 
   // Lazy-fetch all documents (agreements + quotations + invoices) for an
@@ -1932,14 +1936,8 @@ export function AccountList({
                               onClick={() => togglePanel(u.user_id, "docs", accountId)}
                             />
                             <CircleButton
-                              icon={Activity}
-                              label="Activity"
-                              active={isActivityOpen}
-                              onClick={() => togglePanel(u.user_id, "activity", accountId)}
-                            />
-                            <CircleButton
                               icon={Clock}
-                              label="Recent sessions"
+                              label="Sessions & activity"
                               active={isHistoryOpen}
                               onClick={() => togglePanel(u.user_id, "history", accountId)}
                             />
@@ -1961,28 +1959,53 @@ export function AccountList({
                             </p>
                             {hasSessions ? (
                               <div className="grid grid-cols-1 gap-y-1">
-                                {userSessions.slice(0, 10).map((s) => (
-                                  <div
-                                    key={s.sessionId}
-                                    className="flex items-center justify-between gap-3 py-0.5"
-                                  >
-                                    <span
-                                      className="font-sans uppercase text-foreground/55"
-                                      style={{ fontSize: 10, letterSpacing: "0.12em" }}
-                                    >
-                                      {new Date(s.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                                      {" · "}
-                                      {new Date(s.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                    </span>
-                                    <span
-                                      className="font-sans uppercase text-foreground/35 tabular-nums"
-                                      style={{ fontSize: 10, letterSpacing: "0.12em" }}
-                                    >
-                                      {formatSessionDuration(s.durationMs)}
-                                      {s.pageViews ? ` · ${s.pageViews} page${s.pageViews === 1 ? "" : "s"}` : ""}
-                                    </span>
-                                  </div>
-                                ))}
+                                {userSessions.slice(0, 10).map((s) => {
+                                  const isExp = expandedSessions.has(s.sessionId);
+                                  const startMs = new Date(s.start).getTime();
+                                  const endMs = startMs + (s.durationMs || 0);
+                                  const acts = (activityByAccount.get(accountId) ?? []).filter((ev) => {
+                                    const t = new Date(ev.created_at).getTime();
+                                    return t >= startMs - 60000 && t <= endMs + 60000;
+                                  });
+                                  return (
+                                    <div key={s.sessionId}>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleSession(s.sessionId)}
+                                        className="w-full flex items-center justify-between gap-3 py-0.5 -mx-1 px-1 rounded-sm text-left hover:bg-muted/20 transition-colors"
+                                      >
+                                        <span className="font-sans uppercase text-foreground/55 flex items-center gap-1.5" style={{ fontSize: 10, letterSpacing: "0.12em" }}>
+                                          <ChevronRight className="h-3 w-3 shrink-0 transition-transform" style={{ transform: isExp ? "rotate(90deg)" : "none" }} strokeWidth={1.5} />
+                                          {new Date(s.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                          {" · "}
+                                          {new Date(s.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                        </span>
+                                        <span className="font-sans uppercase text-foreground/35 tabular-nums" style={{ fontSize: 10, letterSpacing: "0.12em" }}>
+                                          {formatSessionDuration(s.durationMs)}
+                                          {s.pageViews ? ` · ${s.pageViews} page${s.pageViews === 1 ? "" : "s"}` : ""}
+                                        </span>
+                                      </button>
+                                      {isExp && (
+                                        <div className="ml-5 mb-1 border-l border-border/30 pl-3 py-1 flex flex-col gap-y-1">
+                                          {activityLoading.has(accountId) ? (
+                                            <span className="text-foreground/30 animate-pulse" style={{ fontSize: 10 }}>Loading activity…</span>
+                                          ) : acts.length === 0 ? (
+                                            <span className="font-sans uppercase text-foreground/30" style={{ fontSize: 9, letterSpacing: "0.14em" }}>No activity in this session</span>
+                                          ) : acts.map((ev) => (
+                                            <div key={ev.id} className="flex items-baseline justify-between gap-3">
+                                              <span className="text-foreground/60 truncate" style={{ fontSize: 11 }}>
+                                                {ACTION_LABELS[ev.action] ?? ev.action}{ev.description ? ` — ${ev.description}` : ""}
+                                              </span>
+                                              <span className="font-sans uppercase text-foreground/30 tabular-nums shrink-0" style={{ fontSize: 9, letterSpacing: "0.12em" }}>
+                                                {new Date(ev.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className="text-xs text-foreground/35">No sessions recorded yet.</p>
@@ -2059,51 +2082,6 @@ export function AccountList({
                           </div>
                         )}
 
-                        {isActivityOpen && (
-                          <div className="px-5 pb-4 pt-1 bg-muted/10 border-t border-border/20">
-                            <p
-                              className="font-sans uppercase text-foreground/35 mb-2"
-                              style={{ fontSize: 9, letterSpacing: "0.2em" }}
-                            >
-                              Recent activity
-                            </p>
-                            {activityLoading.has(accountId) ? (
-                              <p className="text-xs text-foreground/35 animate-pulse">Loading activity…</p>
-                            ) : (() => {
-                              const events = activityByAccount.get(accountId) ?? [];
-                              if (events.length === 0) {
-                                return <p className="text-xs text-foreground/35">No activity yet.</p>;
-                              }
-                              return (
-                                <div className="grid grid-cols-1 gap-y-1">
-                                  {events.map((ev) => (
-                                    <div key={ev.id} className="flex items-start gap-3 py-0.5">
-                                      <span
-                                        className="font-sans uppercase text-foreground/55 tabular-nums shrink-0"
-                                        style={{ fontSize: 10, letterSpacing: "0.12em" }}
-                                      >
-                                        {new Date(ev.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                                        {" · "}
-                                        {new Date(ev.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                      </span>
-                                      <span className="text-xs text-foreground/65 min-w-0">
-                                        {ACTION_LABELS[ev.action] && (
-                                          <span
-                                            className="font-sans uppercase text-foreground/35 mr-2"
-                                            style={{ fontSize: 9, letterSpacing: "0.14em" }}
-                                          >
-                                            {ACTION_LABELS[ev.action]}
-                                          </span>
-                                        )}
-                                        {ev.description}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
                         </div>
                       );
                     })}
