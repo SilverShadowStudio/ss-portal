@@ -100,6 +100,7 @@ const PAYSLIP_SCHEMA = `{
   "gross": number | null,
   "income_tax": number | null,
   "employee_ni": number | null,
+  "student_loan": number | null,
   "employee_pension": number | null,
   "net": number | null,
   "employer_ni": number | null,
@@ -195,7 +196,10 @@ function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[])
       `Field semantics (all amounts are for THIS period, not year-to-date):\n` +
       `- gross = gross pay for the period (before deductions).\n` +
       `- income_tax = PAYE income tax deducted. employee_ni = employee National Insurance ` +
-      `deducted. employee_pension = the employee's pension contribution deducted.\n` +
+      `deducted. student_loan = student loan deduction (0/null if none). employee_pension = ` +
+      `the employee's pension contribution deducted.\n` +
+      `- employee_name = the person the payslip is for. A "Payroll Summary" (multiple people, ` +
+      `YTD columns) is NOT an individual payslip — set employee_name and net to null for those.\n` +
       `- net = net / take-home pay for the period (what the employee actually receives).\n` +
       `- employer_ni / employer_pension = the EMPLOYER's contributions, ONLY if the payslip shows ` +
       `them (often labelled "Employer NI", "Employer's NIC", "Employer Pension"). Many payslips ` +

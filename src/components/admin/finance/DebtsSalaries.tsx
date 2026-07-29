@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { estimatePayroll, estimateMonthlyEmployerOnCosts, TAX_YEAR } from "@/lib/payrollEstimate";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
+import { BulkPayslipDropzone } from "./BulkPayslipDropzone";
 
 interface EmployeeRow {
   id: string;
@@ -102,6 +103,28 @@ export function DebtsSalaries() {
   const [saving, setSaving] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [f, setF] = useState({ period_label: "", period_end: "", gross: "", net: "", employer_ni: "", employer_pension: "" });
+  // Add salaried person (payroll-only — not a team member)
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", position: "", salary: "" });
+
+  async function addPerson() {
+    if (!addForm.name.trim()) { toast({ title: "Enter a name", variant: "destructive" }); return; }
+    setAddBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-create-payroll-employee", {
+        body: { name: addForm.name.trim(), position: addForm.position.trim(), gross_salary_annual: addForm.salary },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      toast({ title: "Salaried person added", description: `${addForm.name.trim()} — import their payslips to populate.` });
+      setAddOpen(false); setAddForm({ name: "", position: "", salary: "" });
+      load();
+    } catch (e) {
+      toast({ title: "Couldn't add", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setAddBusy(false);
+    }
+  }
 
   async function load() {
     const [{ data: accts }, { data: ps }] = await Promise.all([
@@ -259,7 +282,12 @@ export function DebtsSalaries() {
     <section className="ssr-zone">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
         <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Salaries</h2></div>
-        <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(totalOwed)} owed · {money(totalProvision)}/yr provision</span>
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(totalOwed)} owed · {money(totalProvision)}/yr provision</span>
+          <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+            <Plus className="h-3 w-3" strokeWidth={1.5} />Add person
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -290,6 +318,11 @@ export function DebtsSalaries() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Bulk payslip import — matched to each person by name */}
+          <div className="mb-4">
+            <BulkPayslipDropzone employees={rows.map((r) => ({ id: r.id, name: r.name }))} onDone={load} />
           </div>
 
           {/* Net salary owed, by month */}
@@ -378,6 +411,34 @@ export function DebtsSalaries() {
           <DialogFooter>
             <button type="button" onClick={() => setOpen(false)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
             <Button onClick={save} disabled={saving} className="rounded-sm">{saving ? "Saving…" : "Save payslip"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-md rounded-sm border-divider bg-background">
+          <DialogHeader>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Salaries · Payroll record</p>
+            <DialogTitle className="font-serif font-normal text-2xl">Add a salaried person</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-foreground/45">A payroll-only record for the accounts — no login or team invite. Import their payslips after.</p>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="col-span-2 space-y-1.5">
+              <Label>Name</Label>
+              <Input value={addForm.name} onChange={(e) => setAddForm((x) => ({ ...x, name: e.target.value }))} placeholder="Fred Colomb" className="rounded-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Position</Label>
+              <Input value={addForm.position} onChange={(e) => setAddForm((x) => ({ ...x, position: e.target.value }))} placeholder="Creative Director" className="rounded-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Gross annual salary (£)</Label>
+              <Input inputMode="decimal" value={addForm.salary} onChange={(e) => setAddForm((x) => ({ ...x, salary: e.target.value }))} placeholder="45000" className="rounded-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button type="button" onClick={() => setAddOpen(false)} className="text-sm text-recessive hover:text-standard transition-colors">Cancel</button>
+            <Button onClick={addPerson} disabled={addBusy} className="rounded-sm">{addBusy ? "Adding…" : "Add person"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
