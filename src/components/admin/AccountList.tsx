@@ -1862,7 +1862,7 @@ export function AccountList({
                               Recent sessions
                             </p>
                             {hasSessions ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-1">
+                              <div className="grid grid-cols-1 gap-y-1">
                                 {userSessions.slice(0, 10).map((s) => (
                                   <div
                                     key={s.sessionId}
