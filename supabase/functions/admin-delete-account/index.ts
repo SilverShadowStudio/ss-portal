@@ -15,6 +15,60 @@ function json(data: Record<string, unknown>, status = 200) {
   })
 }
 
+// ── Dropbox helpers (for file cleanup on delete) ────────────────────────────
+async function dbxRefreshToken(conn: Record<string, string>, sb: ReturnType<typeof createClient>): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${btoa(`${Deno.env.get('DROPBOX_APP_KEY')}:${Deno.env.get('DROPBOX_APP_SECRET')}`)}` },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: conn.refresh_token }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null
+    await sb.from('dropbox_connections').update({ access_token: data.access_token, token_expires_at: expiresAt }).eq('id', conn.id)
+    return data.access_token
+  } catch { return null }
+}
+async function dbxRootNamespace(token: string): Promise<string | null> {
+  const r = await fetch('https://api.dropboxapi.com/2/users/get_current_account', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+  if (!r.ok) return null
+  return (await r.json())?.root_info?.root_namespace_id ?? null
+}
+async function dbxDelete(token: string, ns: string | null, path: string): Promise<boolean> {
+  const r = await fetch('https://api.dropboxapi.com/2/files/delete_v2', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(ns ? { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'namespace_id', namespace_id: ns }) } : {}) },
+    body: JSON.stringify({ path }),
+  })
+  return r.ok
+}
+
+/** Delete an account's team-contract files from Supabase storage + Dropbox. */
+async function cleanupAccountFiles(admin: ReturnType<typeof createClient>, accountId: string): Promise<{ storage: number; dropbox: number }> {
+  const result = { storage: 0, dropbox: 0 }
+  try {
+    const { data: contracts } = await admin.from('team_contracts').select('storage_path, dropbox_path').eq('account_id', accountId)
+    const storagePaths = (contracts ?? []).map((c: any) => c.storage_path).filter(Boolean) as string[]
+    const dropboxPaths = (contracts ?? []).map((c: any) => c.dropbox_path).filter(Boolean) as string[]
+    if (storagePaths.length) {
+      await admin.storage.from('freelancer-documents').remove(storagePaths).then(() => { result.storage = storagePaths.length }, () => {})
+    }
+    if (dropboxPaths.length) {
+      const { data: conn } = await admin.from('dropbox_connections').select('id, access_token, refresh_token, token_expires_at').order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (conn) {
+        let token = conn.access_token as string
+        if (conn.token_expires_at && new Date(conn.token_expires_at as string).getTime() < Date.now()) token = (await dbxRefreshToken(conn as Record<string, string>, admin)) ?? token
+        const ns = token ? await dbxRootNamespace(token) : null
+        for (const p of dropboxPaths) { if (token && await dbxDelete(token, ns, p)) result.dropbox++ }
+      }
+    }
+  } catch (e) {
+    console.error('[admin-delete-account] file cleanup failed:', e)
+  }
+  return result
+}
+
 /**
  * Admin-only: permanently delete an account along with any auth.users
  * rows whose only membership was on that account.
@@ -110,7 +164,11 @@ Deno.serve(async (req) => {
     })
   }
 
-  // 3. Delete the account row. account_members cascades.
+  // 2b. Clean up the account's contract files (storage + Dropbox) BEFORE the
+  //     DB rows cascade away — otherwise we lose the paths.
+  const filesRemoved = await cleanupAccountFiles(admin, accountId)
+
+  // 3. Delete the account row. account_members + team_contracts cascade.
   const { error: accDelErr } = await admin
     .from('accounts')
     .delete()
@@ -151,5 +209,6 @@ Deno.serve(async (req) => {
     auth_users_deleted: authDeleted,
     auth_users_preserved: authPreserved,
     auth_users_failed: authFailed,
+    files_removed: filesRemoved,
   })
 })

@@ -18,6 +18,7 @@ interface AccountUserRow {
   account_type: string | null
   account_created_at: string | null
   client_code: string | null
+  archived_at: string | null
   user_id: string
   email: string | null
   full_name: string | null
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
     // 1. Accounts (optionally filtered by type)
     let accountsQuery = admin
       .from('accounts')
-      .select('id, company_name, account_type, created_at, client_code')
+      .select('id, company_name, account_type, created_at, client_code, archived_at')
       .order('company_name', { ascending: true })
     if (allowedTypes && allowedTypes.length) {
       accountsQuery = accountsQuery.in('account_type', allowedTypes)
@@ -147,6 +148,7 @@ Deno.serve(async (req) => {
         account_type:       a?.account_type ?? null,
         account_created_at: a?.created_at ?? null,
         client_code:        a?.client_code ?? null,
+        archived_at:        a?.archived_at ?? null,
         user_id:            m.user_id,
         email:              emailByUser.get(m.user_id) ?? null,
         full_name:          p?.full_name ?? null,

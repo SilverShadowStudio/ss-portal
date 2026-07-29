@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
   Copy, Check, Trash2, Ghost, Pencil, FileText, Activity, Clock, FilePlus2,
+  Archive, ArchiveRestore,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -49,6 +50,7 @@ interface AccountUserRow {
   account_type: string | null;
   account_created_at: string | null;
   client_code: string | null;
+  archived_at: string | null;
   user_id: string;
   email: string | null;
   full_name: string | null;
@@ -66,6 +68,7 @@ interface AccountGroup {
   account_type: string | null;
   client_code: string | null;
   account_created_at: string | null;
+  archived_at: string | null;
   users: AccountUserRow[];
 }
 
@@ -254,6 +257,7 @@ export function AccountList({
   const [docsLoading, setDocsLoading] = useState<Set<string>>(new Set());
   const [activityLoading, setActivityLoading] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   // Team Add Member — three-step state machine:
   //   choice        → three option cards
@@ -561,6 +565,7 @@ export function AccountList({
           account_type: u.account_type,
           client_code: u.client_code,
           account_created_at: u.account_created_at,
+          archived_at: u.archived_at,
           users: [],
         };
         byId.set(u.account_id, g);
@@ -590,10 +595,14 @@ export function AccountList({
     });
   }, [accountUsers]);
 
+  const archivedCount = useMemo(() => accountGroups.filter((g) => g.archived_at).length, [accountGroups]);
+
   const filteredGroups = useMemo<AccountGroup[]>(() => {
+    // Active by default; the toggle shows the archived ones instead.
+    const base = accountGroups.filter((g) => (showArchived ? !!g.archived_at : !g.archived_at));
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return accountGroups;
-    return accountGroups
+    if (!q) return base;
+    return base
       .map((g) => {
         const matchesCompany = g.company_name.toLowerCase().includes(q);
         const matchingUsers = g.users.filter(
@@ -608,7 +617,7 @@ export function AccountList({
         return { ...g, users: matchingUsers };
       })
       .filter((g): g is AccountGroup => g !== null);
-  }, [accountGroups, searchQuery]);
+  }, [accountGroups, searchQuery, showArchived]);
 
   const updateForm = (key: keyof typeof initialForm, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -994,8 +1003,9 @@ export function AccountList({
   ) => {
     const confirmed = window.confirm(
       `Permanently delete "${companyName}"?\n\n` +
-      `This will also remove member link(s) (${memberCount}) tied to this account. ` +
-      `This action cannot be undone.`,
+      `This removes their account, ${memberCount} member link(s), their records, ` +
+      `and their agreement files from storage AND Dropbox. This cannot be undone.\n\n` +
+      `To keep everything and just disable access, use Archive instead.`,
     );
     if (!confirmed) return;
     try {
@@ -1012,6 +1022,27 @@ export function AccountList({
     } catch (e: any) {
       toast({
         title: "Could not delete account",
+        description: e?.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleArchiveAccount = async (accountId: string, companyName: string, archive: boolean) => {
+    if (archive && !window.confirm(
+      `Archive "${companyName}"?\n\nTheir record, documents and files are all kept, ` +
+      `and their login is disabled. You can unarchive any time.`,
+    )) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-archive-account", {
+        body: { account_id: accountId, archive },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || "Failed");
+      toast({ title: archive ? "Account archived" : "Account restored", description: companyName });
+      fetchAccounts();
+    } catch (e: any) {
+      toast({
+        title: archive ? "Could not archive account" : "Could not restore account",
         description: e?.message || "Unknown error",
         variant: "destructive",
       });
@@ -1578,7 +1609,16 @@ export function AccountList({
         <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
           <div className="flex items-center gap-3">
             <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">{isTeamOnly ? "Members" : title}</h2>
+            <h2 className="text-label">{showArchived ? "Archived" : isTeamOnly ? "Members" : title}</h2>
+            {(archivedCount > 0 || showArchived) && (
+              <button
+                type="button"
+                onClick={() => setShowArchived((v) => !v)}
+                className="ml-1 text-[10px] uppercase tracking-[0.16em] text-white/40 transition-colors hover:text-[#ecd39c]"
+              >
+                {showArchived ? "← Active" : `Archived · ${archivedCount}`}
+              </button>
+            )}
           </div>
           <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
@@ -1663,6 +1703,17 @@ export function AccountList({
                               <DropdownMenuItem onClick={() => navigate(`/admin/clients/${group.account_id}`)}>
                                 <Pencil className="mr-2 h-4 w-4" /> Edit profile
                               </DropdownMenuItem>
+                            )}
+                            {showDelete && (
+                              group.archived_at ? (
+                                <DropdownMenuItem onClick={() => handleArchiveAccount(group.account_id, group.company_name, false)}>
+                                  <ArchiveRestore className="mr-2 h-4 w-4" /> Unarchive
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => handleArchiveAccount(group.account_id, group.company_name, true)}>
+                                  <Archive className="mr-2 h-4 w-4" /> Archive
+                                </DropdownMenuItem>
+                              )
                             )}
                             {showDelete && (
                               <DropdownMenuItem
