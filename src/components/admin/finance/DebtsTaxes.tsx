@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Paperclip, Plus } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -10,6 +10,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 import { PayslipFlag } from "./PayslipFlag";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
+
+// One unified row over payroll (PAYE/NI from payslips) + manual tax liabilities.
+interface UnifiedTaxRow {
+  key: string; kind: "payroll" | "manual"; typeKey: string; typeLabel: string;
+  period: string; due: string | null; amount: number; currency: string;
+  payroll?: PayrollTaxRow; tax?: Tax;
+}
+const TAX_COLUMNS: SortableColumn<UnifiedTaxRow>[] = [
+  { id: "type", accessor: (r) => r.typeLabel, type: "text" },
+  { id: "period", accessor: (r) => r.period, type: "text" },
+  { id: "due", accessor: (r) => r.due, type: "date" },
+  { id: "amount", accessor: (r) => r.amount, type: "number" },
+];
 
 const TYPES = [{ v: "vat", l: "VAT" }, { v: "corporation_tax", l: "Corporation Tax" }, { v: "paye_ni", l: "PAYE / NI" }];
 const typeLabel = (t: string) => TYPES.find((x) => x.v === t)?.l ?? t;
@@ -40,6 +55,8 @@ export function DebtsTaxes() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ tax_type: "vat", period_label: "", amount: "", due_date: "" });
   const [file, setFile] = useState<File | null>(null);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const grace = useGraceTimers();
   const now = useNowTicker(rows.some((r) => r.justPaid) || payroll.some((p) => p.justPaid));
 
@@ -73,6 +90,21 @@ export function DebtsTaxes() {
 
   const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0)
     + payroll.filter((p) => !p.justPaid).reduce((s, p) => s + p.amount, 0);
+
+  const combined = useMemo<UnifiedTaxRow[]>(() => {
+    const p: UnifiedTaxRow[] = payroll.map((r) => ({ key: `p:${r.id}`, kind: "payroll", typeKey: "paye_ni", typeLabel: "PAYE / NI", period: `${r.employee} · ${r.period_label}`, due: r.period_end, amount: r.amount, currency: "GBP", payroll: r }));
+    const m: UnifiedTaxRow[] = rows.map((r) => ({ key: `m:${r.id}`, kind: "manual", typeKey: r.tax_type, typeLabel: typeLabel(r.tax_type), period: r.period_label ?? "—", due: r.due_date, amount: Number(r.amount), currency: r.currency ?? "GBP", tax: r }));
+    return [...p, ...m];
+  }, [payroll, rows]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return combined.filter((r) => {
+      if (typeFilter !== "all" && r.typeKey !== typeFilter) return false;
+      if (q && !(r.typeLabel.toLowerCase().includes(q) || r.period.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [combined, search, typeFilter]);
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<UnifiedTaxRow>(filtered, TAX_COLUMNS, { key: "due", dir: "asc" });
 
   async function markPayrollPaid(r: PayrollTaxRow) {
     setSaving(r.id);
@@ -164,56 +196,58 @@ export function DebtsTaxes() {
       ) : rows.length === 0 && payroll.length === 0 ? (
         <div className="ssr-tile p-10 text-center text-recessive text-sm">No tax liabilities recorded. Add one with the scan or HMRC screenshot.</div>
       ) : (
+        <>
+        <TableToolbar>
+          <TableSearch value={search} onChange={setSearch} placeholder="SEARCH TYPE OR PERIOD" width="w-[260px]" />
+          <TableFilterSelect value={typeFilter} onChange={setTypeFilter} width="w-[180px]"
+            options={[{ value: "all", label: "All types" }, { value: "paye_ni", label: "PAYE / NI" }, { value: "vat", label: "VAT" }, { value: "corporation_tax", label: "Corporation Tax" }]} />
+        </TableToolbar>
         <div className="ssr-tile overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/[0.08]">
-                {["Type", "Period", "Due", "Amount", "Doc", ""].map((h, i) => (
-                  <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 3 ? "text-right" : ""}`}>{h}</th>
-                ))}
+                <SortTh id="type" label="Type" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="period" label="Period" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="due" label="Due" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="amount" label="Amount" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
+                <th className="px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal">Doc</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {payroll.map((r) => (
-                <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
-                  <td className="px-4 py-3 text-strong">PAYE / NI</td>
-                  <td className="px-4 py-3 text-standard">{r.employee} · {r.period_label}</td>
-                  <td className="px-4 py-3 text-standard">—</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-strong">{money(r.amount)}</td>
+              {sortedRows.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-recessive text-sm">No liabilities match.</td></tr>
+              ) : sortedRows.map((u) => {
+                const justPaid = u.payroll?.justPaid || u.tax?.justPaid;
+                const paidAt = u.payroll?.paidAt ?? u.tax?.paidAt ?? 0;
+                const rowId = u.payroll?.id ?? u.tax?.id ?? u.key;
+                return (
+                <tr key={u.key} className={`border-b border-white/[0.05] last:border-0 ${justPaid ? "opacity-45" : ""}`}>
+                  <td className="px-4 py-3 text-strong">{u.typeLabel}</td>
+                  <td className="px-4 py-3 text-standard">{u.period}</td>
+                  <td className="px-4 py-3 text-standard">{u.kind === "manual" ? fmtDate(u.due) : "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-strong">{money(u.amount, u.currency)}</td>
                   <td className="px-4 py-3">
-                    <PayslipFlag payslipId={r.id} accountId={r.account_id} employeeName={r.employee} periodEnd={r.period_end}
-                      documentPath={r.document_path} filed={r.filed} onDone={load} />
+                    {u.payroll
+                      ? <PayslipFlag payslipId={u.payroll.id} accountId={u.payroll.account_id} employeeName={u.payroll.employee} periodEnd={u.payroll.period_end}
+                          documentPath={u.payroll.document_path} filed={u.payroll.filed} onDone={load} />
+                      : u.tax?.document_path
+                        ? <button onClick={() => view(u.tax!)} className="text-white/45 hover:text-gold" title="View document"><Paperclip className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
+                        : <span className="text-white/20">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
-                      : r.justPaid
-                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertPayroll(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
-                        : <button onClick={() => markPayrollPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
+                    {saving === rowId ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
+                      : justPaid
+                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown(paidAt + GRACE_MS - now)}</span><button onClick={() => u.payroll ? revertPayroll(u.payroll) : revert(u.tax!)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                        : <button onClick={() => u.payroll ? markPayrollPaid(u.payroll) : markPaid(u.tax!)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
                   </td>
                 </tr>
-              ))}
-              {rows.map((r) => (
-                <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
-                  <td className="px-4 py-3 text-strong">{typeLabel(r.tax_type)}</td>
-                  <td className="px-4 py-3 text-standard">{r.period_label ?? "—"}</td>
-                  <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-strong">{money(Number(r.amount), r.currency ?? "GBP")}</td>
-                  <td className="px-4 py-3">
-                    {r.document_path
-                      ? <button onClick={() => view(r)} className="text-white/45 hover:text-gold" title="View document"><Paperclip className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
-                      : <span className="text-white/20">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {saving === r.id ? <BrandLoader size="sm" className="h-3 w-3 inline-block" />
-                      : r.justPaid
-                        ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revert(r)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
-                        : <button onClick={() => markPaid(r)} className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">Mark paid</button>}
-                  </td>
-                </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

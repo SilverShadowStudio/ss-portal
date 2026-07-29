@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -11,6 +11,8 @@ import { estimatePayroll, estimateMonthlyEmployerOnCosts, TAX_YEAR } from "@/lib
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
 import { BulkPayslipDropzone } from "./BulkPayslipDropzone";
 import { PayslipFlag } from "./PayslipFlag";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
 
 interface EmployeeRow {
   id: string;
@@ -95,6 +97,8 @@ export function DebtsSalaries() {
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [slips, setSlips] = useState<Payslip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [payslipFilter, setPayslipFilter] = useState<"all" | "missing" | "filed">("all");
 
   // Add-payslip dialog
   const [open, setOpen] = useState(false);
@@ -150,6 +154,23 @@ export function DebtsSalaries() {
     .filter((s) => Number(s.net) > 0 && (!s.period_end || s.period_end <= isoToday) && (!s.salary_paid_at || s.justPaid))
     .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? ""));
   const totalOwed = owed.filter((s) => !s.justPaid).reduce((sum, s) => sum + Number(s.net || 0), 0);
+
+  const hasDoc = (s: Payslip) => !!s.document_path || !!s.dropbox_path;
+  const salColumns = useMemo<SortableColumn<Payslip>[]>(() => [
+    { id: "employee", accessor: (s) => empName(s.account_id), type: "text" },
+    { id: "month", accessor: (s) => s.period_end, type: "date" },
+    { id: "net", accessor: (s) => Number(s.net ?? 0), type: "number" },
+  ], [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredOwed = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return owed.filter((s) => {
+      if (payslipFilter === "missing" && hasDoc(s)) return false;
+      if (payslipFilter === "filed" && !hasDoc(s)) return false;
+      if (q && !empName(s.account_id).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [owed, search, payslipFilter, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { sortedRows: sortedOwed, sortKey, sortDir, toggle } = useTableSort<Payslip>(filteredOwed, salColumns, { key: "month", dir: "asc" });
 
   async function markSalaryPaid(s: Payslip) {
     const iso = new Date().toISOString();
@@ -342,17 +363,27 @@ export function DebtsSalaries() {
           {owed.length === 0 ? (
             <div className="ssr-tile p-8 text-center text-recessive text-sm">No salary owed — every due month is paid. Import a tracker or add a payslip to populate.</div>
           ) : (
+            <>
+            <TableToolbar>
+              <TableSearch value={search} onChange={setSearch} placeholder="SEARCH EMPLOYEE" width="w-[240px]" />
+              <TableFilterSelect value={payslipFilter} onChange={(v) => setPayslipFilter(v as typeof payslipFilter)} width="w-[170px]"
+                options={[{ value: "all", label: "All payslips" }, { value: "missing", label: "Payslip missing" }, { value: "filed", label: "Payslip filed" }]} />
+            </TableToolbar>
             <div className="ssr-tile overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.08]">
-                    {["Employee", "Month", "Net owed", "Payslip", ""].map((h, i) => (
-                      <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 2 ? "text-right" : i === 3 ? "text-center" : ""}`}>{h}</th>
-                    ))}
+                    <SortTh id="employee" label="Employee" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="month" label="Month" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="net" label="Net owed" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
+                    <th className="px-4 py-3 text-center text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal">Payslip</th>
+                    <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
-                  {owed.map((s) => (
+                  {sortedOwed.length === 0 ? (
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-recessive text-sm">No months match.</td></tr>
+                  ) : sortedOwed.map((s) => (
                     <tr key={s.id} className={`border-b border-white/[0.05] last:border-0 ${s.justPaid ? "opacity-45" : ""}`}>
                       <td className="px-4 py-3 text-strong">{empName(s.account_id)}</td>
                       <td className="px-4 py-3 text-standard">{s.period_label ?? s.period_end ?? "—"}</td>
@@ -371,6 +402,7 @@ export function DebtsSalaries() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
           <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">
             Net take-home owed to employees. The PAYE/NI owed to HMRC shows in Taxes. {TAX_YEAR} provision = {money(totalProvision)}/yr.

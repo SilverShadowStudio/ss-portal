@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
+import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
+import { TableToolbar, TableSearch, SortTh } from "@/components/ui/TableToolbar";
 
 interface OH {
   id: string; supplier_name: string | null; description: string | null; category_code: string | null;
@@ -15,6 +17,14 @@ const money = (n: number, c = "GBP") =>
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 // A debt is overdue or due within a week (null due = treat as due now).
 const isDebtDue = (due: string | null) => !due || new Date(due).getTime() <= Date.now() + 7 * 86_400_000;
+const detailOf = (r: OH) => r.description || r.category_code || "";
+
+const COLUMNS: SortableColumn<OH>[] = [
+  { id: "supplier", accessor: (r) => r.supplier_name ?? "", type: "text" },
+  { id: "detail", accessor: (r) => detailOf(r), type: "text" },
+  { id: "due", accessor: (r) => r.due_date, type: "date" },
+  { id: "amount", accessor: (r) => Number(r.gross_amount ?? 0), type: "number" },
+];
 
 /** Debts → Overheads: the unpaid overhead bills already recorded in the P&L. */
 export function DebtsOverheads() {
@@ -22,8 +32,16 @@ export function DebtsOverheads() {
   const [rows, setRows] = useState<OH[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const grace = useGraceTimers();
   const now = useNowTicker(rows.some((r) => r.justPaid));
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => (r.supplier_name ?? "").toLowerCase().includes(q) || detailOf(r).toLowerCase().includes(q));
+  }, [rows, search]);
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<OH>(filtered, COLUMNS, { key: "due", dir: "asc" });
 
   async function load() {
     const { data } = await supabase.from("overheads")
@@ -67,17 +85,23 @@ export function DebtsOverheads() {
       ) : rows.length === 0 ? (
         <div className="ssr-tile p-10 text-center text-recessive text-sm">No unpaid overheads. Add them in P&amp;L → Money out.</div>
       ) : (
+        <>
+        <TableToolbar>
+          <TableSearch value={search} onChange={setSearch} placeholder="SEARCH SUPPLIER OR DETAIL" width="w-[280px]" />
+        </TableToolbar>
         <div className="ssr-tile overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/[0.08]">
-                {["Supplier", "Detail", "Due", "Amount", ""].map((h, i) => (
-                  <th key={i} className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal ${i === 3 ? "text-right" : ""}`}>{h}</th>
-                ))}
+                <SortTh id="supplier" label="Supplier" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="detail" label="Detail" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="due" label="Due" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                <SortTh id="amount" label="Amount" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {sortedRows.map((r) => (
                 <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
                   <td className="px-4 py-3 text-strong">{r.supplier_name ?? "—"}</td>
                   <td className="px-4 py-3 text-recessive text-[12px]">{r.description || r.category_code || "—"}</td>
@@ -95,6 +119,7 @@ export function DebtsOverheads() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </section>
   );
