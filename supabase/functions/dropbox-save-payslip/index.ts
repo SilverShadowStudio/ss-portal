@@ -1,7 +1,10 @@
 // Edge function: dropbox-save-payslip
-// Files a payslip PDF to Dropbox at:
-//   /03_Portal_Admin_Docs/04_Payroll/{First-Last}/{First-Last}_Payslip_{YYYY-MM}.pdf
-// and records dropbox_path on the payslip row. Admin-only. Non-fatal to callers.
+// Files a payslip into the employee's own agreement folder, next to their
+// contract + HMRC documents — the single "employee file":
+//   /03_Portal_Admin_Docs/01_Agreements/AGR002_Employees/EMP{NNN}_{First-Last}/Payslips/{First-Last}_Payslip_{YYYY-MM}.pdf
+// Reuses the member's numbered folder if it exists, else mints the next EMP
+// number (payroll-only people who have no agreement still get a folder).
+// Records dropbox_path on the payslip row. Admin-only. Non-fatal to callers.
 //
 // Body: { pdf_base64, mime?, employee_name, period_end (YYYY-MM-DD or -), payslip_id? }
 
@@ -15,7 +18,8 @@ const corsHeaders = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-const PAYROLL_ROOT = "/03_Portal_Admin_Docs/04_Payroll";
+const AGREEMENTS_ROOT = "/03_Portal_Admin_Docs/01_Agreements";
+const EMPLOYEES_CATEGORY = "AGR002_Employees";
 function slug(s: string): string {
   return (s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[/\\:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "Employee";
 }
@@ -38,6 +42,28 @@ async function rootNamespace(token: string): Promise<string | null> {
   const r = await fetch("https://api.dropboxapi.com/2/users/get_current_account", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) return null; return (await r.json())?.root_info?.root_namespace_id ?? null;
 }
+async function dropboxListFolders(token: string, ns: string | null, path: string): Promise<string[]> {
+  const headers = {
+    Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+    ...(ns ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", namespace_id: ns }) } : {}),
+  };
+  const names: string[] = [];
+  try {
+    let r = await fetch("https://api.dropboxapi.com/2/files/list_folder", { method: "POST", headers, body: JSON.stringify({ path, recursive: false, limit: 2000 }) });
+    if (!r.ok) return names;
+    let data = await r.json();
+    const collect = (d: { entries?: { ".tag": string; name: string }[] }) => { for (const e of d.entries ?? []) if (e[".tag"] === "folder") names.push(e.name); };
+    collect(data);
+    while (data.has_more) {
+      r = await fetch("https://api.dropboxapi.com/2/files/list_folder/continue", { method: "POST", headers, body: JSON.stringify({ cursor: data.cursor }) });
+      if (!r.ok) break;
+      data = await r.json();
+      collect(data);
+    }
+  } catch { /* best-effort */ }
+  return names;
+}
+
 async function dropboxUpload(token: string, ns: string | null, path: string, bytes: Uint8Array): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
   const r = await fetch("https://content.dropboxapi.com/2/files/upload", {
     method: "POST",
@@ -73,7 +99,6 @@ Deno.serve(async (req) => {
   const ymLabel = ym ? `${ym[1]}-${ym[2]}` : "undated";
   const nameSlug = slug(body.employee_name);
   const filename = `${nameSlug}_Payslip_${ymLabel}.pdf`;
-  const target = `${PAYROLL_ROOT}/${nameSlug}/${filename}`;
 
   const { data: conn } = await admin.from("dropbox_connections").select("id, access_token, refresh_token, token_expires_at").order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!conn) return json({ error: "no dropbox connection" }, 500);
@@ -81,6 +106,22 @@ Deno.serve(async (req) => {
   if (conn.token_expires_at && new Date(conn.token_expires_at as string).getTime() < Date.now()) token = (await refreshToken(conn as Record<string, string>, admin)) ?? "";
   if (!token) return json({ error: "dropbox token unavailable" }, 500);
   const ns = await rootNamespace(token);
+
+  // Find the employee's own numbered folder (EMP{NNN}_{First-Last}) next to
+  // their agreement + HMRC docs; reuse it on a name match, else mint the next
+  // EMP number so payroll-only people (no agreement) still get a folder.
+  const categoryPath = `${AGREEMENTS_ROOT}/${EMPLOYEES_CATEGORY}`;
+  const existing = await dropboxListFolders(token, ns, categoryPath);
+  const nameKey = nameSlug.toLowerCase();
+  const suffixOf = (f: string) => f.replace(/^EMP\d+_/i, "").toLowerCase();
+  let memberFolder = existing.find((f) => suffixOf(f) === nameKey)
+    ?? existing.find((f) => { const s = suffixOf(f); return s.includes(nameKey) || nameKey.includes(s); });
+  if (!memberFolder) {
+    let maxN = 0;
+    for (const f of existing) { const m = f.match(/^EMP(\d+)_/i); if (m) maxN = Math.max(maxN, parseInt(m[1], 10)); }
+    memberFolder = `EMP${String(maxN + 1).padStart(3, "0")}_${nameSlug}`;
+  }
+  const target = `${categoryPath}/${memberFolder}/Payslips/${filename}`;
 
   const up = await dropboxUpload(token, ns, target, bytes);
   if (!up.ok) return json({ error: up.error }, 502);
