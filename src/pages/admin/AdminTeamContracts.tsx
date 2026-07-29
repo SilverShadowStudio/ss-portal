@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, FileText, MoreHorizontal, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, FileText, MoreHorizontal, Trash2, Pencil, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
@@ -42,6 +42,8 @@ interface EngagementContract {
   created_at: string;
   sent_at: string | null;
   signed_at: string | null;
+  storage_path: string | null;
+  dropbox_path: string | null;
 }
 
 const CONTRACT_STATUS: Record<string, { label: string; cls: string }> = {
@@ -69,6 +71,9 @@ export default function AdminTeamContracts() {
   const [deletingContractId, setDeletingContractId] = useState<string | null>(null);
   const [editingContract, setEditingContract] = useState<TeamContractRow | null>(null);
   const [contractDialogOpen, setContractDialogOpen] = useState(false);
+  const [busyDocId, setBusyDocId] = useState<string | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
 
   // Accordion — single section open at a time. Default-picked once after
   // the first data load: member with the most recent signed agreement.
@@ -99,7 +104,7 @@ export default function AdminTeamContracts() {
   async function fetchContracts() {
     const { data, error } = await supabase
       .from("team_contracts")
-      .select("id, entity_type, individual_full_name, company_name, subject_line, status, created_at, sent_at, signed_at")
+      .select("id, entity_type, individual_full_name, company_name, subject_line, status, created_at, sent_at, signed_at, storage_path, dropbox_path")
       .order("created_at", { ascending: false });
     if (!error) setContracts((data || []) as EngagementContract[]);
   }
@@ -133,6 +138,45 @@ export default function AdminTeamContracts() {
     } finally {
       setDeletingContractId(null);
     }
+  }
+
+  // ── Uploaded-document management (rename / replace / delete) with Dropbox sync ──
+  async function manageDoc(contractId: string, action: "rename" | "delete" | "replace", extra: Record<string, unknown> = {}): Promise<boolean> {
+    setBusyDocId(contractId);
+    try {
+      const { data, error } = await supabase.functions.invoke("team-document-manage", { body: { contract_id: contractId, action, ...extra } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return true;
+    } catch (e: any) {
+      toast({ title: `Couldn't ${action} the document`, description: e?.message, variant: "destructive" });
+      return false;
+    } finally {
+      setBusyDocId(null);
+    }
+  }
+  async function handleRenameDoc(c: EngagementContract) {
+    const title = window.prompt("Rename document (also renames the file on Dropbox)", c.subject_line || "");
+    if (title == null || !title.trim() || title.trim() === c.subject_line) return;
+    if (await manageDoc(c.id, "rename", { new_title: title.trim() })) { toast({ title: "Renamed" }); fetchContracts(); }
+  }
+  async function handleDeleteDoc(c: EngagementContract) {
+    const who = c.entity_type === "company" ? (c.company_name || "this company") : (c.individual_full_name || "this member");
+    if (!window.confirm(`Delete "${c.subject_line}" for ${who}? This removes it from the portal AND Dropbox. This cannot be undone.`)) return;
+    if (await manageDoc(c.id, "delete")) { toast({ title: "Document deleted" }); fetchContracts(); }
+  }
+  function triggerReplace(id: string) { setReplaceTarget(id); replaceInputRef.current?.click(); }
+  async function onReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = "";
+    const target = replaceTarget; setReplaceTarget(null);
+    if (!file || !target) return;
+    const b64 = await new Promise<string>((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => { const s = r.result as string; const c = s.indexOf(","); res(c >= 0 ? s.slice(c + 1) : s); };
+      r.onerror = () => rej(r.error);
+      r.readAsDataURL(file);
+    });
+    if (await manageDoc(target, "replace", { file_base64: b64, file_mime: file.type })) toast({ title: "Document replaced" });
   }
 
   async function handleDownload(doc: FreelancerDoc) {
@@ -263,7 +307,23 @@ export default function AdminTeamContracts() {
                   <span className={`shrink-0 font-sans uppercase ${st.cls}`} style={{ fontSize: 10, letterSpacing: "0.16em" }}>
                     {st.label}
                   </span>
-                  {c.status === "draft" && (
+                  {c.storage_path ? (
+                    busyDocId === c.id ? (
+                      <BrandLoader size="sm" className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <div className="shrink-0 flex items-center gap-3">
+                        <button onClick={(e) => { e.stopPropagation(); handleRenameDoc(c); }} className="text-foreground/30 hover:text-gold transition-colors" title="Rename (syncs to Dropbox)">
+                          <Pencil style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); triggerReplace(c.id); }} className="text-foreground/30 hover:text-gold transition-colors" title="Replace file (syncs to Dropbox)">
+                          <Upload style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteDoc(c); }} className="text-foreground/30 hover:text-rose-400 transition-colors" title="Delete (removes from Dropbox too)">
+                          <Trash2 style={{ width: 13, height: 13 }} strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    )
+                  ) : c.status === "draft" ? (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteContract(c); }}
                       disabled={deletingContractId === c.id}
@@ -272,13 +332,15 @@ export default function AdminTeamContracts() {
                     >
                       <Trash2 style={{ width: 13, height: 13 }} strokeWidth={1.5} />
                     </button>
-                  )}
+                  ) : null}
                 </div>
               );
             })}
           </div>
         )}
       </section>
+
+      <input ref={replaceInputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={onReplaceFile} />
 
       <div className="mb-5 flex items-center gap-3">
         <span className="h-px w-6 bg-gold-muted" />
