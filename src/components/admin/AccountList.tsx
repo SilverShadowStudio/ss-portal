@@ -23,6 +23,7 @@ import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -1028,7 +1029,7 @@ export function AccountList({
           <DialogContent
             className={
               isTeamOnly
-                ? "sm:max-w-md"
+                ? "sm:max-w-md max-h-[90vh] overflow-y-auto"
                 : "max-h-[85vh] overflow-y-auto sm:max-w-2xl"
             }
           >
@@ -1167,36 +1168,56 @@ export function AccountList({
                 </>
               ) : teamAddMode === "presigned" ? (
                 <>
-                  <DialogHeader>
-                    <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add member with existing agreement</DialogTitle>
+                  <DialogHeader className="space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px w-10 bg-gold-muted" />
+                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Existing agreement</DialogTitle>
+                    </div>
                   </DialogHeader>
-                  <p className="text-sm text-foreground/45 mt-3">
+                  <p className="mt-3 text-sm text-foreground/45">
                     Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite.
                   </p>
-                  <div className="space-y-4 pt-3">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Engagement *</label>
-                      <select
-                        value={presignedEmploymentType}
-                        onChange={(e) => setPresignedEmploymentType(e.target.value as "freelancer" | "employee")}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                      >
-                        <option value="freelancer">Freelancer — paid per work (Airtable self-bills)</option>
-                        <option value="employee">Employee — fixed salary (payroll)</option>
-                      </select>
+
+                  <div className="space-y-6 pt-4">
+                    {/* Engagement — segmented toggle */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Engagement</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          { v: "freelancer", t: "Freelancer", d: "Paid per work" },
+                          { v: "employee", t: "Employee", d: "Fixed salary" },
+                        ] as const).map((o) => {
+                          const on = presignedEmploymentType === o.v;
+                          return (
+                            <button
+                              key={o.v}
+                              type="button"
+                              onClick={() => setPresignedEmploymentType(o.v)}
+                              className={`rounded-sm border px-3.5 py-3 text-left transition-colors ${on ? "border-[#C9A96A]/70 bg-[#C9A96A]/[0.08]" : "border-white/10 hover:border-[#C9A96A]/40 hover:bg-white/[0.02]"}`}
+                            >
+                              <div className={`text-sm ${on ? "text-[#ecd39c]" : "text-foreground/80"}`}>{o.t}</div>
+                              <div className="text-[11px] text-foreground/40">{o.d}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Contract first — read it to prefill everything below */}
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Contract PDF *</label>
+                    <div className="space-y-2">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Signed contract</span>
                       <div
-                        className="flex items-center gap-3 rounded-sm border border-input px-3 py-2.5 cursor-pointer hover:border-gold/50 transition-colors"
                         onClick={() => document.getElementById("presigned-pdf-input")?.click()}
+                        className={`cursor-pointer rounded-sm border border-dashed px-4 py-4 transition-colors ${presignedPdfFile ? "border-[#C9A96A]/50 bg-white/[0.02]" : "border-white/15 hover:border-[#C9A96A]/45 hover:bg-white/[0.02]"}`}
                       >
-                        <span className="text-sm text-muted-foreground flex-1 truncate">
-                          {presignedPdfFile ? presignedPdfFile.name : "Click to select PDF…"}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">Browse</span>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className={`flex-1 truncate text-sm ${presignedPdfFile ? "text-foreground" : "text-foreground/45"}`}>
+                            {presignedPdfFile ? presignedPdfFile.name : "Drop the signed contract, or click to browse"}
+                          </span>
+                          <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-foreground/40">
+                            {presignedPdfFile ? `${(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB` : "PDF"}
+                          </span>
+                        </div>
                       </div>
                       <input
                         id="presigned-pdf-input"
@@ -1206,15 +1227,12 @@ export function AccountList({
                         onChange={(e) => { setPresignedPdfFile(e.target.files?.[0] ?? null); setAgreementParsed(false); }}
                       />
                       {presignedPdfFile && (
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <p className="text-[10px] text-muted-foreground">
-                            {(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
+                        <div className="flex justify-end pt-1">
                           <button
                             type="button"
                             onClick={handleParseAgreement}
                             disabled={isParsingAgreement}
-                            className="rounded-sm bg-[#C9A96A] px-4 py-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-black transition-colors hover:bg-[#ecd39c] disabled:opacity-40"
+                            className="rounded-sm bg-[#C9A96A] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.16em] text-black transition-colors hover:bg-[#ecd39c] disabled:opacity-40"
                           >
                             {isParsingAgreement ? "Reading…" : agreementParsed ? "Re-read agreement" : "Read agreement to prefill"}
                           </button>
@@ -1223,85 +1241,59 @@ export function AccountList({
                     </div>
 
                     {/* Details — filled from the agreement, to review before sending */}
-                    <div className="flex items-center gap-3 pt-1">
-                      <div className="h-px w-6 bg-gold-muted" />
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                        {agreementParsed ? "From the agreement — check before sending" : "Member details"}
-                      </span>
-                    </div>
-                    {presignedEmploymentType === "employee" && (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Position *</label>
-                          <Input
-                            value={presignedPosition}
-                            onChange={(e) => setPresignedPosition(e.target.value)}
-                            placeholder="Production Director"
-                          />
+                    <div className="space-y-4 border-t border-white/[0.07] pt-5">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px w-6 bg-gold-muted" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">
+                          {agreementParsed ? "From the agreement — check before sending" : "Member details"}
+                        </span>
+                      </div>
+
+                      {presignedEmploymentType === "employee" && (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Position</Label>
+                            <Input value={presignedPosition} onChange={(e) => setPresignedPosition(e.target.value)} placeholder="Production Director" className="rounded-sm" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Gross annual salary (£)</Label>
+                            <Input inputMode="decimal" value={presignedSalary} onChange={(e) => setPresignedSalary(e.target.value)} placeholder="45000" className="rounded-sm" />
+                            <p className="text-[10px] text-foreground/40">Gross — the portal derives net &amp; true cost from payslips.</p>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Gross annual salary * <span className="opacity-50">(£)</span></label>
-                          <Input
-                            inputMode="decimal"
-                            value={presignedSalary}
-                            onChange={(e) => setPresignedSalary(e.target.value)}
-                            placeholder="45000"
-                          />
-                          <p className="text-[10px] text-muted-foreground/70">Gross — the portal derives net &amp; true cost from payslips.</p>
+                      )}
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">First name</Label>
+                          <Input value={presignedFirstName} onChange={(e) => setPresignedFirstName(e.target.value)} placeholder="Jane" className="rounded-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Last name</Label>
+                          <Input value={presignedLastName} onChange={(e) => setPresignedLastName(e.target.value)} placeholder="Smith" className="rounded-sm" />
                         </div>
                       </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">First name *</label>
-                        <Input
-                          value={presignedFirstName}
-                          onChange={(e) => setPresignedFirstName(e.target.value)}
-                          placeholder="Jane"
-                        />
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Email</Label>
+                          <Input type="email" value={presignedEmail} onChange={(e) => setPresignedEmail(e.target.value)} placeholder="jane@company.com" className="rounded-sm" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Date signed</Label>
+                          <Input type="date" value={presignedSigningDate} onChange={(e) => setPresignedSigningDate(e.target.value)} className="rounded-sm" />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Last name *</label>
-                        <Input
-                          value={presignedLastName}
-                          onChange={(e) => setPresignedLastName(e.target.value)}
-                          placeholder="Smith"
-                        />
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Contract title <span className="opacity-50">(optional)</span></Label>
+                        <Input value={presignedSubjectLine} onChange={(e) => setPresignedSubjectLine(e.target.value)} placeholder="e.g. Scene Manager Engagement" className="rounded-sm" />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Email *</label>
-                        <Input
-                          type="email"
-                          value={presignedEmail}
-                          onChange={(e) => setPresignedEmail(e.target.value)}
-                          placeholder="jane@company.com"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Date signed *</label>
-                        <Input
-                          type="date"
-                          value={presignedSigningDate}
-                          onChange={(e) => setPresignedSigningDate(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Contract title <span className="opacity-50">(optional)</span></label>
-                      <Input
-                        value={presignedSubjectLine}
-                        onChange={(e) => setPresignedSubjectLine(e.target.value)}
-                        placeholder="e.g. Scene Manager Engagement"
-                      />
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isPresignedUploading} className="text-muted-foreground">
+
+                    <div className="flex items-center gap-4 border-t border-white/[0.07] pt-4">
+                      <button type="button" onClick={() => setTeamAddMode("choice")} disabled={isPresignedUploading} className="text-sm text-recessive transition-colors hover:text-standard disabled:opacity-50">
                         Back
-                      </Button>
-                      <Button onClick={handlePresignedUpload} disabled={isPresignedUploading} className="flex-1">
-                        {isPresignedUploading ? "Uploading…" : "Upload and send invite"}
+                      </button>
+                      <Button onClick={handlePresignedUpload} disabled={isPresignedUploading} className="ml-auto flex-1 rounded-sm">
+                        {isPresignedUploading ? "Uploading…" : "Upload & send invite"}
                       </Button>
                     </div>
                   </div>
