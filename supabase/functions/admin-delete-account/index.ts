@@ -48,8 +48,14 @@ async function dbxDelete(token: string, ns: string | null, path: string): Promis
 async function cleanupAccountFiles(admin: ReturnType<typeof createClient>, accountId: string): Promise<{ storage: number; dropbox: number }> {
   const result = { storage: 0, dropbox: 0 }
   try {
-    const { data: contracts } = await admin.from('team_contracts').select('storage_path, dropbox_path').eq('account_id', accountId)
-    const storagePaths = (contracts ?? []).map((c: any) => c.storage_path).filter(Boolean) as string[]
+    const [{ data: contracts }, { data: fdocs }] = await Promise.all([
+      admin.from('team_contracts').select('storage_path, dropbox_path').eq('account_id', accountId),
+      admin.from('freelancer_documents').select('pdf_url').eq('account_id', accountId),
+    ])
+    const storagePaths = [
+      ...(contracts ?? []).map((c: any) => c.storage_path),
+      ...(fdocs ?? []).map((d: any) => d.pdf_url),
+    ].filter(Boolean) as string[]
     const dropboxPaths = (contracts ?? []).map((c: any) => c.dropbox_path).filter(Boolean) as string[]
     if (storagePaths.length) {
       await admin.storage.from('freelancer-documents').remove(storagePaths).then(() => { result.storage = storagePaths.length }, () => {})

@@ -1016,7 +1016,12 @@ export function AccountList({
       const { data, error } = await supabase.functions.invoke("admin-delete-account", {
         body: { account_id: accountId },
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message || "Delete failed");
+      if (error || data?.error) {
+        let msg = data?.error || error?.message || "Delete failed";
+        // FunctionsHttpError carries the response body — surface the real reason.
+        try { const b = await (error as any)?.context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep msg */ }
+        throw new Error(msg);
+      }
       toast({ title: "Account deleted", description: companyName });
       fetchAccounts();
     } catch (e: any) {
