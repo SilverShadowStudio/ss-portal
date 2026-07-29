@@ -296,7 +296,14 @@ export default function Documents() {
         // The official filename is the Dropbox file's basename.
         official_name: (c.dropbox_path as string | null)?.split("/").pop() ?? null,
       }));
-      setFreelancerDocuments([...((fdocs || []) as FreelancerDocument[]), ...contractDocs]);
+      // Chronological — oldest signed document at the top.
+      const merged = [...((fdocs || []) as FreelancerDocument[]), ...contractDocs];
+      merged.sort((a, b) => {
+        const ta = a.signed_at ? new Date(a.signed_at).getTime() : Infinity;
+        const tb = b.signed_at ? new Date(b.signed_at).getTime() : Infinity;
+        return ta - tb;
+      });
+      setFreelancerDocuments(merged);
     } catch {
       toast({ title: "Could not load documents", variant: "destructive" });
     } finally {
