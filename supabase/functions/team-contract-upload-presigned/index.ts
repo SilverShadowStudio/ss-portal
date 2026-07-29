@@ -23,10 +23,12 @@ import { buildInviteEmailHtml, EMAIL_INVITE_DEFAULTS } from "../_shared/emailTem
 
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") || "https://portal.silvershadowstudio.com";
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
-// Signed team agreements are filed here, split by engagement type, alongside the
-// rest of the studio's admin docs. Filename mirrors Fred's own convention:
-//   {First-Last}_Agreement-{Employment|Freelance}_{YYYY-MM-DD}_SIGNED.pdf
-const DROPBOX_CONTRACTS_ROOT = "/03_Portal_Admin_Docs/01_Team_Contracts";
+// Signed team agreements are filed into the studio's Agreements tree, in a
+// per-member numbered folder matching the existing convention:
+//   .../01_Agreements/AGR002_Employees/EMP{NNN}_{First-Last}/{file}
+//   .../01_Agreements/AGR003_Freelancers/FREE{NNN}_{First-Last}/{file}
+// File itself: {First-Last}_Agreement-{Employment|Freelance}_{YYYY-MM-DD}_SIGNED.pdf
+const DROPBOX_AGREEMENTS_ROOT = "/03_Portal_Admin_Docs/01_Agreements";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,6 +82,35 @@ async function dropboxUpload(token: string, ns: string | null, path: string, byt
 }
 function sanitize(s: string): string { return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[/\\:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "Member"; }
 
+/** List the immediate subfolder names of a Dropbox path (empty if it doesn't exist). */
+async function dropboxListFolders(token: string, ns: string | null, path: string): Promise<string[]> {
+  const headers = {
+    Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+    ...(ns ? { "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "namespace_id", namespace_id: ns }) } : {}),
+  };
+  const names: string[] = [];
+  try {
+    let r = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
+      method: "POST", headers, body: JSON.stringify({ path, recursive: false, limit: 2000 }),
+    });
+    if (!r.ok) return names; // folder may not exist yet
+    let data = await r.json();
+    const collect = (d: { entries?: { ".tag": string; name: string }[] }) => {
+      for (const e of d.entries ?? []) if (e[".tag"] === "folder") names.push(e.name);
+    };
+    collect(data);
+    while (data.has_more) {
+      r = await fetch("https://api.dropboxapi.com/2/files/list_folder/continue", {
+        method: "POST", headers, body: JSON.stringify({ cursor: data.cursor }),
+      });
+      if (!r.ok) break;
+      data = await r.json();
+      collect(data);
+    }
+  } catch { /* best-effort */ }
+  return names;
+}
+
 // File a signed agreement PDF to Dropbox. Non-fatal — a Dropbox hiccup must not
 // fail the upload (the file already lives in Supabase storage).
 async function fileContractToDropbox(
@@ -97,10 +128,32 @@ async function fileContractToDropbox(
   }
   if (!token) return { error: "dropbox token unavailable" };
   const ns = await rootNamespace(token);
-  const kind = opts.employmentType === "employee" ? "Employees" : "Freelancers";
-  const typeLabel = opts.employmentType === "employee" ? "Employment" : "Freelance";
-  const filename = `${sanitize(opts.name)}_Agreement-${typeLabel}_${opts.signingDate}_SIGNED.pdf`;
-  const up = await dropboxUpload(token, ns, `${DROPBOX_CONTRACTS_ROOT}/${kind}/${filename}`, pdfBytes);
+
+  const isEmp = opts.employmentType === "employee";
+  const category = isEmp ? "AGR002_Employees" : "AGR003_Freelancers";
+  const prefix = isEmp ? "EMP" : "FREE";
+  const typeLabel = isEmp ? "Employment" : "Freelance";
+  const nameSlug = sanitize(opts.name); // e.g. "Kieran-Tait"
+  const categoryPath = `${DROPBOX_AGREEMENTS_ROOT}/${category}`;
+
+  // Reuse this member's existing numbered folder if present, else mint the next
+  // number (EMP003_… / FREE004_…) from the highest already filed.
+  const folders = await dropboxListFolders(token, ns, categoryPath);
+  const re = new RegExp(`^${prefix}(\\d+)_(.+)$`, "i");
+  let memberFolder: string | null = null;
+  let maxNum = 0;
+  for (const f of folders) {
+    const m = f.match(re);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (n > maxNum) maxNum = n;
+    if (m[2].toLowerCase() === nameSlug.toLowerCase()) memberFolder = f; // same person → reuse
+  }
+  if (!memberFolder) memberFolder = `${prefix}${String(maxNum + 1).padStart(3, "0")}_${nameSlug}`;
+
+  const filename = `${nameSlug}_Agreement-${typeLabel}_${opts.signingDate}_SIGNED.pdf`;
+  // Dropbox auto-creates the member folder on upload.
+  const up = await dropboxUpload(token, ns, `${categoryPath}/${memberFolder}/${filename}`, pdfBytes);
   return up.ok ? { path: up.path } : { error: up.error };
 }
 
