@@ -30,23 +30,24 @@ export function CurrencyAmount({
   const c = fx.convert(amount, cur, rateDate);
   const sym = CURRENCY_SYMBOL[cur] ?? cur;
 
-  // Rate unavailable (offline / not yet loaded) — show the original, quietly.
+  // Rate unavailable (still loading) — show a GBP placeholder-free original,
+  // marked so it's clearly the source currency, not a final figure.
   if (c.gbp == null || c.rate == null) {
-    return <span className={`tabular-nums text-[#8FB0C9] ${className}`} title={`${cur} — conversion unavailable`}>{formatMoney(amount, cur)}</span>;
+    return <span className={`tabular-nums text-[#8FB0C9] ${className}`} title={`${cur} — converting…`}>{formatMoney(amount, cur)}</span>;
   }
 
   return (
-    <span className={`inline-flex items-baseline gap-1.5 tabular-nums ${className}`}>
-      {formatMoney(c.gbp, "GBP")}
+    <span className={`inline-flex items-baseline tabular-nums ${className}`}>
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
             onClick={(e) => e.stopPropagation()}
-            className="text-[#8FB0C9] hover:text-[#b9d4e6] transition-colors text-[11px] leading-none"
-            title={`Converted from ${cur} — click for the calculation`}
+            title={`Converted live from ${cur} — click for the calculation`}
+            className="group inline-flex items-baseline gap-0.5 tabular-nums text-inherit transition-colors hover:text-[#b9d4e6]"
           >
-            {sym}
+            <span className="border-b border-dotted border-[#8FB0C9]/50 group-hover:border-[#8FB0C9]">{formatMoney(c.gbp, "GBP")}</span>
+            <sup className="text-[9px] font-medium leading-none text-[#8FB0C9]">{sym}</sup>
           </button>
         </PopoverTrigger>
         <PopoverContent

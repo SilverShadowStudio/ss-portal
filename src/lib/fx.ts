@@ -1,11 +1,11 @@
 // Foreign-exchange to GBP for the finance module. Rates are the ECB daily
-// reference rates (via Frankfurter, api.frankfurter.app) — the set HMRC and UK
-// accountants accept. We fetch one daily time-series per foreign currency
-// (earliest record → today) so every historical date resolves locally, plus the
-// latest rate for live/unpaid conversions. Cached in localStorage for the day.
+// reference rates (the set HMRC and UK accountants accept), cached server-side
+// in the fx_rates table by the fx-sync edge function — the browser reads the
+// table (reliable) rather than a flaky third-party API.
 //
 // Policy (Fred): PAST/paid amounts lock to the rate on their date; FUTURE/unpaid
 // amounts use the live rate. Callers pass the lock date, or null for live.
+import { supabase } from "@/integrations/supabase/client";
 
 export const BASE = "GBP";
 export const FOREIGN = ["EUR", "USD"] as const;
@@ -21,58 +21,52 @@ export interface FxSeries {
 }
 export type FxData = Record<string, FxSeries>; // keyed by foreign currency
 
-const CACHE_KEY = "ssfx-v1";
 const isForeign = (c: string) => c === "EUR" || c === "USD";
-
-interface CachePayload { day: string; start: string; data: FxData }
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
+function isoDaysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+}
 
-async function fetchSeries(currency: string, start: string, end: string): Promise<FxSeries | null> {
-  try {
-    const url = `https://api.frankfurter.dev/v1/${start}..${end}?base=${currency}&symbols=${BASE}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const body = await res.json() as { rates?: Record<string, Record<string, number>> };
-    const entries = Object.entries(body.rates ?? {})
-      .map(([d, r]) => [d, r?.[BASE]] as [string, number | undefined])
-      .filter((e): e is [string, number] => typeof e[1] === "number")
-      .sort((a, b) => a[0].localeCompare(b[0]));
-    if (entries.length === 0) return null;
-    return {
-      dates: entries.map((e) => e[0]),
-      rates: entries.map((e) => e[1]),
-      latest: entries[entries.length - 1][1],
-      latestDate: entries[entries.length - 1][0],
-    };
-  } catch {
-    return null;
+async function readTable(): Promise<FxData> {
+  const { data } = await supabase
+    .from("fx_rates")
+    .select("base, rate_date, rate")
+    .in("base", FOREIGN as unknown as string[])
+    .order("rate_date", { ascending: true });
+  const out: FxData = {};
+  for (const row of (data ?? []) as { base: string; rate_date: string; rate: number }[]) {
+    const s = out[row.base] ?? (out[row.base] = { dates: [], rates: [], latest: 0, latestDate: "" });
+    s.dates.push(row.rate_date);
+    s.rates.push(Number(row.rate));
   }
+  for (const c of Object.keys(out)) {
+    const s = out[c];
+    s.latest = s.rates[s.rates.length - 1];
+    s.latestDate = s.dates[s.dates.length - 1];
+  }
+  return out;
 }
 
 /**
- * Load ECB→GBP series for the foreign currencies from `start` to today.
- * Cached per-day in localStorage. Returns {} if the network/API is unavailable
- * (callers fall back to showing the original currency untouched).
+ * Load ECB→GBP series from the cached fx_rates table. If the cache is empty or
+ * more than a few days stale (weekends: ECB skips Sat/Sun), trigger fx-sync and
+ * re-read. Returns {} only if the table is empty and the sync failed — callers
+ * then fall back to showing the original currency untouched.
  */
-export async function loadFxData(start = "2024-01-01"): Promise<FxData> {
-  const day = todayISO();
-  try {
-    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null") as CachePayload | null;
-    if (cached && cached.day === day && cached.start <= start) return cached.data;
-  } catch { /* ignore */ }
-
-  const out: FxData = {};
-  await Promise.all(FOREIGN.map(async (cur) => {
-    const s = await fetchSeries(cur, start, day);
-    if (s) out[cur] = s;
-  }));
-  if (Object.keys(out).length > 0) {
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ day, start, data: out } as CachePayload)); } catch { /* quota */ }
+export async function loadFxData(): Promise<FxData> {
+  let data = await readTable();
+  const cutoff = isoDaysAgo(4);
+  const stale = FOREIGN.some((c) => !data[c] || data[c].latestDate < cutoff);
+  if (Object.keys(data).length === 0 || stale) {
+    try {
+      await supabase.functions.invoke("fx-sync", { body: {} });
+      data = await readTable();
+    } catch { /* keep whatever we have */ }
   }
-  return out;
+  return data;
 }
 
 /** GBP per 1 unit of `currency` on/at `dateISO` (null = live/latest). null if unknown. */
