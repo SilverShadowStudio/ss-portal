@@ -35,6 +35,9 @@ export interface ProvisionResult {
   profileId: string;
   first: string;
   last: string;
+  /** True when the freelancer profile already existed — i.e. a returning member
+   *  (e.g. uploading a second/additional document), not a brand-new one. */
+  profileExisted: boolean;
 }
 
 // Provisions (or reuses) the auth user, team account, account membership, and
@@ -68,6 +71,7 @@ export async function provisionTeamMember(
   let userId: string;
   let accountId: string;
   let profileId: string;
+  let profileExisted = false;
 
   try {
     // Step 1 — auth user
@@ -116,6 +120,7 @@ export async function provisionTeamMember(
       .eq("user_id", userId)
       .maybeSingle();
 
+    profileExisted = !!existingProfile?.id;
     if (existingProfile?.id) {
       profileId = existingProfile.id as string;
     } else {
@@ -133,5 +138,5 @@ export async function provisionTeamMember(
     throw e;
   }
 
-  return { userId, accountId, profileId, first, last };
+  return { userId, accountId, profileId, first, last, profileExisted };
 }

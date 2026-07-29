@@ -174,6 +174,8 @@ interface FreelancerDocument {
   signed_at: string | null;
   signed_by_name: string | null;
   pdf_url: string | null;
+  /** Per-document title (from team_contracts.subject_line); overrides the label. */
+  title?: string | null;
 }
 
 export default function Documents() {
@@ -276,7 +278,7 @@ export default function Documents() {
           .order("document_type", { ascending: true }),
         supabase
           .from("team_contracts")
-          .select("id, signed_at, signed_by_name, storage_path")
+          .select("id, subject_line, signed_at, signed_by_name, storage_path")
           .eq("status", "signed")
           .not("storage_path", "is", null),
       ]);
@@ -286,6 +288,7 @@ export default function Documents() {
         signed_at: (c.signed_at as string) ?? null,
         signed_by_name: (c.signed_by_name as string) ?? null,
         pdf_url: c.storage_path as string,
+        title: (c.subject_line as string) ?? null,
       }));
       setFreelancerDocuments([...((fdocs || []) as FreelancerDocument[]), ...contractDocs]);
     } catch {
@@ -417,7 +420,7 @@ export default function Documents() {
                   <FileText className="shrink-0 text-gold" style={{ width: 14, height: 14 }} strokeWidth={1.5} />
                   <div className="flex-1 min-w-0">
                     <p className="text-standard" style={{ fontSize: 14 }}>
-                      {DOC_LABELS[doc.document_type] ?? doc.document_type}
+                      {doc.title || DOC_LABELS[doc.document_type] || doc.document_type}
                     </p>
                     <p className="font-sans uppercase text-white/40 mt-1" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
                       {doc.signed_at ? `Signed ${formatDate(doc.signed_at)}` : ""}

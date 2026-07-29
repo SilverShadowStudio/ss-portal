@@ -116,7 +116,7 @@ async function dropboxListFolders(token: string, ns: string | null, path: string
 async function fileContractToDropbox(
   admin: ReturnType<typeof createClient>,
   pdfBytes: Uint8Array,
-  opts: { name: string; employmentType: string; signingDate: string },
+  opts: { name: string; employmentType: string; signingDate: string; docTitle: string },
 ): Promise<{ path: string } | { error: string }> {
   const { data: conn } = await admin.from("dropbox_connections")
     .select("id, access_token, refresh_token, token_expires_at")
@@ -132,7 +132,7 @@ async function fileContractToDropbox(
   const isEmp = opts.employmentType === "employee";
   const category = isEmp ? "AGR002_Employees" : "AGR003_Freelancers";
   const prefix = isEmp ? "EMP" : "FREE";
-  const typeLabel = isEmp ? "Employment" : "Freelance";
+  const docSlug = sanitize(opts.docTitle) || "Agreement"; // e.g. "Variation-Letter"
   const nameSlug = sanitize(opts.name); // e.g. "Kieran-Tait"
   const categoryPath = `${DROPBOX_AGREEMENTS_ROOT}/${category}`;
 
@@ -151,7 +151,7 @@ async function fileContractToDropbox(
   }
   if (!memberFolder) memberFolder = `${prefix}${String(maxNum + 1).padStart(3, "0")}_${nameSlug}`;
 
-  const filename = `${nameSlug}_Agreement-${typeLabel}_${opts.signingDate}_SIGNED.pdf`;
+  const filename = `${nameSlug}_${docSlug}_${opts.signingDate}_SIGNED.pdf`;
   // Dropbox auto-creates the member folder on upload.
   const up = await dropboxUpload(token, ns, `${categoryPath}/${memberFolder}/${filename}`, pdfBytes);
   return up.ok ? { path: up.path } : { error: up.error };
@@ -184,11 +184,15 @@ Deno.serve(async (req) => {
   const name = (formData.get("name") as string | null)?.trim();
   const signedByName = (formData.get("signed_by_name") as string | null)?.trim();
   const signingDate = (formData.get("signing_date") as string | null)?.trim();
-  const subjectLine = (formData.get("subject_line") as string | null)?.trim() || "Pre-signed engagement contract";
+  const subjectLineRaw = (formData.get("subject_line") as string | null)?.trim();
   const employmentType = ((formData.get("employment_type") as string | null)?.trim() || "freelancer") === "employee" ? "employee" : "freelancer";
   const position = (formData.get("position") as string | null)?.trim() || null;
   const grossSalaryRaw = (formData.get("gross_salary_annual") as string | null)?.trim();
   const grossSalaryAnnual = grossSalaryRaw ? Number(grossSalaryRaw) : null;
+  // The document's own title — names the Dropbox file and labels it in the
+  // member's Documents. A member can have several (Employment Agreement,
+  // Variation Letter, Equipment Loan Agreement, …). Defaults by engagement.
+  const docTitle = subjectLineRaw || (employmentType === "employee" ? "Employment Agreement" : "Freelance Services Agreement");
   const pdfFile = formData.get("pdf") as File | null;
 
   // Required field validation
@@ -212,6 +216,9 @@ Deno.serve(async (req) => {
   let userId: string;
   let accountId: string;
   let profileId: string;
+  // A returning member (adding another document) — skip re-inviting, re-setting
+  // their employment, and forcing onboarding again.
+  let isExistingMember = false;
   try {
     const provisioned = await provisionTeamMember(admin, {
       email,
@@ -222,29 +229,32 @@ Deno.serve(async (req) => {
     userId = provisioned.userId;
     accountId = provisioned.accountId;
     profileId = provisioned.profileId;
+    isExistingMember = provisioned.profileExisted;
   } catch (e) {
     console.error("[team-contract-upload-presigned] provisioning failed:", e);
     return json({ error: (e as Error)?.message ?? "Provisioning failed" }, 500);
   }
 
-  // ── Persist employment classification on the account ────────────────────────
-  // Freelancer = paid per Airtable self-bills; Employee = fixed salary (payroll),
-  // which feeds Debts → Salaries. Non-fatal: capture failure shouldn't block the
-  // contract upload.
-  await admin.from("accounts").update({
-    team_role: position ?? undefined,
-    employment_type: employmentType,
-    position: employmentType === "employee" ? position : null,
-    gross_salary_annual: employmentType === "employee" ? grossSalaryAnnual : null,
-    salary_start_date: employmentType === "employee" ? signingDate : null,
-  }).eq("id", accountId).then(() => {}, (e) => console.error("[team-contract-upload-presigned] account employment update failed:", e));
+  // For a NEW member only: set their employment classification and mark them for
+  // the proofread-onboarding step. A returning member (second document) keeps
+  // their existing setup untouched — this upload just adds a document.
+  if (!isExistingMember) {
+    // Freelancer = paid per Airtable self-bills; Employee = fixed salary (payroll).
+    await admin.from("accounts").update({
+      team_role: position ?? undefined,
+      employment_type: employmentType,
+      position: employmentType === "employee" ? position : null,
+      gross_salary_annual: employmentType === "employee" ? grossSalaryAnnual : null,
+      salary_start_date: employmentType === "employee" ? signingDate : null,
+    }).eq("id", accountId).then(() => {}, (e) => console.error("[team-contract-upload-presigned] account employment update failed:", e));
 
-  // Pre-signed members skip signing but still proofread their details at
-  // onboarding — mark the profile unconfirmed so the portal shows that step.
-  await admin.from("freelancer_profiles")
-    .update({ onboarding_confirmed: false })
-    .eq("id", profileId)
-    .then(() => {}, (e) => console.error("[team-contract-upload-presigned] onboarding flag update failed:", e));
+    // Pre-signed members skip signing but still proofread their details at
+    // onboarding — mark the profile unconfirmed so the portal shows that step.
+    await admin.from("freelancer_profiles")
+      .update({ onboarding_confirmed: false })
+      .eq("id", profileId)
+      .then(() => {}, (e) => console.error("[team-contract-upload-presigned] onboarding flag update failed:", e));
+  }
 
   // ── Create signed contract row (storage_path filled after upload) ───────────
   const { data: contractRow, error: insertErr } = await admin
@@ -255,7 +265,7 @@ Deno.serve(async (req) => {
       entity_type: "individual",
       individual_full_name: name,
       recipient_email: email,
-      subject_line: subjectLine,
+      subject_line: docTitle,
       scope_description: "See attached signed contract document.",
       fee_amount: 0,
       fee_currency: "GBP",
@@ -301,7 +311,7 @@ Deno.serve(async (req) => {
   // ── File to Dropbox (non-fatal) ─────────────────────────────────────────────
   let dropboxPath: string | null = null;
   try {
-    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType, signingDate });
+    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType, signingDate, docTitle });
     if ("path" in filed) {
       dropboxPath = filed.path;
       await admin.from("team_contracts").update({ dropbox_path: dropboxPath, updated_at: new Date().toISOString() })
@@ -325,9 +335,11 @@ Deno.serve(async (req) => {
   }).then(() => {}, () => {});
 
   // ── Portal invite email (non-fatal) ─────────────────────────────────────────
-  // Member still needs portal access — send the standard invite email.
+  // New member needs portal access — send the standard invite email. A returning
+  // member (additional document) already has access, so don't re-invite.
   let emailSent = false;
   try {
+    if (!isExistingMember) {
     const { data: settingsRow } = await admin
       .from("app_settings")
       .select("value")
@@ -370,9 +382,10 @@ Deno.serve(async (req) => {
       emailSent = res.ok;
       if (!res.ok) console.error("[team-contract-upload-presigned] Resend error:", await res.text());
     }
+    } // end !isExistingMember
   } catch (e) {
     console.error("[team-contract-upload-presigned] invite email failed:", e);
   }
 
-  return json({ success: true, contract_id: contractId, storage_path: storagePath, dropbox_path: dropboxPath, emailSent });
+  return json({ success: true, contract_id: contractId, storage_path: storagePath, dropbox_path: dropboxPath, emailSent, addedToExisting: isExistingMember });
 });

@@ -1317,8 +1317,9 @@ export function AccountList({
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Contract title <span className="opacity-50">(optional)</span></Label>
-                        <Input value={presignedSubjectLine} onChange={(e) => setPresignedSubjectLine(e.target.value)} placeholder="e.g. Scene Manager Engagement" className="rounded-sm" />
+                        <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Document <span className="opacity-50">(optional)</span></Label>
+                        <Input value={presignedSubjectLine} onChange={(e) => setPresignedSubjectLine(e.target.value)} placeholder="e.g. Employment Agreement, Variation Letter" className="rounded-sm" />
+                        <p className="text-[10px] text-foreground/40">Names the file &amp; labels it in their Documents. A member can have several — upload each one. Defaults by engagement if left blank.</p>
                       </div>
                     </div>
 
