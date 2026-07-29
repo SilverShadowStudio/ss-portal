@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
-  Copy, Check, Trash2, Ghost, Pencil, FileText, Activity, Clock,
+  Copy, Check, Trash2, Ghost, Pencil, FileText, Activity, Clock, FilePlus2,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -190,19 +190,13 @@ function CircleButton({
             onClick={onClick}
             aria-pressed={active}
             className={
-              "group flex h-9 w-9 items-center justify-center rounded-full border transition-all shrink-0 " +
+              "group flex h-8 w-8 items-center justify-center rounded-sm border transition-colors shrink-0 " +
               (active
-                ? "bg-gold/10 border-gold/50 opacity-100"
-                : "bg-secondary border-transparent opacity-80 hover:opacity-100 hover:bg-gold/5 hover:border-gold/40")
+                ? "border-[#C9A96A]/60 bg-[#C9A96A]/[0.10] text-[#ecd39c]"
+                : "border-white/10 bg-white/[0.02] text-white/45 hover:border-[#C9A96A]/45 hover:bg-white/[0.04] hover:text-[#ecd39c]")
             }
           >
-            <Icon
-              className={
-                "h-3.5 w-3.5 transition-colors " +
-                (active ? "text-gold" : "text-gold/80 group-hover:text-gold")
-              }
-              strokeWidth={1.5}
-            />
+            <Icon className="h-[15px] w-[15px]" strokeWidth={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top">{label}</TooltipContent>
@@ -291,6 +285,10 @@ export function AccountList({
   const [agreementParsed, setAgreementParsed] = useState(false);
   const [parseMissing, setParseMissing] = useState<string[]>([]);
   const [presignedDragging, setPresignedDragging] = useState(false);
+  // When set, the presigned dialog is "add a document for an existing member"
+  // rather than adding a new member (no invite, no personal fields).
+  const [presignedForExisting, setPresignedForExisting] = useState(false);
+  const [presignedMemberName, setPresignedMemberName] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
   // Full client form state — unused fields are simply ignored when isTeamOnly.
@@ -635,7 +633,23 @@ export function AccountList({
     setPresignedSalary("");
     setPresignedPdfFile(null);
     setAgreementParsed(false); setParseMissing([]);
+    setPresignedForExisting(false);
+    setPresignedMemberName("");
   };
+
+  // Open the upload dialog to add ANOTHER document for an existing member.
+  function openUploadForMember(member: { email: string | null; position?: string | null }, memberName: string) {
+    resetPresignedForm();
+    const parts = (memberName || "").trim().split(/\s+/).filter(Boolean);
+    setPresignedFirstName(parts[0] ?? "");
+    setPresignedLastName(parts.slice(1).join(" "));
+    setPresignedEmail(member.email ?? "");
+    setPresignedEmploymentType(member.position ? "employee" : "freelancer");
+    setPresignedForExisting(true);
+    setPresignedMemberName(memberName || member.email || "this member");
+    setTeamAddMode("presigned");
+    setIsAddDialogOpen(true);
+  }
 
   // Read the uploaded agreement and pre-fill the review fields. Admin still
   // reviews/edits before sending — this is the "preview before the invite".
@@ -724,7 +738,7 @@ export function AccountList({
       toast({ title: "PDF must be 10 MB or smaller", variant: "destructive" });
       return;
     }
-    if (presignedEmploymentType === "employee" && (!presignedPosition.trim() || !(parseFloat(presignedSalary.replace(/[^0-9.]/g, "")) > 0))) {
+    if (!presignedForExisting && presignedEmploymentType === "employee" && (!presignedPosition.trim() || !(parseFloat(presignedSalary.replace(/[^0-9.]/g, "")) > 0))) {
       toast({ title: "Position and gross annual salary are required for an employee", variant: "destructive" });
       return;
     }
@@ -1186,15 +1200,18 @@ export function AccountList({
                   <DialogHeader className="space-y-0">
                     <div className="flex items-center gap-3">
                       <div className="h-px w-10 bg-gold-muted" />
-                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Existing agreement</DialogTitle>
+                      <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">{presignedForExisting ? "Add a document" : "Existing agreement"}</DialogTitle>
                     </div>
                   </DialogHeader>
                   <p className="mt-3 text-sm text-foreground/45">
-                    Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite.
+                    {presignedForExisting
+                      ? <>Upload another signed document for <span className="text-foreground/70">{presignedMemberName}</span> — it's added to their file. No new invite.</>
+                      : "Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite."}
                   </p>
 
                   <div className="min-w-0 space-y-6 pt-4">
-                    {/* Engagement — segmented toggle */}
+                    {/* Engagement — segmented toggle (new members only) */}
+                    {!presignedForExisting && (
                     <div className="space-y-2">
                       <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Engagement</span>
                       <div className="grid grid-cols-2 gap-2">
@@ -1217,6 +1234,7 @@ export function AccountList({
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* Contract first — read it to prefill everything below */}
                     <div className="space-y-2">
@@ -1274,16 +1292,16 @@ export function AccountList({
                       <div className="flex items-center gap-3">
                         <div className="h-px w-6 bg-gold-muted" />
                         <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">
-                          {agreementParsed ? "From the agreement — check before sending" : "Member details"}
+                          {presignedForExisting ? "Document" : agreementParsed ? "From the agreement — check before sending" : "Member details"}
                         </span>
                       </div>
-                      {agreementParsed && parseMissing.length > 0 && (
+                      {!presignedForExisting && agreementParsed && parseMissing.length > 0 && (
                         <p className="text-[11px] text-[#C9A96A]">
                           Not found in this document — please type: {parseMissing.join(", ")}.
                         </p>
                       )}
 
-                      {presignedEmploymentType === "employee" && (
+                      {!presignedForExisting && presignedEmploymentType === "employee" && (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div className="space-y-1.5">
                             <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Position</Label>
@@ -1296,21 +1314,25 @@ export function AccountList({
                           </div>
                         </div>
                       )}
+                      {!presignedForExisting && (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">First name</Label>
+                            <Input value={presignedFirstName} onChange={(e) => setPresignedFirstName(e.target.value)} placeholder="Jane" className="rounded-sm" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Last name</Label>
+                            <Input value={presignedLastName} onChange={(e) => setPresignedLastName(e.target.value)} placeholder="Smith" className="rounded-sm" />
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">First name</Label>
-                          <Input value={presignedFirstName} onChange={(e) => setPresignedFirstName(e.target.value)} placeholder="Jane" className="rounded-sm" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Last name</Label>
-                          <Input value={presignedLastName} onChange={(e) => setPresignedLastName(e.target.value)} placeholder="Smith" className="rounded-sm" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Email</Label>
-                          <Input type="email" value={presignedEmail} onChange={(e) => setPresignedEmail(e.target.value)} placeholder="jane@company.com" className="rounded-sm" />
-                        </div>
+                        {!presignedForExisting && (
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Email</Label>
+                            <Input type="email" value={presignedEmail} onChange={(e) => setPresignedEmail(e.target.value)} placeholder="jane@company.com" className="rounded-sm" />
+                          </div>
+                        )}
                         <div className="space-y-1.5">
                           <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Date signed</Label>
                           <Input type="date" value={presignedSigningDate} onChange={(e) => setPresignedSigningDate(e.target.value)} className="rounded-sm" />
@@ -1328,7 +1350,7 @@ export function AccountList({
                         Back
                       </button>
                       <Button onClick={handlePresignedUpload} disabled={isPresignedUploading} className="ml-auto flex-1 rounded-sm">
-                        {isPresignedUploading ? "Uploading…" : "Upload & send invite"}
+                        {isPresignedUploading ? "Uploading…" : presignedForExisting ? "Upload document" : "Upload & send invite"}
                       </Button>
                     </div>
                   </div>
@@ -1733,6 +1755,14 @@ export function AccountList({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0 self-start flex-wrap justify-end">
+                            {isTeamOnly && (
+                              <CircleButton
+                                icon={FilePlus2}
+                                label="Upload a document"
+                                active={false}
+                                onClick={() => openUploadForMember(u, displayName)}
+                              />
+                            )}
                             <CircleButton
                               icon={Ghost}
                               label={`View as ${displayName}`}

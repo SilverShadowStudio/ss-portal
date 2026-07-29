@@ -256,6 +256,16 @@ Deno.serve(async (req) => {
       .then(() => {}, (e) => console.error("[team-contract-upload-presigned] onboarding flag update failed:", e));
   }
 
+  // For an existing member, file under their ACTUAL engagement (the frontend may
+  // pass a guess when just adding a document) so it lands in the right folder.
+  let effectiveEmploymentType = employmentType;
+  if (isExistingMember) {
+    const { data: acct } = await admin.from("accounts").select("employment_type").eq("id", accountId).maybeSingle();
+    if (acct?.employment_type === "employee" || acct?.employment_type === "freelancer") {
+      effectiveEmploymentType = acct.employment_type as "employee" | "freelancer";
+    }
+  }
+
   // ── Create signed contract row (storage_path filled after upload) ───────────
   const { data: contractRow, error: insertErr } = await admin
     .from("team_contracts")
@@ -311,7 +321,7 @@ Deno.serve(async (req) => {
   // ── File to Dropbox (non-fatal) ─────────────────────────────────────────────
   let dropboxPath: string | null = null;
   try {
-    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType, signingDate, docTitle });
+    const filed = await fileContractToDropbox(admin, pdfBytes, { name, employmentType: effectiveEmploymentType, signingDate, docTitle });
     if ("path" in filed) {
       dropboxPath = filed.path;
       await admin.from("team_contracts").update({ dropbox_path: dropboxPath, updated_at: new Date().toISOString() })
