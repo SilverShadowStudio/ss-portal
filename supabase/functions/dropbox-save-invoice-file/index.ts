@@ -41,20 +41,55 @@ function json(data: Record<string, unknown>, status = 200): Response {
 
 // ── Filename + folder path builders ──────────────────────────────────────────
 
-/** Sanitize the invoice reference for the filename; keeps hyphens (e.g. ZAN001-A). */
-function sanitizeRef(s: string): string {
+// ── AR filename convention ───────────────────────────────────────────────────
+//   YYYY-MM-DD_AR_CLIENT_InvoiceNo_AmountCCY.ext
+//   e.g. 2026-07-08_AR_KATHERINE-POOLEY_KAT025-C_1600-00GBP.pdf
+// Underscores between fields; hyphens within. No spaces, slashes, or £.
+
+/** Sanitize the invoice number; keeps hyphens (KAT025-C). NOINV when absent. */
+function sanitizeRef(s: string | null): string {
+  if (!s || !s.trim()) return "NOINV";
   return s
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[/\\:*?"<>|\s]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "invoice";
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/[\s_/\\:*?"<>|]+/g, "-")
+    .replace(/[^A-Za-z0-9-]/g, "")
+    .replace(/-+/g, "-").replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "NOINV";
 }
 
-function buildFilename(ref: string, ext = ".pdf"): string {
-  return `SilverShadowStudio_Invoice_${sanitizeRef(ref)}${ext}`;
+/** Client label: the first 1–2 words of the name, uppercased and hyphen-joined
+ *  (Katherine Pooley → KATHERINE-POOLEY). Drops parenthetical and legal-form
+ *  tokens ((SARL), Ltd, …). */
+const LEGAL_SUFFIX = /^(ltd|limited|inc|llc|plc|gmbh|sarl|sa|sas|sl|bv|oy|ab|ug|co)$/i;
+function clientCode(name: string | null): string {
+  const cleaned = (name || "")
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/\([^)]*\)/g, " ")   // drop "(SARL)" etc.
+    .replace(/&/g, "and");
+  const tokens = cleaned.split(/\s+/)
+    .map((t) => t.replace(/[^A-Za-z0-9]/g, ""))
+    .filter(Boolean)
+    .filter((t) => !LEGAL_SUFFIX.test(t));
+  return tokens.slice(0, 2).join("-").toUpperCase() || "CLIENT";
+}
+
+/** Gross + currency: (1600, "GBP") → "1600-00GBP". */
+function amountCcy(gross: number | null, currency: string | null): string {
+  const n = (Number(gross) || 0).toFixed(2).replace(".", "-");
+  const ccy = (currency || "GBP").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3) || "GBP";
+  return `${n}${ccy}`;
+}
+
+/** YYYY-MM-DD out of a date or timestamp string. */
+function isoDatePart(dateStr: string | null): string | null {
+  const m = String(dateStr || "").match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+function buildFilename(opts: {
+  date: string; client: string | null; invoiceNo: string | null; gross: number | null; currency: string | null; ext: string;
+}): string {
+  return `${opts.date}_AR_${clientCode(opts.client)}_${sanitizeRef(opts.invoiceNo)}_${amountCcy(opts.gross, opts.currency)}${opts.ext}`;
 }
 
 /** An ISO timestamp or date → the "Invoices-Outgoing_{YYYY-MM}_{Month}" folder. */
@@ -245,13 +280,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Path folder + ref ──────────────────────────────────────────────────
+    // ── Path folder ─────────────────────────────────────────────────────────
     const folder = buildFolderPath(invoice.issued_at ?? invoice.created_at);
     if (!folder) return json({ success: false, error: `invalid invoice date` }, 400);
-    // NOTE: {ref} for the filename. Real invoice_numbers are e.g. BAL-{quote}-{suffix};
-    // reference_number is the project/quotation ref. Uses invoice_number then
-    // reference_number — swap this one line once the canonical scheme is fixed.
-    const ref = invoice.invoice_number || invoice.reference_number || invoice.id;
 
     // ── PDF bytes ──────────────────────────────────────────────────────────
     // External (uploaded) income invoices are raised outside the portal (Xero),
@@ -321,7 +352,19 @@ Deno.serve(async (req) => {
         stripe_url: (invoice as any).stripe_checkout_url ?? null,
       });
     }
-    const targetPath = `${folder}/${buildFilename(ref, fileExt)}`;
+    // AR filename: date_AR_CLIENT_InvoiceNo_AmountCCY. Client comes from the
+    // uploaded invoice's notes (external) or the linked account (portal).
+    const dateIso = isoDatePart(invoice.issued_at ?? invoice.created_at) ?? "0000-00-00";
+    const party = ((invoice as any).type === "external" ? invoice.notes : (clientCompany || clientName))
+      || clientName || clientCompany || invoice.notes || null;
+    const targetPath = `${folder}/${buildFilename({
+      date: dateIso,
+      client: party,
+      invoiceNo: invoice.invoice_number || invoice.reference_number || null,
+      gross: Number(invoice.amount),
+      currency: invoice.currency,
+      ext: fileExt,
+    })}`;
 
     // ── Dropbox connection + namespace ─────────────────────────────────────
     const { data: conn } = await sb.from("dropbox_connections")
