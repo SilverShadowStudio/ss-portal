@@ -145,6 +145,9 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
     const { data: inserted, error } = await supabase.from("invoices").insert({
       user_id: userId,
       type: "external",
+      // reference_number is NOT NULL — use the client's invoice number, or a
+      // generated internal reference when the invoice has none.
+      reference_number: form.invoiceNumber.trim() || `EXT-${Date.now().toString(36).toUpperCase()}`,
       status: paid ? "paid" : "sent",
       amount: gross,
       subtotal: num(form.net) ?? null,
