@@ -35,6 +35,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { AccountEmailsModal } from "@/components/admin/AccountEmailsModal";
 import {
   aggregateSessions,
   formatSessionDuration,
@@ -270,6 +271,8 @@ export function AccountList({
   const [contractInitialValues, setContractInitialValues] = useState<Record<string, unknown> | null>(null);
   const [contractTemplateId, setContractTemplateId] = useState<string | null>(null);
   const [resultBanner, setResultBanner] = useState<{ email: string; inviteUrl?: string } | null>(null);
+  // Portal-emails viewer, opened from the account-card mail icon.
+  const [emailsModal, setEmailsModal] = useState<{ accountId: string; name: string } | null>(null);
   // Templates for the template-pick step
   const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
   const [teamTemplatesLoading, setTeamTemplatesLoading] = useState(false);
@@ -1875,6 +1878,12 @@ export function AccountList({
                               active={isHistoryOpen}
                               onClick={() => togglePanel(u.user_id, "history", accountId)}
                             />
+                            <CircleButton
+                              icon={Mail}
+                              label="Portal emails"
+                              active={false}
+                              onClick={() => setEmailsModal({ accountId: group.account_id, name: group.company_name || displayName })}
+                            />
                           </div>
                         </div>
                         {isHistoryOpen && (
@@ -2093,6 +2102,13 @@ export function AccountList({
           </div>
         </div>
       )}
+
+      <AccountEmailsModal
+        accountId={emailsModal?.accountId ?? null}
+        accountName={emailsModal?.name}
+        open={!!emailsModal}
+        onOpenChange={(o) => { if (!o) setEmailsModal(null); }}
+      />
     </>
   );
 }
