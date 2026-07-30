@@ -27,7 +27,9 @@ export interface InvoiceForPdf {
   vat_amount?: number | null;
 }
 
-export function formatCurrency(amount: number, currency = "EUR"): string {
+// Currency is required on purpose: a default here (formerly "EUR") silently
+// mislabels amounts whenever a caller forgets to pass one.
+export function formatCurrency(amount: number, currency: string): string {
   try {
     const locale = currency === "GBP" ? "en-GB" : currency === "EUR" ? "en-IE" : "en-US";
     return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);

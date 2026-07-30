@@ -46,6 +46,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Blocking: money-path unit tests (finance VAT/quarters, fx conversion,
+      # invoice totals/formatting). Small on purpose — they cover the code
+      # where a silent regression costs actual money.
+      - name: Test
+        run: npm run test
+
       # Non-blocking, and honestly so: the repo currently reports 429 lint
       # problems (368 errors, 61 warnings), mostly no-explicit-any. Failing the
       # build on that would make CI red from day one and teach everyone to

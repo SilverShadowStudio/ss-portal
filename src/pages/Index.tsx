@@ -22,6 +22,7 @@ import { AssetViewer } from "@/components/client/AssetViewer";
 import { NewRoundModal } from "@/components/client/NewRoundModal";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { logActivity } from "@/lib/activityLog";
+import { formatCurrency } from "@/lib/invoiceUtils";
 import { computeRoundSchedule } from "@/lib/roundSchedule";
 import { validateDeliveryDate } from "@/lib/reviewWindow";
 import { toast as sonnerToast } from "sonner";
@@ -87,9 +88,7 @@ function useCountdown(dueAt: string | null) {
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
 
-function formatCurrency(n: number, currency = "GBP") {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(n);
-}
+// formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
 // ── Ambient glow ──────────────────────────────────────────────────────────────
 

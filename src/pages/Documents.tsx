@@ -8,6 +8,7 @@ import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatCurrency } from "@/lib/invoiceUtils";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
 import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
 import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
@@ -89,13 +90,7 @@ const formatSize = (bytes: number | null) => {
   return `${(kb / 1024).toFixed(1)} MB`;
 };
 
-function formatCurrency(amount: number, currency = "GBP") {
-  try {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
-}
+// formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_acceptance: "Awaiting confirmation",

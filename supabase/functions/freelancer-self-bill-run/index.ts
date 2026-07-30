@@ -20,6 +20,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { generateSelfBillPdf, roleLabel, type SelfBillLine } from "../_shared/documents/selfBillPdf.ts";
+import { constantTimeEqual } from "../_shared/cronAuth.ts";
 
 const DROPBOX_ROOT = "/03_Portal_Admin_Docs/03_Invoices/INV002_Payable/01_Freelancers";
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -178,7 +179,7 @@ Deno.serve(async (req) => {
   // Auth: shared cron secret (pg_cron) OR admin JWT. Mirrors payables-sync.
   const cronSecret = Deno.env.get("PAYABLES_CRON_SECRET") ?? "";
   const provided = req.headers.get("x-cron-secret") ?? "";
-  const isCron = cronSecret.length > 0 && provided.length === cronSecret.length && provided === cronSecret;
+  const isCron = cronSecret.length > 0 && constantTimeEqual(provided, cronSecret);
   if (!isCron) {
     const auth = req.headers.get("Authorization") ?? "";
     if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);

@@ -6,6 +6,7 @@ import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/invoiceUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,13 +38,7 @@ interface Order {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number, currency = "GBP") {
-  try {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
-}
+// formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", {

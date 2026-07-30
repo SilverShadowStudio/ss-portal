@@ -5,6 +5,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatCurrency } from "@/lib/invoiceUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,9 +44,7 @@ function calcTotals(lines: OrderLine[]) {
   return { subtotal, vat_amount, total };
 }
 
-function formatCurrency(n: number, currency = "GBP") {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(n);
-}
+// formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });

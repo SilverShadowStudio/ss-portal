@@ -10,6 +10,7 @@
 // Auth: shared cron secret (X-Cron-Secret) OR an admin JWT. Mirrors payables-sync.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { constantTimeEqual } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
   // is exposed to functions as CRON_SECRET (fallback to the older PAYABLES name).
   const cronSecret = Deno.env.get("CRON_SECRET") ?? Deno.env.get("PAYABLES_CRON_SECRET") ?? "";
   const provided = req.headers.get("x-cron-secret") ?? "";
-  const isCron = cronSecret.length > 0 && provided.length === cronSecret.length && provided === cronSecret;
+  const isCron = cronSecret.length > 0 && constantTimeEqual(provided, cronSecret);
   let actorId: string | null = null;
   if (!isCron) {
     const auth = req.headers.get("Authorization") ?? "";
