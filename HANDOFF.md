@@ -14,6 +14,49 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 30 July 2026 (fc2 — security hardening, dead-code purge, email-flood fix + weekly finance summary)
+
+Long autonomous session on fc2 (MacBook), first after pulling 175 commits of finance/payroll work from fc1. Model Fable 5. All work reviewed via Musk/Schmidt-persona surveys, then executed under the standing mandate.
+
+## Completed (commit hash + one-liner)
+
+- **6da1bed** — Gated 17 unauthenticated edge functions via `_shared/cronAuth.ts`. New `requireInternalOrAdmin` (cron-secret / service-role-bearer / admin JWT, constant-time) + `requireAdminUser`. Killed the `x-trigger-name` public-marker bypass on dropbox-save-invoice/overhead-file; `dropbox-webhook` now verifies Dropbox HMAC signature; OAuth state HMAC-signed (`_shared/signedState.ts`). CI gained a non-blocking `deno check` sweep. `scripts/sql.sh` (secret stripped) + `apply-migration.sh` committed (un-gitignored).
+- **1924c73** — `invoiceUtils.formatCurrency` currency now required (removed EUR default trap); 4 local dupes replaced. 4 backend `===` secret compares → `constantTimeEqual`. Vitest + money-path tests (finance VAT/quarters, fx, invoice totals), blocking in CI.
+- **8c3ca95** — Canonical date `01 January 2000` portal-wide (+ `formatDateTime`). Email transport moved off dead Lovable gateway → **Resend** (`process-email-queue`). `polish-task` internals rewritten Lovable→**Anthropic** (kept its contract; voice-dictation polish was silently broken in prod).
+- **37498b1** — Deleted **44 files / ~4,900 lines** of verified dead code (design.ts, invoice-generator/, 28 unused ui/ primitives incl. 637-line sidebar.tsx, SignAgreement, agreementTerms.ts, etc.). Removed duplicate `motion` dep (→ framer-motion). Deleted `preview-transactional-email` + `airtable-schema-dump` from the remote (the latter was leaking the Airtable schema unauthenticated).
+- **a5b91f2** — Gated `dropbox-scan-visuals` to admin (was cross-tenant: any authed client could scan+deliver on any sceneId via service-role). Stopped the overhead-reminder email flood + built `weekly-finance-summary`.
+- **1592a16** — Finance summary: adviser commentary + email-safe graphs (aging segments, currency exposure, supplier concentration, reclaimable input VAT).
+
+**Migrations applied to prod this session** (via `apply-migration.sh`, recorded in new `applied_migrations` ledger; 122-row historical backfill also loaded): `20260730000005` (trigger-header Vault secret, DESTRUCTIVE — Fred signed off), `20260730000006` (ledger), `20260730000007` (finance-summary config + cron).
+
+**Edge functions deployed** (all verified byte-identical via download+diff, negative-tested anon→401): the 20 gated functions from 6da1bed + scan-visuals + weekly-finance-summary. Remote function count now 88 (was 90; 2 deleted).
+
+## The email-flood incident (30 Jul, resolved)
+Fred received ~100 "past due" emails at 8am. Cause: `send-overhead-reminder` (jobid 12, `0 7 * * *`) fires one email per overdue overhead × **142 unpaid rows**. **Stopped**: `overhead_reminder_config.enabled=false` + `cron.unschedule('overhead-reminders-daily')`. **Replaced** with `weekly-finance-summary` → one email, Mondays 07:00 UTC (jobid 20), recipient **fred@ only**, Deloitte-register: position/aging/historic/forecast + adviser advice + graphs. Fred signed off on the format (2 previews sent). Current live figures: **£40,976 total owed, £29,095 overdue (71%), £3,204 reclaimable input VAT, Workspace 12 Ltd = 55% supplier concentration, run-rate £2,620/mo**.
+
+## Needs verification (next session — none blocking)
+- **First real Airtable round event** — first live test of gated `airtable-auto-sync`. If a status change doesn't reach Airtable, check `net._http_response` for 401 (would mean CRON_SECRET env drift on that function).
+- **First agreement-sign / team-invite** — first email through the new Resend transport (`send-transactional-email`→`process-email-queue`). Check `email_send_log`.
+- **First voice dictation** — `polish-task` on Anthropic; confirm ANTHROPIC_API_KEY works there.
+- **Vercel + GitHub Actions dashboards** — locally green (tsc, 39 tests, build) but dashboards are authoritative per house rule.
+- **Monday 07:00 UTC** — first natural `finance-summary-weekly` fire; confirm 200 in `net._http_response` and the email arrives.
+
+## Pending / backlog (from the post-hardening re-review; Fred deferred structural work while app evolves)
+- **Deferred by decision** (do when app stabilises): decompose AssetViewer (4,675 lines), code-splitting (3.6MB bundle), `strict:true`, error boundaries, adopt-or-drop react-query.
+- **Still open, smaller**: `finance.ts` + `invoiceUtils.ts` each still define their own `formatCurrency`/`formatDate` (consolidation half-done); cron-secret two-name split (`CRON_SECRET` vs `PAYABLES_CRON_SECRET`) — collapse to one; `fx_rates` table has no migration file; duplicate migration seq `20260515000001/2`; anon JWT hardcoded in 9 files (unrotatable without coordinated edit); no `cronAuth.ts`/`signedState.ts` tests; `dropbox-scan-visuals` still uses service-role (gated now, but candidate to narrow to RLS-scoped client).
+- **Dead-code follow-up**: `handleApproval` + `asset_approvals` writes in AssetViewer are unwired (abandoned asset-level-approval feature) — safe to delete next cleanup.
+- **CLAUDE.md is stale**: says "102 migration files" (actual 124) and `verify_jwt`/cronAuth guidance predates `requireInternalOrAdmin`/`requireAdminUser`. Worth a refresh.
+
+## Decisions made
+- Two-DB / Airtable boundary respected throughout; no Softr/Airtable-schema changes.
+- Finance summary recipient = fred@ only (Fred's call); overdue flag acknowledged as real, not artefact.
+- Deferred all structural frontend refactors per Fred ("do that when the app is fully built" — countered only for security holes + tests, which don't wait).
+
+## Machine note
+fc2 has **no SUPABASE_ACCESS_TOKEN** in shell/keychain historically — Fred added keychain item `supabase-ss-portal` this session; `sql.sh`/`apply-migration.sh` now read it automatically. deno installed via Homebrew (`/opt/homebrew/bin`).
+
+---
+
 # Roadmap — future slices (backlog)
 
 Ordered. Each item is BACKLOG ONLY — do not build unprompted. Diagnose-first
