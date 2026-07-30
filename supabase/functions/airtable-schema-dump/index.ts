@@ -2,7 +2,12 @@
 // Diagnostic only — returns full Airtable base schema for boundary mapping.
 // Not called from any portal flow. Deployed with --no-verify-jwt.
 
-Deno.serve(async () => {
+import { requireAdminUser } from "../_shared/cronAuth.ts";
+
+Deno.serve(async (req) => {
+  const auth = await requireAdminUser(req);
+  if (!auth.ok) return auth.response;
+
   const pat = Deno.env.get("AIRTABLE_PAT");
   const baseId = Deno.env.get("AIRTABLE_BASE_ID");
 

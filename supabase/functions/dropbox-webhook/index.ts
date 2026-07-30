@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { enqueueDeliveryNotification } from "../_shared/deliveryNotification.ts";
+import { hmacSha256Hex } from "../_shared/signedState.ts";
+import { constantTimeEqual } from "../_shared/cronAuth.ts";
 
 // Inline review window logic (mirrors src/lib/reviewWindow.ts — no browser imports allowed in Deno)
 function computeReviewWindow(fromDate: Date): { start: Date; end: Date } {
@@ -144,8 +146,26 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Verify Dropbox's signature over the raw body (HMAC-SHA256 keyed on the
+    // app secret). Without this, anyone can POST fake file-change events.
+    const appSecret = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+    if (!appSecret) {
+      console.error("[dropbox-webhook] DROPBOX_APP_SECRET not set — refusing all callers");
+      return new Response(JSON.stringify({ error: "Server misconfigured" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const rawBody = await req.text();
+    const signature = req.headers.get("x-dropbox-signature") ?? "";
+    const expectedSig = await hmacSha256Hex(appSecret, rawBody);
+    if (!signature || !constantTimeEqual(expectedSig, signature)) {
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Parse webhook payload
-    const payload = await req.json();
+    const payload = JSON.parse(rawBody);
     console.log("Received Dropbox webhook:", JSON.stringify(payload));
 
     // Dropbox sends list of accounts that have changes

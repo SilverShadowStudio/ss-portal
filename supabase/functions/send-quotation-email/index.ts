@@ -7,6 +7,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadBrand } from "../_shared/brand.ts";
+import { requireAdminUser } from "../_shared/cronAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,6 +106,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  const auth = await requireAdminUser(req, { corsHeaders });
+  if (!auth.ok) return auth.response;
 
   try {
     const { quotationId } = await req.json();

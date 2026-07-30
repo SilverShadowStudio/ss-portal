@@ -9,6 +9,7 @@
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalOrAdmin } from "../_shared/cronAuth.ts";
 
 const PROJECTS_ROOT = "/00_Production/PRD01_Client-Projects";
 const CP_PATTERN = /^CP(\d+)_/i;
@@ -128,6 +129,9 @@ Deno.serve(async (req) => {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   }
+
+  const auth = await requireInternalOrAdmin(req);
+  if (!auth.ok) return auth.response;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

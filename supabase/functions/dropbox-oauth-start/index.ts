@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { signStatePayload } from "../_shared/signedState.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,12 +65,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Generate state parameter for CSRF protection
+    // Generate state parameter for CSRF protection. HMAC-signed with the app
+    // secret so the callback can reject forged/tampered state — a plain
+    // base64 payload would let anyone mint a state naming any userId.
+    const dropboxAppSecret = Deno.env.get("DROPBOX_APP_SECRET");
+    if (!dropboxAppSecret) {
+      return new Response(
+        JSON.stringify({ error: "Dropbox App Secret not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     const state = crypto.randomUUID();
-    
-    // Store state in database temporarily (we'll clean it up in callback)
-    // For simplicity, encode user_id and state together
-    const statePayload = btoa(JSON.stringify({ userId: user.id, state, exp: Date.now() + 600000 }));
+    const statePayload = await signStatePayload(dropboxAppSecret, {
+      userId: user.id,
+      state,
+      exp: Date.now() + 600000,
+    });
 
     // Parse optional reconnect flag from request body
     let reconnect = false;

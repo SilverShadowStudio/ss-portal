@@ -3,6 +3,7 @@ import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from '../_shared/transactional-email-templates/registry.ts'
 import { loadBrand } from '../_shared/brand.ts'
+import { requireInternalOrAdmin } from '../_shared/cronAuth.ts'
 
 // Configuration baked in at scaffold time — do NOT change these manually.
 // To update, re-run the email domain setup flow.
@@ -40,6 +41,11 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
+
+  // Callers are other edge functions (accept-agreement, send-team-invitation)
+  // invoking with the service-role key, or an admin testing from the portal.
+  const auth = await requireInternalOrAdmin(req, { corsHeaders })
+  if (!auth.ok) return auth.response
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')

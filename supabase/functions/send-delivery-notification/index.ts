@@ -10,6 +10,7 @@
 // Marks the queue row as sent (or records last_error + attempts on failure).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { requireInternalOrAdmin } from '../_shared/cronAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,6 +99,9 @@ async function resolveRecipients(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+
+  const auth = await requireInternalOrAdmin(req, { corsHeaders })
+  if (!auth.ok) return auth.response
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

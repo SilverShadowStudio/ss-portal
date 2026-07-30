@@ -1,5 +1,6 @@
 import { sendLovableEmail } from 'npm:@lovable.dev/email-js'
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { requireInternalOrAdmin } from '../_shared/cronAuth.ts'
 
 const MAX_RETRIES = 5
 const DEFAULT_BATCH_SIZE = 10
@@ -91,25 +92,12 @@ Deno.serve(async (req) => {
     )
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
-
-  // Defense in depth: verify_jwt=true already requires a valid JWT at the
-  // gateway layer. This adds an explicit role check so only service-role
-  // callers can trigger queue processing.
-  const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
-  if (claims?.role !== 'service_role') {
-    return new Response(
-      JSON.stringify({ error: 'Forbidden' }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
+  // The pg_cron job sends the vault-stored service_role key as Bearer.
+  // parseJwtClaims (above) decodes without verifying the signature, so a
+  // claims-based role check is forgeable — compare the raw token against the
+  // real key instead (requireInternalOrAdmin does this constant-time).
+  const auth = await requireInternalOrAdmin(req)
+  if (!auth.ok) return auth.response
 
   const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey)
 

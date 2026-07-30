@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { verifyStatePayload } from "../_shared/signedState.ts";
 
 Deno.serve(async (req) => {
   try {
@@ -23,15 +24,13 @@ Deno.serve(async (req) => {
       return Response.redirect(`${frontendUrl}/admin?dropbox_error=missing_params`);
     }
 
-    // Decode and validate state
-    let stateData;
-    try {
-      stateData = JSON.parse(atob(state));
-      if (Date.now() > stateData.exp) {
-        return Response.redirect(`${frontendUrl}/admin?dropbox_error=state_expired`);
-      }
-    } catch {
+    // Verify HMAC signature and decode state (signed by dropbox-oauth-start).
+    const stateData = await verifyStatePayload(dropboxAppSecret, state);
+    if (!stateData) {
       return Response.redirect(`${frontendUrl}/admin?dropbox_error=invalid_state`);
+    }
+    if (Date.now() > (stateData.exp as number)) {
+      return Response.redirect(`${frontendUrl}/admin?dropbox_error=state_expired`);
     }
 
     const userId = stateData.userId;

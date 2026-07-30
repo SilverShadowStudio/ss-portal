@@ -24,8 +24,13 @@ dist-ssr
 *.sw?
 .env
 
-# Migration/export scripts (contain credentials and exported data)
+# Migration/export scripts (contain credentials and exported data).
+# Named exceptions below are secret-free and needed on every machine — the
+# migration-apply mechanism must live in the repo, not on one laptop.
 scripts/
+!scripts/sql.sh
+!scripts/apply-migration.sh
+!scripts/typecheck.sh
 supabase/.temp/
 
 # Airtable schema audit artefacts (local only)

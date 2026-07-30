@@ -54,3 +54,35 @@ jobs:
       - name: Lint
         run: npm run lint
         continue-on-error: true
+
+  functions:
+    name: Typecheck edge functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Supabase deploys bundle with esbuild and never typecheck, so a type
+      # error in a function only surfaces at runtime. This sweep makes it
+      # visible in CI instead. Non-blocking for now: 7 functions carry 37
+      # pre-existing errors (worst: dropbox-webhook 15, airtable-auto-sync 9,
+      # dropbox-save-round-files 4) — drive to zero, then remove
+      # continue-on-error. --node-modules-dir=none keeps Deno from trying to
+      # resolve npm: specifiers against the frontend's node_modules.
+      - name: deno check all functions
+        run: |
+          fails=0
+          for d in supabase/functions/*/; do
+            [ -f "$d/index.ts" ] || continue
+            if ! NO_COLOR=1 deno check --node-modules-dir=none --quiet "$d/index.ts"; then
+              fails=$((fails+1))
+            fi
+          done
+          echo "---- functions with type errors: $fails"
+          [ "$fails" -eq 0 ]
+        continue-on-error: true

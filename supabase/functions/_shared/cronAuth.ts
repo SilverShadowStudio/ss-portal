@@ -41,7 +41,7 @@ export function constantTimeEqual(a: string, b: string): boolean {
 }
 
 export type CronAuthResult =
-  | { ok: true; caller: "cron" | "admin" | "user" }
+  | { ok: true; caller: "cron" | "admin" | "user" | "service" }
   | { ok: false; response: Response };
 
 interface CronAuthOptions {
@@ -88,6 +88,102 @@ export async function requireCronOrAdmin(
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token) return deny(401, "Unauthorized");
 
+  return await verifyAdminJwt(authHeader, token, deny);
+}
+
+/**
+ * Accept internal machine callers or an admin.
+ *
+ * Three accepted callers:
+ *   * x-cron-secret header matching the named env var (DB triggers and
+ *     pg_cron jobs whose commands read the secret from Vault).
+ *   * Bearer equal to the service-role key (function-to-function calls —
+ *     dispatch-pending-deliveries → send-delivery-notification,
+ *     airtable-auto-sync → slack-notify — which already send it).
+ *   * Admin JWT (a human re-running the job from the portal), unless
+ *     allowAdmin: false.
+ *
+ * Unlike requireCronOrAdmin this does NOT fail closed when the secret env
+ * var is unset: the service-role path is always configured by the platform,
+ * and some callers (functions.invoke) never send a cron secret at all. A
+ * presented-but-unconfigured secret is logged so the misconfiguration is
+ * visible in function logs.
+ */
+export async function requireInternalOrAdmin(
+  req: Request,
+  opts: Partial<CronAuthOptions> = {},
+): Promise<CronAuthResult> {
+  const { secretEnvVar = "CRON_SECRET", allowAdmin = true, corsHeaders = {} } = opts;
+
+  const deny = (status: number, error: string): CronAuthResult => ({
+    ok: false,
+    response: new Response(JSON.stringify({ error }), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }),
+  });
+
+  // 1. Machine caller with the shared secret.
+  const cronSecret = Deno.env.get(secretEnvVar) ?? "";
+  const provided = req.headers.get("x-cron-secret") ?? "";
+  if (provided) {
+    if (cronSecret && constantTimeEqual(cronSecret, provided)) {
+      return { ok: true, caller: "cron" };
+    }
+    if (!cronSecret) {
+      console.error(
+        `[cronAuth] x-cron-secret presented but ${secretEnvVar} is not set — check function secrets`,
+      );
+    }
+  }
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return deny(401, "Unauthorized");
+
+  // 2. Function-to-function caller holding the service-role key.
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (serviceRoleKey && constantTimeEqual(token, serviceRoleKey)) {
+    return { ok: true, caller: "service" };
+  }
+
+  if (!allowAdmin) return deny(401, "Unauthorized");
+
+  // 3. Admin JWT caller.
+  return await verifyAdminJwt(authHeader, token, deny);
+}
+
+/**
+ * Accept only a signed-in admin. For endpoints the admin UI calls directly
+ * (send-invoice-email, send-quotation-email, diagnostics) where neither cron
+ * nor other functions are legitimate callers.
+ */
+export async function requireAdminUser(
+  req: Request,
+  opts: { corsHeaders?: Record<string, string> } = {},
+): Promise<CronAuthResult> {
+  const { corsHeaders = {} } = opts;
+
+  const deny = (status: number, error: string): CronAuthResult => ({
+    ok: false,
+    response: new Response(JSON.stringify({ error }), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }),
+  });
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return deny(401, "Unauthorized");
+
+  return await verifyAdminJwt(authHeader, token, deny);
+}
+
+async function verifyAdminJwt(
+  authHeader: string,
+  token: string,
+  deny: (status: number, error: string) => CronAuthResult,
+): Promise<CronAuthResult> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

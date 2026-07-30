@@ -10,6 +10,8 @@
 //
 // Deploy: npx supabase functions deploy slack-notify --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
+import { requireInternalOrAdmin } from "../_shared/cronAuth.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -57,6 +59,9 @@ function fmtTimestamp(iso?: string): string {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireInternalOrAdmin(req, { corsHeaders });
+  if (!auth.ok) return auth.response;
 
   const webhookUrl = Deno.env.get("SLACK_WEBHOOK_URL");
   if (!webhookUrl) {

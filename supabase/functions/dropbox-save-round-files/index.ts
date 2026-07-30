@@ -15,6 +15,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, PDFArray } from "npm:pdf-lib@1.17.1";
+import { requireInternalOrAdmin } from "../_shared/cronAuth.ts";
 
 const PROJECTS_ROOT = "/00_Production/PRD01_Client-Projects";
 
@@ -496,6 +497,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: { "Access-Control-Allow-Origin": "*" } });
   }
+
+  const auth = await requireInternalOrAdmin(req);
+  if (!auth.ok) return auth.response;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

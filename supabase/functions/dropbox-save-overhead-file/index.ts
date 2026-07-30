@@ -13,6 +13,7 @@
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternalOrAdmin } from "../_shared/cronAuth.ts";
 
 const STAGING_BUCKET = "overhead-invoices";
 const DROPBOX_ROOT   = "/03_Portal_Admin_Docs/03_Invoices/INV002_Payable/02_Overheads";
@@ -211,29 +212,13 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, supabaseServiceKey);
 
-  // ── Auth: trigger marker OR admin JWT ────────────────────────────────────
-  const triggerName = req.headers.get("x-trigger-name") ?? "";
-  const isTriggerCall = triggerName === "overhead_filing_pending";
-  let triggerSource: "trigger" | "manual_retry" | "unknown" = "unknown";
-  if (isTriggerCall) {
-    triggerSource = "trigger";
-  } else {
-    // Manual retry path — require admin bearer.
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader.startsWith("Bearer ")) return json({ success: false, error: "Unauthorized" }, 401);
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData?.user) return json({ success: false, error: "Unauthorized" }, 401);
-    const { data: roleRow } = await sb.from("user_roles")
-      .select("role")
-      .eq("user_id", userData.user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-    if (!roleRow) return json({ success: false, error: "Forbidden" }, 403);
-    triggerSource = "manual_retry";
-  }
+  // ── Auth: cron secret (DB trigger, from Vault) OR admin JWT ──────────────
+  // The x-trigger-name marker alone is NOT auth — it is a public string. The
+  // trigger's header helper sends x-cron-secret alongside it.
+  const auth = await requireInternalOrAdmin(req);
+  if (!auth.ok) return auth.response;
+  const triggerSource: "trigger" | "manual_retry" =
+    auth.caller === "admin" ? "manual_retry" : "trigger";
 
   // ── Body ─────────────────────────────────────────────────────────────────
   let body: Record<string, unknown>;

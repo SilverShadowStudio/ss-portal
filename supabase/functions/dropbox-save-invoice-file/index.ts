@@ -19,6 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { type InvoiceLineItem } from "../_shared/documents/invoicePdf.ts";
 import { generateInvoicePdfV3 } from "../_shared/documents/invoicePdfV3.ts";
+import { requireInternalOrAdmin } from "../_shared/cronAuth.ts";
 
 const DROPBOX_ROOT = "/03_Portal_Admin_Docs/03_Invoices/INV001_Receivable";
 
@@ -196,23 +197,11 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, supabaseServiceKey);
 
-  // ── Auth: trigger marker OR admin JWT ────────────────────────────────────
-  const isTriggerCall = req.headers.get("x-trigger-name") === "invoice_filing_pending";
-  if (!isTriggerCall) {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader.startsWith("Bearer ")) return json({ success: false, error: "Unauthorized" }, 401);
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData?.user) return json({ success: false, error: "Unauthorized" }, 401);
-    const { data: roleRow } = await sb.from("user_roles")
-      .select("role")
-      .eq("user_id", userData.user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-    if (!roleRow) return json({ success: false, error: "Forbidden" }, 403);
-  }
+  // ── Auth: cron secret (DB trigger, from Vault) OR admin JWT ──────────────
+  // The x-trigger-name marker alone is NOT auth — it is a public string. The
+  // trigger's header helper sends x-cron-secret alongside it.
+  const auth = await requireInternalOrAdmin(req);
+  if (!auth.ok) return auth.response;
 
   // ── Body ─────────────────────────────────────────────────────────────────
   let body: Record<string, unknown>;
