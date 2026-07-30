@@ -159,7 +159,7 @@ src/components/ AdminSidebar, ClientSidebar (both import lib/sidebarConstants), 
                 ActivityLogPreview, ClientActivityPanel, SceneCard, Invoice/QuotationFormDialog,
                 QuotationsTab, AssetUploader); quotations/ (QuotationViewer, QuotationDocument);
                 client/ (TaskDetail, AssetViewer, PinChat, LaneCard); ui/SmartImage
-src/lib/        design.ts, sidebarConstants.ts (SB), agreementTerms.ts, activityLog.ts,
+src/lib/        sidebarConstants.ts (SB), activityLog.ts, finance.ts, fx.ts,
                 reviewWindow.ts, clientActivity.ts, invoiceUtils.ts
 src/contexts/AuthContext.tsx (auth + ghost mode) · src/integrations/supabase/{client.ts,types.ts}
 
@@ -399,7 +399,7 @@ Admin can view the portal as any client: Clients page → click the ghost icon o
 
 ## Client Agreement
 
-Version SSS-CA-v2.0, 14 clauses. Content in `src/lib/agreementTerms.ts`. Replaces all previous versions. Signed agreements stored in `agreements`; PDF generated via `accept-agreement`.
+Version SSS-CA-v2.0, 14 clauses. Content in `supabase/functions/accept-agreement/agreementContent.ts` (edge-side; the old frontend copy was deleted 30 Jul 2026 as dead code). Replaces all previous versions. Signed agreements stored in `agreements`; PDF generated via `accept-agreement`.
 
 ## Local tooling
 
