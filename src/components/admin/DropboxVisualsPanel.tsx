@@ -3,6 +3,7 @@ import { FolderOpen, ImageIcon, AlertCircle, ExternalLink } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { formatDateTime } from "@/lib/invoiceUtils";
 
 interface RoundVisual {
   round: number;
@@ -21,12 +22,8 @@ interface DropboxVisualsPanelProps {
   onRoundSelected?: (round: number, link: string, filename: string) => void;
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
+// Canonical datetime from @/lib/invoiceUtils — "01 January 2000, 14:30".
+const formatDate = formatDateTime;
 
 function formatSize(bytes: number) {
   const mb = bytes / (1024 * 1024);

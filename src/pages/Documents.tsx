@@ -8,7 +8,7 @@ import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatCurrency } from "@/lib/invoiceUtils";
+import { formatCurrency, formatDate } from "@/lib/invoiceUtils";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
 import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
 import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
@@ -77,11 +77,7 @@ interface OrderSummary {
   created_at: string;
 }
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-
-const formatDateShort = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+// formatDate imported from @/lib/invoiceUtils — canonical "01 January 2000".
 
 const formatSize = (bytes: number | null) => {
   if (!bytes) return "";
@@ -640,7 +636,7 @@ export default function Documents() {
                         <p className="font-sans uppercase text-foreground/40 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.16em" }}>
                           {ORDER_STATUS_LABELS[order.status] || order.status}
                           <span className="mx-2 opacity-40">·</span>
-                          {formatDateShort(order.accepted_at || order.created_at)}
+                          {formatDate(order.accepted_at || order.created_at)}
                         </p>
                       </div>
                       <p className="shrink-0 font-sans tabular-nums text-foreground/70" style={{ fontSize: 12 }}>
@@ -698,8 +694,8 @@ export default function Documents() {
                           style={{ fontSize: 9, letterSpacing: "0.24em", margin: "4px 0 0 0", paddingLeft: 0 }}
                         >
                           {q.project_id && projectNames[q.project_id]
-                            ? `${projectNames[q.project_id]} · ${formatDateShort(q.issued_at || q.created_at)}`
-                            : formatDateShort(q.issued_at || q.created_at)}
+                            ? `${projectNames[q.project_id]} · ${formatDate(q.issued_at || q.created_at)}`
+                            : formatDate(q.issued_at || q.created_at)}
                         </p>
                       </div>
                       {total != null && (
@@ -772,8 +768,8 @@ export default function Documents() {
                           >
                             {(() => {
                               const dateStr = inv.due_date
-                                ? `Due ${formatDateShort(inv.due_date)}`
-                                : formatDateShort(inv.issued_at || inv.created_at);
+                                ? `Due ${formatDate(inv.due_date)}`
+                                : formatDate(inv.issued_at || inv.created_at);
                               const proj = inv.project_id ? projectNames[inv.project_id] : undefined;
                               return proj ? `${proj} · ${dateStr}` : dateStr;
                             })()}

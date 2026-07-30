@@ -38,10 +38,21 @@ export function formatCurrency(amount: number, currency: string): string {
   }
 }
 
+// Canonical date shape portal-wide (Fred, 30 Jul 2026): "01 January 2000".
 export function formatDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+// Same canonical date + 24h time: "01 January 2000, 14:30". Composed from
+// two calls because single-call toLocaleString joins with a locale-dependent
+// separator (" at " on newer ICU) that varies across environments.
+export function formatDateTime(d: string | Date | null | undefined): string {
+  if (!d) return "—";
+  const date = typeof d === "string" ? new Date(d) : d;
+  const time = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${formatDate(date)}, ${time}`;
 }
 
 export function statusLabel(status: string) {

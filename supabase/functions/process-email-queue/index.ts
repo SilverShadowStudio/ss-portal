@@ -1,4 +1,3 @@
-import { sendLovableEmail } from 'npm:@lovable.dev/email-js'
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { requireInternalOrAdmin } from '../_shared/cronAuth.ts'
 
@@ -33,6 +32,62 @@ function getRetryAfterSeconds(error: unknown): number {
     return (error as { retryAfterSeconds: number | null }).retryAfterSeconds ?? 60
   }
   return 60
+}
+
+// Send one email through the Resend API (replaces the dead Lovable transport
+// — LOVABLE_API_KEY is no longer valid for this project). Throws an Error
+// carrying `status` (and `retryAfterSeconds` on 429) so the existing
+// isRateLimited / isForbidden handling above keeps working unchanged.
+async function sendViaResend(
+  payload: {
+    from: string
+    to: string
+    subject: string
+    html: string
+    text?: string
+    idempotency_key?: string
+    unsubscribe_token?: string
+  },
+  resendKey: string,
+  supabaseUrl: string,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${resendKey}`,
+    'Content-Type': 'application/json',
+  }
+  if (payload.idempotency_key) headers['Idempotency-Key'] = payload.idempotency_key
+
+  const body: Record<string, unknown> = {
+    from: payload.from,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html,
+  }
+  if (payload.text) body.text = payload.text
+  if (payload.unsubscribe_token) {
+    const unsubUrl = `${supabaseUrl}/functions/v1/handle-email-unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`
+    body.headers = {
+      'List-Unsubscribe': `<${unsubUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    }
+  }
+
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    const err = new Error(`Resend ${resp.status}: ${text.slice(0, 300)}`) as Error & {
+      status: number
+      retryAfterSeconds: number | null
+    }
+    err.status = resp.status
+    const ra = Number(resp.headers.get('retry-after'))
+    err.retryAfterSeconds = Number.isFinite(ra) && ra > 0 ? ra : null
+    throw err
+  }
 }
 
 function parseJwtClaims(token: string): Record<string, unknown> | null {
@@ -80,11 +135,11 @@ async function moveToDlq(
 }
 
 Deno.serve(async (req) => {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')
+  const resendKey = Deno.env.get('RESEND_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-  if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
+  if (!resendKey || !supabaseUrl || !supabaseServiceKey) {
     console.error('Missing required environment variables')
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
@@ -237,25 +292,18 @@ Deno.serve(async (req) => {
       }
 
       try {
-        await sendLovableEmail(
+        await sendViaResend(
           {
-            run_id: payload.run_id,
             to: payload.to,
             from: payload.from,
-            sender_domain: payload.sender_domain,
             subject: payload.subject,
             html: payload.html,
             text: payload.text,
-            purpose: payload.purpose,
-            label: payload.label,
             idempotency_key: payload.idempotency_key,
             unsubscribe_token: payload.unsubscribe_token,
-            message_id: payload.message_id,
           },
-          // sendUrl is optional — when LOVABLE_SEND_URL is not set, the library
-          // falls back to the default Lovable API endpoint (https://api.lovable.dev).
-          // Set LOVABLE_SEND_URL as a Supabase secret to override (e.g. for local dev).
-          { apiKey, sendUrl: Deno.env.get('LOVABLE_SEND_URL') }
+          resendKey,
+          supabaseUrl,
         )
 
         // Log success
@@ -312,8 +360,9 @@ Deno.serve(async (req) => {
           )
         }
 
-        // 403 means emails are disabled for this project — retrying won't help.
-        // Move straight to DLQ and stop processing the rest of the batch.
+        // 403 from Resend means a key/domain problem (invalid API key, sender
+        // domain not verified) — retrying won't help. Move straight to DLQ and
+        // stop processing the rest of the batch.
         if (isForbidden(error)) {
           await moveToDlq(supabase, queue, msg, 'Emails disabled for this project')
           return new Response(

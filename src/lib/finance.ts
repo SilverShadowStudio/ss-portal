@@ -110,11 +110,12 @@ export function formatCurrency(amount: number | null | undefined, currency = "GB
   }).format(n);
 }
 
+// Canonical date shape portal-wide (Fred, 30 Jul 2026): "01 January 2000".
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 }
 
 // UK Stagger 1: quarters end 31 Mar / 30 Jun / 30 Sep / 31 Dec.

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Download, Eye, FileText, MoreHorizontal, Search, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
+import { formatDateTime } from "@/lib/invoiceUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -87,13 +88,8 @@ const EMAIL_DEFAULTS: EmailConfig = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const formatDate = (iso: string | null) => {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-};
+// Canonical datetime from @/lib/invoiceUtils — "01 January 2000, 14:30".
+const formatDate = formatDateTime;
 
 // ─── Shared panel styles (dark config panel) ──────────────────────────────────
 

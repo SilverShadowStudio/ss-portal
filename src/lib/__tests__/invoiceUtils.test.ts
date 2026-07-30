@@ -8,7 +8,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   SUPABASE_PUBLISHABLE_KEY: "",
 }));
 
-import { formatCurrency, formatDate, lineItemsTotal } from "@/lib/invoiceUtils";
+import { formatCurrency, formatDate, formatDateTime, lineItemsTotal } from "@/lib/invoiceUtils";
 
 describe("formatCurrency (invoiceUtils)", () => {
   it("GBP renders en-GB", () => {
@@ -23,12 +23,22 @@ describe("formatCurrency (invoiceUtils)", () => {
 });
 
 describe("formatDate (invoiceUtils)", () => {
-  it("renders en-GB 2-digit day", () => {
-    expect(formatDate("2026-07-30")).toBe("30 Jul 2026");
+  it("renders the canonical shape: 2-digit day + full month", () => {
+    expect(formatDate("2026-07-30")).toBe("30 July 2026");
+    expect(formatDate("2000-01-01")).toBe("01 January 2000");
   });
   it("nullish renders an em dash", () => {
     expect(formatDate(null)).toBe("—");
     expect(formatDate(undefined)).toBe("—");
+  });
+});
+
+describe("formatDateTime (invoiceUtils)", () => {
+  it("canonical date plus 24h time", () => {
+    expect(formatDateTime("2000-01-01T14:30:00Z")).toMatch(/^01 January 2000, \d{2}:\d{2}$/);
+  });
+  it("nullish renders an em dash", () => {
+    expect(formatDateTime(null)).toBe("—");
   });
 });
 

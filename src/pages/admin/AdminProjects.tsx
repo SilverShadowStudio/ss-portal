@@ -33,6 +33,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { ArchiveProjectDialog } from "@/components/admin/ArchiveProjectDialog";
 import { cn } from "@/lib/utils";
+import { formatDate as formatDateShared } from "@/lib/invoiceUtils";
 import {
   getStatusPhase as sharedGetStatusPhase,
   getSceneEffectivePhase as sharedGetSceneEffectivePhase,
@@ -721,14 +722,10 @@ export default function AdminProjects() {
     return "In production";
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return undefined;
-    return new Date(dateStr).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
+  // Canonical "01 January 2000" via the shared formatter; callers here rely
+  // on undefined (not an em dash) for missing dates.
+  const formatDate = (dateStr: string | null) =>
+    dateStr ? formatDateShared(dateStr) : undefined;
 
   const clientLabel = (c: Client | null) =>
     c ? c.full_name || c.company || "Unknown Client" : "";

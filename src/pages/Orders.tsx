@@ -6,7 +6,7 @@ import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/invoiceUtils";
+import { formatCurrency, formatDate } from "@/lib/invoiceUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,11 +40,7 @@ interface Order {
 
 // formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-  });
-}
+// formatDate imported from @/lib/invoiceUtils — canonical "01 January 2000".
 
 function statusConfig(status: Order["status"]) {
   switch (status) {

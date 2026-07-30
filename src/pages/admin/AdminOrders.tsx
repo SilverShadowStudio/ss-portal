@@ -5,7 +5,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatCurrency } from "@/lib/invoiceUtils";
+import { formatCurrency, formatDate } from "@/lib/invoiceUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,9 +46,7 @@ function calcTotals(lines: OrderLine[]) {
 
 // formatCurrency imported from @/lib/invoiceUtils — one implementation repo-wide.
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
+// formatDate imported from @/lib/invoiceUtils — canonical "01 January 2000".
 
 const STATUS_LABELS: Record<string, string> = {
   pending_acceptance: "Pending",

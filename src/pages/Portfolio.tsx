@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Clock, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDate as formatDateShared } from "@/lib/invoiceUtils";
 import { AnimatePresence, motion } from "framer-motion";
 import { DURATION, FM_EASE } from "@/lib/motion";
 import {
@@ -508,14 +509,10 @@ export default function Portfolio() {
     return "In production";
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return undefined;
-    return new Date(dateStr).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
+  // Canonical "01 January 2000" via the shared formatter; callers here rely
+  // on undefined (not an em dash) for missing dates.
+  const formatDate = (dateStr: string | null) =>
+    dateStr ? formatDateShared(dateStr) : undefined;
 
   const handleCreateProject = async (title: string) => {
     if (!user) return;
