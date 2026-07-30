@@ -64,7 +64,7 @@ const gbp = (n: number) =>
 const gbp2 = (n: number) =>
   "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-interface Row { currency: string; gross_amount: number; due_date: string | null; invoice_date: string | null;
+interface Row { currency: string; gross_amount: number; vat_amount: number; due_date: string | null; invoice_date: string | null;
   payment_status: string; payment_date: string | null; supplier_name: string; }
 
 Deno.serve(async (req) => {
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
   // ── Gather ────────────────────────────────────────────────────────────────
   const { data: ovRaw } = await sb.from("overheads")
-    .select("currency, gross_amount, due_date, invoice_date, payment_status, payment_date, supplier_name");
+    .select("currency, gross_amount, vat_amount, due_date, invoice_date, payment_status, payment_date, supplier_name");
   const overheads = (ovRaw ?? []) as Row[];
 
   const { data: payRaw } = await sb.from("payables_snapshot")
@@ -133,6 +133,24 @@ Deno.serve(async (req) => {
   const totalOwed = overheadsUnpaid + freelancerOutstanding + taxesDue;
   const netPosition = receivables - totalOwed;
 
+  // Currency exposure of unpaid overheads (GBP-value of each original currency).
+  const ccyMap = new Map<string, number>();
+  for (const o of unpaid) ccyMap.set(o.currency || GBP, (ccyMap.get(o.currency || GBP) ?? 0) + ovGbp(o));
+  const currencyMix = [...ccyMap.entries()].map(([ccy, gbpv]) => ({ ccy, gbpv }))
+    .sort((a, b) => b.gbpv - a.gbpv);
+  const foreignShare = overheadsUnpaid > 0
+    ? (currencyMix.filter((c) => c.ccy !== GBP).reduce((s, c) => s + c.gbpv, 0) / overheadsUnpaid) * 100 : 0;
+
+  // Supplier concentration — top exposures among unpaid overheads.
+  const supMap = new Map<string, number>();
+  for (const o of unpaid) supMap.set(o.supplier_name || "—", (supMap.get(o.supplier_name || "—") ?? 0) + ovGbp(o));
+  const topSuppliers = [...supMap.entries()].map(([name, gbpv]) => ({ name, gbpv }))
+    .sort((a, b) => b.gbpv - a.gbpv).slice(0, 5);
+  const topSupplierShare = overheadsUnpaid > 0 && topSuppliers.length ? (topSuppliers[0].gbpv / overheadsUnpaid) * 100 : 0;
+
+  // Reclaimable input VAT sitting in unpaid overheads (recovered on settlement).
+  const reclaimableVat = unpaid.reduce((s, o) => s + toGbp(fx, Number(o.vat_amount || 0), o.currency || GBP, o.due_date), 0);
+
   // ── Historic: last 6 months of overhead spend (by invoice month) ───────────
   const byMonth = new Map<string, number>();
   for (const o of overheads) {
@@ -159,11 +177,13 @@ Deno.serve(async (req) => {
   const html = renderEmail({
     nowISO, totalOwed, overheadsUnpaid, freelancerOutstanding, taxesDue, receivables, netPosition,
     aging, unpaidCount: unpaid.length, history, recent3, prior3, trendPct, runRate, forecast90,
+    currencyMix, foreignShare, topSuppliers, topSupplierShare, reclaimableVat,
   });
   const subject = `Financial position — week of ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}`;
 
   if (preview) return json({ preview: true, subject, recipient, figures: {
-    totalOwed, overheadsUnpaid, freelancerOutstanding, taxesDue, receivables, netPosition, aging, runRate, forecast90, trendPct }, html });
+    totalOwed, overheadsUnpaid, freelancerOutstanding, taxesDue, receivables, netPosition, aging, runRate, forecast90,
+    trendPct, foreignShare, topSupplierShare, reclaimableVat, currencyMix, topSuppliers }, html });
 
   if (!resendKey) return json({ error: "RESEND_API_KEY not set" }, 500);
   const resp = await fetch("https://api.resend.com/emails", {
@@ -182,6 +202,8 @@ function renderEmail(d: {
   aging: { overdue: number; due7: number; due30: number; later: number };
   unpaidCount: number; history: { month: string; spend: number }[];
   recent3: number; prior3: number; trendPct: number; runRate: number; forecast90: number;
+  currencyMix: { ccy: string; gbpv: number }[]; foreignShare: number;
+  topSuppliers: { name: string; gbpv: number }[]; topSupplierShare: number; reclaimableVat: number;
 }): string {
   const trendWord = d.trendPct > 5 ? "rising" : d.trendPct < -5 ? "easing" : "broadly stable";
   const overdueShare = d.overheadsUnpaid > 0 ? (d.aging.overdue / d.overheadsUnpaid) * 100 : 0;
@@ -195,7 +217,39 @@ function renderEmail(d: {
   commentary.push(`Overhead spend is <strong>${trendWord}</strong> (${d.trendPct >= 0 ? "+" : ""}${d.trendPct.toFixed(0)}% on the trailing quarter, ${gbp(d.recent3)}/mo vs ${gbp(d.prior3)}/mo).`);
   commentary.push(`Committed recurring outflow runs at approximately <strong>${gbp(d.runRate)}/month</strong> (${gbp(d.forecast90)} over the coming quarter) before any discretionary or project spend.`);
 
+  // Adviser's recommendations — prioritised, data-driven. Only surface what the
+  // numbers actually warrant (specialist commentary, not boilerplate).
+  const advice: { p: string; text: string }[] = [];
+  if (d.aging.overdue > 0) advice.push({ p: overdueShare > 40 ? "Priority" : "This week",
+    text: `Settle or renegotiate the <strong>${gbp(d.aging.overdue)}</strong> overdue balance first — it is the cheapest liquidity risk to remove and protects supplier terms. Prioritise the largest single exposures below.` });
+  if (d.aging.due7 > 0) advice.push({ p: "Next 7 days",
+    text: `Ensure cash cover for <strong>${gbp(d.aging.due7)}</strong> falling due within the week.` });
+  if (d.reclaimableVat > 500) advice.push({ p: "VAT",
+    text: `Approximately <strong>${gbp(d.reclaimableVat)}</strong> of input VAT is embedded in the unpaid overheads and becomes recoverable on settlement — a real offset against your next VAT liability; factor it into the net cash cost of clearing these.` });
+  if (d.foreignShare > 15) advice.push({ p: "FX exposure",
+    text: `<strong>${d.foreignShare.toFixed(0)}%</strong> of unpaid overheads are denominated in EUR/USD. Converted values move with the rate until paid; consider settling the foreign-currency items while sterling is favourable, or holding currency to fix the cost.` });
+  if (d.topSupplierShare > 25) advice.push({ p: "Concentration",
+    text: `A single supplier represents <strong>${d.topSupplierShare.toFixed(0)}%</strong> of outstanding overheads. Concentration that high is worth a payment-terms conversation and a continuity check.` });
+  if (d.trendPct > 15) advice.push({ p: "Cost trend",
+    text: `Overhead run-rate is up <strong>${d.trendPct.toFixed(0)}%</strong> on the prior quarter. If this is not project-driven, it warrants a line-by-line review before it compounds.` });
+  advice.push({ p: "Set-aside", text: `Against a ${gbp(d.runRate)}/month committed run-rate, maintaining roughly one quarter of cover (<strong>${gbp(d.forecast90)}</strong>) as a floor would keep the studio comfortably ahead of its fixed obligations.` });
+
   const bar = (v: number) => `<div style="background:#d3b47c;height:10px;width:${Math.round((v / maxSpend) * 100)}%;border-radius:2px"></div>`;
+
+  // Segmented horizontal bar for the aging profile (email-safe: table cells).
+  const agingSeg = (() => {
+    const segs = [
+      { v: d.aging.overdue, c: "#a23b3b" }, { v: d.aging.due7, c: "#c9862f" },
+      { v: d.aging.due30, c: "#d3b47c" }, { v: d.aging.later, c: "#cfc6b4" },
+    ].filter((s) => s.v > 0);
+    const tot = segs.reduce((s, x) => s + x.v, 0) || 1;
+    return `<table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:6px"><tr>${
+      segs.map((s) => `<td style="height:14px;background:${s.c};width:${((s.v / tot) * 100).toFixed(1)}%;border-radius:2px"></td>`).join("<td style=\"width:2px\"></td>")}</tr></table>`;
+  })();
+
+  const maxSup = Math.max(1, ...d.topSuppliers.map((s) => s.gbpv));
+  const maxCcy = Math.max(1, ...d.currencyMix.map((c) => c.gbpv));
+  const sec = (label: string) => `<div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">${label}</div>`;
 
   return `<!doctype html><html><body style="margin:0;background:#f4f2ee;font-family:Georgia,'Times New Roman',serif;color:#1b1b1b">
   <div style="max-width:640px;margin:0 auto;padding:32px 28px">
@@ -218,13 +272,24 @@ function renderEmail(d: {
       <tr><td style="padding:10px 0;font-weight:bold">Net working position</td><td style="padding:10px 0;font-weight:bold;text-align:right;color:${d.netPosition < 0 ? "#a23b3b" : "#2e6b3e"}">${gbp2(d.netPosition)}</td></tr>
     </table>
 
-    <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">Aged analysis — overheads</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px">
-      <tr><td style="padding:7px 0;color:#a23b3b">Overdue</td><td style="padding:7px 0;text-align:right;color:#a23b3b">${gbp2(d.aging.overdue)}</td></tr>
-      <tr><td style="padding:7px 0">Due within 7 days</td><td style="padding:7px 0;text-align:right">${gbp2(d.aging.due7)}</td></tr>
-      <tr><td style="padding:7px 0">Due 8–30 days</td><td style="padding:7px 0;text-align:right">${gbp2(d.aging.due30)}</td></tr>
-      <tr><td style="padding:7px 0">Due beyond 30 days</td><td style="padding:7px 0;text-align:right">${gbp2(d.aging.later)}</td></tr>
+    ${sec("Aged analysis — overheads")}
+    ${agingSeg}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
+      <tr><td style="padding:5px 0"><span style="color:#a23b3b">■</span> Overdue</td><td style="padding:5px 0;text-align:right;color:#a23b3b">${gbp2(d.aging.overdue)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:#c9862f">■</span> Due within 7 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due7)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:#d3b47c">■</span> Due 8–30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due30)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:#cfc6b4">■</span> Due beyond 30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.later)}</td></tr>
     </table>
+
+    ${d.currencyMix.length > 1 ? `${sec("Currency exposure — unpaid overheads (GBP-equivalent)")}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
+      ${d.currencyMix.map((c) => `<tr><td style="padding:5px 0;width:48px;color:#6b6b6b">${c.ccy}</td><td style="padding:5px 8px;width:52%"><div style="background:#b9a888;height:10px;width:${Math.round((c.gbpv / maxCcy) * 100)}%;border-radius:2px"></div></td><td style="padding:5px 0;text-align:right">${gbp(c.gbpv)}</td><td style="padding:5px 0;text-align:right;width:44px;color:#6b6b6b">${((c.gbpv / (d.overheadsUnpaid || 1)) * 100).toFixed(0)}%</td></tr>`).join("")}
+    </table>` : ""}
+
+    ${d.topSuppliers.length ? `${sec("Supplier concentration — largest exposures")}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
+      ${d.topSuppliers.map((s) => `<tr><td style="padding:5px 0;width:38%;color:#3a3a3a;overflow:hidden">${s.name.slice(0, 26)}</td><td style="padding:5px 8px;width:40%"><div style="background:#d3b47c;height:10px;width:${Math.round((s.gbpv / maxSup) * 100)}%;border-radius:2px"></div></td><td style="padding:5px 0;text-align:right">${gbp(s.gbpv)}</td></tr>`).join("")}
+    </table>` : ""}
 
     <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">Historic tracking — overhead spend, trailing 6 months</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
@@ -237,6 +302,13 @@ function renderEmail(d: {
       <tr><td style="padding:8px 0">Committed over next quarter</td><td style="padding:8px 0;text-align:right">${gbp2(d.forecast90)}</td></tr>
     </table>
     <p style="font-size:12px;color:#6b6b6b;line-height:1.6">Recurring figure amortises annual and quarterly commitments to a monthly basis and excludes one-off, project-driven, and discretionary spend. Receivables reflect invoiced amounts only; contracted-but-uninvoiced work is not included. This statement is generated from the portal's finance records and is indicative, not a substitute for management accounts.</p>
+
+    <div style="background:#efe9dd;border-left:3px solid #d3b47c;padding:16px 18px;margin:26px 0 8px">
+      ${sec("Adviser's commentary &amp; recommended actions")}
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.55">
+        ${advice.map((a) => `<tr><td style="padding:6px 10px 6px 0;vertical-align:top;white-space:nowrap;color:#8a7a55;font-size:11px;letter-spacing:0.06em;text-transform:uppercase">${a.p}</td><td style="padding:6px 0;vertical-align:top">${a.text}</td></tr>`).join("")}
+      </table>
+    </div>
 
     <div style="border-top:1px solid #e2ddd3;margin-top:22px;padding-top:14px;font-size:11px;color:#9a9a9a;letter-spacing:0.04em">Silver Shadow Studio · automated weekly finance summary · replaces the former per-invoice reminder emails</div>
   </div></body></html>`;
