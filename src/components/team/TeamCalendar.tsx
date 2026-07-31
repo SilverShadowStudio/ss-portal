@@ -27,6 +27,7 @@ interface CalData {
 
 const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
+const HOLIDAY = "#6E8CA8"; // paid holiday (slate blue, distinct from worked gold)
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -191,11 +192,11 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
           <div className="ssr-tile grid place-items-center py-20"><BrandLoader /></div>
         ) : (
           <div className="overflow-x-auto pb-2">
-            <div className="flex gap-2" style={{ minWidth: 12 * 92 }}>
+            <div className="flex gap-2" style={{ minWidth: 12 * 104 }}>
               {MONTHS.map((monthName, m) => {
                 const days = getDaysInMonth(new Date(year, m, 1));
                 return (
-                  <div key={m} className="flex-1" style={{ minWidth: 88 }}>
+                  <div key={m} className="flex-1" style={{ minWidth: 96 }}>
                     <div className="mb-1.5 text-center font-serif text-strong" style={{ fontSize: 13 }}>{monthName.slice(0, 3)}</div>
                     <div className="flex flex-col gap-[3px]">
                       {Array.from({ length: days }, (_, i) => i + 1).map((d) => {
@@ -249,21 +250,20 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 function Legend() {
-  const items: [string, string][] = [
-    ["Worked", GOLD],
-    ["Paid holiday", GOLD_BRIGHT],
-    ["Not available", "#6b6b6b"],
-    ["Bank holiday", "#8a8378"],
-    ["Pending", "transparent"],
+  const items: { label: string; color: string; kind?: "dashed" | "hollow" }[] = [
+    { label: "Worked", color: GOLD },
+    { label: "Paid holiday", color: HOLIDAY },
+    { label: "Not available", color: "#6b6b6b" },
+    { label: "Bank holiday", color: "#7d7669", kind: "hollow" },
+    { label: "Pending", color: GOLD, kind: "dashed" },
   ];
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
-      {items.map(([label, color]) => (
+      {items.map(({ label, color, kind }) => (
         <div key={label} className="flex items-center gap-2">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{
-            background: color === "transparent" ? "transparent" : color,
-            border: color === "transparent" ? `1px dashed ${GOLD}` : "none",
-            opacity: label === "Bank holiday" || label === "Not available" ? 0.6 : 1,
+            background: kind ? "transparent" : color,
+            border: kind === "dashed" ? `1px dashed ${GOLD}` : kind === "hollow" ? `1px solid ${color}` : "none",
           }} />
           <span className="text-xs text-recessive">{label}</span>
         </div>
@@ -292,40 +292,53 @@ function DayRow(props: {
     : (employeePattern && isPast && !weekend && !bankHoliday && !(holiday?.status === "approved") && !(unavailable?.status === "approved"))
       ? 1 : undefined;
 
-  let bg = "rgba(18,15,26,0.30)";
+  // Defaults (a plain working/available day).
+  let bg = "rgba(18,15,26,0.32)";
   let numColor = "var(--text-standard)";
-  let dowColor = weekend ? "var(--text-recessive)" : "var(--text-label)";
-  let strike = false;
+  let sideLabel = dowLabel;
+  let sideColor = weekend ? "var(--text-recessive)" : "var(--text-label)";
   let marker: ReactNode = null;
   let leftAccent = "transparent";
   let dashed = false;
+  let noCell = false; // bank holiday → no tile, just the panel background behind it
 
-  if (bankHoliday) { bg = "rgba(138,131,120,0.16)"; numColor = "#8a8378"; strike = true; marker = <span style={{ fontSize: 8, color: "#8a8378" }}>BH</span>; }
-  else if (holiday?.status === "approved") { bg = "rgba(211,180,124,0.28)"; numColor = "#f4e6c9"; marker = <span style={{ fontSize: 8.5, color: GOLD_BRIGHT }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "H"}</span>; }
-  else if (holiday?.status === "pending") { dashed = true; leftAccent = GOLD; marker = <span style={{ fontSize: 8.5, color: GOLD }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "H?"}</span>; }
-  else if (unavailable?.status === "approved") { bg = "rgba(107,107,107,0.22)"; numColor = "#9a938a"; strike = true; marker = <span style={{ fontSize: 8, color: "#9a938a" }}>off</span>; }
-  else if (unavailable?.status === "pending") { dashed = true; leftAccent = "#8a8378"; strike = true; marker = <span style={{ fontSize: 8, color: "#9a938a" }}>?</span>; }
-  else if (derivedWorked != null && derivedWorked > 0) { bg = "rgba(211,180,124,0.12)"; marker = <span style={{ fontSize: 8.5, color: GOLD }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>; }
-  else if (weekend) { bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)"; }
+  if (bankHoliday) {
+    noCell = true; numColor = "#7d7669"; sideLabel = "Bank holiday"; sideColor = "#7d7669";
+  } else if (holiday?.status === "approved") {
+    bg = HOLIDAY; numColor = "#f3f7fb"; sideLabel = holiday.fraction < 1 ? "Paid holiday ½" : "Paid holiday"; sideColor = "#eaf1f7";
+  } else if (holiday?.status === "pending") {
+    bg = "rgba(110,140,168,0.20)"; dashed = true; leftAccent = HOLIDAY; numColor = "#dbe6ef";
+    sideLabel = holiday.fraction < 1 ? "Paid holiday ½" : "Paid holiday"; sideColor = "#9fb3c4";
+  } else if (unavailable?.status === "approved") {
+    bg = "rgba(107,107,107,0.30)"; numColor = "#c2bcb2"; sideLabel = "Not available"; sideColor = "#a49d92";
+  } else if (unavailable?.status === "pending") {
+    bg = "rgba(107,107,107,0.16)"; dashed = true; leftAccent = "#8a8378"; numColor = "#c2bcb2"; sideLabel = "Not available"; sideColor = "#a49d92";
+  } else if (derivedWorked != null && derivedWorked > 0) {
+    bg = "rgba(211,180,124,0.16)"; leftAccent = "rgba(211,180,124,0.55)";
+    marker = <span style={{ fontSize: 9, color: GOLD }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>;
+  } else if (weekend) {
+    bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)";
+  }
 
   if (isToday) leftAccent = GOLD_BRIGHT;
 
   const clickable = !bankHoliday && (isAdmin || !isPast);
 
-  const boxShadow = dashed
-    ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px rgba(211,180,124,0.35)`
-    : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)";
+  const boxShadow = noCell
+    ? "none"
+    : dashed
+      ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px ${holiday ? "rgba(110,140,168,0.5)" : "rgba(138,131,120,0.45)"}`
+      : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)";
 
   const row = (
     <div
-      className={`flex items-center gap-1 rounded pl-1.5 pr-1 ${clickable ? "cursor-pointer hover:brightness-125" : ""}`}
-      style={{ height: 19, background: bg, boxShadow }}
+      className={`flex items-center gap-1.5 rounded pl-1.5 pr-1 ${clickable ? "cursor-pointer hover:brightness-125" : ""}`}
+      style={{ height: 19, background: noCell ? "transparent" : bg, boxShadow }}
       title={bankHoliday ? `${fullDate} · ${bankHoliday}` : fullDate}
     >
-      <span className="tabular-nums" style={{ fontSize: 10.5, width: 15, color: numColor, textDecoration: strike ? "line-through" : "none" }}>{String(dayNum).padStart(2, "0")}</span>
-      <span style={{ fontSize: 8.5, color: dowColor, width: 20 }}>{dowLabel}</span>
-      <span className="ml-auto flex items-center">{marker}</span>
-      {activeLeave?.status === "pending" && <span className="ml-0.5 h-1 w-1 rounded-full" style={{ background: GOLD }} />}
+      <span className="tabular-nums shrink-0" style={{ fontSize: 10.5, width: 15, color: numColor }}>{String(dayNum).padStart(2, "0")}</span>
+      <span className="truncate" style={{ fontSize: 8.5, color: sideColor, letterSpacing: sideLabel.length > 4 ? "0.01em" : "0.04em" }}>{sideLabel}</span>
+      {marker && <span className="ml-auto flex items-center shrink-0">{marker}</span>}
     </div>
   );
 
