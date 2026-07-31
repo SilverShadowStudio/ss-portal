@@ -84,6 +84,9 @@ export interface BankRecord {
   mcc: string | null;
   classification: BankClass;
   raw: Record<string, string>;
+  /** Currency of `amount` (the pocket's currency). Transient — the caller
+   *  converts `amount` to GBP with this, then drops it before insert. */
+  paymentCurrency: string;
 }
 
 /** Parse a Revolut Business statement CSV into insert-ready records. */
@@ -120,6 +123,7 @@ export function parseRevolutCsv(text: string): BankRecord[] {
       mcc: r["MCC"] || null,
       classification: classifyRow(r),
       raw: Object.fromEntries(Object.entries(r).filter(([, v]) => v !== "")),
+      paymentCurrency: r["Payment currency"] || r["Orig currency"] || "GBP",
     });
   }
   return records;

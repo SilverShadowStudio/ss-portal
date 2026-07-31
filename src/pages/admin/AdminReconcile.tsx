@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Check, Search, UploadCloud, FilePlus2 } from "lucide-react";
 import { parseRevolutCsv } from "@/lib/bankImport";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
+import { useFx } from "@/contexts/FxContext";
 import { IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState, type InvoiceKind } from "@/components/admin/finance/IncomeInvoiceUpload";
 
 // bank_transactions isn't in the generated Supabase types (same reason as
@@ -61,6 +62,7 @@ const FILTERS: { key: string; label: string; test: (t: BankTxn) => boolean }[] =
 
 export default function AdminReconcile() {
   const { toast } = useToast();
+  const fx = useFx();
   const [rows, setRows] = useState<BankTxn[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,8 +103,14 @@ export default function AdminReconcile() {
     setImporting(true);
     try {
       const text = await file.text();
-      const records = parseRevolutCsv(text);
-      if (records.length === 0) { toast({ title: "No transactions found in that file", variant: "destructive" }); return; }
+      const parsed = parseRevolutCsv(text);
+      if (parsed.length === 0) { toast({ title: "No transactions found in that file", variant: "destructive" }); return; }
+      // Convert foreign-pocket amounts to GBP (the GBP pocket is a no-op), then
+      // drop the transient paymentCurrency before insert.
+      const records = parsed.map(({ paymentCurrency, ...rec }) => ({
+        ...rec,
+        amount: paymentCurrency === "GBP" ? rec.amount : fx.gbp(rec.amount, paymentCurrency, rec.date_completed),
+      }));
       // Upsert on the Revolut id, ignoring duplicates — new transactions land,
       // already-reviewed/categorised rows are left untouched.
       const countAll = async () => (await sb.from("bank_transactions").select("id", { count: "exact", head: true })).count ?? 0;

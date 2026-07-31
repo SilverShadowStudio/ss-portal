@@ -36,3 +36,4 @@ supabase/.temp/
 # Airtable schema audit artefacts (local only)
 airtable-schema.json
 airtable-schema-summary.md
+transaction-statement*.csv
