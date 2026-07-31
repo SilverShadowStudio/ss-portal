@@ -50,6 +50,10 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
   const [qIndex, setQIndex] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
 
+  // Per-file failures from the last run, kept visible until the next run so the
+  // reason (upstream error / too long / busy model) doesn't vanish with the toast.
+  const [failures, setFailures] = useState<{ name: string; reason: string }[]>([]);
+
   useEffect(() => {
     if (!processing) return;
     const id = setInterval(() => forceTick((n) => n + 1), 250);
@@ -82,17 +86,22 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
     setDone(0);
     setFailed(0);
     setEta(null);
+    setFailures([]);
 
     const startTs = Date.now();
     const parsed: Parsed[] = [];
-    const failedNames: string[] = [];
-    let idx = 0, completed = 0, failures = 0;
+    const failedItems: { name: string; reason: string }[] = [];
+    let idx = 0, completed = 0, failureCount = 0;
     const worker = async () => {
       while (true) {
         const i = idx++;
         if (i >= accepted.length) break;
         try { parsed.push(await processOne(accepted[i])); }
-        catch { failures++; setFailed(failures); failedNames.push(accepted[i].name); }
+        catch (e) {
+          const reason = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").trim();
+          console.error(`[income-upload] ${accepted[i].name} failed: ${reason}`);
+          failureCount++; setFailed(failureCount); failedItems.push({ name: accepted[i].name, reason });
+        }
         completed++;
         setDone(completed);
         const elapsed = (Date.now() - startTs) / 1000;
@@ -104,9 +113,10 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
 
     setProcessing(false);
     setFinishedAt(Date.now());
-    if (failures > 0) {
-      const names = failedNames.join(", ");
-      toast({ title: `${failures} invoice${failures === 1 ? "" : "s"} couldn't be read`, description: `${names} — parsed the rest; try ${failures === 1 ? "this one" : "these"} on its own via New income invoice.`, variant: "destructive" });
+    setFailures(failedItems);
+    if (failureCount > 0) {
+      const detail = failedItems.map((f) => `${f.name} — ${f.reason}`).join("\n");
+      toast({ title: `${failureCount} invoice${failureCount === 1 ? "" : "s"} couldn't be read`, description: `${detail}\n\nParsed the rest. A "busy/overloaded" error clears on a retry; anything else, add it by hand via New income invoice.`, variant: "destructive" });
     }
     if (parsed.length > 0) { setQueue(parsed); setQIndex(0); setReviewOpen(true); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,6 +197,24 @@ export function BulkIncomeDropzone({ onSaved }: { onSaved: () => void }) {
           </div>
         )}
       </div>
+
+      {!processing && failures.length > 0 && (
+        <div className="mt-3 rounded-sm border border-[#C9A96A]/25 bg-[#C9A96A]/[0.04] px-4 py-3 animate-fade-in">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-[#C9A96A]" strokeWidth={1.5} />
+            <span className="text-[10px] uppercase tracking-[0.2em] text-[#ecd39c]">Couldn't read {failures.length}</span>
+          </div>
+          <ul className="space-y-1.5">
+            {failures.map((f) => (
+              <li key={f.name} className="text-[12px] leading-snug">
+                <span className="text-standard">{f.name}</span>
+                <span className="text-white/40"> — {f.reason}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2.5 text-[10px] uppercase tracking-[0.14em] text-white/30">A busy/overloaded error clears on retry · otherwise add by hand via New income invoice</p>
+        </div>
+      )}
 
       {current && (
         <IncomeInvoiceReviewDialog
