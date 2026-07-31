@@ -82,6 +82,8 @@ export default function AdminReconcile() {
         if (error) throw error;
       }
       const added = (await countAll()) - before;
+      // Auto-match new transactions to invoices/overheads by reference.
+      await (supabase as unknown as { rpc: (n: string) => Promise<unknown> }).rpc("match_bank_transactions").catch(() => {});
       await load();
       toast({ title: added > 0 ? `Imported ${added} new transaction${added === 1 ? "" : "s"}` : "Already up to date — no new transactions" });
     } catch (e) {
