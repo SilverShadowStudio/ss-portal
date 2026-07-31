@@ -242,7 +242,7 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
   return (
     <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0">
       <circle cx="28" cy="28" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-      <circle cx="28" cy="28" r={R} fill="none" stroke={GOLD} strokeWidth="4" strokeLinecap="round"
+      <circle cx="28" cy="28" r={R} fill="none" stroke={HOLIDAY} strokeWidth="4" strokeLinecap="round"
         strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 28 28)" />
     </svg>
   );
@@ -303,12 +303,13 @@ function DayRow(props: {
   let noCell = false; // bank holiday → no tile, just the panel background behind it
 
   if (bankHoliday) {
-    noCell = true; numColor = "#7d7669"; sideLabel = "Bank holiday"; sideColor = "#7d7669";
+    noCell = true; numColor = HOLIDAY; sideLabel = "Bank holiday"; sideColor = HOLIDAY;
   } else if (holiday?.status === "approved") {
-    bg = HOLIDAY; numColor = "#f3f7fb"; sideLabel = holiday.fraction < 1 ? "Paid holiday ½" : "Paid holiday"; sideColor = "#eaf1f7";
+    // A normal transparent day card, marked paid holiday by a slate-blue dot.
+    marker = <span style={{ fontSize: 9, color: HOLIDAY }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "●"}</span>;
   } else if (holiday?.status === "pending") {
-    bg = "rgba(110,140,168,0.20)"; dashed = true; leftAccent = HOLIDAY; numColor = "#dbe6ef";
-    sideLabel = holiday.fraction < 1 ? "Paid holiday ½" : "Paid holiday"; sideColor = "#9fb3c4";
+    dashed = true; leftAccent = HOLIDAY;
+    marker = <span style={{ fontSize: 9, color: HOLIDAY }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "○"}</span>;
   } else if (unavailable?.status === "approved") {
     bg = "rgba(107,107,107,0.30)"; numColor = "#c2bcb2"; sideLabel = "Not available"; sideColor = "#a49d92";
   } else if (unavailable?.status === "pending") {
