@@ -16,6 +16,7 @@ interface CalData {
   employmentType: string | null;
   isAdmin: boolean;
   year: number;
+  workStartDate: string | null;
   workPattern: "airtable" | "weekdays";
   workedDays: { date: string; fraction: number }[];
   bankHolidays: { date: string; name: string }[];
@@ -141,7 +142,9 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setYear((y) => y - 1)}><ChevronLeft className="h-4 w-4" /></button>
+            <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5 disabled:opacity-25 disabled:hover:bg-transparent"
+              disabled={data?.workStartDate ? year <= Number(data.workStartDate.slice(0, 4)) : false}
+              onClick={() => setYear((y) => y - 1)}><ChevronLeft className="h-4 w-4" /></button>
             <span className="font-serif text-strong" style={{ fontSize: 18, minWidth: 56, textAlign: "center" }}>{year}</span>
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setYear((y) => y + 1)}><ChevronRight className="h-4 w-4" /></button>
             {year !== now.getFullYear() && (
@@ -211,6 +214,7 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
                             fullDate={format(new Date(year, m, d), "EEEE d MMMM yyyy")}
                             isToday={dateIso === todayIso}
                             isPast={dateIso < todayIso}
+                            beforeStart={data?.workStartDate ? dateIso < data.workStartDate : false}
                             bankHoliday={bankMap.get(dateIso)}
                             worked={workedMap.get(dateIso)}
                             employeePattern={employeePattern}
@@ -275,14 +279,24 @@ function Legend() {
 // ── One day row in a month column ─────────────────────────────────────────────
 function DayRow(props: {
   dayNum: number; dowLabel: string; weekend: boolean; fullDate: string;
-  isToday: boolean; isPast: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean;
+  isToday: boolean; isPast: boolean; beforeStart: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean;
   leave?: { holiday?: LeaveDay; unavailable?: LeaveDay };
   isAdmin: boolean; busy: boolean;
   onSet: (kind: LeaveKind, fraction: number) => void;
   onCancel: (id: string) => void;
   onReview: (id: string, decision: "approved" | "declined") => void;
 }) {
-  const { dayNum, dowLabel, weekend, fullDate, isToday, isPast, bankHoliday, worked, employeePattern, leave, isAdmin, busy } = props;
+  const { dayNum, dowLabel, weekend, fullDate, isToday, isPast, beforeStart, bankHoliday, worked, employeePattern, leave, isAdmin, busy } = props;
+
+  // Before this person joined the studio: an empty, non-interactive placeholder.
+  if (beforeStart) {
+    return (
+      <div className="flex items-center rounded pl-1.5" style={{ height: 19, opacity: 0.18 }} title={`${fullDate} — before start date`}>
+        <span className="tabular-nums" style={{ fontSize: 10.5, width: 15, color: "var(--text-recessive)" }}>{String(dayNum).padStart(2, "0")}</span>
+      </div>
+    );
+  }
+
   const holiday = leave?.holiday;
   const unavailable = leave?.unavailable;
   const activeLeave = holiday ?? unavailable;

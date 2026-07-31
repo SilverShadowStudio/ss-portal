@@ -278,7 +278,7 @@ export function AccountList({
   // Portal-emails viewer, opened from the account-card mail icon.
   const [emailsModal, setEmailsModal] = useState<{ accountId: string; name: string } | null>(null);
   // Admin edit of a team member's admin-owned info (name/engagement/position/salary/role).
-  const [editMember, setEditMember] = useState<null | { accountId: string; userId: string | null; firstName: string; lastName: string; engagement: "freelancer" | "employee"; position: string; salary: string; role: string }>(null);
+  const [editMember, setEditMember] = useState<null | { accountId: string; userId: string | null; firstName: string; lastName: string; engagement: "freelancer" | "employee"; position: string; salary: string; role: string; startDate: string }>(null);
   const [savingMember, setSavingMember] = useState(false);
   // Templates for the template-pick step
   const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
@@ -853,9 +853,9 @@ export function AccountList({
   // Open the edit-member dialog, pulling the current admin-owned fields.
   async function openEditMember(group: AccountGroup) {
     const u = group.users?.[0];
-    const { data: acct } = await supabase.from("accounts").select("employment_type, position, gross_salary_annual, team_role").eq("id", group.account_id).maybeSingle();
+    const { data: acct } = await supabase.from("accounts").select("employment_type, position, gross_salary_annual, team_role, work_start_date").eq("id", group.account_id).maybeSingle();
     const { data: fp } = u ? await supabase.from("freelancer_profiles").select("role, day_rate").eq("user_id", u.user_id).maybeSingle() : { data: null } as any;
-    const a = acct as { employment_type?: string | null; position?: string | null; gross_salary_annual?: number | null; team_role?: string | null } | null;
+    const a = acct as { employment_type?: string | null; position?: string | null; gross_salary_annual?: number | null; team_role?: string | null; work_start_date?: string | null } | null;
     const nameParts = (group.company_name || "").trim().split(/\s+/);
     setEditMember({
       accountId: group.account_id,
@@ -866,6 +866,7 @@ export function AccountList({
       position: a?.position ?? u?.position ?? "",
       salary: a?.gross_salary_annual != null ? String(a.gross_salary_annual) : "",
       role: (fp as { role?: string | null } | null)?.role ?? a?.team_role ?? "",
+      startDate: a?.work_start_date ?? "",
     });
   }
 
@@ -886,6 +887,7 @@ export function AccountList({
         position: isEmp ? m.position.trim() || null : null,
         gross_salary_annual: isEmp ? parseFloat(m.salary.replace(/[^0-9.]/g, "")) || null : null,
         team_role: isEmp ? (m.position.trim() || null) : (m.role.trim() || null),
+        work_start_date: m.startDate || null,
       }).eq("id", m.accountId);
       if (aErr) throw aErr;
       if (m.userId) {
@@ -2193,6 +2195,9 @@ export function AccountList({
                 <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Role</label>
                   <Input value={editMember.role} onChange={(e) => setEditMember((m) => m && { ...m, role: e.target.value })} placeholder="Scene Manager / Modeller …" /></div>
               )}
+              <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Start date at the studio</label>
+                <Input type="date" value={editMember.startDate} onChange={(e) => setEditMember((m) => m && { ...m, startDate: e.target.value })} />
+                <p className="text-[10px] text-muted-foreground/70">Their calendar begins on this day.</p></div>
               <p className="col-span-2 text-[10px] text-muted-foreground/70">Address, phone and bank stay the member’s own — they manage those in their Settings.</p>
             </div>
           )}

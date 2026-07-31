@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
       const to = body?.to || `${year}-12-31`;
 
       const { data: acct } = await sb.from("accounts")
-        .select("company_name, employment_type, annual_leave_allowance").eq("id", accountId).maybeSingle();
+        .select("company_name, employment_type, annual_leave_allowance, work_start_date").eq("id", accountId).maybeSingle();
       if (!acct) return json({ error: "Account not found" }, 404);
 
       // Worked days: freelancers → Airtable; employees → weekday pattern (client renders).
@@ -182,6 +182,7 @@ Deno.serve(async (req) => {
 
       return json({
         accountId, accountName: acct.company_name, employmentType: acct.employment_type ?? null,
+        workStartDate: acct.work_start_date ?? null,
         isAdmin, year, from, to, workPattern, workedDays,
         bankHolidays: (holidays ?? []).map((h) => ({ date: h.holiday_date, name: h.name })),
         leave: (leave ?? []).map((l) => ({ id: l.id, date: l.leave_date, kind: l.kind, fraction: Number(l.fraction), status: l.status, note: l.note })),
