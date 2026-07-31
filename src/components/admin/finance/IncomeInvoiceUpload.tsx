@@ -79,12 +79,16 @@ function isoDate(v: unknown): string {
 }
 
 function invoiceKind(v: unknown, invoiceNumber: string): InvoiceKind {
-  const k = str(v).toLowerCase();
-  if (k === "deposit" || k === "balance" || k === "standalone") return k;
-  // Fall back to the studio's -A (deposit) / -B,-C (balance) numbering convention.
+  // The studio's numbering convention is deterministic and therefore
+  // AUTHORITATIVE: -A = deposit, -B/-C/... = balance. It wins over the model's
+  // reading of often-ambiguous invoice wording — which mislabelled KAT025-B as
+  // "standalone" even with the -B right there. Only when the number carries no
+  // A–Z suffix do we trust the parser's semantic guess.
   const suffix = invoiceNumber.trim().match(/-([A-Za-z])\d*$/)?.[1]?.toUpperCase();
   if (suffix === "A") return "deposit";
   if (suffix && suffix >= "B" && suffix <= "Z") return "balance";
+  const k = str(v).toLowerCase();
+  if (k === "deposit" || k === "balance" || k === "standalone") return k;
   return "standalone";
 }
 
