@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Check, Search, UploadCloud, FilePlus2 } from "lucide-react";
 import { parseRevolutCsv } from "@/lib/bankImport";
+import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState, type InvoiceKind } from "@/components/admin/finance/IncomeInvoiceUpload";
 
 // bank_transactions isn't in the generated Supabase types (same reason as
@@ -112,8 +113,10 @@ export default function AdminReconcile() {
         if (error) throw error;
       }
       const added = (await countAll()) - before;
-      // Auto-match new transactions to invoices/overheads by reference.
+      // Auto-match to invoices/overheads by reference + auto-categorise
+      // expenses from remembered supplier mappings.
       await (supabase as unknown as { rpc: (n: string) => Promise<unknown> }).rpc("match_bank_transactions").catch(() => {});
+      await applyCategoryMap();
       await load();
       toast({ title: added > 0 ? `Imported ${added} new transaction${added === 1 ? "" : "s"}` : "Already up to date — no new transactions" });
     } catch (e) {
@@ -138,6 +141,43 @@ export default function AdminReconcile() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...fields } : r)));
     const { error } = await sb.from("bank_transactions").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) { toast({ title: "Couldn't save", description: error.message, variant: "destructive" }); load(); }
+  }
+
+  // Categorise an expense — and apply the same category to every other
+  // uncategorised transaction with the same (normalised) counterparty, then
+  // remember it so future imports auto-categorise. Clearing only affects the
+  // one row.
+  async function categorizeExpense(t: BankTxn, code: string) {
+    if (!code) { patch(t.id, { category_code: null, reviewed: false }); return; }
+    const key = normalizeSupplier(t.counterparty ?? t.description ?? "");
+    const ids = key
+      ? rows.filter((r) => r.classification === "expense" && !r.category_code && normalizeSupplier(r.counterparty ?? r.description ?? "") === key).map((r) => r.id)
+      : [t.id];
+    const targets = ids.length ? ids : [t.id];
+    setRows((prev) => prev.map((r) => (targets.includes(r.id) ? { ...r, category_code: code, reviewed: true } : r)));
+    const { error } = await sb.from("bank_transactions").update({ category_code: code, reviewed: true, updated_at: new Date().toISOString() }).in("id", targets);
+    if (error) { toast({ title: "Couldn't save", description: error.message, variant: "destructive" }); load(); return; }
+    if (key) sb.from("supplier_category_map").upsert({ supplier_normalized: key, category_code: code, updated_at: new Date().toISOString() }).then(() => {}, () => {});
+    const cat = cats.find((c) => c.code === code);
+    toast({ title: targets.length > 1 ? `Categorised ${targets.length} × “${t.counterparty ?? "similar"}” → ${cat?.name ?? code}` : `Categorised → ${cat?.name ?? code}` });
+  }
+
+  // Apply remembered supplier→category mappings to any uncategorised expenses
+  // (used after an import so known suppliers auto-classify).
+  async function applyCategoryMap() {
+    const [{ data: map }, { data: exp }] = await Promise.all([
+      sb.from("supplier_category_map").select("supplier_normalized, category_code"),
+      sb.from("bank_transactions").select("id, counterparty, description").eq("classification", "expense").is("category_code", null),
+    ]);
+    const m = new Map((map ?? []).map((r: { supplier_normalized: string; category_code: string }) => [r.supplier_normalized, r.category_code]));
+    const byCode: Record<string, string[]> = {};
+    for (const r of (exp ?? []) as { id: string; counterparty: string | null; description: string | null }[]) {
+      const c = m.get(normalizeSupplier(r.counterparty ?? r.description ?? ""));
+      if (c) (byCode[c] ??= []).push(r.id);
+    }
+    for (const [code, ids] of Object.entries(byCode))
+      for (let i = 0; i < ids.length; i += 200)
+        await sb.from("bank_transactions").update({ category_code: code, reviewed: true, updated_at: new Date().toISOString() }).in("id", ids.slice(i, i + 200));
   }
 
   // Bank-truth P&L (trading only).
@@ -246,7 +286,7 @@ export default function AdminReconcile() {
                           ) : t.classification === "expense" ? (
                             <select
                               value={t.category_code ?? ""}
-                              onChange={(e) => patch(t.id, { category_code: e.target.value || null, reviewed: !!e.target.value })}
+                              onChange={(e) => categorizeExpense(t, e.target.value)}
                               className="max-w-[190px] rounded-sm border border-white/10 bg-[#1b1b1b] px-2 py-1 text-[11px] text-standard focus:border-[#C9A96A] focus:outline-none">
                               <option value="">Categorise…</option>
                               {cats.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
