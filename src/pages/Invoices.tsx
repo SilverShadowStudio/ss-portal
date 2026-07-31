@@ -4,6 +4,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PAY_ONLINE_MAX_AMOUNT } from "@/lib/finance";
 import {
   formatCurrency, formatDate, downloadInvoicePdfFromBackend, type InvoiceLineItem,
 } from "@/lib/invoiceUtils";
@@ -179,7 +180,7 @@ export default function Invoices() {
         <div className="space-y-1 animate-fade-in" style={{ animationDelay: "0.1s" }}>
           {filtered.map((r) => {
             const sc = statusConfig(r.status);
-            const canPay = r.status === "sent" || r.status === "overdue";
+            const canPay = (r.status === "sent" || r.status === "overdue") && Number(r.amount) < PAY_ONLINE_MAX_AMOUNT;
             return (
               <div
                 key={r.id}
@@ -254,7 +255,7 @@ export default function Invoices() {
         invoice={viewing}
         open={!!viewing}
         onOpenChange={(o) => !o && setViewing(null)}
-        showPay
+        showPay={viewing != null && viewing.status !== "paid" && Number(viewing.amount) < PAY_ONLINE_MAX_AMOUNT}
         paying={paying === viewing?.id}
         onPay={(inv) => payNow({ ...(viewing as any), ...inv } as any)}
       />

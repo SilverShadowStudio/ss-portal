@@ -133,14 +133,19 @@ Deno.serve(async (req) => {
     const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
 
     // Payment link — ensure a live Revolut link for unpaid invoices so the PDF's
-    // "PAY ONLINE" button always works (Stripe retired). Falls back to any cached
-    // url; best-effort — on failure the PDF still renders without the button.
-    let payUrl: string | null = (invoice as any).revolut_checkout_url ?? (invoice as any).stripe_checkout_url ?? null;
-    if (invoice.status !== "paid" && !payUrl) {
-      try {
-        payUrl = (await ensurePaymentLink(admin, invoice as any)).checkout_url;
-      } catch (e) {
-        console.warn("[invoice-pdf] payment link generation failed:", (e as Error).message);
+    // "PAY ONLINE" button works (Stripe retired). Only for invoices under the
+    // online-payment ceiling (£5k): card fees on large B2B invoices are punitive
+    // and those are paid by bank transfer, so the button is suppressed above it.
+    const PAY_ONLINE_MAX_AMOUNT = 5000;
+    let payUrl: string | null = null;
+    if (invoice.status !== "paid" && Number(invoice.amount) < PAY_ONLINE_MAX_AMOUNT) {
+      payUrl = (invoice as any).revolut_checkout_url ?? null;
+      if (!payUrl) {
+        try {
+          payUrl = (await ensurePaymentLink(admin, invoice as any)).checkout_url;
+        } catch (e) {
+          console.warn("[invoice-pdf] payment link generation failed:", (e as Error).message);
+        }
       }
     }
 

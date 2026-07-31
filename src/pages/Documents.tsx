@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency, formatDate } from "@/lib/invoiceUtils";
+import { PAY_ONLINE_MAX_AMOUNT } from "@/lib/finance";
 import { AgreementViewer, type AgreementViewerData } from "@/components/agreements/AgreementViewer";
 import { QuotationViewer, type QuotationViewerData } from "@/components/quotations/QuotationViewer";
 import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
@@ -55,7 +56,6 @@ interface Invoice {
   issued_at: string | null;
   created_at: string;
   type: string;
-  stripe_checkout_url: string | null;
   revolut_checkout_url: string | null;
   account_id: string | null;
   project_id: string | null;
@@ -222,7 +222,7 @@ export default function Documents() {
   }, [defaultPicked, loading, invoices, agreements, orders, quotations, showOrders]);
 
   async function handlePayInvoice(inv: Invoice) {
-    const existing = inv.revolut_checkout_url || inv.stripe_checkout_url;
+    const existing = inv.revolut_checkout_url;
     if (existing) {
       window.open(existing, "_blank", "noopener,noreferrer");
       return;
@@ -357,7 +357,7 @@ export default function Documents() {
         // direct URL. The visible vocabulary is "Outstanding" / "Paid".
         supabase
           .from("invoices")
-          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url, revolut_checkout_url, account_id, project_id, subtotal, vat_rate, vat_amount, notes, bank_account, line_items")
+          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, revolut_checkout_url, account_id, project_id, subtotal, vat_rate, vat_amount, notes, bank_account, line_items")
           .in("status", ["sent", "partially_paid", "paid"])
           .order("created_at", { ascending: false }),
         supabase
@@ -729,7 +729,7 @@ export default function Documents() {
                   const display = invoiceStatusDisplay(inv.status);
                   if (!display) return null;
                   const num = inv.invoice_number || inv.reference_number || "—";
-                  const canPay = inv.status !== "paid";
+                  const canPay = inv.status !== "paid" && inv.amount < PAY_ONLINE_MAX_AMOUNT;
                   const isPaying = payingInvoiceId === inv.id;
                   // Overdue is signalled by italic reference + italic date
                   // and a second eyebrow line "[N] DAYS OVERDUE" beside the

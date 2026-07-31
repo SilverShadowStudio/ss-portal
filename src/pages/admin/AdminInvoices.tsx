@@ -56,6 +56,7 @@ import {
   formatCurrency, formatDate, statusBadgeClasses, statusLabel,
   downloadInvoicePdfFromBackend, fileInvoiceToDropbox, type InvoiceLineItem,
 } from "@/lib/invoiceUtils";
+import { PAY_ONLINE_MAX_AMOUNT } from "@/lib/finance";
 
 interface InvoiceRow {
   id: string;
@@ -76,7 +77,6 @@ interface InvoiceRow {
   subtotal?: number | null;
   vat_rate?: number | null;
   vat_amount?: number | null;
-  stripe_checkout_url?: string | null;
   revolut_checkout_url?: string | null;
   type?: string | null;
 }
@@ -425,20 +425,20 @@ export default function AdminInvoices() {
                   <TableCell className="text-right tabular-nums">{formatCurrency(Number(r.amount), r.currency || "EUR")}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
-                      {(r.revolut_checkout_url || r.stripe_checkout_url) ? (
+                      {r.revolut_checkout_url ? (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
                           title="Copy payment link"
                           onClick={() => {
-                            navigator.clipboard.writeText((r.revolut_checkout_url || r.stripe_checkout_url)!);
+                            navigator.clipboard.writeText(r.revolut_checkout_url!);
                             toast({ title: "Payment link copied" });
                           }}
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </Button>
-                      ) : (
+                      ) : Number(r.amount) < PAY_ONLINE_MAX_AMOUNT ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -453,6 +453,8 @@ export default function AdminInvoices() {
                           )}
                           {creatingLinkId === r.id ? "Creating…" : "Payment link"}
                         </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50 pr-1" title="Bank transfer only (card fees on large invoices)">Bank transfer</span>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

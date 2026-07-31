@@ -18,6 +18,12 @@ export type VatTreatment =
 
 export type PaymentStatus = "unpaid" | "paid";
 
+// Online card/link payment is only offered on smaller invoices — card fees on
+// large B2B invoices (£26k etc.) are punitive, and those are paid by bank
+// transfer. Invoices at or above this amount hide the "PAY ONLINE" button and
+// no Revolut payment link is generated. (Agreed with Fred: from £5k up.)
+export const PAY_ONLINE_MAX_AMOUNT = 5000;
+
 export interface ExpenseCategory {
   code: string;
   name: string;
@@ -438,7 +444,7 @@ export interface MoneyInInvoice {
   created_at: string;
   notes: string | null;
   line_items: unknown;
-  stripe_checkout_url: string | null;
+  revolut_checkout_url: string | null;
   project_id: string | null;
   user_id: string;
   dropbox_path?: string | null;
