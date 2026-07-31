@@ -8,6 +8,7 @@ import { parseRevolutCsv } from "@/lib/bankImport";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { useFx } from "@/contexts/FxContext";
 import { IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState, type InvoiceKind } from "@/components/admin/finance/IncomeInvoiceUpload";
+import { BankTruthChart } from "@/components/admin/finance/BankTruthChart";
 
 // bank_transactions isn't in the generated Supabase types (same reason as
 // overheads/expense_categories — the type-gen token 401s), so we type it
@@ -280,6 +281,7 @@ export default function AdminReconcile() {
             <p className="mt-3 text-[11px] uppercase tracking-[0.2em] text-white/30">
               {money(pnl.excluded)} internal FX / financing excluded · indicative, pre-categorisation
             </p>
+            <BankTruthChart rows={rows} />
           </section>
 
           {/* Feed + review */}
