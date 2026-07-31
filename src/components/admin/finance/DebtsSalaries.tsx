@@ -405,7 +405,7 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
     <section className="ssr-zone">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
         <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Salaries</h2></div>
-        <SectionTotal amount={totalOwed} label="owed" format={money} />
+        <SectionTotal amount={totalOwed} format={money} />
       </div>
       <div className="mb-4 flex justify-end">
         <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
