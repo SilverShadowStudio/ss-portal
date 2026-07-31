@@ -3,7 +3,8 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X, Search } from "lucide-react";
+import { Check, Search, UploadCloud } from "lucide-react";
+import { parseRevolutCsv } from "@/lib/bankImport";
 
 // bank_transactions isn't in the generated Supabase types (same reason as
 // overheads/expense_categories — the type-gen token 401s), so we type it
@@ -63,6 +64,32 @@ export default function AdminReconcile() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("review");
   const [search, setSearch] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  async function importCsv(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const records = parseRevolutCsv(text);
+      if (records.length === 0) { toast({ title: "No transactions found in that file", variant: "destructive" }); return; }
+      // Upsert on the Revolut id, ignoring duplicates — new transactions land,
+      // already-reviewed/categorised rows are left untouched.
+      const countAll = async () => (await sb.from("bank_transactions").select("id", { count: "exact", head: true })).count ?? 0;
+      const before = await countAll();
+      const chunk = 200;
+      for (let i = 0; i < records.length; i += chunk) {
+        const { error } = await sb.from("bank_transactions").upsert(records.slice(i, i + chunk), { onConflict: "id", ignoreDuplicates: true });
+        if (error) throw error;
+      }
+      const added = (await countAll()) - before;
+      await load();
+      toast({ title: added > 0 ? `Imported ${added} new transaction${added === 1 ? "" : "s"}` : "Already up to date — no new transactions" });
+    } catch (e) {
+      toast({ title: "Couldn't import the statement", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function load() {
     const [{ data: txns }, { data: c }] = await Promise.all([
@@ -102,9 +129,17 @@ export default function AdminReconcile() {
 
   return (
     <AdminLayout panel>
-      <div className="mb-8 flex items-center gap-3">
-        <div className="h-px w-12 bg-gold-muted" />
-        <span className="text-label-gold text-[#ecd39c]">Reconciliation</span>
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-px w-12 bg-gold-muted" />
+          <span className="text-label-gold text-[#ecd39c]">Reconciliation</span>
+        </div>
+        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] transition-colors ${importing ? "border-white/10 text-white/30" : "border-[#C9A96A]/40 text-[#C9A96A] hover:border-[#C9A96A]/70 hover:text-[#ecd39c]"}`}>
+          {importing ? <BrandLoader size="sm" className="h-3 w-3" /> : <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />}
+          {importing ? "Importing…" : "Import Revolut CSV"}
+          <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
+        </label>
       </div>
 
       {loading ? (
