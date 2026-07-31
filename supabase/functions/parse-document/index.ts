@@ -368,7 +368,9 @@ Deno.serve(async (req) => {
     for (let i = 0; i < 3; i++) {
       let res: Response
       try {
-        res = await callAnthropic(anthropicKey, model, dt, mime, base64, categories)
+        // anthropicKey / mime / base64 are all guarded non-null above; TS loses
+        // that narrowing inside this captured closure, so assert here.
+        res = await callAnthropic(anthropicKey!, model, dt, mime!, base64!, categories)
       } catch (e) {
         last = { status: 0, body: `fetch failed: ${e instanceof Error ? e.message : String(e)}` }
         console.error(`Anthropic ${model} attempt ${i + 1} threw:`, last.body)
@@ -396,8 +398,15 @@ Deno.serve(async (req) => {
     } else {
       // Surface the REAL upstream error so failures are diagnosable, not "non-2xx".
       const worst = fb.status || primary.status
-      const detail = (fb.body || primary.body || '').replace(/\s+/g, ' ').slice(0, 240)
+      const rawBody = fb.body || primary.body || ''
+      const detail = rawBody.replace(/\s+/g, ' ').slice(0, 240)
       console.error(`parse-document: both models failed. status=${worst} detail=${detail}`)
+      // Billing/quota exhaustion is an operational (not a document) problem — give
+      // the plain-language cause + fix instead of raw JSON. Affects every AI
+      // feature on this key, so it is worth spelling out.
+      if (/credit balance is too low|Plans & Billing|billing/i.test(rawBody)) {
+        return json({ success: false, error: 'Anthropic API credits are exhausted — top up in the Anthropic Console (Plans & Billing), then retry. This affects all document parsing until resolved.' }, 200)
+      }
       return json({ success: false, error: `Model couldn't read it (upstream ${worst || 'error'}): ${detail || 'no detail'}` }, 200)
     }
   }
