@@ -3,8 +3,9 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Search, UploadCloud } from "lucide-react";
+import { Check, Search, UploadCloud, FilePlus2 } from "lucide-react";
 import { parseRevolutCsv } from "@/lib/bankImport";
+import { IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState, type InvoiceKind } from "@/components/admin/finance/IncomeInvoiceUpload";
 
 // bank_transactions isn't in the generated Supabase types (same reason as
 // overheads/expense_categories — the type-gen token 401s), so we type it
@@ -65,6 +66,35 @@ export default function AdminReconcile() {
   const [filter, setFilter] = useState("review");
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
+  const [recordInitial, setRecordInitial] = useState<FormState | null>(null);
+  const [recordOpen, setRecordOpen] = useState(false);
+
+  // Pre-fill the income-invoice review dialog from a bank transaction. VAT is
+  // left blank — the bank only knows gross, and foreign clients are often
+  // zero-rated, so we never guess it. Fred confirms client + VAT, then saves.
+  function recordAsIncome(t: BankTxn) {
+    const ref = (t.reference ?? "").trim();
+    const suffix = ref.match(/-?\s?([A-Za-z])\d*$/)?.[1]?.toUpperCase();
+    const kind: InvoiceKind = suffix === "A" ? "deposit" : (suffix && suffix >= "B" && suffix <= "Z") ? "balance" : "standalone";
+    setRecordInitial({
+      ...EMPTY_INCOME_FORM,
+      clientName: t.counterparty ?? "",
+      invoiceNumber: ref,
+      invoiceDate: t.date_completed ?? "",
+      dueDate: t.date_completed ?? "",
+      gross: String(t.amount),
+      currency: "GBP",
+      paid: "paid",
+      kind,
+    });
+    setRecordOpen(true);
+  }
+
+  async function onRecorded() {
+    // The new invoice's number = the bank reference, so the matcher links it.
+    await (supabase as unknown as { rpc: (n: string) => Promise<unknown> }).rpc("match_bank_transactions").catch(() => {});
+    await load();
+  }
 
   async function importCsv(file: File) {
     setImporting(true);
@@ -221,6 +251,12 @@ export default function AdminReconcile() {
                               <option value="">Categorise…</option>
                               {cats.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
                             </select>
+                          ) : (t.classification === "client_income" || t.classification === "ebay_resale") && !t.matched_id ? (
+                            <button onClick={() => recordAsIncome(t)} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+                              <FilePlus2 className="h-3 w-3" strokeWidth={1.5} /> Record
+                            </button>
+                          ) : t.matched_id ? (
+                            <span className="text-[9px] uppercase tracking-[0.18em] text-[#84b594]">invoiced ✓</span>
                           ) : t.reviewed ? (
                             <button onClick={() => patch(t.id, { reviewed: false })} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] text-white/40 hover:text-white/70">
                               <Check className="h-3 w-3" strokeWidth={1.5} /> reviewed
@@ -240,6 +276,16 @@ export default function AdminReconcile() {
             )}
           </section>
         </>
+      )}
+
+      {recordInitial && (
+        <IncomeInvoiceReviewDialog
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          initial={recordInitial}
+          sourceFile={null}
+          onSaved={onRecorded}
+        />
       )}
     </AdminLayout>
   );
