@@ -57,6 +57,8 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import AdminTeam from "./pages/admin/AdminTeam";
+import AdminTeamCalendar from "./pages/admin/AdminTeamCalendar";
+import Calendar from "./pages/Calendar";
 import AdminPnL from "./pages/admin/AdminPnL";
 import AdminRecurring from "./pages/admin/AdminRecurring";
 import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
@@ -234,6 +236,14 @@ const App = () => (
               element={
                 <ProtectedClient>
                   <Salary />
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedClient>
+                  <Calendar />
                 </ProtectedClient>
               }
             />
@@ -475,6 +485,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminTeam />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/team/:accountId/calendar"
+              element={
+                <AdminProtectedRoute>
+                  <AdminTeamCalendar />
                 </AdminProtectedRoute>
               }
             />

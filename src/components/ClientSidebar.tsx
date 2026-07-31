@@ -18,13 +18,15 @@ const PROJECT_NAV: SidebarNavItem[] = [
 ];
 
 const TEAM_NAV: SidebarNavItem[] = [
-  { path: "/earnings",  label: "Earnings",   Icon: Wallet   },
-  { path: "/documents", label: "Documents",  Icon: FileText },
+  { path: "/earnings",  label: "Earnings",   Icon: Wallet      },
+  { path: "/calendar",  label: "Calendar",   Icon: CalendarDays },
+  { path: "/documents", label: "Documents",  Icon: FileText    },
 ];
 // Employees are salaried (payroll), not paid per work — Salary replaces Earnings.
 const TEAM_NAV_EMPLOYEE: SidebarNavItem[] = [
-  { path: "/documents", label: "Documents",  Icon: FileText },
-  { path: "/salary",    label: "Salary",     Icon: Banknote },
+  { path: "/documents", label: "Documents",  Icon: FileText    },
+  { path: "/calendar",  label: "Calendar",   Icon: CalendarDays },
+  { path: "/salary",    label: "Salary",     Icon: Banknote    },
 ];
 
 interface ClientSidebarProps {

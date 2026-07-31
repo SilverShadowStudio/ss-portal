@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
   Copy, Check, Trash2, Ghost, Pencil, FileText, Clock, FilePlus2,
-  Archive, ArchiveRestore, ChevronRight,
+  Archive, ArchiveRestore, ChevronRight, CalendarDays,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -1905,6 +1905,14 @@ export function AccountList({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0 self-start flex-wrap justify-end">
+                            {isTeamOnly && (
+                              <CircleButton
+                                icon={CalendarDays}
+                                label="Calendar"
+                                active={false}
+                                onClick={() => navigate(`/admin/team/${accountId}/calendar`)}
+                              />
+                            )}
                             {isTeamOnly && (
                               <CircleButton
                                 icon={FilePlus2}
