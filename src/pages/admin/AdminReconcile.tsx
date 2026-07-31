@@ -3,7 +3,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Search, UploadCloud, FilePlus2 } from "lucide-react";
+import { Check, Search, UploadCloud, FilePlus2, RefreshCw } from "lucide-react";
 import { parseRevolutCsv } from "@/lib/bankImport";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { useFx } from "@/contexts/FxContext";
@@ -69,6 +69,24 @@ export default function AdminReconcile() {
   const [filter, setFilter] = useState("review");
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Live pull from Revolut (the read API) — supersedes manual CSV import.
+  async function syncNow() {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("revolut-sync", { body: {} });
+      if (error) throw error;
+      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+      await applyCategoryMap();
+      await load();
+      toast({ title: `Synced from Revolut — ${(data as { fetched?: number })?.fetched ?? 0} transactions checked` });
+    } catch (e) {
+      toast({ title: "Revolut sync failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  }
   const [recordInitial, setRecordInitial] = useState<FormState | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
 
@@ -214,12 +232,19 @@ export default function AdminReconcile() {
           <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold text-[#ecd39c]">Reconciliation</span>
         </div>
-        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] transition-colors ${importing ? "border-white/10 text-white/30" : "border-[#C9A96A]/40 text-[#C9A96A] hover:border-[#C9A96A]/70 hover:text-[#ecd39c]"}`}>
-          {importing ? <BrandLoader size="sm" className="h-3 w-3" /> : <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />}
-          {importing ? "Importing…" : "Import Revolut CSV"}
-          <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
-        </label>
+        <div className="flex items-center gap-2">
+          <button onClick={syncNow} disabled={syncing}
+            className={`inline-flex items-center gap-2 rounded-sm px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] transition-colors ${syncing ? "bg-white/5 text-white/30" : "bg-gold/20 text-[#ecd39c] hover:bg-gold/30"}`}>
+            {syncing ? <BrandLoader size="sm" className="h-3 w-3" /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} />}
+            {syncing ? "Syncing…" : "Sync from Revolut"}
+          </button>
+          <label className={`inline-flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] transition-colors ${importing ? "border-white/10 text-white/30" : "border-white/15 text-white/45 hover:border-[#C9A96A]/50 hover:text-[#C9A96A]"}`} title="Manual fallback — the live sync above is the primary path">
+            {importing ? <BrandLoader size="sm" className="h-3 w-3" /> : <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />}
+            {importing ? "Importing…" : "CSV"}
+            <input type="file" accept=".csv,text/csv" className="hidden" disabled={importing}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
+          </label>
+        </div>
       </div>
 
       {loading ? (
