@@ -466,6 +466,18 @@ export default function AdminPnL() {
     }
   }
 
+  // Drop/click a payslip straight onto a salary row's "Payslip missing" chip.
+  async function handlePayslipDropOnRow(r: MoneyOutRow, file: File) {
+    if (!r.salary) return;
+    try {
+      const { figuresUpdated } = await attachPayslip({ payslipId: r.salary.id, accountId: r.salary.accountId, employeeName: r.salary.employeeName, periodEnd: r.salary.periodEnd, file });
+      toast({ title: "Payslip attached", description: figuresUpdated ? "Figures updated and filed to Dropbox." : "Filed to Dropbox — figures kept." });
+      fetchAll();
+    } catch (e) {
+      toast({ title: "Couldn't attach the payslip", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    }
+  }
+
   // "Invoice missing" chip → open the overhead's edit form so its PDF can be
   // attached (which files it to Dropbox), like the payslip-missing flow.
   function attachOverheadInvoice(r: MoneyOutRow) {
@@ -788,7 +800,7 @@ export default function AdminPnL() {
           <div className="mb-5">
             <BulkOverheadDropzone categories={categories} onParsed={startReviewQueue} />
           </div>
-          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} />
+          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} />
         </section>
       )}
 

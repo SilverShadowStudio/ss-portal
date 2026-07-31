@@ -14,6 +14,7 @@ import {
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { SortableTh } from "@/components/ui/SortableTh";
 import { CurrencyAmount } from "@/components/finance/CurrencyAmount";
+import { MissingDocChip } from "./MissingDocChip";
 import { differenceInCalendarDays } from "date-fns";
 
 type Urgency = "overdue" | "due-soon" | null;
@@ -57,9 +58,11 @@ interface MoneyOutTableProps {
   loading: boolean;
   onRowClick: (r: MoneyOutRow) => void;
   onAttachInvoice?: (r: MoneyOutRow) => void;
+  /** Drop/click a payslip PDF straight onto a salary row's "Payslip missing" chip. */
+  onAttachPayslipFile?: (r: MoneyOutRow, file: File) => void | Promise<void>;
 }
 
-export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice }: MoneyOutTableProps) {
+export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAttachPayslipFile }: MoneyOutTableProps) {
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<MoneyOutRow>(
     rows,
     COLUMNS,
@@ -148,12 +151,22 @@ export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice }: Mo
                       )
                     )}
                     {r.salary && !r.filed && (
-                      <span
-                        className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#d8a184]"
-                        title="No payslip filed — click the row to upload this month's payslip"
-                      >
-                        Payslip missing
-                      </span>
+                      onAttachPayslipFile ? (
+                        <span className="ml-2 inline-flex" onClick={(e) => e.stopPropagation()}>
+                          <MissingDocChip
+                            label="Payslip missing"
+                            title="No payslip filed — click or drop this month's payslip"
+                            onFile={(file) => onAttachPayslipFile(r, file)}
+                          />
+                        </span>
+                      ) : (
+                        <span
+                          className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#d8a184]"
+                          title="No payslip filed — click the row to upload this month's payslip"
+                        >
+                          Payslip missing
+                        </span>
+                      )
                     )}
                   </TableCell>
                   <TableCell>

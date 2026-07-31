@@ -10,7 +10,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { estimatePayroll, estimateMonthlyEmployerOnCosts, TAX_YEAR } from "@/lib/payrollEstimate";
 import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks/useGraceTimers";
-import { BulkPayslipDropzone } from "./BulkPayslipDropzone";
 import { PayslipFlag } from "./PayslipFlag";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
@@ -441,11 +440,6 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
                 </div>
               );
             })}
-          </div>
-
-          {/* Bulk payslip import — matched to each person by name */}
-          <div className="mb-4">
-            <BulkPayslipDropzone employees={rows.map((r) => ({ id: r.id, name: r.name }))} onDone={load} />
           </div>
 
           {/* Net salary owed, by month */}
