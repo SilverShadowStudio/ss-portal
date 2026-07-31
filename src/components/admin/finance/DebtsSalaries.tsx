@@ -1,3 +1,4 @@
+import { SectionTotal } from "@/components/admin/finance/SectionTotal";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
@@ -405,7 +406,8 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
         <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Salaries</h2></div>
         <div className="flex items-center gap-4">
-          <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(totalOwed)} owed · {money(totalProvision)}/yr provision</span>
+          <SectionTotal amount={totalOwed} label="owed" format={money} />
+          <span className="text-[9px] uppercase tracking-[0.2em] text-white/25">{money(totalProvision)}/yr provision</span>
           <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
             <Plus className="h-3 w-3" strokeWidth={1.5} />Add person
           </button>

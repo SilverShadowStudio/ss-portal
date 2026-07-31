@@ -9,6 +9,7 @@ import { useGraceTimers, useNowTicker, formatCountdown, GRACE_MS } from "@/hooks
 import { DebtsSalaries } from "@/components/admin/finance/DebtsSalaries";
 import { DebtsOverheads } from "@/components/admin/finance/DebtsOverheads";
 import { DebtsTaxes } from "@/components/admin/finance/DebtsTaxes";
+import { SectionTotal } from "@/components/admin/finance/SectionTotal";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const ROLE: Record<string, string> = {
@@ -137,7 +138,7 @@ export default function AdminFreelancerPayments() {
           {!loading && (
             <div className="text-right">
               <p className="text-[9px] uppercase tracking-[0.28em] text-white/35">Total owed</p>
-              <p className="font-serif text-2xl text-strong tabular-nums leading-none mt-1">{money(grandTotal)}</p>
+              <p className="font-serif text-4xl text-strong tabular-nums leading-none mt-1.5">{money(grandTotal)}</p>
             </div>
           )}
         </div>
@@ -154,7 +155,7 @@ export default function AdminFreelancerPayments() {
               <div className="h-px w-6 bg-gold-muted" />
               <h2 className="text-label">Freelancers</h2>
             </div>
-            <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(outstandingTotal)} outstanding</span>
+            <SectionTotal amount={outstandingTotal} format={money} />
           </div>
 
           {sortedRows.length === 0 ? (

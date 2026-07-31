@@ -1,3 +1,4 @@
+import { SectionTotal } from "@/components/admin/finance/SectionTotal";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,7 +84,7 @@ export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = 
     <section className="ssr-zone">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
         <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Overheads</h2></div>
-        <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">{money(total)} outstanding</span>
+        <SectionTotal amount={total} format={money} />
       </div>
       {loading ? (
         <div className="flex justify-center py-10"><BrandLoader size="sm" /></div>
