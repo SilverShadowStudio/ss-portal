@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Users, FolderKanban, Image, Clock, ArrowRight } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { CashPositionCard } from "@/components/admin/CashPositionCard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
@@ -101,6 +102,9 @@ export default function AdminDashboard() {
           <span className="text-label-gold text-[#ecd39c]">Studio Overview</span>
         </div>
       </div>
+
+      {/* Live cash position from Revolut — the top-line "how much have we got" number. */}
+      <CashPositionCard />
 
       {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
