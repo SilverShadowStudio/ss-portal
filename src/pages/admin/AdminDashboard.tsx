@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableConnectionStatus } from "@/components/admin/AirtableConnectionStatus";
+import { RevolutConnectionStatus } from "@/components/admin/RevolutConnectionStatus";
 import { ActivityLogPreview } from "@/components/admin/ActivityLogPreview";
 
 interface DashboardStats {
@@ -178,6 +179,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col gap-3">
             <DropboxConnectionStatus />
             <AirtableConnectionStatus />
+            <RevolutConnectionStatus />
           </div>
         </div>
       </div>
