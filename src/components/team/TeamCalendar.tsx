@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format,
-  isSameMonth, isWeekend, startOfMonth, startOfWeek,
-} from "date-fns";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { format, getDaysInMonth } from "date-fns";
 import { ChevronLeft, ChevronRight, Check, X, Plus, Minus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -28,9 +25,11 @@ interface CalData {
   remaining: number;
 }
 
-const iso = (d: Date) => format(d, "yyyy-MM-dd");
 const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
 function fractionLabel(f: number): string {
   if (f >= 1) return "";
@@ -44,8 +43,6 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [year, setYear] = useState(() => new Date().getFullYear());
-  const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
-  const [allowanceDraft, setAllowanceDraft] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,9 +61,6 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   }, [accountId, year, toast]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Keep the visible month inside the loaded year.
-  useEffect(() => { setCursor((c) => (c.getFullYear() === year ? c : startOfMonth(new Date(year, 0, 1)))); }, [year]);
 
   const workedMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -89,14 +83,9 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   }, [data]);
 
   const isAdmin = data?.isAdmin ?? false;
-  const todayIso = iso(new Date());
-
-  // Grid: full weeks (Mon–Sun) spanning the visible month.
-  const gridDays = useMemo(() => {
-    const start = startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 });
-    const end = endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 });
-    return eachDayOfInterval({ start, end });
-  }, [cursor]);
+  const employeePattern = data?.workPattern === "weekdays";
+  const now = new Date();
+  const todayIso = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
 
   async function act(body: Record<string, unknown>, okMsg?: string) {
     setBusy(true);
@@ -125,7 +114,6 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-6">
-          {/* Allowance countdown */}
           <div className="ssr-tile flex items-center gap-5 px-5 py-4">
             <AllowanceRing remaining={data?.remaining ?? 0} allowance={data?.allowance ?? 20} />
             <div>
@@ -140,30 +128,24 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
             {isAdmin && data && (
               <div className="ml-2 flex items-center gap-1 border-l border-white/10 pl-4">
                 <span className="text-xs text-recessive mr-1">Allowance</span>
-                <button
-                  className="grid h-6 w-6 place-items-center rounded bg-white/5 text-standard hover:bg-white/10 disabled:opacity-40"
-                  disabled={busy}
-                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: Math.max(0, (allowanceDraft ?? data.allowance) - 1) }, "Allowance updated")
-                    .then(() => setAllowanceDraft(null))}
-                  title="Reduce allowance"
-                ><Minus className="h-3 w-3" /></button>
-                <span className="w-7 text-center tabular-nums text-standard text-sm">{allowanceDraft ?? data.allowance}</span>
-                <button
-                  className="grid h-6 w-6 place-items-center rounded bg-gold/20 text-[#ecd39c] hover:bg-gold/30 disabled:opacity-40"
-                  disabled={busy}
-                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: (allowanceDraft ?? data.allowance) + 1 }, "Allowance updated")
-                    .then(() => setAllowanceDraft(null))}
-                  title="Add a day to their allowance"
-                ><Plus className="h-3 w-3" /></button>
+                <button className="grid h-6 w-6 place-items-center rounded bg-white/5 text-standard hover:bg-white/10 disabled:opacity-40" disabled={busy}
+                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: Math.max(0, data.allowance - 1) }, "Allowance updated")}
+                  title="Reduce allowance"><Minus className="h-3 w-3" /></button>
+                <span className="w-7 text-center tabular-nums text-standard text-sm">{data.allowance}</span>
+                <button className="grid h-6 w-6 place-items-center rounded bg-gold/20 text-[#ecd39c] hover:bg-gold/30 disabled:opacity-40" disabled={busy}
+                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: data.allowance + 1 }, "Allowance updated")}
+                  title="Add a day to their allowance"><Plus className="h-3 w-3" /></button>
               </div>
             )}
           </div>
 
-          {/* Year nav */}
           <div className="flex items-center gap-2">
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setYear((y) => y - 1)}><ChevronLeft className="h-4 w-4" /></button>
             <span className="font-serif text-strong" style={{ fontSize: 18, minWidth: 56, textAlign: "center" }}>{year}</span>
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setYear((y) => y + 1)}><ChevronRight className="h-4 w-4" /></button>
+            {year !== now.getFullYear() && (
+              <button className="rounded px-2.5 py-1 text-xs text-recessive hover:bg-white/5 hover:text-standard" onClick={() => setYear(now.getFullYear())}>This year</button>
+            )}
           </div>
         </div>
 
@@ -188,13 +170,9 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button className="inline-flex items-center gap-1 rounded bg-gold/20 px-2.5 py-1 text-xs text-[#ecd39c] hover:bg-gold/30 disabled:opacity-40" disabled={busy}
-                    onClick={() => act({ action: "review", request_id: l.id, decision: "approved" }, "Approved")}>
-                    <Check className="h-3 w-3" /> Approve
-                  </button>
+                    onClick={() => act({ action: "review", request_id: l.id, decision: "approved" }, "Approved")}><Check className="h-3 w-3" /> Approve</button>
                   <button className="inline-flex items-center gap-1 rounded bg-white/5 px-2.5 py-1 text-xs text-standard hover:bg-white/10 disabled:opacity-40" disabled={busy}
-                    onClick={() => act({ action: "review", request_id: l.id, decision: "declined" }, "Declined")}>
-                    <X className="h-3 w-3" /> Decline
-                  </button>
+                    onClick={() => act({ action: "review", request_id: l.id, decision: "declined" }, "Declined")}><X className="h-3 w-3" /> Decline</button>
                 </div>
               </div>
             ))}
@@ -202,51 +180,54 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
         </div>
       )}
 
-      {/* Month grid */}
+      {/* Year planner: 12 vertical month columns, day 01 on top */}
       <div className="ssr-zone">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="font-serif text-strong" style={{ fontSize: 20 }}>{format(cursor, "MMMM")}</h2>
-          </div>
-          <div className="flex items-center gap-1">
-            <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setCursor((c) => addMonths(c, -1))} disabled={cursor.getMonth() === 0}><ChevronLeft className="h-4 w-4" /></button>
-            <button className="rounded px-2.5 py-1 text-xs text-recessive hover:bg-white/5 hover:text-standard" onClick={() => { const n = new Date(); setYear(n.getFullYear()); setCursor(startOfMonth(n)); }}>Today</button>
-            <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setCursor((c) => addMonths(c, 1))} disabled={cursor.getMonth() === 11}><ChevronRight className="h-4 w-4" /></button>
-          </div>
+        <div className="mb-5 flex items-center gap-3">
+          <div className="h-px w-6 bg-gold-muted" />
+          <h2 className="text-label">Year planner · {year}</h2>
         </div>
 
         {loading && !data ? (
           <div className="ssr-tile grid place-items-center py-20"><BrandLoader /></div>
         ) : (
-          <>
-            <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-                <div key={d} className="text-center text-label" style={{ fontSize: 10 }}>{d}</div>
-              ))}
+          <div className="overflow-x-auto pb-2">
+            <div className="flex gap-2" style={{ minWidth: 12 * 92 }}>
+              {MONTHS.map((monthName, m) => {
+                const days = getDaysInMonth(new Date(year, m, 1));
+                return (
+                  <div key={m} className="flex-1" style={{ minWidth: 88 }}>
+                    <div className="mb-1.5 text-center font-serif text-strong" style={{ fontSize: 13 }}>{monthName.slice(0, 3)}</div>
+                    <div className="flex flex-col gap-[3px]">
+                      {Array.from({ length: days }, (_, i) => i + 1).map((d) => {
+                        const dateIso = isoOf(year, m, d);
+                        const dow = new Date(year, m, d).getDay();
+                        return (
+                          <DayRow
+                            key={d}
+                            dayNum={d}
+                            dowLabel={DOW[dow]}
+                            weekend={dow === 0 || dow === 6}
+                            fullDate={format(new Date(year, m, d), "EEEE d MMMM yyyy")}
+                            isToday={dateIso === todayIso}
+                            isPast={dateIso < todayIso}
+                            bankHoliday={bankMap.get(dateIso)}
+                            worked={workedMap.get(dateIso)}
+                            employeePattern={employeePattern}
+                            leave={leaveMap.get(dateIso)}
+                            isAdmin={isAdmin}
+                            busy={busy}
+                            onSet={(kind, fraction) => act({ action: "request", days: [{ date: dateIso, kind, fraction }] }, isAdmin ? "Added" : "Requested")}
+                            onCancel={(id) => act({ action: "cancel", request_id: id }, "Removed")}
+                            onReview={(id, decision) => act({ action: "review", request_id: id, decision }, decision === "approved" ? "Approved" : "Declined")}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="grid grid-cols-7 gap-1.5">
-              {gridDays.map((d) => (
-                <DayCell
-                  key={iso(d)}
-                  date={d}
-                  inMonth={isSameMonth(d, cursor)}
-                  isToday={iso(d) === todayIso}
-                  isPast={iso(d) < todayIso}
-                  weekend={isWeekend(d)}
-                  bankHoliday={bankMap.get(iso(d))}
-                  worked={workedMap.get(iso(d))}
-                  employeePattern={data?.workPattern === "weekdays"}
-                  leave={leaveMap.get(iso(d))}
-                  isAdmin={isAdmin}
-                  busy={busy}
-                  onSet={(kind, fraction) => act({ action: "request", days: [{ date: iso(d), kind, fraction }] }, isAdmin ? "Added" : "Requested")}
-                  onCancel={(id) => act({ action: "cancel", request_id: id }, "Removed")}
-                  onReview={(id, decision) => act({ action: "review", request_id: id, decision }, decision === "approved" ? "Approved" : "Declined")}
-                />
-              ))}
-            </div>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -291,75 +272,70 @@ function Legend() {
   );
 }
 
-// ── Day cell ──────────────────────────────────────────────────────────────────
-function DayCell(props: {
-  date: Date; inMonth: boolean; isToday: boolean; isPast: boolean; weekend: boolean;
-  bankHoliday?: string; worked?: number; employeePattern: boolean;
+// ── One day row in a month column ─────────────────────────────────────────────
+function DayRow(props: {
+  dayNum: number; dowLabel: string; weekend: boolean; fullDate: string;
+  isToday: boolean; isPast: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean;
   leave?: { holiday?: LeaveDay; unavailable?: LeaveDay };
   isAdmin: boolean; busy: boolean;
   onSet: (kind: LeaveKind, fraction: number) => void;
   onCancel: (id: string) => void;
   onReview: (id: string, decision: "approved" | "declined") => void;
 }) {
-  const { date, inMonth, isToday, isPast, weekend, bankHoliday, worked, employeePattern, leave, isAdmin, busy } = props;
-  const dayNum = date.getDate();
+  const { dayNum, dowLabel, weekend, fullDate, isToday, isPast, bankHoliday, worked, employeePattern, leave, isAdmin, busy } = props;
   const holiday = leave?.holiday;
   const unavailable = leave?.unavailable;
   const activeLeave = holiday ?? unavailable;
 
-  // Derived worked fraction: freelancer → Airtable; employee → weekday if past &
-  // not a bank holiday / approved absence.
   const derivedWorked = worked != null
     ? worked
     : (employeePattern && isPast && !weekend && !bankHoliday && !(holiday?.status === "approved") && !(unavailable?.status === "approved"))
       ? 1 : undefined;
 
-  // Cell appearance.
-  let bg = "rgba(18,15,26,0.35)";
-  let ring = "transparent";
-  let numColor = inMonth ? "var(--text-standard)" : "var(--text-recessive)";
+  let bg = "rgba(18,15,26,0.30)";
+  let numColor = "var(--text-standard)";
+  let dowColor = weekend ? "var(--text-recessive)" : "var(--text-label)";
   let strike = false;
-  let cornerFrac = "";
-  let dash = false;
+  let marker: ReactNode = null;
+  let leftAccent = "transparent";
+  let dashed = false;
 
-  if (bankHoliday) { bg = "rgba(138,131,120,0.14)"; numColor = "#8a8378"; strike = true; }
-  else if (holiday?.status === "approved") { bg = "rgba(211,180,124,0.26)"; numColor = "#f4e6c9"; cornerFrac = fractionLabel(holiday.fraction); }
-  else if (holiday?.status === "pending") { dash = true; cornerFrac = fractionLabel(holiday.fraction); }
-  else if (unavailable?.status === "approved") { bg = "rgba(107,107,107,0.20)"; numColor = "#9a938a"; strike = true; }
-  else if (unavailable?.status === "pending") { dash = true; strike = true; }
-  else if (derivedWorked != null && derivedWorked > 0) { bg = "rgba(211,180,124,0.10)"; }
-  else if (weekend) { bg = "rgba(18,15,26,0.18)"; numColor = "var(--text-recessive)"; }
+  if (bankHoliday) { bg = "rgba(138,131,120,0.16)"; numColor = "#8a8378"; strike = true; marker = <span style={{ fontSize: 8, color: "#8a8378" }}>BH</span>; }
+  else if (holiday?.status === "approved") { bg = "rgba(211,180,124,0.28)"; numColor = "#f4e6c9"; marker = <span style={{ fontSize: 8.5, color: GOLD_BRIGHT }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "H"}</span>; }
+  else if (holiday?.status === "pending") { dashed = true; leftAccent = GOLD; marker = <span style={{ fontSize: 8.5, color: GOLD }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "H?"}</span>; }
+  else if (unavailable?.status === "approved") { bg = "rgba(107,107,107,0.22)"; numColor = "#9a938a"; strike = true; marker = <span style={{ fontSize: 8, color: "#9a938a" }}>off</span>; }
+  else if (unavailable?.status === "pending") { dashed = true; leftAccent = "#8a8378"; strike = true; marker = <span style={{ fontSize: 8, color: "#9a938a" }}>?</span>; }
+  else if (derivedWorked != null && derivedWorked > 0) { bg = "rgba(211,180,124,0.12)"; marker = <span style={{ fontSize: 8.5, color: GOLD }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>; }
+  else if (weekend) { bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)"; }
 
-  if (isToday) ring = GOLD;
+  if (isToday) leftAccent = GOLD_BRIGHT;
 
   const clickable = !bankHoliday && (isAdmin || !isPast);
 
-  const cell = (
+  const boxShadow = dashed
+    ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px rgba(211,180,124,0.35)`
+    : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)";
+
+  const row = (
     <div
-      className={`relative aspect-square rounded-lg p-1.5 transition-colors ${clickable ? "cursor-pointer hover:brightness-125" : ""} ${!inMonth ? "opacity-45" : ""}`}
-      style={{ background: bg, boxShadow: dash ? `inset 0 0 0 1.5px ${GOLD}` : ring !== "transparent" ? `inset 0 0 0 1.5px ${ring}` : "inset 0 1px 0 rgba(255,255,255,0.03)", ...(dash ? { boxShadow: `inset 0 0 0 1.5px ${GOLD}`, borderStyle: "dashed" } : {}) }}
-      title={bankHoliday ?? undefined}
+      className={`flex items-center gap-1 rounded pl-1.5 pr-1 ${clickable ? "cursor-pointer hover:brightness-125" : ""}`}
+      style={{ height: 19, background: bg, boxShadow }}
+      title={bankHoliday ? `${fullDate} · ${bankHoliday}` : fullDate}
     >
-      <span className="tabular-nums" style={{ fontSize: 12, color: numColor, textDecoration: strike ? "line-through" : "none", opacity: strike ? 0.8 : 1 }}>{dayNum}</span>
-      {/* worked fraction / marker */}
-      {derivedWorked != null && derivedWorked > 0 && !holiday && !unavailable && !bankHoliday && (
-        <span className="absolute bottom-1 right-1.5" style={{ fontSize: 9, color: GOLD }}>
-          {derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}
-        </span>
-      )}
-      {cornerFrac && <span className="absolute bottom-1 right-1.5" style={{ fontSize: 9, color: GOLD_BRIGHT }}>{cornerFrac}</span>}
-      {activeLeave?.status === "pending" && <span className="absolute top-1 right-1.5 h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />}
+      <span className="tabular-nums" style={{ fontSize: 10.5, width: 15, color: numColor, textDecoration: strike ? "line-through" : "none" }}>{String(dayNum).padStart(2, "0")}</span>
+      <span style={{ fontSize: 8.5, color: dowColor, width: 20 }}>{dowLabel}</span>
+      <span className="ml-auto flex items-center">{marker}</span>
+      {activeLeave?.status === "pending" && <span className="ml-0.5 h-1 w-1 rounded-full" style={{ background: GOLD }} />}
     </div>
   );
 
-  if (!clickable) return cell;
+  if (!clickable) return row;
 
   return (
     <Popover>
-      <PopoverTrigger asChild>{cell}</PopoverTrigger>
-      <PopoverContent className="w-56 border-white/10 bg-[#1b1720] p-3" align="center">
-        <p className="mb-2 font-serif text-strong" style={{ fontSize: 14 }}>{format(date, "EEEE d MMMM")}</p>
-
+      <PopoverTrigger asChild>{row}</PopoverTrigger>
+      <PopoverContent className="w-56 border-white/10 bg-[#1b1720] p-3" align="start">
+        <p className="mb-2 font-serif text-strong" style={{ fontSize: 14 }}>{fullDate}</p>
         {activeLeave ? (
           <div className="space-y-2">
             <p className="text-xs text-recessive">
