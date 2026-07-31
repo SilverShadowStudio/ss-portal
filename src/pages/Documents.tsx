@@ -56,6 +56,7 @@ interface Invoice {
   created_at: string;
   type: string;
   stripe_checkout_url: string | null;
+  revolut_checkout_url: string | null;
   account_id: string | null;
   project_id: string | null;
   subtotal: number | null;
@@ -221,26 +222,20 @@ export default function Documents() {
   }, [defaultPicked, loading, invoices, agreements, orders, quotations, showOrders]);
 
   async function handlePayInvoice(inv: Invoice) {
-    if (inv.stripe_checkout_url) {
-      window.open(inv.stripe_checkout_url, "_blank", "noopener,noreferrer");
+    const existing = inv.revolut_checkout_url || inv.stripe_checkout_url;
+    if (existing) {
+      window.open(existing, "_blank", "noopener,noreferrer");
       return;
     }
     setPayingInvoiceId(inv.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-invoice-checkout", {
+      const { data, error } = await supabase.functions.invoke("revolut-payment-link", {
         body: { invoice_id: inv.id },
       });
       if (error) throw error;
-      if (data?.pending) {
-        toast({
-          title: "Payments not configured yet",
-          description: data.message || "Stripe is being set up. Please try again shortly.",
-        });
-        return;
-      }
-      if (!data?.url) throw new Error("No checkout URL returned");
+      if (!data?.url) throw new Error("No payment link returned");
       setInvoices((list) =>
-        list.map((i) => (i.id === inv.id ? { ...i, stripe_checkout_url: data.url } : i))
+        list.map((i) => (i.id === inv.id ? { ...i, revolut_checkout_url: data.url } : i))
       );
       window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (e: any) {
@@ -362,7 +357,7 @@ export default function Documents() {
         // direct URL. The visible vocabulary is "Outstanding" / "Paid".
         supabase
           .from("invoices")
-          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url, account_id, project_id, subtotal, vat_rate, vat_amount, notes, bank_account, line_items")
+          .select("id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, type, stripe_checkout_url, revolut_checkout_url, account_id, project_id, subtotal, vat_rate, vat_amount, notes, bank_account, line_items")
           .in("status", ["sent", "partially_paid", "paid"])
           .order("created_at", { ascending: false }),
         supabase

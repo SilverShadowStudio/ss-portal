@@ -114,7 +114,7 @@ export default function Invoices() {
   async function payNow(r: ClientInvoiceRow) {
     setPaying(r.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-invoice-checkout", {
+      const { data, error } = await supabase.functions.invoke("revolut-payment-link", {
         body: { invoice_id: r.id },
       });
       if (error) throw error;
@@ -124,7 +124,7 @@ export default function Invoices() {
         toast({ title: "Online payments coming soon", description: "Please contact us to settle this invoice." });
       }
     } catch (e: any) {
-      toast({ title: "Could not start checkout", description: e?.message, variant: "destructive" });
+      toast({ title: "Could not start payment", description: e?.message, variant: "destructive" });
     } finally {
       setPaying(null);
     }

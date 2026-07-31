@@ -1202,6 +1202,8 @@ export type Database = {
           project_id: string | null
           quotation_id: string | null
           reference_number: string
+          revolut_checkout_url: string | null
+          revolut_order_id: string | null
           sent_at: string | null
           status: string
           stripe_checkout_url: string | null
@@ -1229,6 +1231,8 @@ export type Database = {
           project_id?: string | null
           quotation_id?: string | null
           reference_number: string
+          revolut_checkout_url?: string | null
+          revolut_order_id?: string | null
           sent_at?: string | null
           status?: string
           stripe_checkout_url?: string | null
@@ -1256,6 +1260,8 @@ export type Database = {
           project_id?: string | null
           quotation_id?: string | null
           reference_number?: string
+          revolut_checkout_url?: string | null
+          revolut_order_id?: string | null
           sent_at?: string | null
           status?: string
           stripe_checkout_url?: string | null

@@ -3,6 +3,7 @@ import {
   type InvoiceLineItem,
 } from "../_shared/documents/invoicePdf.ts";
 import { generateInvoicePdfV3 } from "../_shared/documents/invoicePdfV3.ts";
+import { ensurePaymentLink } from "../_shared/revolutMerchant.ts";
 
 // Bump when the invoice template design changes so cached PDFs are regenerated.
 const TEMPLATE_VERSION = "tmpl-v9-ebgaramond";
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invoiceError } = await userClient
       .from("invoices")
       .select(
-        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, paid_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, project_id, quotation_id",
+        "id, invoice_number, reference_number, amount, currency, status, due_date, issued_at, created_at, updated_at, paid_at, notes, line_items, subtotal, vat_rate, vat_amount, account_id, bank_account, stripe_checkout_url, revolut_order_id, revolut_checkout_url, project_id, quotation_id",
       )
       .eq("id", invoiceId)
       .maybeSingle();
@@ -130,6 +131,19 @@ Deno.serve(async (req) => {
     }
 
     const items = Array.isArray(invoice.line_items) ? (invoice.line_items as InvoiceLineItem[]) : [];
+
+    // Payment link — ensure a live Revolut link for unpaid invoices so the PDF's
+    // "PAY ONLINE" button always works (Stripe retired). Falls back to any cached
+    // url; best-effort — on failure the PDF still renders without the button.
+    let payUrl: string | null = (invoice as any).revolut_checkout_url ?? (invoice as any).stripe_checkout_url ?? null;
+    if (invoice.status !== "paid" && !payUrl) {
+      try {
+        payUrl = (await ensurePaymentLink(admin, invoice as any)).checkout_url;
+      } catch (e) {
+        console.warn("[invoice-pdf] payment link generation failed:", (e as Error).message);
+      }
+    }
+
     const safeNumber = String(invoice.invoice_number || invoice.reference_number || invoice.id).replace(
       /[^a-zA-Z0-9._-]+/g,
       "-",
@@ -140,7 +154,7 @@ Deno.serve(async (req) => {
 
     // Cache check — only regenerate if the invoice has changed since last generation.
     // Fingerprint is: updated_at (or created_at) + amount + status concatenated.
-    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}|${TEMPLATE_VERSION}`;
+    const invoiceFingerprint = `${(invoice as any).updated_at ?? invoice.created_at}|${invoice.amount}|${invoice.status}|${(invoice as any).bank_account ?? ""}|${payUrl ?? ""}|${TEMPLATE_VERSION}`;
     let needsRegeneration = true;
 
     try {
@@ -183,7 +197,7 @@ Deno.serve(async (req) => {
         vat_amount: invoice.vat_amount,
         bank_account: (invoice as any).bank_account,
         project_name: projectName,
-        stripe_url: (invoice as any).stripe_checkout_url ?? null,
+        stripe_url: payUrl,
       });
 
       const { error: uploadError } = await admin.storage.from("agreements").upload(storagePath, pdfBytes, {

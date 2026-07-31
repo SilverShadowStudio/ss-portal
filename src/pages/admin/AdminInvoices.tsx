@@ -77,6 +77,7 @@ interface InvoiceRow {
   vat_rate?: number | null;
   vat_amount?: number | null;
   stripe_checkout_url?: string | null;
+  revolut_checkout_url?: string | null;
   type?: string | null;
 }
 
@@ -271,20 +272,12 @@ export default function AdminInvoices() {
   async function createPaymentLink(id: string) {
     setCreatingLinkId(id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-invoice-checkout", {
+      const { data, error } = await supabase.functions.invoke("revolut-payment-link", {
         body: { invoice_id: id },
       });
       if (error) throw error;
-      if (data?.pending) {
-        toast({ title: "Stripe not configured", description: data.message, variant: "destructive" });
-        return;
-      }
-      if (!data?.url) throw new Error("No URL returned from checkout function");
-      const { error: updateError } = await supabase
-        .from("invoices")
-        .update({ stripe_checkout_url: data.url })
-        .eq("id", id);
-      if (updateError) throw updateError;
+      if (!data?.url) throw new Error("No payment link returned");
+      // revolut-payment-link caches the url on the row server-side (service role).
       await navigator.clipboard.writeText(data.url).catch(() => {});
       toast({ title: "Payment link created", description: "Link copied to clipboard" });
       fetchInvoices();
@@ -432,14 +425,14 @@ export default function AdminInvoices() {
                   <TableCell className="text-right tabular-nums">{formatCurrency(Number(r.amount), r.currency || "EUR")}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
-                      {r.stripe_checkout_url ? (
+                      {(r.revolut_checkout_url || r.stripe_checkout_url) ? (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
                           title="Copy payment link"
                           onClick={() => {
-                            navigator.clipboard.writeText(r.stripe_checkout_url!);
+                            navigator.clipboard.writeText((r.revolut_checkout_url || r.stripe_checkout_url)!);
                             toast({ title: "Payment link copied" });
                           }}
                         >
