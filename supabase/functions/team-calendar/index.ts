@@ -178,7 +178,10 @@ Deno.serve(async (req) => {
         .select("fraction").eq("account_id", accountId).eq("kind", "holiday").eq("status", "approved")
         .gte("leave_date", `${year}-01-01`).lte("leave_date", `${year}-12-31`);
       const taken = (yearLeave ?? []).reduce((s, r) => s + Number(r.fraction || 0), 0);
-      const allowance = Number(acct.annual_leave_allowance ?? 20);
+      // Per-year allowance override, falling back to the account default.
+      const { data: yearAllow } = await sb.from("team_leave_allowances")
+        .select("allowance").eq("account_id", accountId).eq("year", year).maybeSingle();
+      const allowance = yearAllow ? Number(yearAllow.allowance) : Number(acct.annual_leave_allowance ?? 20);
 
       return json({
         accountId, accountName: acct.company_name, employmentType: acct.employment_type ?? null,
@@ -241,10 +244,13 @@ Deno.serve(async (req) => {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const accountId = body?.account_id as string;
       const allowance = Number(body?.allowance);
+      const year = Number(body?.year) || new Date().getUTCFullYear();
       if (!accountId || !Number.isFinite(allowance) || allowance < 0) return json({ error: "account_id and allowance required" }, 400);
-      const { error } = await sb.from("accounts").update({ annual_leave_allowance: allowance }).eq("id", accountId);
+      // Year-scoped: only this year's allowance changes.
+      const { error } = await sb.from("team_leave_allowances")
+        .upsert({ account_id: accountId, year, allowance, updated_at: new Date().toISOString() }, { onConflict: "account_id,year" });
       if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, allowance });
+      return json({ ok: true, allowance, year });
     }
 
     return json({ error: "Unknown action" }, 400);

@@ -131,11 +131,11 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
               <div className="ml-2 flex items-center gap-1 border-l border-white/10 pl-4">
                 <span className="text-xs text-recessive mr-1">Allowance</span>
                 <button className="grid h-6 w-6 place-items-center rounded bg-white/5 text-standard hover:bg-white/10 disabled:opacity-40" disabled={busy}
-                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: Math.max(0, data.allowance - 1) }, "Allowance updated")}
+                  onClick={() => act({ action: "set-allowance", account_id: accountId, year, allowance: Math.max(0, data.allowance - 1) }, "Allowance updated")}
                   title="Reduce allowance"><Minus className="h-3 w-3" /></button>
                 <span className="w-7 text-center tabular-nums text-standard text-sm">{data.allowance}</span>
                 <button className="grid h-6 w-6 place-items-center rounded bg-gold/20 text-[#ecd39c] hover:bg-gold/30 disabled:opacity-40" disabled={busy}
-                  onClick={() => act({ action: "set-allowance", account_id: accountId, allowance: data.allowance + 1 }, "Allowance updated")}
+                  onClick={() => act({ action: "set-allowance", account_id: accountId, year, allowance: data.allowance + 1 }, "Allowance updated")}
                   title="Add a day to their allowance"><Plus className="h-3 w-3" /></button>
               </div>
             )}
