@@ -63,6 +63,7 @@ import AdminPnL from "./pages/admin/AdminPnL";
 import AdminRecurring from "./pages/admin/AdminRecurring";
 import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
 import AdminReconcile from "./pages/admin/AdminReconcile";
+import AdminReconciliation from "./pages/admin/AdminReconciliation";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import {
@@ -434,6 +435,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminReconcile />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/finance/reconciliation"
+              element={
+                <AdminProtectedRoute>
+                  <AdminReconciliation />
                 </AdminProtectedRoute>
               }
             />

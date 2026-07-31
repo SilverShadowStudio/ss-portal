@@ -70,6 +70,62 @@ async function listAllFiles(token: string, nsHeader: Record<string, string>, roo
   return out;
 }
 
+// Acquire a fresh Dropbox token + team-namespace header (shared admin connection).
+async function getDropbox(sb: ReturnType<typeof createClient>): Promise<{ token: string; nsHeader: Record<string, string> } | null> {
+  const { data: conn } = await sb.from("dropbox_connections").select("id, access_token, refresh_token, token_expires_at").limit(1).maybeSingle();
+  if (!conn) return null;
+  let token = conn.access_token as string;
+  if (!conn.token_expires_at || new Date(conn.token_expires_at as string).getTime() < Date.now() + 120000) {
+    token = (await refreshDropboxToken(sb, conn)) ?? token;
+  }
+  return { token, nsHeader: await getNamespaceHeader(sb, token) };
+}
+
+async function getTempLink(token: string, nsHeader: Record<string, string>, path: string): Promise<string | null> {
+  const r = await fetch("https://api.dropboxapi.com/2/files/get_temporary_link", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...nsHeader },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) return null;
+  return (await r.json())?.link ?? null;
+}
+
+// Rename a file in place (same folder) to `newName`. Returns the new path_display.
+async function renameFile(token: string, nsHeader: Record<string, string>, fromPath: string, newName: string): Promise<string | null> {
+  const folder = fromPath.slice(0, fromPath.lastIndexOf("/"));
+  const toPath = `${folder}/${newName}`;
+  if (toPath === fromPath) return fromPath;
+  const r = await fetch("https://api.dropboxapi.com/2/files/move_v2", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...nsHeader },
+    body: JSON.stringify({ from_path: fromPath, to_path: toPath, autorename: true }),
+  });
+  if (!r.ok) return null;
+  return (await r.json())?.metadata?.path_display ?? toPath;
+}
+
+// AP-convention filename: YYYY-MM-DD_AP_VENDOR_InvoiceNo_AmountCCY.ext
+function apName(vendor: string | null, invoiceNo: string | null, dateIso: string | null, amount: number | null, ccy: string | null, ext: string): string {
+  const v = (vendor || "VENDOR").toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 16) || "VENDOR";
+  const inv = invoiceNo ? invoiceNo.toUpperCase().replace(/[^A-Z0-9-]+/g, "").slice(0, 24) : "NOINV";
+  const amt = amount != null ? Math.abs(amount).toFixed(2).replace(".", "-") : "0-00";
+  const d = dateIso || "undated";
+  return `${d}_AP_${v}_${inv}_${amt}${ccy || "GBP"}.${ext}`;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+function mimeOf(name: string): string | null {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  return null; // skip unsupported (docx, xlsx, heic…)
+}
+
 // ── Filename parsing ──────────────────────────────────────────────────────────
 const alnum = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -212,6 +268,98 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "ai-parse") {
+      // Batch: read a chunk of still-unmatched payable receipt files through the
+      // parse-document AI extractor, then match by amount+date and auto-rename
+      // confident matches to the AP standard. The frontend loops until remaining=0.
+      const batch = Math.min(Math.max(Number(body?.batch) || 8, 1), 15);
+      const dryRun = body?.dryRun === true; // parse + match but do NOT rename files
+      const dbx = await getDropbox(sb);
+      if (!dbx) return json({ error: "Dropbox not connected" }, 400);
+
+      const { data: todo } = await sb.from("dropbox_invoice_files")
+        .select("id, path, name, side, parse_source")
+        .in("side", ["payable_overhead", "payable_freelancer"])
+        .eq("status", "unmatched")
+        .neq("parse_source", "ai")
+        .limit(batch);
+      const files = todo ?? [];
+
+      const { data: expenses } = await sb.from("bank_transactions")
+        .select("id, amount, date_completed, receipt_dropbox_path")
+        .eq("classification", "expense").is("receipt_dropbox_path", null);
+      const used = new Set<string>();
+
+      let processed = 0, matched = 0, renamed = 0;
+      for (const f of files) {
+        processed++;
+        const mime = mimeOf(f.name as string);
+        // Mark as AI-attempted regardless, so the batch loop advances.
+        let parsed: { amount: number | null; date: string | null; vendor: string | null; invoiceNo: string | null; currency: string | null } = { amount: null, date: null, vendor: null, invoiceNo: null, currency: null };
+        if (mime) {
+          try {
+            const link = await getTempLink(dbx.token, dbx.nsHeader, f.path as string);
+            if (link) {
+              const fr = await fetch(link);
+              const bytes = new Uint8Array(await fr.arrayBuffer());
+              if (bytes.length <= 15_000_000) {
+                const pr = await fetch(`${supabaseUrl}/functions/v1/parse-document`, {
+                  method: "POST",
+                  headers: { Authorization: authHeader, apikey: Deno.env.get("SUPABASE_ANON_KEY")!, "Content-Type": "application/json" },
+                  body: JSON.stringify({ document_type: "overhead", file_data_base64: toBase64(bytes), file_mime_type: mime }),
+                });
+                const pj = await pr.json().catch(() => ({}));
+                const d = pj?.data ?? pj?.result ?? pj;
+                if (d && (d.gross_total != null || d.invoice_date)) {
+                  parsed = {
+                    amount: d.gross_total != null ? Number(d.gross_total) : null,
+                    date: (d.payment_date || d.invoice_date || null) as string | null,
+                    vendor: d.supplier_name ?? null, invoiceNo: d.invoice_number ?? null,
+                    currency: d.currency ?? null,
+                  };
+                }
+              }
+            }
+          } catch { /* parse hiccup — leave unparsed, still marked ai */ }
+        }
+
+        await sb.from("dropbox_invoice_files").update({
+          parse_source: "ai", parsed_amount: parsed.amount, parsed_date: parsed.date,
+          parsed_vendor: parsed.vendor, parsed_invoice_no: parsed.invoiceNo ? alnum(parsed.invoiceNo) : null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", f.id);
+
+        // Match by amount (+ date window) to an expense.
+        if (parsed.amount != null && parsed.amount > 0) {
+          let best: { id: string; date_completed: string | null } | null = null; let bestGap = Infinity;
+          for (const t of expenses ?? []) {
+            if (used.has(t.id)) continue;
+            if (Math.abs(Math.abs(Number(t.amount)) - parsed.amount) > 0.01) continue;
+            const gap = parsed.date && t.date_completed ? Math.abs(new Date(t.date_completed as string).getTime() - new Date(parsed.date).getTime()) / 86400000 : 0;
+            if (gap <= 21 && gap < bestGap) { best = t; bestGap = gap; }
+          }
+          if (best) {
+            used.add(best.id); matched++;
+            const ext = (f.name as string).split(".").pop() || "pdf";
+            const newName = apName(parsed.vendor, parsed.invoiceNo, parsed.date ?? best.date_completed, parsed.amount, parsed.currency, ext);
+            const newPath = dryRun ? (f.path as string) : await renameFile(dbx.token, dbx.nsHeader, f.path as string, newName);
+            if (newPath && newPath !== f.path) renamed++;
+            await sb.from("dropbox_invoice_files").update({
+              matched_txn_id: best.id, status: "matched", match_confidence: "ai_amount_date",
+              path: newPath ?? f.path, renamed_from: newPath && newPath !== f.path ? f.path : null,
+              renamed_to: newPath && newPath !== f.path ? newPath : null, renamed_at: newPath && newPath !== f.path ? new Date().toISOString() : null,
+            }).eq("id", f.id);
+            await sb.from("bank_transactions").update({ receipt_dropbox_path: newPath ?? f.path }).eq("id", best.id);
+          }
+        }
+      }
+
+      const { count: remaining } = await sb.from("dropbox_invoice_files")
+        .select("id", { count: "exact", head: true })
+        .in("side", ["payable_overhead", "payable_freelancer"]).eq("status", "unmatched").neq("parse_source", "ai");
+      return json({ ok: true, processed, matched, renamed, remaining: remaining ?? 0 });
+    }
+
     if (action === "list") {
       const { data: missing } = await sb.from("bank_transactions")
         .select("id, date_completed, amount, counterparty, reference, classification")
@@ -222,11 +370,11 @@ Deno.serve(async (req) => {
         .select("id, name, path, side, parsed_invoice_no, parsed_amount, parsed_date")
         .eq("status", "unmatched").neq("side", "other")
         .order("name");
-      const { data: matchedCount } = await sb.from("dropbox_invoice_files").select("id", { count: "exact", head: true }).eq("status", "matched");
+      const { count: matchedCount } = await sb.from("dropbox_invoice_files").select("id", { count: "exact", head: true }).eq("status", "matched");
       return json({
         missing: (missing ?? []).map((m) => ({ id: m.id, date: m.date_completed, amount: Number(m.amount), counterparty: m.counterparty, reference: m.reference, kind: m.classification })),
         orphans: (orphans ?? []).map((o) => ({ id: o.id, name: o.name, path: o.path, side: o.side, invoiceNo: o.parsed_invoice_no, amount: o.parsed_amount, date: o.parsed_date })),
-        matched: (matchedCount as unknown as { length?: number })?.length ?? undefined,
+        matched: matchedCount ?? 0,
       });
     }
 
