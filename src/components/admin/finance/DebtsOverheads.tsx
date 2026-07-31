@@ -1,4 +1,6 @@
 import { SectionTotal } from "@/components/admin/finance/SectionTotal";
+import { MissingDocChip } from "@/components/admin/finance/MissingDocChip";
+import { attachOverheadInvoice } from "@/lib/overheadInvoiceAttach";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,6 +14,7 @@ import { useFx } from "@/contexts/FxContext";
 interface OH {
   id: string; supplier_name: string | null; description: string | null; category_code: string | null;
   gross_amount: number; currency: string | null; due_date: string | null; payment_status: string | null;
+  dropbox_path: string | null; staging_storage_path: string | null;
   justPaid?: boolean; paidAt?: number;
 }
 const money = (n: number, c = "GBP") =>
@@ -48,7 +51,7 @@ export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = 
 
   async function load() {
     const { data } = await supabase.from("overheads")
-      .select("id, supplier_name, description, category_code, gross_amount, currency, due_date, payment_status")
+      .select("id, supplier_name, description, category_code, gross_amount, currency, due_date, payment_status, dropbox_path, staging_storage_path")
       .order("due_date", { ascending: true });
     setRows(((data ?? []) as OH[]).filter((o) => o.payment_status !== "paid" && Number(o.gross_amount) > 0 && isDebtDue(o.due_date)));
     setLoading(false);
@@ -69,6 +72,16 @@ export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = 
     // Keep it 5 min so a mistake can be reverted, then drop it.
     setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, justPaid: true, paidAt: Date.now() } : x));
     grace.schedule(r.id, GRACE_MS, () => setRows((prev) => prev.filter((x) => x.id !== r.id)));
+  }
+
+  async function attachInvoice(r: OH, file: File) {
+    try {
+      await attachOverheadInvoice({ overheadId: r.id, file });
+      toast({ title: "Invoice attached", description: "Filing to Dropbox." });
+      load();
+    } catch (e) {
+      toast({ title: "Couldn't attach the invoice", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    }
   }
 
   async function revert(r: OH) {
@@ -109,7 +122,18 @@ export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = 
             <tbody>
               {sortedRows.map((r) => (
                 <tr key={r.id} className={`border-b border-white/[0.05] last:border-0 ${r.justPaid ? "opacity-45" : ""}`}>
-                  <td className="px-4 py-3 text-strong">{r.supplier_name ?? "—"}</td>
+                  <td className="px-4 py-3 text-strong">
+                    <span className="inline-flex items-center gap-2">
+                      {r.supplier_name ?? "—"}
+                      {!r.dropbox_path && !r.staging_storage_path && (
+                        <MissingDocChip
+                          label="Invoice missing"
+                          title="No invoice filed — click or drop the invoice PDF"
+                          onFile={(file) => attachInvoice(r, file)}
+                        />
+                      )}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-recessive text-[12px]">{r.description || r.category_code || "—"}</td>
                   <td className="px-4 py-3 text-standard">{fmtDate(r.due_date)}</td>
                   <td className="px-4 py-3 text-right text-strong"><CurrencyAmount amount={Number(r.gross_amount)} currency={r.currency ?? "GBP"} rateDate={null} /></td>

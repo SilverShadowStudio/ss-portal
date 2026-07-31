@@ -60,9 +60,11 @@ interface MoneyOutTableProps {
   onAttachInvoice?: (r: MoneyOutRow) => void;
   /** Drop/click a payslip PDF straight onto a salary row's "Payslip missing" chip. */
   onAttachPayslipFile?: (r: MoneyOutRow, file: File) => void | Promise<void>;
+  /** Drop/click an invoice PDF straight onto an overhead row's "Invoice missing" chip. */
+  onAttachInvoiceFile?: (r: MoneyOutRow, file: File) => void | Promise<void>;
 }
 
-export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAttachPayslipFile }: MoneyOutTableProps) {
+export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAttachPayslipFile, onAttachInvoiceFile }: MoneyOutTableProps) {
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<MoneyOutRow>(
     rows,
     COLUMNS,
@@ -133,7 +135,15 @@ export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAt
                       </span>
                     )}
                     {r.kind === "fixed" && !r.salary && !r.filed && !r.filing && (
-                      onAttachInvoice && r.overhead ? (
+                      onAttachInvoiceFile && r.overhead ? (
+                        <span className="ml-2 inline-flex" onClick={(e) => e.stopPropagation()}>
+                          <MissingDocChip
+                            label="Invoice missing"
+                            title="No invoice filed — click or drop the invoice PDF"
+                            onFile={(file) => onAttachInvoiceFile(r, file)}
+                          />
+                        </span>
+                      ) : onAttachInvoice && r.overhead ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); onAttachInvoice(r); }}
                           className="ml-2 text-[9px] uppercase tracking-[0.28em] text-[#d8a184] hover:text-[#ecd39c] transition-colors"

@@ -49,6 +49,7 @@ import {
   type PayslipCost,
 } from "@/lib/finance";
 import { attachPayslip, viewPayslip } from "@/lib/payslipAttach";
+import { attachOverheadInvoice as attachOverheadInvoice_file } from "@/lib/overheadInvoiceAttach";
 import { useFx } from "@/contexts/FxContext";
 import {
   SUPABASE_URL,
@@ -489,6 +490,20 @@ export default function AdminPnL() {
     setFormOpen(true);
   }
 
+  // Drop/click an invoice file straight onto the "Invoice missing" chip — stages
+  // it and lets the overheads_dropbox_pending trigger file it to Dropbox. No
+  // figure reconciliation (the overhead's amounts are already set).
+  async function handleInvoiceDropOnRow(r: MoneyOutRow, file: File) {
+    if (!r.overhead) return;
+    try {
+      await attachOverheadInvoice_file({ overheadId: r.overhead.id, file });
+      toast({ title: "Invoice attached", description: "Filing to Dropbox." });
+      fetchAll();
+    } catch (e) {
+      toast({ title: "Couldn't attach the invoice", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    }
+  }
+
   function openOverheadEditFromDetail() {
     if (!selectedOverhead) return;
     setEditing(selectedOverhead);
@@ -800,7 +815,7 @@ export default function AdminPnL() {
           <div className="mb-5">
             <BulkOverheadDropzone categories={categories} onParsed={startReviewQueue} />
           </div>
-          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} />
+          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} onAttachInvoiceFile={handleInvoiceDropOnRow} />
         </section>
       )}
 
