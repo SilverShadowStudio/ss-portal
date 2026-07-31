@@ -30,8 +30,14 @@ interface BankTxn {
   matched_id: string | null;
   status: string;
   reviewed: boolean;
+  matchedAmount?: number | null; // gross of the matched invoice/overhead, for discrepancy detection
 }
 interface Cat { code: string; name: string }
+
+// A matched transaction whose bank amount differs from the record it matched
+// (e.g. KAT025-A: £13,200 received vs £26,400 invoiced).
+const hasDiscrepancy = (t: BankTxn) =>
+  t.matched_id != null && t.matchedAmount != null && Math.abs(Math.abs(t.amount) - t.matchedAmount) > 0.01;
 
 const money = (n: number) =>
   (n < 0 ? "−£" : "£") +
@@ -54,6 +60,7 @@ const classTone = (c: string) =>
 
 const FILTERS: { key: string; label: string; test: (t: BankTxn) => boolean }[] = [
   { key: "review", label: "Needs review", test: (t) => !t.reviewed && !NON_TRADING.has(t.classification) && t.classification !== "bank_fee" && (t.classification === "expense" ? !t.category_code : t.matched_id == null) },
+  { key: "discrepancy", label: "Discrepancies", test: hasDiscrepancy },
   { key: "income", label: "Income", test: (t) => t.classification === "client_income" || t.classification === "ebay_resale" },
   { key: "expense", label: "Expenses", test: (t) => t.classification === "expense" },
   { key: "internal", label: "Non-trading", test: (t) => NON_TRADING.has(t.classification) },
@@ -157,7 +164,15 @@ export default function AdminReconcile() {
       sb.from("bank_transactions").select("id, date_completed, type, description, reference, counterparty, amount, classification, category_code, matched_type, matched_id, status, reviewed").order("date_completed", { ascending: false }),
       sb.from("expense_categories").select("code, name").eq("active", true).order("code"),
     ]);
-    setRows((txns ?? []) as BankTxn[]);
+    const list = (txns ?? []) as BankTxn[];
+    // Pull the matched records' amounts so we can flag discrepancies.
+    const invIds = [...new Set(list.filter((r) => r.matched_type === "income_invoice" && r.matched_id).map((r) => r.matched_id!))];
+    const ovhIds = [...new Set(list.filter((r) => r.matched_type === "overhead" && r.matched_id).map((r) => r.matched_id!))];
+    const amt = new Map<string, number>();
+    if (invIds.length) { const { data } = await sb.from("invoices").select("id, amount").in("id", invIds); for (const x of (data ?? []) as { id: string; amount: number }[]) amt.set(x.id, Number(x.amount)); }
+    if (ovhIds.length) { const { data } = await sb.from("overheads").select("id, gross_amount").in("id", ovhIds); for (const x of (data ?? []) as { id: string; gross_amount: number }[]) amt.set(x.id, Number(x.gross_amount)); }
+    for (const r of list) if (r.matched_id) r.matchedAmount = amt.get(r.matched_id) ?? null;
+    setRows(list);
     setCats((c ?? []) as Cat[]);
     setLoading(false);
   }
@@ -309,7 +324,14 @@ export default function AdminReconcile() {
                     {shown.slice(0, 400).map((t) => (
                       <tr key={t.id} className={`border-b border-white/[0.05] last:border-0 ${t.reviewed ? "opacity-55" : ""}`}>
                         <td className="px-3 py-2.5 text-recessive whitespace-nowrap">{fmtDate(t.date_completed)}</td>
-                        <td className="px-3 py-2.5 text-standard">{t.description || t.counterparty || "—"}</td>
+                        <td className="px-3 py-2.5 text-standard">
+                          {t.description || t.counterparty || "—"}
+                          {hasDiscrepancy(t) && (
+                            <span className="ml-2 whitespace-nowrap text-[9px] uppercase tracking-[0.14em] text-[#d8a184]" title="Bank amount differs from the matched record">
+                              ⚠ {money(Math.abs(t.amount))} vs {money(t.matchedAmount!)}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-recessive text-[12px]">{t.reference || "—"}</td>
                         <td className={`px-3 py-2.5 text-right tabular-nums whitespace-nowrap ${t.amount < 0 ? "text-strong" : "text-[#84b594]"}`}>{money(t.amount)}</td>
                         <td className={`px-3 py-2.5 text-[10px] uppercase tracking-[0.16em] ${classTone(t.classification)}`}>{CLASS_LABEL[t.classification] ?? t.classification}</td>
@@ -329,7 +351,9 @@ export default function AdminReconcile() {
                               <FilePlus2 className="h-3 w-3" strokeWidth={1.5} /> Record
                             </button>
                           ) : t.matched_id ? (
-                            <span className="text-[9px] uppercase tracking-[0.18em] text-[#84b594]">invoiced ✓</span>
+                            hasDiscrepancy(t)
+                              ? <span className="text-[9px] uppercase tracking-[0.16em] text-[#d8a184]">review ⚠</span>
+                              : <span className="text-[9px] uppercase tracking-[0.18em] text-[#84b594]">invoiced ✓</span>
                           ) : t.reviewed ? (
                             <button onClick={() => patch(t.id, { reviewed: false })} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] text-white/40 hover:text-white/70">
                               <Check className="h-3 w-3" strokeWidth={1.5} /> reviewed
