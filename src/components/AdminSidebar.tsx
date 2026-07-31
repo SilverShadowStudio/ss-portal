@@ -44,6 +44,7 @@ const SECTIONS: SidebarNavSection[] = [
     title: "Finance",
     items: [
       { path: "/admin/finance/pnl",         label: "P&L",         Icon: TrendingUp, indent: true },
+      { path: "/admin/finance/reconcile",   label: "Reconcile",   Icon: Landmark,   indent: true },
       { path: "/admin/finance/freelancers", label: "Debts",       Icon: HandCoins,  indent: true },
       { path: "/admin/finance/recurring",   label: "Recurring",   Icon: Repeat,     indent: true },
     ],
