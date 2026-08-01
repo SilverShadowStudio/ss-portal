@@ -14,6 +14,21 @@ Then ask for the state summary before acting.
 
 ---
 
+# Queued — 2 August 2026 (from the CC-Portal session, Fred's direct request)
+
+## Sales Director tab (CRM) — new feature, not started
+Fred is killing `silvershadowfuture.lovable.app` (a draft lead-chaser on Lovable, never populated — its data source was always his personal 10-year-old Excel spreadsheet). Rebuild the idea properly **inside ss-portal** as an admin tab, and make it **heavily AI-managed** ("Sales Director", not just a CRM):
+- New `leads` table in ss-portal's Supabase (additive), admin-gated page `/admin/leads` (or similar), dark-redesign conventions.
+- Core surfaces from the draft worth keeping: pipeline stages, a default "contact today / overdue" queue, follow-up scheduling, per-lead activity trail, dead-leads state.
+- One-time importer for Fred's Excel spreadsheet (10 years of leads — dedupe, date normalisation, column mapping). **Blocked on: Fred supplying the spreadsheet.** Scope the schema from its real columns, don't invent one.
+- AI-managed = Fred wants the tab to actively drive the pipeline (draft follow-ups, prioritise the day's contacts, summarise lead history). Exact scope is a product conversation to have when the spreadsheet arrives.
+- Natural synergy: "promote lead → client account" action once it lives beside `accounts`.
+
+## Marketing site (silvershadowstudio.com) — migration queued
+Move off Lovable to Vercel; share ss-portal's Supabase project (contact form, portfolio images) — no new Supabase project, stays on free tier. Fred to connect the Lovable project's GitHub sync so the code lands in the SilverShadowStudio org first. (Context: Lovable is being cancelled entirely; clairecolomb already detached to its own Supabase project — see that repo's CLAUDE.md.)
+
+---
+
 # Session — 1 August 2026 (fc2 — Revolut payments/links, team calendar, Dropbox receipt reconciliation, cash position)
 
 Long autonomous session on fc2 (MacBook), model Opus 4.8, under the standing build-it-end-to-end mandate. Every feature built → `npm run build` green → deployed (functions verified) → verified live against the DB → committed + pushed. **Fred resumes Monday from FC1 (office) — `git pull origin main` first to get all of the below.**
