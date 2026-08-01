@@ -78,12 +78,16 @@ The **Revolut Merchant `sk_` key + webhook `wsk_` secret** (and, earlier this se
 ## Testing-technique note (reusable; also saved to memory)
 To live-test user/admin-gated edge fns from the CLI without a password: fetch anon+service_role via the Management API keys endpoint → `admin/generate_link` (magiclink) for the **test account `fred+testos`** → `verify` → real JWT. For admin-gated fns, temporarily granted that test account `user_roles.admin` and **always revoked** it after. See memory `test-user-gated-edge-fns`.
 
+## ⚠ TO REWORK next session — calendar freelancer mode (Fred flagged 1 Aug)
+The team calendar is **right for employees but wrong for freelancers.** The paid-holiday **allowance countdown (20 days), "paid holiday" booking, and paid bank holidays are employee concepts** — freelancers are paid per day worked, so they don't accrue paid leave and bank holidays aren't paid for them. Rework the freelancer variant: keep worked-days-from-Airtable + availability ("not available") marking, but **drop the allowance ring / paid-holiday / paid-bank-holiday framing** for `employment_type='freelancer'` (the calendar already knows `employmentType` and `workPattern`). Decide with Fred what a freelancer's calendar *should* show (likely: worked days + unavailability only; bank holidays shown but not "paid"). Do NOT ship the employee model to freelancers.
+
 ## Next step to resume from (as of 1 Aug 2026 — current priority)
 No build is mid-flight; the session queue is clear. On resume, in order:
-1. **(quick, security)** Rotate the exposed Revolut `sk_`/`wsk_` secrets — see the URGENT block above.
-2. **Eyeball on production** the new team-calendar year-planner + the reconcile bank-truth chart; tweak colours/marks if Fred wants.
-3. **Decide Revolut salary payments** (Slice B) — Fred deferred ("talk later"); if greenlit, he re-auths Revolut with Make-payments ON + adds counterparty, then assistant builds `revolut-pay` with the controls noted above (assistant never presses send).
-4. Older Roadmap **Slice A** (Airtable payment-field write-back) remains a backlog candidate, unchanged.
+1. **Calendar freelancer rework** — see the ⚠ block just above (Fred's flag; highest-intent follow-up).
+2. **(quick, security)** Rotate the exposed Revolut `sk_`/`wsk_` secrets — see the URGENT block above.
+3. **Eyeball on production** the new team-calendar year-planner + the reconcile bank-truth chart; tweak colours/marks if Fred wants.
+4. **Decide Revolut salary payments** (Slice B) — Fred deferred ("talk later"); if greenlit, he re-auths Revolut with Make-payments ON + adds counterparty, then assistant builds `revolut-pay` with the controls noted above (assistant never presses send).
+5. Older Roadmap **Slice A** (Airtable payment-field write-back) remains a backlog candidate, unchanged.
 
 # Session — 30 July 2026 (fc2 — security hardening, dead-code purge, email-flood fix + weekly finance summary)
 
