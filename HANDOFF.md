@@ -14,6 +14,77 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 1 August 2026 (fc2 — Revolut payments/links, team calendar, Dropbox receipt reconciliation, cash position)
+
+Long autonomous session on fc2 (MacBook), model Opus 4.8, under the standing build-it-end-to-end mandate. Every feature built → `npm run build` green → deployed (functions verified) → verified live against the DB → committed + pushed. **Fred resumes Monday from FC1 (office) — `git pull origin main` first to get all of the below.**
+
+## Completed this session — grouped
+
+### 1 · Revolut payment links on invoices + Stripe fully retired
+- **004c86d** — Revolut Merchant payment links: new `revolut-payment-link` (mints a hosted checkout link per invoice, cached on the row) + `revolut-merchant-webhook` (signature-verified, marks invoice paid on ORDER_COMPLETED — the Stripe-webhook replacement) + `_shared/revolutMerchant.ts` (order-create + HMAC verify). Invoice PDF "PAY ONLINE" button now points at the Revolut link. Additive cols `invoices.revolut_order_id` + `revolut_checkout_url`. Frontend pay paths (client Documents/Invoices, AdminInvoices) repointed off Stripe. **Verified end-to-end** incl. a signed webhook flipping a throwaway invoice to paid.
+- **c77127b** — `PAY_ONLINE_MAX_AMOUNT = £5k`: online-pay button hidden + no link generated on invoices ≥ £5k (card fees punitive; those pay by transfer). Deleted invoice Stripe: `create-invoice-checkout` + `stripe-webhook` functions + unset `STRIPE_SECRET_KEY/PUBLISHABLE_KEY/WEBHOOK_SECRET`.
+- **315a527** — Removed the separate dead booking Stripe (`create-booking-checkout` + `stripe-booking-webhook` + `STRIPE_TEST_*` secrets) after Fred confirmed bookings are dead. **Stripe is now 100% gone from the project.** (Dead booking *frontend* components remain but are inert — nothing calls them; safe to delete in a future cleanup.)
+- **edb9362** — Revolut card in Overview → Connections (`RevolutConnectionStatus`): txn count + last-sync + Sync button.
+
+### 2 · Live cash position from Revolut
+- **d6c8715** — `revolut-balances` edge fn: fetches Revolut `/accounts` pocket balances, converts foreign→GBP via `fx_rates`, stores a timestamped snapshot (`bank_balance_snapshots`). `CashPositionCard` at the top of the admin dashboard: total + per-pocket + as-of + refresh + sparkline. **Live figure at close: £6,118.85 (all in Revenue pocket).**
+
+### 3 · Team availability calendar (new feature)
+- **53f03c7 / 1bb38ed / ce8d90e / f5d14a5 / a0f8847 / 9c530b9** — full build + iterations.
+- Model: employees = `accounts` (account_type='team'). Migrations added `bank_holidays` (gov.uk England&Wales, 2025-28 loaded), `accounts.annual_leave_allowance` (default 20), `team_leave_requests` (day-level holiday/unavailable, fraction, pending/approved/declined), `accounts.work_start_date`, `team_leave_allowances` (per-year override).
+- `team-calendar` edge fn (get/request/review/cancel/set-allowance): worked days pulled **live from Airtable Scene-Manager day-logs** (fractional, matched by `payee_email`) for freelancers, **Mon–Fri derived** for salaried employees; bank holidays pre-marked; **request→approve workflow** (member requests, admin approves/declines); **20-day allowance countdown, now per-year** (set-allowance is year-scoped).
+- UI = **year-planner** (12 month columns, day rows, weekday name, weekends greyed). Holiday language = slate blue **#6E8CA8** (bank-holiday label, paid-holiday dot, allowance ring). Each calendar **starts on the member's `work_start_date`** (days before = empty). **Kieran set to 2025-07-01.**
+- Surfaces: team self-service `/calendar` (sidebar) + admin via a **Calendar button on each team-member card** (`/admin/team/:accountId/calendar`). New **"Start date at the studio"** field on the member edit card.
+- Verified live (get/request/cancel round-trip, 403 gating, per-year isolation, workStartDate return). NOTE: Kieran's base allowance is **23** (from Fred's earlier live +/- clicks) — now just the fallback default; set any year explicitly via the +/-.
+
+### 4 · Dropbox receipt reconciliation (new feature)
+- **13243b1 (backend) / 8b077de (AI + rename + UI)** — reconcile `03_Portal_Admin_Docs/03_Invoices` ↔ Revolut.
+- Migrations: `dropbox_invoice_files` catalog + `bank_transactions.receipt_dropbox_path`.
+- `reconcile-receipts` edge fn: **scan** (recursively catalogs all 751 files, matches income by invoice-no-in-reference + expenses by amount+date via overheads); **ai-parse** (batch: reads each unmatched receipt via `parse-document` overhead extractor, matches on exact amount+date, **auto-renames** confident matches to the `AP_VENDOR…` standard via Dropbox move_v2, full old→new audit on the row); **list**. Hybrid matching (Fred's choice: AI only on leftovers), auto-rename on confident match (Fred's choice).
+- **Reconciliation page** under Finance (`/admin/finance/reconciliation`): Scan + AI-reconcile buttons, summary tiles, missing-receipt list + orphan-receipt list.
+- **Full AI pass run at close: 240 matched, 226 auto-renamed.** Residual: **647 Revolut entries missing a receipt + 303 orphan files** — these are largely legit near-misses (FX receipts where EUR≠GBP amount, instalment splits, pre-2025 files). A follow-up FX/instalment-aware matcher would close more (optional).
+
+### 5 · Reconcile page — bank-truth chart
+- **814983b** — `BankTruthChart` under "Bank-truth position · from Revolut": section-wide monthly SVG, income up / expenses down / net line, one £ axis, per-month hover. (Built to the dataviz skill; income green / expense terracotta matching the page.)
+
+### 6 · Finance chart of accounts
+- **657dde9** — Added expense category **`482 · Staff Welfare`** (standard VAT). Source was **(b) a Supabase table** `expense_categories` read at runtime (dropdown `ORDER BY code`), NOT hardcoded — so applied via **live INSERT** (migration file would not have taken effect) + recorded a migration. Sits between 481 Staff Training and 483 Medical Insurance.
+
+## Migrations applied to prod this session
+`20260731000004` invoice revolut cols · `…005` team_calendar · `…006` receipt_reconciliation · `…007` bank_balances · `…008` work_start_date · `…009` per_year_allowance · `…010` category 482. Plus data: gov.uk bank holidays loaded, Kieran work_start_date=2025-07-01, category 482 inserted. **All additive** (no destructive changes needed Fred sign-off this session).
+
+## Edge functions this session
+Deployed/new: `revolut-payment-link`, `revolut-merchant-webhook`, `revolut-balances`, `team-calendar`, `reconcile-receipts`; modified `download-invoice-pdf`. **Deleted:** `create-invoice-checkout`, `stripe-webhook`, `create-booking-checkout`, `stripe-booking-webhook`. Secrets set: `REVOLUT_MERCHANT_SK`, `REVOLUT_MERCHANT_WEBHOOK_SECRET` (Vault); Revolut Merchant webhook registered (id 4efcd6f6-0df1-4484-a37f-5fff565fd06d).
+
+## URGENT / security — rotate exposed secrets (Fred parked "next time")
+The **Revolut Merchant `sk_` key + webhook `wsk_` secret** (and, earlier this session, the Revolut refresh_token) **passed through the chat transcript.** They work in Vault, but should be **rotated**: regenerate `sk_` in the Merchant dashboard → re-vault; delete+recreate the webhook for a fresh `wsk_`. ~2 min. Not yet done.
+
+## Decisions made
+- Stripe fully removed (invoice + booking). Online card pay only for invoices < £5k.
+- Calendar: worked=Airtable(freelancer)/Mon–Fri(employee); 20 base + 8 bank holidays on top; per-year allowance; slate-blue holiday language; starts on work_start_date.
+- Reconciliation: hybrid match + auto-rename with audit.
+- **Revolut salary payments (Roadmap Slice B): Fred wants the full Revolut-API route ("from revolut") but DEFERRED it — "we'll talk about it later."** When picked up: Fred must re-auth Revolut with **Make payments ON** (currently read-only) + add the payee as a Revolut counterparty; build admin-only `revolut-pay` with per-payment confirm + idempotency-per-payslip + amount ceiling (~£10k flag) + audit; **assistant will build but will NOT execute a real transfer** — first live payment is Fred's click.
+
+## Watch / eyeball on production (none blocking)
+- Team calendar year-planner + holiday colours, and the bank-truth chart — built but I can't screenshot the admin UI; Fred to eyeball and tweak marks/colours if wanted.
+- Reconciliation lists (647 missing / 303 orphans) — sanity-check; decide if the FX/instalment matcher is worth building.
+
+## CLAUDE.md promotion candidates (report only — not written)
+- New "Revolut Merchant payments" section (payment-link + webhook + `_shared/revolutMerchant.ts`, £5k gate).
+- New "Team calendar" section (tables, `team-calendar` fn, work_start_date, per-year allowance).
+- New "Receipt reconciliation" section (`reconcile-receipts`, dropbox_invoice_files, AP rename standard).
+- Note "Stripe fully removed"; refresh the stale "102 migrations" line.
+
+## Testing-technique note (reusable; also saved to memory)
+To live-test user/admin-gated edge fns from the CLI without a password: fetch anon+service_role via the Management API keys endpoint → `admin/generate_link` (magiclink) for the **test account `fred+testos`** → `verify` → real JWT. For admin-gated fns, temporarily granted that test account `user_roles.admin` and **always revoked** it after. See memory `test-user-gated-edge-fns`.
+
+## Next step to resume from (as of 1 Aug 2026 — current priority)
+No build is mid-flight; the session queue is clear. On resume, in order:
+1. **(quick, security)** Rotate the exposed Revolut `sk_`/`wsk_` secrets — see the URGENT block above.
+2. **Eyeball on production** the new team-calendar year-planner + the reconcile bank-truth chart; tweak colours/marks if Fred wants.
+3. **Decide Revolut salary payments** (Slice B) — Fred deferred ("talk later"); if greenlit, he re-auths Revolut with Make-payments ON + adds counterparty, then assistant builds `revolut-pay` with the controls noted above (assistant never presses send).
+4. Older Roadmap **Slice A** (Airtable payment-field write-back) remains a backlog candidate, unchanged.
+
 # Session — 30 July 2026 (fc2 — security hardening, dead-code purge, email-flood fix + weekly finance summary)
 
 Long autonomous session on fc2 (MacBook), first after pulling 175 commits of finance/payroll work from fc1. Model Fable 5. All work reviewed via Musk/Schmidt-persona surveys, then executed under the standing mandate.
