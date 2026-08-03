@@ -23,11 +23,22 @@ Write ONE short outreach email to the given contact. Rules:
 - BANNED: "I hope this email finds you well", "game-changer", "reach out", "circle back", "synergy", "cutting-edge", exclamation-mark hype, and any placeholder like [Name] or [Company] — use the real details or omit.
 Return ONLY valid JSON: {"subject": string, "body": string}. Body uses \\n for line breaks. No markdown.`;
 
-async function callAnthropic(apiKey: string, prompt: string): Promise<Response> {
+const SYSTEM_CALL = `You prepare phone-call briefs for Silver Shadow Studio — a London CGI / architectural-visualisation studio (photorealistic renders, animation, virtual tours) selling to architects, property developers, interior designers and estate agents. Fred is about to phone the given contact.
+
+Write a tight, practical CALL SCRIPT he can glance at mid-call. Structure the body with these short labelled sections (plain text, use \\n):
+OPENER — one natural line to the contact (or to get past a PA/reception).
+HOOK — one specific, genuine reason you're calling them (their work/sector/a likely project). Not generic.
+VALUE — the 15-second "why renders help you" line, in their terms (win the pitch, sell units off-plan, market the scheme).
+ASK — the single call goal: book a 15-minute look at the reel / a short intro call.
+OBJECTIONS — 3 likely pushbacks ("we have someone", "send an email", "no budget") each with a one-line response.
+British English, confident, human, concise. No spam clichés. The "subject" field = a 4-6 word call objective.
+Return ONLY valid JSON: {"subject": string, "body": string}. No markdown.`;
+
+async function callAnthropic(apiKey: string, prompt: string, mode: string): Promise<Response> {
   return fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: SYSTEM, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: mode === "call" ? SYSTEM_CALL : SYSTEM, messages: [{ role: "user", content: prompt }] }),
   });
 }
 
@@ -59,14 +70,15 @@ Deno.serve(async (req) => {
     b.notes && `Notes / context: ${b.notes}`,
   ].filter(Boolean).join("\n");
   if (!b.company) return json({ error: "company is required" }, 400);
-  const prompt = `Draft the outreach email for this lead:\n\n${facts}\n\nReturn the JSON now.`;
+  const mode = b.mode === "call" ? "call" : "email";
+  const prompt = `${mode === "call" ? "Prepare the call brief" : "Draft the outreach email"} for this lead:\n\n${facts}\n\nReturn the JSON now.`;
 
   // Retry with backoff; surface the real upstream error (e.g. out of credits).
   const TRANSIENT = [429, 500, 502, 503, 529];
   let res: Response | null = null;
   let lastStatus = 0, lastBody = "";
   for (let i = 0; i < 3; i++) {
-    const r = await callAnthropic(anthropicKey, prompt);
+    const r = await callAnthropic(anthropicKey, prompt, mode);
     if (r.ok) { res = r; break; }
     lastStatus = r.status; lastBody = await r.text().catch(() => "");
     if (!TRANSIENT.includes(r.status) || i === 2) break;

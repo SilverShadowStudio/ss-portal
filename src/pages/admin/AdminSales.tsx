@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2 } from "lucide-react";
+import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2, Phone } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -21,10 +21,13 @@ interface Lead {
   sector: string | null;
   country: string | null;
   website: string | null;
+  phone: string | null;
+  segment: string | null;
   status: string;
   notes: string | null;
   pitch_subject: string | null;
   pitch_draft: string | null;
+  call_script: string | null;
   value_estimate: number | null;
   last_contacted_at: string | null;
   next_action_at: string | null;
@@ -58,6 +61,15 @@ function parseCSV(text: string): string[][] {
   return rows;
 }
 const isoOrNull = (v: string) => { const t = Date.parse(v); return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10); };
+// Call-first priority from your own CSV grouping.
+function segRank(r: { segment: string | null; status: string }): number {
+  if (r.status === "lost") return 9;
+  const s = (r.segment ?? "").toUpperCase();
+  if (s.includes("NOW")) return 0;
+  if (s.includes("CURRENT")) return 1;
+  if (s.includes("DEAD")) return 8;
+  return 4;
+}
 
 const EMPTY = { company: "", contact_name: "", email: "", role: "", sector: "", country: "", website: "", status: "new", notes: "", value_estimate: "", next_action_at: "" };
 
@@ -78,13 +90,13 @@ export default function AdminSales() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
 
-  const [pitch, setPitch] = useState<{ lead: Lead; subject: string; body: string; loading: boolean } | null>(null);
+  const [pitch, setPitch] = useState<{ lead: Lead; subject: string; body: string; loading: boolean; mode: "call" | "email" } | null>(null);
   const [copied, setCopied] = useState(false);
 
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("leads")
-      .select("id, company, contact_name, email, role, sector, country, website, status, notes, pitch_subject, pitch_draft, value_estimate, last_contacted_at, next_action_at")
+      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at")
       .order("next_action_at", { ascending: true, nullsFirst: false });
     setRows((data ?? []) as Lead[]);
     setLoading(false);
@@ -102,6 +114,8 @@ export default function AdminSales() {
   }, [rows, search, statusFilter]);
 
   const COLUMNS: SortableColumn<Lead>[] = [
+    // Priority = your own segment (CONTACT NOW → CURRENT → rest → DEAD), then soonest follow-up.
+    { id: "priority", accessor: (r) => segRank(r) * 1e13 + (r.next_action_at ? new Date(r.next_action_at).getTime() : 8.9e12), type: "number" },
     { id: "company", accessor: (r) => r.company, type: "text" },
     { id: "contact", accessor: (r) => r.contact_name ?? "", type: "text" },
     { id: "country", accessor: (r) => r.country ?? "", type: "text" },
@@ -109,7 +123,7 @@ export default function AdminSales() {
     { id: "next", accessor: (r) => r.next_action_at, type: "date" },
     { id: "value", accessor: (r) => r.value_estimate ?? 0, type: "number" },
   ];
-  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Lead>(filtered, COLUMNS, { key: "next", dir: "asc" });
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Lead>(filtered, COLUMNS, { key: "priority", dir: "asc" });
 
   // Summary
   const open = rows.filter((r) => r.status !== "won" && r.status !== "lost");
@@ -171,31 +185,35 @@ export default function AdminSales() {
         iPot = find("potential"), iRev = find("expected", "revenue"),
         iNext = find("next", "date"), iLast = hdr.findIndex((h) => h.includes("last") && h.includes("date") && !h.includes("type") && !h.includes("report")),
         iReport = find("last", "report");
+      const iPA = hdr.indexOf("pa"), iRec = hdr.indexOf("reception");
       const g = (row: string[], i: number) => (i >= 0 && i < row.length ? row[i].trim() : "");
 
       const existing = new Set(rows.map((r) => (r.email ?? "").toLowerCase()).filter(Boolean));
       const seen = new Set<string>();
       const toInsert: Record<string, unknown>[] = [];
-      let skipped = 0;
+      let skipped = 0; let section = "";
       const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
 
       for (const row of table.slice(1)) {
-        const company = g(row, iCompany), contact = g(row, iContact), email = g(row, iEmail).toLowerCase();
-        // Skip separator/blank rows: need an email OR a company with a contact/website.
-        if (!(email.includes("@") || (company && (contact || g(row, iWeb))))) { skipped++; continue; }
+        const company = g(row, iCompany), contact = g(row, iContact), email = g(row, iEmail).toLowerCase(), web = g(row, iWeb);
+        const phone = g(row, iPhone) || g(row, iPA) || g(row, iRec);
+        // A lone label with nothing else is one of your section headers (CONTACT NOW / DEAD …).
+        if (company && !contact && !email && !web && !phone) { section = company.trim(); skipped++; continue; }
+        if (!(email.includes("@") || (company && (contact || web || phone)))) { skipped++; continue; }
         if (email && (existing.has(email) || seen.has(email))) { skipped++; continue; }
         if (email) seen.add(email);
         const notesParts = [
           g(row, iStatus) && `Old status: ${g(row, iStatus)}`,
           g(row, iAddr) && `Address: ${g(row, iAddr)}`,
           g(row, iLinked) && `LinkedIn: ${g(row, iLinked)}`,
-          g(row, iPhone) && `Phone: ${g(row, iPhone)}`,
           g(row, iReport) && `Last report: ${g(row, iReport)}`,
         ].filter(Boolean).join("\n");
+        const isDead = /dead/i.test(section);
         toInsert.push({
           company: company || email, contact_name: contact || null, email: email || null,
-          role: g(row, iTitle) || null, website: g(row, iWeb) || null, country: g(row, iCountry) || null,
-          sector: importSector.trim() || null, status: "new", notes: notesParts || null,
+          role: g(row, iTitle) || null, website: web || null, country: g(row, iCountry) || null,
+          phone: phone || null, segment: section || null,
+          sector: importSector.trim() || null, status: isDead ? "lost" : "new", notes: notesParts || null,
           value_estimate: g(row, iRev) ? num(g(row, iRev)) : (g(row, iPot) ? num(g(row, iPot)) : null),
           next_action_at: iNext >= 0 ? isoOrNull(g(row, iNext)) : null,
           last_contacted_at: iLast >= 0 && isoOrNull(g(row, iLast)) ? new Date(isoOrNull(g(row, iLast))!).toISOString() : null,
@@ -215,25 +233,26 @@ export default function AdminSales() {
     } finally { setImporting(false); }
   }
 
-  async function draftPitch(r: Lead) {
-    setPitch({ lead: r, subject: r.pitch_subject ?? "", body: r.pitch_draft ?? "", loading: true });
+  async function draftPitch(r: Lead, mode: "call" | "email") {
+    const prev = mode === "call" ? (r.call_script ?? "") : (r.pitch_draft ?? "");
+    setPitch({ lead: r, subject: mode === "email" ? (r.pitch_subject ?? "") : "", body: prev, loading: true, mode });
     setCopied(false);
     try {
       const { data, error } = await supabase.functions.invoke("draft-sales-pitch", {
-        body: { company: r.company, contact_name: r.contact_name, role: r.role, sector: r.sector, website: r.website, notes: r.notes },
+        body: { company: r.company, contact_name: r.contact_name, role: r.role, sector: r.sector, website: r.website, notes: r.notes, mode },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Couldn't draft");
-      setPitch({ lead: r, subject: data.subject, body: data.body, loading: false });
-      await supabase.from("leads").update({ pitch_subject: data.subject, pitch_draft: data.body }).eq("id", r.id);
+      setPitch({ lead: r, subject: data.subject, body: data.body, loading: false, mode });
+      await supabase.from("leads").update(mode === "call" ? { call_script: data.body } : { pitch_subject: data.subject, pitch_draft: data.body }).eq("id", r.id);
     } catch (e) {
       setPitch((p) => p && { ...p, loading: false });
-      toast({ title: "Couldn't draft the pitch", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: mode === "call" ? "Couldn't draft the call script" : "Couldn't draft the pitch", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
   async function copyPitch() {
     if (!pitch) return;
-    await navigator.clipboard.writeText(`Subject: ${pitch.subject}\n\n${pitch.body}`);
+    await navigator.clipboard.writeText(pitch.mode === "email" ? `Subject: ${pitch.subject}\n\n${pitch.body}` : pitch.body);
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   }
   async function markContacted() {
@@ -300,8 +319,15 @@ export default function AdminSales() {
                 <tbody>
                   {sortedRows.map((r) => (
                     <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
-                      <td className="px-4 py-3 text-strong">{r.company}{r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-2 text-[10px] text-white/30 hover:text-gold">↗</a>}</td>
-                      <td className="px-4 py-3 text-standard">{r.contact_name ?? "—"}{r.email && <div className="text-[11px] text-white/35">{r.email}</div>}</td>
+                      <td className="px-4 py-3 text-strong">
+                        <span className="inline-flex items-center gap-2">{r.company}{r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-white/30 hover:text-gold">↗</a>}</span>
+                        {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-standard">
+                        {r.contact_name ?? "—"}
+                        {r.phone && <a href={`tel:${r.phone.replace(/[^0-9+]/g, "")}`} onClick={(e) => e.stopPropagation()} className="ml-2 inline-flex items-center gap-1 text-[11px] text-[#C9A96A] hover:text-[#ecd39c]"><Phone className="h-3 w-3" strokeWidth={1.5} />{r.phone}</a>}
+                        {r.email && <div className="text-[11px] text-white/35">{r.email}</div>}
+                      </td>
                       <td className="px-4 py-3 text-standard">{r.country ?? "—"}</td>
                       <td className="px-4 py-3">
                         <select value={r.status} onChange={(e) => quickStatus(r, e.target.value)} className={`bg-transparent text-[11px] uppercase tracking-[0.14em] focus:outline-none cursor-pointer ${STATUS_CLS[r.status] ?? "text-white/50"}`}>
@@ -312,7 +338,7 @@ export default function AdminSales() {
                       <td className="px-4 py-3 text-right tabular-nums text-standard">{r.value_estimate ? money(Number(r.value_estimate)) : "—"}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
-                          <button onClick={() => draftPitch(r)} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c]"><Sparkles className="h-3 w-3" strokeWidth={1.5} />Pitch</button>
+                          <button onClick={() => draftPitch(r, "call")} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c]"><Sparkles className="h-3 w-3" strokeWidth={1.5} />Call script</button>
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                           <button onClick={() => removeLead(r)} className="text-white/30 hover:text-rose-400" title="Remove"><Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                         </span>
@@ -382,20 +408,29 @@ export default function AdminSales() {
       <Dialog open={!!pitch} onOpenChange={(o) => { if (!o) setPitch(null); }}>
         <DialogContent className="max-w-xl rounded-sm border-divider bg-background">
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Sales · Pitch · {pitch?.lead.company}</p>
-            <DialogTitle className="font-serif font-normal text-2xl">Outreach draft</DialogTitle>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Sales · {pitch?.lead.company}{pitch?.lead.phone ? ` · ${pitch.lead.phone}` : ""}</p>
+              {pitch && (
+                <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.18em]">
+                  <button onClick={() => draftPitch(pitch.lead, "call")} className={pitch.mode === "call" ? "text-[#ecd39c]" : "text-white/35 hover:text-white/70"}>Call script</button>
+                  <span className="text-white/20">/</span>
+                  <button onClick={() => draftPitch(pitch.lead, "email")} className={pitch.mode === "email" ? "text-[#ecd39c]" : "text-white/35 hover:text-white/70"}>Email</button>
+                </div>
+              )}
+            </div>
+            <DialogTitle className="font-serif font-normal text-2xl">{pitch?.mode === "call" ? "Call brief" : "Outreach draft"}</DialogTitle>
           </DialogHeader>
           {pitch?.loading ? (
-            <div className="flex items-center gap-2 py-10 justify-center text-sm text-muted-foreground"><BrandLoader size="sm" className="h-3.5 w-3.5" /> Drafting a tailored pitch…</div>
+            <div className="flex items-center gap-2 py-10 justify-center text-sm text-muted-foreground"><BrandLoader size="sm" className="h-3.5 w-3.5" /> {pitch.mode === "call" ? "Preparing your call brief…" : "Drafting a tailored pitch…"}</div>
           ) : (
             <div className="space-y-3 py-2">
-              <div className="space-y-1.5"><Label>Subject</Label><Input value={pitch?.subject ?? ""} onChange={(e) => setPitch((p) => p && { ...p, subject: e.target.value })} className="rounded-sm" /></div>
-              <div className="space-y-1.5"><Label>Body</Label><textarea value={pitch?.body ?? ""} onChange={(e) => setPitch((p) => p && { ...p, body: e.target.value })} rows={10} className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm" /></div>
-              <p className="text-[10px] text-muted-foreground/70">Edit freely, copy, and send from your own inbox (best deliverability). Then mark contacted.</p>
+              {pitch?.mode === "email" && <div className="space-y-1.5"><Label>Subject</Label><Input value={pitch?.subject ?? ""} onChange={(e) => setPitch((p) => p && { ...p, subject: e.target.value })} className="rounded-sm" /></div>}
+              <div className="space-y-1.5"><Label>{pitch?.mode === "call" ? "Script" : "Body"}</Label><textarea value={pitch?.body ?? ""} onChange={(e) => setPitch((p) => p && { ...p, body: e.target.value })} rows={pitch?.mode === "call" ? 14 : 10} className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm" /></div>
+              <p className="text-[10px] text-muted-foreground/70">{pitch?.mode === "call" ? "Glance at this mid-call. After the call, mark contacted and set the next follow-up." : "Edit, copy, and send from your own inbox (best deliverability). Then mark contacted."}</p>
             </div>
           )}
           <DialogFooter className="sm:justify-between">
-            <button type="button" onClick={() => pitch && draftPitch(pitch.lead)} disabled={pitch?.loading} className="text-sm text-recessive hover:text-standard disabled:opacity-40">Re-draft</button>
+            <button type="button" onClick={() => pitch && draftPitch(pitch.lead, pitch.mode)} disabled={pitch?.loading} className="text-sm text-recessive hover:text-standard disabled:opacity-40">Re-draft</button>
             <div className="flex items-center gap-4">
               <button type="button" onClick={copyPitch} className="inline-flex items-center gap-1.5 text-sm text-recessive hover:text-standard">{copied ? <><Check className="h-3.5 w-3.5" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}</button>
               <Button onClick={markContacted} className="rounded-sm">Mark contacted</Button>
