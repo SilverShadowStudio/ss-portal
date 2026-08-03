@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, FolderKanban, Image, Clock, ArrowRight } from "lucide-react";
+import { Users, FolderKanban, Image, Clock } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
-import { CashPositionCard } from "@/components/admin/CashPositionCard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
@@ -103,9 +102,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Live cash position from Revolut — the top-line "how much have we got" number. */}
-      <CashPositionCard />
-
       {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
         <div className="ssr-zone">
@@ -129,51 +125,7 @@ export default function AdminDashboard() {
       {/* Activity Log Preview — click a line to dismiss; title to open full log */}
       <ActivityLogPreview />
 
-      {/* Quick Actions — zone with tile links. Same labels + destinations. */}
-      <div
-        className="mb-4 ssr-zone animate-fade-in"
-        style={{ animationDelay: "0.2s" }}
-      >
-        <div className="mb-6 flex items-center gap-3">
-          <div className="h-px w-6 bg-gold-muted" />
-          <h2 className="text-label">Quick Actions</h2>
-        </div>
-        <div className="flex flex-col gap-3">
-          <Link
-            to="/admin/clients"
-            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
-          >
-            <div className="flex items-center gap-4">
-              <Users className="h-5 w-5 text-gold" strokeWidth={1.5} />
-              <span className="text-sm text-foreground">Add new client</span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            to="/admin/projects"
-            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
-          >
-            <div className="flex items-center gap-4">
-              <FolderKanban className="h-5 w-5 text-gold" strokeWidth={1.5} />
-              <span className="text-sm text-foreground">Create project</span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            to="/admin/scenes"
-            className="group ssr-tile ssr-tile-hover flex items-center justify-between p-5 transition-smooth"
-          >
-            <div className="flex items-center gap-4">
-              <Image className="h-5 w-5 text-gold" strokeWidth={1.5} />
-              <span className="text-sm text-foreground">Upload renders</span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-      </div>
-
-      {/* Integration Status — moved to the bottom of the page (below the
-          activity log + quick actions) so the connection panels recede. */}
+      {/* Integration Status — connection panels at the bottom so they recede. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.15s" }}>
         <div className="ssr-zone">
           <div className="mb-6 flex items-center gap-3">
