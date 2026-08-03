@@ -48,11 +48,9 @@ import AdminTimeline from "./pages/admin/AdminTimeline";
 import AdminActivity from "./pages/admin/AdminActivity";
 import AdminInvoices from "./pages/admin/AdminInvoices";
 import AdminQuotes from "./pages/admin/AdminQuotes";
-import AdminTeamInvoices from "./pages/admin/AdminTeamInvoices";
 import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
-import AdminProductionTracker from "./pages/admin/AdminProductionTracker";
 import AdminSales from "./pages/admin/AdminSales";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
@@ -472,15 +470,6 @@ const App = () => (
               }
             />
             <Route
-              path="/admin/production-tracker"
-              element={
-                <AdminProtectedRoute>
-                  <AdminProductionTracker />
-                </AdminProtectedRoute>
-              }
-            />
-            
-            <Route
               path="/admin/settings"
               element={
                 <AdminProtectedRoute>
@@ -511,14 +500,6 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminTeamCalendar />
-                </AdminProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/team/invoices"
-              element={
-                <AdminProtectedRoute>
-                  <AdminTeamInvoices />
                 </AdminProtectedRoute>
               }
             />

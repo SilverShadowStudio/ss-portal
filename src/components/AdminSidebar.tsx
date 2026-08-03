@@ -35,8 +35,6 @@ const SECTIONS: SidebarNavSection[] = [
     items: [
       // Documents now live inline on each team member's card (Team page).
       { path: "/admin/team",               label: "Team",       Icon: UserPlus, matchActive: (p) => p === "/admin/team" },
-      { path: "/admin/team/invoices",      label: "Invoices",   Icon: Landmark, indent: true },
-      { path: "/admin/production-tracker", label: "Tracker",    Icon: Activity, indent: true },
     ],
   },
   {
