@@ -234,82 +234,102 @@ function renderEmail(d: {
     text: `Overhead run-rate is up <strong>${d.trendPct.toFixed(0)}%</strong> on the prior quarter. If this is not project-driven, it warrants a line-by-line review before it compounds.` });
   advice.push({ p: "Set-aside", text: `Against a ${gbp(d.runRate)}/month committed run-rate, maintaining roughly one quarter of cover (<strong>${gbp(d.forecast90)}</strong>) as a floor would keep the studio comfortably ahead of its fixed obligations.` });
 
-  const bar = (v: number) => `<div style="background:#d3b47c;height:10px;width:${Math.round((v / maxSpend) * 100)}%;border-radius:2px"></div>`;
+  // ── Dark-report palette (WCAG-AA on the charcoal ground) ──────────────────
+  const AMBER = "#E4B95B";   // primary data bars — high contrast on charcoal
+  const CORAL = "#FF6B5A";   // overdue / negative (deficit)
+  const GOLD  = "#C9A96A";   // section labels / accents (portal gold)
+  const CREAM = "#ECE6D8";   // primary text
+  const MUTED = "#9A9384";   // secondary text
+  const HAIR  = "rgba(255,255,255,0.12)"; // hairline rules
+  const TRACK = "rgba(255,255,255,0.08)"; // empty bar track
+  const POS   = "#5FBE7E";   // positive balance
+  const LATER = "#B8B09A";   // aging: beyond 30 days
 
-  // Segmented horizontal bar for the aging profile (email-safe: table cells).
+  // Email-safe, precisely proportional horizontal bar. A fixed-layout 2-cell
+  // table guarantees the fill width is exactly v/max in every client — no nested
+  // percentage rounding, so two different values never collapse to equal lengths.
+  const hbar = (v: number, max: number, color: string) => {
+    const pct = Math.max(0, Math.min(100, (v / (max || 1)) * 100));
+    return `<table role="presentation" width="100%" style="border-collapse:collapse;table-layout:fixed;background:${TRACK};border-radius:3px"><tr>`
+      + `<td style="height:12px;background:${color};width:${pct.toFixed(2)}%;border-radius:3px;font-size:0;line-height:0">&nbsp;</td>`
+      + `<td style="width:${(100 - pct).toFixed(2)}%;font-size:0;line-height:0">&nbsp;</td></tr></table>`;
+  };
+
+  // Segmented aging bar — each tranche precisely proportional.
   const agingSeg = (() => {
     const segs = [
-      { v: d.aging.overdue, c: "#a23b3b" }, { v: d.aging.due7, c: "#c9862f" },
-      { v: d.aging.due30, c: "#d3b47c" }, { v: d.aging.later, c: "#cfc6b4" },
+      { v: d.aging.overdue, c: CORAL }, { v: d.aging.due7, c: AMBER },
+      { v: d.aging.due30, c: GOLD }, { v: d.aging.later, c: LATER },
     ].filter((s) => s.v > 0);
     const tot = segs.reduce((s, x) => s + x.v, 0) || 1;
-    return `<table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:6px"><tr>${
-      segs.map((s) => `<td style="height:14px;background:${s.c};width:${((s.v / tot) * 100).toFixed(1)}%;border-radius:2px"></td>`).join("<td style=\"width:2px\"></td>")}</tr></table>`;
+    return `<table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:10px"><tr>${
+      segs.map((s) => `<td style="height:14px;background:${s.c};width:${((s.v / tot) * 100).toFixed(2)}%;border-radius:2px;font-size:0;line-height:0">&nbsp;</td>`).join("<td style=\"width:3px;font-size:0;line-height:0\">&nbsp;</td>")}</tr></table>`;
   })();
 
   const maxSup = Math.max(1, ...d.topSuppliers.map((s) => s.gbpv));
-  const maxCcy = Math.max(1, ...d.currencyMix.map((c) => c.gbpv));
-  const sec = (label: string) => `<div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">${label}</div>`;
+  const sec = (label: string) => `<div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:${GOLD};margin-bottom:12px">${label}</div>`;
+  const negNet = d.netPosition < 0;
 
-  return `<!doctype html><html><body style="margin:0;background:#f4f2ee;font-family:Georgia,'Times New Roman',serif;color:#1b1b1b">
-  <div style="max-width:640px;margin:0 auto;padding:32px 28px">
-    <div style="border-bottom:2px solid #1b1b1b;padding-bottom:14px;margin-bottom:22px">
-      <div style="font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#8a7a55">Silver Shadow Studio — Office of Finance</div>
-      <div style="font-size:22px;margin-top:6px">Weekly Financial Position &amp; Outlook</div>
-      <div style="font-size:12px;color:#6b6b6b;margin-top:4px">Prepared ${new Date(d.nowISO).toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })} · figures in GBP (FX at ECB reference rates)</div>
+  return `<!doctype html><html><body style="margin:0;background:#0f0e0b;font-family:Georgia,'Times New Roman',serif;color:${CREAM}">
+  <div style="max-width:640px;margin:0 auto;background:#181713;padding:32px 28px">
+    <div style="border-bottom:2px solid ${GOLD};padding-bottom:14px;margin-bottom:24px">
+      <div style="font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:${GOLD}">Silver Shadow Studio — Office of Finance</div>
+      <div style="font-size:22px;margin-top:6px;color:${CREAM}">Weekly Financial Position &amp; Outlook</div>
+      <div style="font-size:12px;color:${MUTED};margin-top:4px">Prepared ${new Date(d.nowISO).toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })} · figures in GBP (FX at ECB reference rates)</div>
     </div>
 
-    <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:8px">Executive summary</div>
-    <div style="font-size:14px;line-height:1.65;margin-bottom:24px">${commentary.map((c) => `<p style="margin:0 0 10px">${c}</p>`).join("")}</div>
+    ${sec("Executive summary")}
+    <div style="font-size:14px;line-height:1.65;margin-bottom:28px;color:${CREAM}">${commentary.map((c) => `<p style="margin:0 0 10px">${c}</p>`).join("")}</div>
 
-    <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">Position at a glance</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px">
-      <tr><td style="padding:8px 0;border-bottom:1px solid #e2ddd3">Overheads outstanding (${d.unpaidCount} invoices)</td><td style="padding:8px 0;border-bottom:1px solid #e2ddd3;text-align:right">${gbp2(d.overheadsUnpaid)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #e2ddd3">Freelancer payables outstanding</td><td style="padding:8px 0;border-bottom:1px solid #e2ddd3;text-align:right">${gbp2(d.freelancerOutstanding)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #e2ddd3">Taxes due</td><td style="padding:8px 0;border-bottom:1px solid #e2ddd3;text-align:right">${gbp2(d.taxesDue)}</td></tr>
-      <tr><td style="padding:10px 0;font-weight:bold;border-bottom:2px solid #1b1b1b">Total obligations</td><td style="padding:10px 0;font-weight:bold;text-align:right;border-bottom:2px solid #1b1b1b">${gbp2(d.totalOwed)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #e2ddd3">Receivables (invoiced, unpaid)</td><td style="padding:8px 0;border-bottom:1px solid #e2ddd3;text-align:right">${gbp2(d.receivables)}</td></tr>
-      <tr><td style="padding:10px 0;font-weight:bold">Net working position</td><td style="padding:10px 0;font-weight:bold;text-align:right;color:${d.netPosition < 0 ? "#a23b3b" : "#2e6b3e"}">${gbp2(d.netPosition)}</td></tr>
+    ${sec("Position at a glance")}
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:28px;color:${CREAM}">
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Overheads outstanding (${d.unpaidCount} invoices)</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.overheadsUnpaid)}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Freelancer payables outstanding</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.freelancerOutstanding)}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Taxes due</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.taxesDue)}</td></tr>
+      <tr><td style="padding:12px 0 10px;font-weight:bold;border-top:2px solid ${CREAM}">Total obligations</td><td style="padding:12px 0 10px;font-weight:bold;text-align:right;border-top:2px solid ${CREAM}">${gbp2(d.totalOwed)}</td></tr>
+      <tr><td colspan="2" style="height:18px;line-height:18px;font-size:0">&nbsp;</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Receivables (invoiced, unpaid)</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.receivables)}</td></tr>
+      <tr><td style="padding:12px 0;font-weight:bold;font-size:15px">Net working position</td><td style="padding:12px 0;font-weight:bold;font-size:15px;text-align:right;color:${negNet ? CORAL : POS}">${gbp2(d.netPosition)}</td></tr>
     </table>
 
     ${sec("Aged analysis — overheads")}
     ${agingSeg}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
-      <tr><td style="padding:5px 0"><span style="color:#a23b3b">■</span> Overdue</td><td style="padding:5px 0;text-align:right;color:#a23b3b">${gbp2(d.aging.overdue)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:#c9862f">■</span> Due within 7 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due7)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:#d3b47c">■</span> Due 8–30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due30)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:#cfc6b4">■</span> Due beyond 30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.later)}</td></tr>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM}">
+      <tr><td style="padding:5px 0"><span style="color:${CORAL}">■</span> Overdue</td><td style="padding:5px 0;text-align:right;color:${CORAL}">${gbp2(d.aging.overdue)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:${AMBER}">■</span> Due within 7 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due7)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:${GOLD}">■</span> Due 8–30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due30)}</td></tr>
+      <tr><td style="padding:5px 0"><span style="color:${LATER}">■</span> Due beyond 30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.later)}</td></tr>
     </table>
 
     ${d.currencyMix.length > 1 ? `${sec("Currency exposure — unpaid overheads (GBP-equivalent)")}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
-      ${d.currencyMix.map((c) => `<tr><td style="padding:5px 0;width:48px;color:#6b6b6b">${c.ccy}</td><td style="padding:5px 8px;width:52%"><div style="background:#b9a888;height:10px;width:${Math.round((c.gbpv / maxCcy) * 100)}%;border-radius:2px"></div></td><td style="padding:5px 0;text-align:right">${gbp(c.gbpv)}</td><td style="padding:5px 0;text-align:right;width:44px;color:#6b6b6b">${((c.gbpv / (d.overheadsUnpaid || 1)) * 100).toFixed(0)}%</td></tr>`).join("")}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM}">
+      ${d.currencyMix.map((c) => `<tr><td style="padding:7px 0;border-bottom:1px solid ${HAIR};color:${MUTED};letter-spacing:0.10em">${c.ccy}</td><td style="padding:7px 0;border-bottom:1px solid ${HAIR};text-align:right;width:64px;color:${MUTED}">${((c.gbpv / (d.overheadsUnpaid || 1)) * 100).toFixed(0)}%</td><td style="padding:7px 0;border-bottom:1px solid ${HAIR};text-align:right;font-variant-numeric:tabular-nums">${gbp(c.gbpv)}</td></tr>`).join("")}
     </table>` : ""}
 
     ${d.topSuppliers.length ? `${sec("Supplier concentration — largest exposures")}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
-      ${d.topSuppliers.map((s) => `<tr><td style="padding:5px 0;width:38%;color:#3a3a3a;overflow:hidden">${s.name.slice(0, 26)}</td><td style="padding:5px 8px;width:40%"><div style="background:#d3b47c;height:10px;width:${Math.round((s.gbpv / maxSup) * 100)}%;border-radius:2px"></div></td><td style="padding:5px 0;text-align:right">${gbp(s.gbpv)}</td></tr>`).join("")}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM}">
+      ${d.topSuppliers.map((s) => `<tr><td style="padding:7px 10px 7px 0;width:32%;vertical-align:middle">${s.name.slice(0, 26)}</td><td style="padding:7px 10px;width:48%;vertical-align:middle">${hbar(s.gbpv, maxSup, AMBER)}</td><td style="padding:7px 0;text-align:right;vertical-align:middle;white-space:nowrap;font-variant-numeric:tabular-nums">${gbp(s.gbpv)}</td></tr>`).join("")}
     </table>` : ""}
 
-    <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">Historic tracking — overhead spend, trailing 6 months</div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px">
-      ${d.history.map((h) => `<tr><td style="padding:5px 0;width:64px;color:#6b6b6b">${monthName(h.month)}</td><td style="padding:5px 8px;width:55%">${bar(h.spend)}</td><td style="padding:5px 0;text-align:right">${gbp(h.spend)}</td></tr>`).join("")}
+    ${sec("Historic tracking — overhead spend, trailing 6 months")}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM}">
+      ${d.history.map((h) => `<tr><td style="padding:7px 10px 7px 0;width:64px;color:${MUTED};vertical-align:middle">${monthName(h.month)}</td><td style="padding:7px 10px;width:52%;vertical-align:middle">${hbar(h.spend, maxSpend, AMBER)}</td><td style="padding:7px 0;text-align:right;vertical-align:middle;white-space:nowrap;font-variant-numeric:tabular-nums">${gbp(h.spend)}</td></tr>`).join("")}
     </table>
 
-    <div style="font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:#8a7a55;margin-bottom:10px">Forecast — committed recurring outflow</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px">
-      <tr><td style="padding:8px 0;border-bottom:1px solid #e2ddd3">Recurring run-rate (amortised)</td><td style="padding:8px 0;border-bottom:1px solid #e2ddd3;text-align:right">${gbp2(d.runRate)} / month</td></tr>
+    ${sec("Forecast — committed recurring outflow")}
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px;color:${CREAM}">
+      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Recurring run-rate (amortised)</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.runRate)} / month</td></tr>
       <tr><td style="padding:8px 0">Committed over next quarter</td><td style="padding:8px 0;text-align:right">${gbp2(d.forecast90)}</td></tr>
     </table>
-    <p style="font-size:12px;color:#6b6b6b;line-height:1.6">Recurring figure amortises annual and quarterly commitments to a monthly basis and excludes one-off, project-driven, and discretionary spend. Receivables reflect invoiced amounts only; contracted-but-uninvoiced work is not included. This statement is generated from the portal's finance records and is indicative, not a substitute for management accounts.</p>
+    <p style="font-size:12px;color:${MUTED};line-height:1.6">Recurring figure amortises annual and quarterly commitments to a monthly basis and excludes one-off, project-driven, and discretionary spend. Receivables reflect invoiced amounts only; contracted-but-uninvoiced work is not included. This statement is generated from the portal's finance records and is indicative, not a substitute for management accounts.</p>
 
-    <div style="background:#efe9dd;border-left:3px solid #d3b47c;padding:16px 18px;margin:26px 0 8px">
+    <div style="background:#201e18;border-left:3px solid ${GOLD};padding:16px 18px;margin:28px 0 8px">
       ${sec("Adviser's commentary &amp; recommended actions")}
-      <table style="width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.55">
-        ${advice.map((a) => `<tr><td style="padding:6px 10px 6px 0;vertical-align:top;white-space:nowrap;color:#8a7a55;font-size:11px;letter-spacing:0.06em;text-transform:uppercase">${a.p}</td><td style="padding:6px 0;vertical-align:top">${a.text}</td></tr>`).join("")}
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.55;color:${CREAM}">
+        ${advice.map((a) => `<tr><td style="padding:6px 12px 6px 0;vertical-align:top;white-space:nowrap;color:${GOLD};font-size:11px;letter-spacing:0.06em;text-transform:uppercase">${a.p}</td><td style="padding:6px 0;vertical-align:top">${a.text}</td></tr>`).join("")}
       </table>
     </div>
 
-    <div style="border-top:1px solid #e2ddd3;margin-top:22px;padding-top:14px;font-size:11px;color:#9a9a9a;letter-spacing:0.04em">Silver Shadow Studio · automated weekly finance summary · replaces the former per-invoice reminder emails</div>
+    <div style="border-top:1px solid ${HAIR};margin-top:22px;padding-top:14px;font-size:11px;color:${MUTED};letter-spacing:0.04em">Silver Shadow Studio · automated weekly finance summary · replaces the former per-invoice reminder emails</div>
   </div></body></html>`;
 }
