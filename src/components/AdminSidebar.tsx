@@ -6,7 +6,7 @@ import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
-  FileText, Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
+  Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
   Settings, LogOut, ChevronsLeft, ChevronsRight, Target,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
@@ -21,14 +21,12 @@ const SECTIONS: SidebarNavSection[] = [
   {
     items: [
       { path: "/admin",          label: "Overview",  Icon: LayoutDashboard, matchActive: (p) => p === "/admin" },
-      { path: "/admin/sales",    label: "Sales",     Icon: Target          },
       { path: "/admin/timeline", label: "Timeline",  Icon: CalendarDays    },
     ],
   },
   {
     items: [
       { path: "/admin/clients",   label: "Clients",    Icon: Users2 },
-      { path: "/admin/documents", label: "Agreements", Icon: FileText,   indent: true },
       { path: "/admin/quotes",    label: "Quotes",     Icon: ScrollText, indent: true },
       { path: "/admin/invoices",  label: "Invoices",   Icon: Landmark,   indent: true },
     ],
@@ -39,6 +37,11 @@ const SECTIONS: SidebarNavSection[] = [
       { path: "/admin/team",               label: "Team",       Icon: UserPlus, matchActive: (p) => p === "/admin/team" },
       { path: "/admin/team/invoices",      label: "Invoices",   Icon: Landmark, indent: true },
       { path: "/admin/production-tracker", label: "Tracker",    Icon: Activity, indent: true },
+    ],
+  },
+  {
+    items: [
+      { path: "/admin/sales", label: "Sales", Icon: Target },
     ],
   },
   {

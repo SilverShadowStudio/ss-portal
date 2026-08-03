@@ -10,7 +10,7 @@ import { RevolutConnectionStatus } from "@/components/admin/RevolutConnectionSta
 import { ActivityLogPreview } from "@/components/admin/ActivityLogPreview";
 
 interface DashboardStats {
-  totalClients: number;
+  activeClients: number;
   activeProjects: number;
   totalScenes: number;
   pendingReviews: number;
@@ -18,7 +18,7 @@ interface DashboardStats {
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats>({
-    totalClients: 0,
+    activeClients: 0,
     activeProjects: 0,
     totalScenes: 0,
     pendingReviews: 0,
@@ -29,8 +29,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        // Count client accounts (companies), excluding ones owned by admin
-        // staff — same source as the Clients page.
+        // Client accounts (companies), excluding ones owned by admin staff —
+        // same source as the Clients page.
         const { data: accounts } = await supabase
           .from("accounts")
           .select("owner_user_id");
@@ -39,9 +39,9 @@ export default function AdminDashboard() {
           .select("user_id")
           .eq("role", "admin");
         const adminIds = new Set((adminRoles ?? []).map((r) => r.user_id));
-        const totalClients = (accounts ?? []).filter(
+        const clientAccounts = (accounts ?? []).filter(
           (a) => !adminIds.has(a.owner_user_id),
-        ).length;
+        );
 
         // Fetch all projects
         const { data: projects } = await supabase
@@ -49,6 +49,15 @@ export default function AdminDashboard() {
           .select("id, name, status, user_id, created_at");
 
         const activeProjects = projects?.filter(p => p.status === "active").length || 0;
+
+        // Active clients = clients we're in production with right now, i.e. those
+        // who own at least one active project.
+        const activeClientIds = new Set(
+          (projects ?? []).filter((p) => p.status === "active").map((p) => p.user_id),
+        );
+        const activeClients = clientAccounts.filter(
+          (a) => activeClientIds.has(a.owner_user_id),
+        ).length;
 
         // Fetch all scenes
         const { data: scenes } = await supabase
@@ -58,7 +67,7 @@ export default function AdminDashboard() {
         const pendingReviews = scenes?.filter(s => s.status === "delivered").length || 0;
 
         setStats({
-          totalClients,
+          activeClients,
           activeProjects,
           totalScenes: scenes?.length || 0,
           pendingReviews,
@@ -83,7 +92,7 @@ export default function AdminDashboard() {
   }, [user]);
 
   const statCards = [
-    { label: "Total Clients", value: stats.totalClients, icon: Users, link: "/admin/clients" },
+    { label: "Active Clients", value: stats.activeClients, icon: Users, link: "/admin/clients" },
     { label: "Active Projects", value: stats.activeProjects, icon: FolderKanban, link: "/admin/projects" },
     { label: "Total Scenes", value: stats.totalScenes, icon: Image, link: "/admin/scenes" },
     { label: "Pending Reviews", value: stats.pendingReviews, icon: Clock, link: "/admin/scenes" },

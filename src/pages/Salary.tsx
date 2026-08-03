@@ -145,7 +145,18 @@ export default function Salary() {
   ];
   const visibleColumns = columns.filter((c) => mode === "breakdown" || !c.breakdown);
   const sortCols = visibleColumns.filter((c) => c.type && c.accessor).map((c) => ({ id: c.id, accessor: c.accessor!, type: c.type! }));
-  const { sortedRows, sortKey, sortDir, toggle } = useTableSort(slips, sortCols, { key: "month", dir: "asc" });
+
+  // A month's salary only becomes due on the 1st of that month at 00:00 (same as
+  // freelancer payments). Forecast rows for months that haven't started yet are
+  // hidden until their 1st arrives, so a not-yet-current month never shows here.
+  // Year-month is read straight off the period_end string to avoid UTC drift.
+  const monthStartTs = (s: Slip) => {
+    if (!s.period_end) return -Infinity;
+    const [y, m] = s.period_end.split("-").map(Number);
+    return new Date(y, m - 1, 1).getTime();
+  };
+  const dueSlips = slips.filter((s) => monthStartTs(s) <= Date.now());
+  const { sortedRows, sortKey, sortDir, toggle } = useTableSort(dueSlips, sortCols, { key: "month", dir: "asc" });
 
   const alignCls = (a: Col["align"]) => a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
 
@@ -161,7 +172,7 @@ export default function Salary() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><BrandLoader size="md" /></div>
-      ) : slips.length === 0 ? (
+      ) : dueSlips.length === 0 ? (
         <div className="ssr-zone animate-fade-in">
           <div className="ssr-tile p-10 text-center text-recessive text-sm">Your salary statement will appear here once payroll is set up.</div>
         </div>
