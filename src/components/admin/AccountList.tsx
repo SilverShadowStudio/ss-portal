@@ -262,6 +262,9 @@ export function AccountList({
   const postGhostPath = isTeamOnly ? "/documents" : "/";
 
   const [accountUsers, setAccountUsers] = useState<AccountUserRow[]>([]);
+  // Client accounts that are in current production (own at least one active
+  // project). Used to split the Clients directory into Active / Inactive.
+  const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   // Per-user reconstructed login sessions (newest first) for the
   // last-connection summary + expandable history. Computed at render time.
@@ -363,6 +366,18 @@ export function AccountList({
   const [linkedAirtableId, setLinkedAirtableId] = useState<string | null>(null);
 
   useEffect(() => { fetchAccounts(); }, [accountTypes.join(",")]);
+
+  // Clients only: which accounts are in active production (have a live project).
+  useEffect(() => {
+    if (isTeamOnly) return;
+    supabase.from("projects").select("account_id, status, archived_at").then(({ data }) => {
+      const s = new Set<string>();
+      for (const p of (data ?? []) as Array<{ account_id: string | null; status: string | null; archived_at: string | null }>) {
+        if (p.account_id && p.status === "active" && !p.archived_at) s.add(p.account_id);
+      }
+      setActiveAccountIds(s);
+    });
+  }, [isTeamOnly]);
 
   // Debounced Airtable match lookup. Only fires when the dialog is open,
   // we're not in team-only mode, and the trimmed company name has at
@@ -659,6 +674,27 @@ export function AccountList({
       .filter((k) => map.has(k))
       .map((label) => ({ label, groups: map.get(label)! }));
   }, [filteredGroups]);
+
+  // Clients view: Active clients (in production) on top, Inactive below.
+  const clientSections = useMemo(() => {
+    const active: AccountGroup[] = [];
+    const inactive: AccountGroup[] = [];
+    for (const g of filteredGroups) {
+      (activeAccountIds.has(g.account_id) ? active : inactive).push(g);
+    }
+    const out: { label: string | null; groups: AccountGroup[] }[] = [];
+    if (active.length) out.push({ label: "Active clients", groups: active });
+    if (inactive.length) out.push({ label: "Inactive clients", groups: inactive });
+    return out;
+  }, [filteredGroups, activeAccountIds]);
+
+  // Which section layout to render: team by discipline, archived clients flat,
+  // otherwise clients split Active / Inactive.
+  const renderSections = isTeamOnly
+    ? teamSections
+    : showArchived
+      ? [{ label: null as string | null, groups: filteredGroups }]
+      : clientSections;
 
   const updateForm = (key: keyof typeof initialForm, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -1765,10 +1801,7 @@ export function AccountList({
           </div>
         ) : (
           <div className="space-y-10">
-            {(isTeamOnly
-              ? teamSections
-              : [{ label: null as string | null, groups: filteredGroups }]
-            ).map((section) => (
+            {renderSections.map((section) => (
               <div key={section.label ?? "__all"}>
                 {section.label && (
                   <div className="mb-4 flex items-center gap-3">
