@@ -1758,9 +1758,10 @@ export function AccountList({
         </Dialog>
       </div>
 
-      {/* Directory — a light section holds the search + tiles.
-          Dark tiles never sit on the gradient directly. */}
-      <div className="ssr-zone">
+      {/* Directory — a slim toolbar (search + archived toggle) sits above the
+          content; each section (e.g. Active / Inactive clients) is its own
+          lighter zone frame below. */}
+      <div>
         <div className={`mb-7 flex items-center justify-between ${clientSectioned ? "" : "border-b border-white/[0.07] pb-3"}`}>
           <div className="flex items-center gap-3">
             {!clientSectioned && <div className="h-px w-6 bg-gold-muted" />}
@@ -1797,15 +1798,17 @@ export function AccountList({
             <BrandLoader size="md" />
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="ssr-tile p-12 text-center">
-            <p className="text-muted-foreground">
-              {searchQuery ? `No ${title.toLowerCase()} match your search` : `No ${title.toLowerCase()} yet`}
-            </p>
+          <div className="ssr-zone">
+            <div className="ssr-tile p-12 text-center">
+              <p className="text-muted-foreground">
+                {searchQuery ? `No ${title.toLowerCase()} match your search` : `No ${title.toLowerCase()} yet`}
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-6">
             {renderSections.map((section) => (
-              <div key={section.label ?? "__all"}>
+              <div key={section.label ?? "__all"} className="ssr-zone">
                 {section.label && (
                   <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
                     <div className="h-px w-6 bg-gold-muted" />
