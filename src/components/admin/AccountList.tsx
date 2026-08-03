@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
   Copy, Check, Trash2, Ghost, Pencil, FileText, Clock, FilePlus2,
-  Archive, ArchiveRestore, ChevronRight, CalendarDays,
+  Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
@@ -1955,6 +1955,15 @@ export function AccountList({
                                 label="Calendar"
                                 active={false}
                                 onClick={() => navigate(`/admin/team/${accountId}/calendar`)}
+                              />
+                            )}
+                            {/* Earnings is freelancer-only (employees are salaried → Salary). */}
+                            {isTeamOnly && u.employment_type !== "employee" && (
+                              <CircleButton
+                                icon={Wallet}
+                                label="Earnings"
+                                active={false}
+                                onClick={() => navigate(`/admin/team/${accountId}/earnings?name=${encodeURIComponent(displayName)}`)}
                               />
                             )}
                             {isTeamOnly && (

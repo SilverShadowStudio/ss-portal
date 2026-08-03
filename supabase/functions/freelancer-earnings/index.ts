@@ -90,12 +90,27 @@ Deno.serve(async (req) => {
   const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
   const { data: u } = await userClient.auth.getUser();
   if (!u?.user?.email) return json({ error: "Unauthorized" }, 401);
-  const email = u.user.email.toLowerCase();
+  let email = u.user.email.toLowerCase();
 
   const sb = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const pat = Deno.env.get("AIRTABLE_PAT");
   const baseId = Deno.env.get("AIRTABLE_BASE_ID");
   if (!pat || !baseId) return json({ error: "Airtable not configured" }, 500);
+
+  // Admin override: an admin may view a specific team member's earnings by
+  // passing { accountId }. We resolve that account's member to their email and
+  // read that person's data instead of the caller's own.
+  const body = req.method === "POST" ? await req.json().catch(() => ({} as Record<string, unknown>)) : {};
+  const targetAccountId = typeof body.accountId === "string" ? body.accountId : null;
+  if (targetAccountId) {
+    const { data: adminRole } = await sb.from("user_roles").select("role").eq("user_id", u.user.id).eq("role", "admin").maybeSingle();
+    if (!adminRole) return json({ error: "Forbidden — admin only" }, 403);
+    const { data: mem } = await sb.from("account_members").select("user_id").eq("account_id", targetAccountId).order("joined_at", { ascending: true }).limit(1).maybeSingle();
+    if (!mem?.user_id) return json({ error: "No member found for that account" }, 404);
+    const { data: tu } = await sb.auth.admin.getUserById(mem.user_id);
+    if (!tu?.user?.email) return json({ error: "That member has no email on file" }, 404);
+    email = tu.user.email.toLowerCase();
+  }
 
   // The freelancer's own monthly invoices (their email only).
   const { data: rows, error } = await sb.from("payables_snapshot")
