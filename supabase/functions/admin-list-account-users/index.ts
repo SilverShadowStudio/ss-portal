@@ -26,6 +26,7 @@ interface AccountUserRow {
   last_name: string | null
   position: string | null
   member_role: string | null
+  employment_type: string | null
   joined_at: string | null
   last_login_at: string | null
 }
@@ -75,7 +76,7 @@ Deno.serve(async (req) => {
     // 1. Accounts (optionally filtered by type)
     let accountsQuery = admin
       .from('accounts')
-      .select('id, company_name, account_type, created_at, client_code, archived_at, position, team_role')
+      .select('id, company_name, account_type, created_at, client_code, archived_at, position, team_role, employment_type')
       .order('company_name', { ascending: true })
     if (allowedTypes && allowedTypes.length) {
       accountsQuery = accountsQuery.in('account_type', allowedTypes)
@@ -165,6 +166,7 @@ Deno.serve(async (req) => {
         // Team position: employee position, else invite role, else profile role.
         position:           a?.position ?? a?.team_role ?? p?.position ?? fp?.role ?? null,
         member_role:        m.role ?? null,
+        employment_type:    a?.employment_type ?? null,
         joined_at:          m.joined_at ?? null,
         last_login_at:      lastLogin,
       }

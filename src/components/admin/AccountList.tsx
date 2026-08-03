@@ -60,6 +60,7 @@ interface AccountUserRow {
   last_name: string | null;
   position: string | null;
   member_role: string | null;
+  employment_type: string | null;
   joined_at: string | null;
   last_login_at: string | null;
 }
@@ -149,6 +150,20 @@ function fullNameOf(u: AccountUserRow): string {
     u.email ||
     "Unnamed user"
   );
+}
+
+// Team members are shown grouped by discipline. Employees come first, then the
+// freelance disciplines. Anyone who doesn't match a named bucket — or hasn't
+// been given a role yet — falls into "Other" so nobody is ever hidden.
+const TEAM_SECTION_ORDER = ["Employees", "Scene Managers", "Modellers", "Photographers", "Other"];
+function teamSectionOf(g: AccountGroup): string {
+  const u = g.users[0];
+  if (u?.employment_type === "employee") return "Employees";
+  const raw = (u?.position ?? u?.member_role ?? "").toLowerCase();
+  if (raw.includes("scene manager")) return "Scene Managers";
+  if (raw.includes("modell") || raw.includes("modeler")) return "Modellers";
+  if (raw.includes("photograph")) return "Photographers";
+  return "Other";
 }
 
 // Derive 3-letter client-code suggestions from the company name.
@@ -630,6 +645,20 @@ export function AccountList({
       })
       .filter((g): g is AccountGroup => g !== null);
   }, [accountGroups, searchQuery, showArchived]);
+
+  // Team-only view: split the members into discipline sections (see helpers).
+  const teamSections = useMemo(() => {
+    const map = new Map<string, AccountGroup[]>();
+    for (const g of filteredGroups) {
+      const key = teamSectionOf(g);
+      const bucket = map.get(key) ?? [];
+      bucket.push(g);
+      map.set(key, bucket);
+    }
+    return TEAM_SECTION_ORDER
+      .filter((k) => map.has(k))
+      .map((label) => ({ label, groups: map.get(label)! }));
+  }, [filteredGroups]);
 
   const updateForm = (key: keyof typeof initialForm, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -1735,8 +1764,21 @@ export function AccountList({
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {filteredGroups.map((group) => {
+          <div className="space-y-10">
+            {(isTeamOnly
+              ? teamSections
+              : [{ label: null as string | null, groups: filteredGroups }]
+            ).map((section) => (
+              <div key={section.label ?? "__all"}>
+                {section.label && (
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="h-px w-6 bg-gold-muted" />
+                    <h3 className="text-label">{section.label}</h3>
+                    <span className="font-sans uppercase text-white/30" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{section.groups.length}</span>
+                  </div>
+                )}
+                <div className="space-y-6">
+                  {section.groups.map((group) => {
               const headerClickable = headerNavigatesToProjects;
               const HeaderIcon = isTeamOnly ? Users2 : Building2;
               // Team accounts are one person — show their real name as the title
@@ -2098,7 +2140,10 @@ export function AccountList({
                   </div>
                 </div>
               );
-            })}
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
