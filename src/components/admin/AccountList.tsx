@@ -695,6 +695,9 @@ export function AccountList({
     : showArchived
       ? [{ label: null as string | null, groups: filteredGroups }]
       : clientSections;
+  // Clients (non-archived) drop the redundant page title — the Active / Inactive
+  // section headers stand on their own.
+  const clientSectioned = !isTeamOnly && !showArchived;
 
   const updateForm = (key: keyof typeof initialForm, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -1758,10 +1761,10 @@ export function AccountList({
       {/* Directory — a light section holds the search + tiles.
           Dark tiles never sit on the gradient directly. */}
       <div className="ssr-zone">
-        <div className="mb-7 flex items-center justify-between border-b border-white/[0.07] pb-3">
+        <div className={`mb-7 flex items-center justify-between ${clientSectioned ? "" : "border-b border-white/[0.07] pb-3"}`}>
           <div className="flex items-center gap-3">
-            <div className="h-px w-6 bg-gold-muted" />
-            <h2 className="text-label">{showArchived ? "Archived" : isTeamOnly ? "Members" : title}</h2>
+            {!clientSectioned && <div className="h-px w-6 bg-gold-muted" />}
+            {!clientSectioned && <h2 className="text-label">{showArchived ? "Archived" : isTeamOnly ? "Members" : title}</h2>}
             {(archivedCount > 0 || showArchived) && (
               <button
                 type="button"
@@ -1804,7 +1807,7 @@ export function AccountList({
             {renderSections.map((section) => (
               <div key={section.label ?? "__all"}>
                 {section.label && (
-                  <div className="mb-4 flex items-center gap-3">
+                  <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
                     <div className="h-px w-6 bg-gold-muted" />
                     <h3 className="text-label">{section.label}</h3>
                     <span className="font-sans uppercase text-white/30" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{section.groups.length}</span>
