@@ -243,7 +243,13 @@ function renderEmail(d: {
   const HAIR  = "rgba(255,255,255,0.12)"; // hairline rules
   const TRACK = "rgba(255,255,255,0.08)"; // empty bar track
   const POS   = "#5FBE7E";   // positive balance
-  const LATER = "#B8B09A";   // aging: beyond 30 days
+  const TINT  = "rgba(255,255,255,0.05)"; // bottom-line row highlight
+  // Aged-analysis ramp: bright gold (most urgent) → muted gray (longest-term),
+  // unified with the gold accent used by the lower charts.
+  const AGE_OVERDUE = "#E4B95B"; // bright gold — overdue
+  const AGE_DUE7    = "#C9A96A"; // gold — within 7 days
+  const AGE_DUE30   = "#A79E86"; // light muted — 8–30 days
+  const AGE_LATER   = "#7C776A"; // muted gray — beyond 30 days
 
   // Email-safe, precisely proportional horizontal bar. A fixed-layout 2-cell
   // table guarantees the fill width is exactly v/max in every client — no nested
@@ -258,8 +264,8 @@ function renderEmail(d: {
   // Segmented aging bar — each tranche precisely proportional.
   const agingSeg = (() => {
     const segs = [
-      { v: d.aging.overdue, c: CORAL }, { v: d.aging.due7, c: AMBER },
-      { v: d.aging.due30, c: GOLD }, { v: d.aging.later, c: LATER },
+      { v: d.aging.overdue, c: AGE_OVERDUE }, { v: d.aging.due7, c: AGE_DUE7 },
+      { v: d.aging.due30, c: AGE_DUE30 }, { v: d.aging.later, c: AGE_LATER },
     ].filter((s) => s.v > 0);
     const tot = segs.reduce((s, x) => s + x.v, 0) || 1;
     return `<table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:10px"><tr>${
@@ -282,23 +288,24 @@ function renderEmail(d: {
     <div style="font-size:14px;line-height:1.65;margin-bottom:28px;color:${CREAM}">${commentary.map((c) => `<p style="margin:0 0 10px">${c}</p>`).join("")}</div>
 
     ${sec("Position at a glance")}
-    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:28px;color:${CREAM}">
-      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Overheads outstanding (${d.unpaidCount} invoices)</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.overheadsUnpaid)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Freelancer payables outstanding</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.freelancerOutstanding)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Taxes due</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.taxesDue)}</td></tr>
-      <tr><td style="padding:12px 0 10px;font-weight:bold;border-top:2px solid ${CREAM}">Total obligations</td><td style="padding:12px 0 10px;font-weight:bold;text-align:right;border-top:2px solid ${CREAM}">${gbp2(d.totalOwed)}</td></tr>
-      <tr><td colspan="2" style="height:18px;line-height:18px;font-size:0">&nbsp;</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid ${HAIR}">Receivables (invoiced, unpaid)</td><td style="padding:8px 0;border-bottom:1px solid ${HAIR};text-align:right">${gbp2(d.receivables)}</td></tr>
-      <tr><td style="padding:12px 0;font-weight:bold;font-size:15px">Net working position</td><td style="padding:12px 0;font-weight:bold;font-size:15px;text-align:right;color:${negNet ? CORAL : POS}">${gbp2(d.netPosition)}</td></tr>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:28px;color:${CREAM};font-variant-numeric:tabular-nums">
+      <tr><td style="padding:9px 0;border-bottom:1px solid ${HAIR}">Overheads outstanding (${d.unpaidCount} invoices)</td><td style="padding:9px 0;border-bottom:1px solid ${HAIR};text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.overheadsUnpaid)}</td></tr>
+      <tr><td style="padding:9px 0;border-bottom:1px solid ${HAIR}">Freelancer payables outstanding</td><td style="padding:9px 0;border-bottom:1px solid ${HAIR};text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.freelancerOutstanding)}</td></tr>
+      <tr><td style="padding:9px 0;border-bottom:1px solid ${HAIR}">Taxes due</td><td style="padding:9px 0;border-bottom:1px solid ${HAIR};text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.taxesDue)}</td></tr>
+      <tr><td style="padding:14px 0 13px;font-weight:bold;border-top:2px solid ${CREAM}">Total obligations</td><td style="padding:14px 0 13px;font-weight:bold;text-align:right;border-top:2px solid ${CREAM};font-variant-numeric:tabular-nums">${gbp2(d.totalOwed)}</td></tr>
+      <tr><td colspan="2" style="height:22px;line-height:22px;font-size:0">&nbsp;</td></tr>
+      <tr><td style="padding:11px 0;border-bottom:1px solid ${HAIR}">Receivables (invoiced, unpaid)</td><td style="padding:11px 0;border-bottom:1px solid ${HAIR};text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.receivables)}</td></tr>
+      <tr><td colspan="2" style="height:12px;line-height:12px;font-size:0">&nbsp;</td></tr>
+      <tr><td style="padding:14px 14px;font-weight:bold;font-size:15px;background:${TINT};border-radius:4px 0 0 4px">Net working position</td><td style="padding:14px 14px;font-weight:bold;font-size:15px;text-align:right;background:${TINT};border-radius:0 4px 4px 0;font-variant-numeric:tabular-nums;color:${negNet ? CORAL : POS}">${gbp2(d.netPosition)}</td></tr>
     </table>
 
     ${sec("Aged analysis — overheads")}
     ${agingSeg}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM}">
-      <tr><td style="padding:5px 0"><span style="color:${CORAL}">■</span> Overdue</td><td style="padding:5px 0;text-align:right;color:${CORAL}">${gbp2(d.aging.overdue)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:${AMBER}">■</span> Due within 7 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due7)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:${GOLD}">■</span> Due 8–30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.due30)}</td></tr>
-      <tr><td style="padding:5px 0"><span style="color:${LATER}">■</span> Due beyond 30 days</td><td style="padding:5px 0;text-align:right">${gbp2(d.aging.later)}</td></tr>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;color:${CREAM};font-variant-numeric:tabular-nums">
+      <tr><td style="padding:6px 0"><span style="color:${AGE_OVERDUE}">■</span> Overdue</td><td style="padding:6px 0;text-align:right;font-variant-numeric:tabular-nums;color:${AGE_OVERDUE}">${gbp2(d.aging.overdue)}</td></tr>
+      <tr><td style="padding:6px 0"><span style="color:${AGE_DUE7}">■</span> Due within 7 days</td><td style="padding:6px 0;text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.aging.due7)}</td></tr>
+      <tr><td style="padding:6px 0"><span style="color:${AGE_DUE30}">■</span> Due 8–30 days</td><td style="padding:6px 0;text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.aging.due30)}</td></tr>
+      <tr><td style="padding:6px 0"><span style="color:${AGE_LATER}">■</span> Due beyond 30 days</td><td style="padding:6px 0;text-align:right;font-variant-numeric:tabular-nums">${gbp2(d.aging.later)}</td></tr>
     </table>
 
     ${d.currencyMix.length > 1 ? `${sec("Currency exposure — unpaid overheads (GBP-equivalent)")}
