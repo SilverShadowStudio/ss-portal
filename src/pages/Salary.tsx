@@ -146,16 +146,17 @@ export default function Salary() {
   const visibleColumns = columns.filter((c) => mode === "breakdown" || !c.breakdown);
   const sortCols = visibleColumns.filter((c) => c.type && c.accessor).map((c) => ({ id: c.id, accessor: c.accessor!, type: c.type! }));
 
-  // A month's salary only becomes due on the 1st of that month at 00:00 (same as
-  // freelancer payments). Forecast rows for months that haven't started yet are
-  // hidden until their 1st arrives, so a not-yet-current month never shows here.
-  // Year-month is read straight off the period_end string to avoid UTC drift.
-  const monthStartTs = (s: Slip) => {
+  // A month's salary falls due on the 1st of the FOLLOWING month at 00:00 (same
+  // as freelancer payments, which fall due at the end of their month). So the
+  // in-progress current month never shows — it appears only once that month has
+  // finished. Year-month is read straight off the period_end string (m is
+  // 1-based), so new Date(y, m, 1) is the 1st of the next month, in local time.
+  const dueFromTs = (s: Slip) => {
     if (!s.period_end) return -Infinity;
     const [y, m] = s.period_end.split("-").map(Number);
-    return new Date(y, m - 1, 1).getTime();
+    return new Date(y, m, 1).getTime();
   };
-  const dueSlips = slips.filter((s) => monthStartTs(s) <= Date.now());
+  const dueSlips = slips.filter((s) => dueFromTs(s) <= Date.now());
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort(dueSlips, sortCols, { key: "month", dir: "asc" });
 
   const alignCls = (a: Col["align"]) => a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
