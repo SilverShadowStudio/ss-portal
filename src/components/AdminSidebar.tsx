@@ -7,7 +7,7 @@ import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   FileText, Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
-  Settings, LogOut, ChevronsLeft, ChevronsRight,
+  Settings, LogOut, ChevronsLeft, ChevronsRight, Target,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -21,6 +21,7 @@ const SECTIONS: SidebarNavSection[] = [
   {
     items: [
       { path: "/admin",          label: "Overview",  Icon: LayoutDashboard, matchActive: (p) => p === "/admin" },
+      { path: "/admin/sales",    label: "Sales",     Icon: Target          },
       { path: "/admin/timeline", label: "Timeline",  Icon: CalendarDays    },
     ],
   },
