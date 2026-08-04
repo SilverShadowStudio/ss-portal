@@ -12,10 +12,17 @@
 // physically cannot write a gated field. A model that ignores its instructions
 // still cannot move a deal to Won on its own.
 //
+// MEMORY: a thread folds its own old turns into coach_threads.summary once it
+// gets long, so a conversation can run indefinitely. Anything durable it learns
+// about Fred and the business is merged into coach_brief — one standing brief
+// carried across every thread, which is what makes it sharper over time. The
+// brief deliberately holds NO pipeline figures; those come from tools each turn.
+//
 // In:  { message, thread_id? }              → chat turn
 //      { action_id, decision }              → confirm/decline a queued change
 //      { list_threads: true }               → thread list
 //      { thread_id, history: true }         → replay one thread
+//      { get_brief: true } / { set_brief }  → read or hand-edit the brief
 // Out: { thread_id, reply, actions[], used[], messages[]? }
 //
 // Deploy: npx supabase functions deploy sales-coach-chat \
@@ -27,7 +34,9 @@ import {
 } from "../_shared/anthropicModel.ts";
 
 const MAX_ROUNDS = 6;          // tool round-trips before we stop and answer
-const HISTORY_LIMIT = 40;      // messages replayed to the model
+const KEEP_TAIL = 20;          // recent messages always replayed verbatim
+const COMPACT_AT = 32;         // un-summarised messages that trigger a fold
+const BRIEF_MAX = 2400;        // hard ceiling on the standing brief
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -147,8 +156,18 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(today: string, stages: string): string {
+function systemPrompt(today: string, stages: string, brief: string, threadSummary: string): string {
+  const memory = [
+    brief.trim()
+      ? `WHAT YOU KNOW ABOUT FRED AND THIS BUSINESS\nCarried across every conversation. Treat it as true unless he corrects you. It deliberately contains NO pipeline figures — stages, values and counts always come from the tools, never from here.\n"""\n${brief.trim()}\n"""`
+      : "",
+    threadSummary.trim()
+      ? `EARLIER IN THIS CONVERSATION\n"""\n${threadSummary.trim()}\n"""`
+      : "",
+  ].filter(Boolean).join("\n\n");
+
   return `You are the Sales Director for Silver Shadow Studio, a London CGI and architectural-visualisation studio. You are talking to Fred Colomb, the owner. Today is ${today}.
+${memory ? `\n${memory}\n` : ""}
 
 You have direct access to his pipeline. You are not a chatbot describing what he could do — you look things up and you act.
 
@@ -345,6 +364,107 @@ async function callAnthropic(key: string, system: string, messages: Any[]): Prom
 const textOf = (blocks: Any[]): string =>
   (blocks ?? []).filter((b: Any) => b?.type === "text").map((b: Any) => b.text).join("\n").trim();
 
+// ── Memory ───────────────────────────────────────────────────────────────────
+
+/** A message that OPENS an exchange: Fred speaking, not a tool_result batch.
+ *  Both are stored with role 'user' — only this one is safe to start a replay
+ *  on, because a tool_result must be preceded by its matching tool_use. */
+function isUserTurn(m: { role: string; blocks: Any }): boolean {
+  if (m.role !== "user") return false;
+  const bs = Array.isArray(m.blocks) ? m.blocks : [];
+  return bs.length > 0 && bs.every((b: Any) => b?.type === "text");
+}
+
+const COMPACT_SYSTEM = `You maintain the Sales Director's memory. You are given the older part of a conversation, the running summary of that conversation so far, and the Director's standing brief about Fred and his business.
+
+Return ONLY this JSON. No prose, no markdown fences.
+{ "thread_summary": "", "brief": "" }
+
+thread_summary — what this conversation established, so it can continue without the original messages. Include: which companies were discussed and what was decided, commitments made, what Fred asked for, anything still unresolved. Merge with the running summary you were given; do not simply append. Under 1200 characters.
+
+brief — the Director's long-term memory of Fred and this business. REWRITE IT WHOLE, merging anything durable the conversation revealed. Under ${BRIEF_MAX} characters.
+
+WHAT BELONGS IN THE BRIEF
+- How Fred works and what he wants from you: tone, what he considers a waste of time, corrections he has made to you.
+- Standing facts about the business: what the studio sells, who it sells to, pricing shape, positioning, capacity.
+- Recurring people and their roles.
+- Objections that keep coming up, and what actually answers them.
+- Decisions already taken, so you don't relitigate them.
+
+WHAT MUST NEVER GO IN THE BRIEF
+- Any pipeline figure: a lead's stage, value, owner, next action, counts, totals, who has gone cold. These come from live tools every time. A cached number here would have you confidently quoting a stale forecast.
+- One-off chatter, or anything already captured as a commitment or interaction in the database.
+- Speculation. If Fred did not say it, it is not a fact.
+
+If the brief you were given contains something that reads as a deliberate instruction from Fred, preserve it verbatim. When the brief is at its limit, drop the least useful line rather than truncating mid-sentence.`;
+
+/** Fold the old part of a thread into its summary and the standing brief.
+ *  Runs before the model call, because its output feeds that call. Returns the
+ *  summary + brief to use for this turn — on any failure, the originals, so a
+ *  compaction problem degrades to "no compaction" and never loses a turn. */
+async function compact(
+  uc: SupabaseClient, key: string, threadId: string, ownerId: string,
+  through: number, summary: string, brief: string,
+): Promise<{ summary: string; brief: string; through: number }> {
+  const keep = { summary, brief, through };
+
+  const { data: rows } = await uc.from("coach_messages")
+    .select("seq, role, body, blocks").eq("thread_id", threadId).gt("seq", through).order("seq");
+  if (!rows || rows.length <= COMPACT_AT) return keep;
+
+  // The cut must land on a message that OPENS an exchange — a plain user turn.
+  // Cutting mid-exchange would leave a tool_result whose tool_use has been
+  // folded away, and the API rejects that outright.
+  let cut = rows.length - KEEP_TAIL;
+  while (cut > 0 && !isUserTurn(rows[cut])) cut--;
+  if (cut <= 0) return keep;
+
+  const fold = rows.slice(0, cut);
+  const newThrough = Number(fold[fold.length - 1].seq);
+
+  // Tool traffic is summarised as the names of what was consulted; the results
+  // themselves are live data and must not be frozen into memory.
+  const transcript = fold.map((m: Any) => {
+    if (m.role === "user" && m.body) return `FRED: ${m.body}`;
+    if (m.role === "user") return null;
+    const tools = (m.blocks ?? []).filter((b: Any) => b.type === "tool_use").map((b: Any) => b.name);
+    const said = m.body ? `DIRECTOR: ${m.body}` : null;
+    return [tools.length ? `(consulted: ${tools.join(", ")})` : null, said].filter(Boolean).join("\n");
+  }).filter(Boolean).join("\n\n").slice(0, 30000);
+
+  const prompt = `RUNNING SUMMARY SO FAR:\n"""\n${summary || "(none yet)"}\n"""\n\nCURRENT STANDING BRIEF:\n"""\n${brief || "(empty)"}\n"""\n\nOLDER MESSAGES TO FOLD IN:\n"""\n${transcript}\n"""\n\nReturn the JSON now.`;
+
+  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
+    method: "POST",
+    headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
+    body: JSON.stringify({ model: SALES_MODEL, max_tokens: 2000, system: COMPACT_SYSTEM, messages: [{ role: "user", content: prompt }] }),
+  });
+  if (!res.ok) return keep;
+
+  const data = await res.json();
+  const raw = (data.content?.[0]?.text ?? "").trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
+  let parsed: Any = null;
+  try { parsed = JSON.parse(raw); } catch {
+    const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
+    try { parsed = JSON.parse(raw.slice(a, z + 1)); } catch { parsed = null; }
+  }
+  if (!parsed || typeof parsed.thread_summary !== "string") return keep;
+
+  const nextSummary = parsed.thread_summary.slice(0, 4000);
+  const nextBrief = typeof parsed.brief === "string" ? parsed.brief.slice(0, BRIEF_MAX) : brief;
+
+  await uc.from("coach_threads").update({ summary: nextSummary, summary_through_seq: newThrough }).eq("id", threadId);
+  // A brief Fred edited by hand keeps that flag cleared only when he sets it —
+  // an automatic merge never claims his authorship.
+  if (nextBrief.trim() && nextBrief !== brief) {
+    await uc.from("coach_brief").upsert(
+      { owner_id: ownerId, brief: nextBrief, updated_at: new Date().toISOString() },
+      { onConflict: "owner_id" },
+    );
+  }
+  return { summary: nextSummary, brief: nextBrief, through: newThrough };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -363,6 +483,23 @@ Deno.serve(async (req) => {
   if (!allowed) return json({ error: "Forbidden — sales access required" }, 403);
 
   const b = await req.json().catch(() => ({} as Record<string, unknown>));
+
+  // ── Standing brief: read, and edit by hand ─────────────────────────────────
+  // Memory that shapes every future answer must be inspectable and correctable,
+  // or it's just drift Fred can't see.
+  if (b.get_brief) {
+    const { data } = await uc.from("coach_brief").select("brief, edited_by_user, updated_at").eq("owner_id", user.id).maybeSingle();
+    return json({ brief: data?.brief ?? "", edited_by_user: data?.edited_by_user ?? false, updated_at: data?.updated_at ?? null });
+  }
+  if (typeof b.set_brief === "string") {
+    const text = b.set_brief.slice(0, BRIEF_MAX);
+    const { error } = await uc.from("coach_brief").upsert(
+      { owner_id: user.id, brief: text, edited_by_user: true, updated_at: new Date().toISOString() },
+      { onConflict: "owner_id" },
+    );
+    if (error) return json({ error: error.message }, 200);
+    return json({ success: true, brief: text });
+  }
 
   // ── Thread list ────────────────────────────────────────────────────────────
   if (b.list_threads) {
@@ -402,10 +539,33 @@ Deno.serve(async (req) => {
     threadId = data.id;
   }
 
-  // Replay prior turns verbatim — the stored blocks ARE the wire format.
+  // ── Memory: standing brief + this thread's rolling summary ─────────────────
+  const { data: briefRow } = await uc.from("coach_brief").select("brief").eq("owner_id", user.id).maybeSingle();
+  const { data: threadRow } = await uc.from("coach_threads")
+    .select("summary, summary_through_seq").eq("id", threadId).maybeSingle();
+
+  let mem = {
+    summary: (threadRow?.summary as string | null) ?? "",
+    brief: (briefRow?.brief as string | null) ?? "",
+    through: Number(threadRow?.summary_through_seq ?? 0),
+  };
+  // Fold the old part away once the tail gets long. Failure here degrades to
+  // "no compaction" — it never costs a turn.
+  try {
+    mem = await compact(uc, anthropicKey, threadId, user.id, mem.through, mem.summary, mem.brief);
+  } catch { /* keep the un-compacted memory */ }
+
+  // Replay the tail verbatim — the stored blocks ARE the wire format. Anything
+  // older than summary_through_seq now lives in mem.summary instead.
   const { data: prior } = await uc.from("coach_messages")
-    .select("role, blocks, body").eq("thread_id", threadId).order("seq", { ascending: false }).limit(HISTORY_LIMIT);
-  const history: Any[] = (prior ?? []).reverse()
+    .select("role, blocks, body").eq("thread_id", threadId)
+    .gt("seq", mem.through).order("seq", { ascending: false }).limit(KEEP_TAIL + 4);
+  const tail = (prior ?? []).reverse();
+  // Belt and braces: whatever the boundary, never begin a replay on an
+  // orphaned tool_result or a bare assistant turn.
+  let start = 0;
+  while (start < tail.length && !isUserTurn(tail[start] as Any)) start++;
+  const history: Any[] = tail.slice(start)
     .map((m: Any) => ({ role: m.role, content: m.blocks ?? [{ type: "text", text: m.body ?? "" }] }))
     .filter((m: Any) => Array.isArray(m.content) && m.content.length > 0);
 
@@ -416,7 +576,7 @@ Deno.serve(async (req) => {
 
   const { data: stageRows } = await uc.from("pipeline_stages").select("key, label").order("sort_order");
   const stageList = (stageRows ?? []).map((s: Any) => s.key).join(" → ");
-  const system = systemPrompt(new Date().toISOString().slice(0, 10), stageList);
+  const system = systemPrompt(new Date().toISOString().slice(0, 10), stageList, mem.brief, mem.summary);
 
   // ── Tool loop ──────────────────────────────────────────────────────────────
   const used: string[] = [];

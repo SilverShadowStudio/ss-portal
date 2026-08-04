@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -71,6 +71,11 @@ export default function AdminSalesDirector() {
   const [booting, setBooting] = useState(true);
   const [thinking, setThinking] = useState(false);
   const [picker, setPicker] = useState(false);
+  // The standing brief — what the Director carries between conversations.
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [brief, setBrief] = useState("");
+  const [briefMeta, setBriefMeta] = useState<{ edited_by_user: boolean; updated_at: string | null } | null>(null);
+  const [briefBusy, setBriefBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -157,6 +162,26 @@ export default function AdminSalesDirector() {
     });
   }
 
+  async function openBrief() {
+    setBriefOpen(true); setBriefBusy(true);
+    const { data } = await supabase.functions.invoke("sales-coach-chat", { body: { get_brief: true } });
+    setBrief(data?.brief ?? "");
+    setBriefMeta({ edited_by_user: !!data?.edited_by_user, updated_at: data?.updated_at ?? null });
+    setBriefBusy(false);
+  }
+
+  async function saveBrief() {
+    setBriefBusy(true);
+    const { data, error } = await supabase.functions.invoke("sales-coach-chat", { body: { set_brief: brief } });
+    setBriefBusy(false);
+    if (error || data?.error) {
+      toast({ title: "Couldn't save the brief", description: data?.error ?? error?.message, variant: "destructive" });
+      return;
+    }
+    setBriefOpen(false);
+    toast({ title: "Brief saved", description: "The Director will use this from its next reply." });
+  }
+
   function newThread() {
     setThreadId(null); setMsgs([]); setActions([]); setPicker(false);
     taRef.current?.focus();
@@ -174,6 +199,9 @@ export default function AdminSalesDirector() {
             <span className="text-label-gold text-[#ecd39c]">Director</span>
           </div>
           <div className="relative flex items-center gap-5">
+            <button onClick={openBrief} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
+              <Brain className="h-3 w-3" strokeWidth={1.5} />Brief
+            </button>
             {threads.length > 0 && (
               <button onClick={() => setPicker((p) => !p)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
                 <MessageSquare className="h-3 w-3" strokeWidth={1.5} />History
@@ -309,6 +337,56 @@ export default function AdminSalesDirector() {
           </div>
         </div>
       </section>
+      {/* ── Standing brief ─────────────────────────────────────────────────
+          What the Director carries between conversations. Visible and editable
+          on purpose: memory that shapes every future answer shouldn't be
+          something Fred can only infer from behaviour. */}
+      {briefOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6" style={{ pointerEvents: "auto" }}>
+          <div className="absolute inset-0 bg-black/70" onClick={() => setBriefOpen(false)} />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-white/10 bg-[#1a1013] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="h-px w-6 bg-gold-muted" />
+                <h2 className="text-label">What the Director knows</h2>
+              </div>
+              <button onClick={() => setBriefOpen(false)} className="text-white/35 hover:text-white/70"><X className="h-4 w-4" strokeWidth={1.5} /></button>
+            </div>
+
+            <div className="px-6 py-5">
+              <p className="mb-4 text-xs leading-relaxed text-recessive">
+                Carried into every conversation. It writes this itself as you talk, and you can correct it —
+                anything you change here is treated as deliberate. It holds no stages, values or totals:
+                those are read live each time, so they can never go stale here.
+              </p>
+              {briefBusy && !brief ? (
+                <div className="flex justify-center py-10"><BrandLoader size="sm" /></div>
+              ) : (
+                <textarea
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value.slice(0, 2400))}
+                  rows={14}
+                  placeholder="Nothing yet — it fills in as you use it."
+                  className="w-full resize-none rounded-md border border-white/10 bg-black/25 px-4 py-3 text-sm leading-relaxed text-strong placeholder:text-white/25 focus:border-[#C9A96A]/40 focus:outline-none"
+                />
+              )}
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-[10px] text-white/25">
+                  {brief.length}/2400{briefMeta?.edited_by_user ? " · edited by you" : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-5 border-t border-white/[0.07] px-6 py-4">
+              <button onClick={() => setBriefOpen(false)} className="text-[10px] uppercase tracking-[0.16em] text-white/35 hover:text-white/70">Cancel</button>
+              <button onClick={saveBrief} disabled={briefBusy}
+                className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c] disabled:opacity-40">
+                <Check className="h-3 w-3" strokeWidth={2} />Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }
