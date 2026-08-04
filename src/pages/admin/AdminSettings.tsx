@@ -4,6 +4,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
+import { HolidayImportPanel } from "@/components/admin/HolidayImportPanel";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,6 +29,7 @@ export default function AdminSettings() {
     | "airtable"
     | "airtable_contact_sync"
     | "airtable_project_sync"
+    | "holiday_import"
     | null;
   const [openSection, setOpenSection] = useState<SectionKey>(null);
   const [defaultPicked, setDefaultPicked] = useState(false);
@@ -676,6 +678,18 @@ export default function AdminSettings() {
             </div>
           </div>
           <SaveButton loading={savingContactConfig} onClick={saveContactConfig} label="Save config" />
+          </AccordionPanel>
+        </section>
+
+        {/* ── Airtable → portal holiday import (one-off migration) ───── */}
+        <section className={cn(openSection === "holiday_import" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Import Airtable Holidays"
+            isOpen={openSection === "holiday_import"}
+            onToggle={() => toggleSection("holiday_import")}
+          />
+          <AccordionPanel isOpen={openSection === "holiday_import"}>
+            <HolidayImportPanel />
           </AccordionPanel>
         </section>
 
