@@ -307,7 +307,9 @@ function Legend({ isEmployee }: { isEmployee: boolean }) {
     // Swatches match what the grid actually renders for each state.
     // Bank holidays are employee-only, so freelancers never see that key either.
     ...(isEmployee ? [{ label: "Bank holiday", color: HOLIDAY, kind: "hollow" as const }] : []),
-    { label: "Pending", color: HOLIDAY, kind: "dashed" as const },
+    // Freelancers can never have a pending row: their only option is
+    // "not available", which is approved on the spot.
+    ...(isEmployee ? [{ label: "Pending", color: HOLIDAY, kind: "dashed" as const }] : []),
   ];
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -460,7 +462,10 @@ function DayRow(props: {
           </div>
         ) : (
           <div className="space-y-1.5">
-            <p className="text-xs text-recessive mb-1">{isAdmin ? "Add for this person" : "Request this day"}</p>
+            {/* Freelancers aren't requesting anything — they're letting us know. */}
+            <p className="text-xs text-recessive mb-1">
+              {isAdmin ? "Add for this person" : props.isEmployee ? "Request this day" : "Mark this day"}
+            </p>
             {/* Paid holiday is employee-only; freelancers can only block days out. */}
             {props.isEmployee && (
               <>

@@ -217,18 +217,27 @@ Deno.serve(async (req) => {
       const accountId = resolved.id;
       const days = Array.isArray(body?.days) ? body.days : [];
       if (!days.length) return json({ error: "No days provided" }, 400);
-      const status = isAdmin ? "approved" : "pending";
+
+      // A freelancer marking themselves unavailable is a COURTESY, not a request:
+      // they're telling us not to count on them, and that needs no approval. It
+      // lands approved straight away. Employee paid holiday still needs a review.
+      const { data: reqAcct } = await sb.from("accounts").select("employment_type").eq("id", accountId).maybeSingle();
+      const isFreelancer = reqAcct?.employment_type !== "employee";
       const now = new Date().toISOString();
-      const rows = days.map((d: { date: string; kind: string; fraction?: number }) => ({
-        account_id: accountId, leave_date: d.date,
-        kind: d.kind === "unavailable" ? "unavailable" : "holiday",
-        fraction: d.fraction && d.fraction > 0 && d.fraction <= 1 ? d.fraction : 1,
-        status, note: body?.note ?? null, requested_by: caller.id,
-        reviewed_by: isAdmin ? caller.id : null, reviewed_at: isAdmin ? now : null, updated_at: now,
-      }));
+      const rows = days.map((d: { date: string; kind: string; fraction?: number }) => {
+        const kind = d.kind === "unavailable" ? "unavailable" : "holiday";
+        const auto = isAdmin || (isFreelancer && kind === "unavailable");
+        return {
+          account_id: accountId, leave_date: d.date, kind,
+          fraction: d.fraction && d.fraction > 0 && d.fraction <= 1 ? d.fraction : 1,
+          status: auto ? "approved" : "pending",
+          note: body?.note ?? null, requested_by: caller.id,
+          reviewed_by: auto ? caller.id : null, reviewed_at: auto ? now : null, updated_at: now,
+        };
+      });
       const { error } = await sb.from("team_leave_requests").upsert(rows, { onConflict: "account_id,leave_date,kind" });
       if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, status, count: rows.length });
+      return json({ ok: true, status: rows[0]?.status ?? "pending", count: rows.length });
     }
 
     if (action === "review") {
