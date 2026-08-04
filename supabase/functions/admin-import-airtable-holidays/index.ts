@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
   const toInsert: { account_id: string; leave_date: string; kind: string; fraction: number; status: string; note: string }[] = [];
   const perPerson: Record<string, { matched: boolean; kind: string; ranges: number; days: number; new_days: number; already: number }> = {};
   const unmatched: { airtable_user: string; email: string; ranges: number; days: number }[] = [];
+  const freelancerSkipped: { person: string; ranges: number; days: number }[] = [];
   const skipped: string[] = [];
 
   for (const rec of atRows as { id: string; fields: Record<string, unknown> }[]) {
@@ -146,7 +147,17 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    const kind = isEmployee.get(accountId) ? "holiday" : "unavailable";
+    // EMPLOYEES ONLY. A freelancer's Airtable rows are all historical days off —
+    // they carry no forward value (their worked days already record what happened),
+    // and their calendar is meant to fill forward with days they block out ahead.
+    if (!isEmployee.get(accountId)) {
+      const f = freelancerSkipped.find((x) => x.person === label);
+      if (f) { f.ranges++; f.days += days.length; }
+      else freelancerSkipped.push({ person: label, ranges: 1, days: days.length });
+      continue;
+    }
+
+    const kind = "holiday";
     const p = perPerson[label] ?? (perPerson[label] = { matched: true, kind, ranges: 0, days: 0, new_days: 0, already: 0 });
     p.ranges++; p.days += days.length;
     for (const d of days) {
@@ -167,6 +178,7 @@ Deno.serve(async (req) => {
     would_insert: toInsert.length,
     per_person: perPerson,
     unmatched_people: unmatched,
+    freelancers_skipped: freelancerSkipped,
     skipped,
     sample: toInsert.slice(0, 15),
   };

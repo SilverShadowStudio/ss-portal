@@ -13,6 +13,7 @@ interface Report {
   inserted?: number;
   per_person: Record<string, { ranges: number; days: number; new_days: number; already: number }>;
   unmatched_people: { airtable_user: string; email: string; ranges: number; days: number }[];
+  freelancers_skipped: { person: string; ranges: number; days: number }[];
   skipped: string[];
   sample: { leave_date: string; note: string }[];
 }
@@ -107,6 +108,21 @@ export function HolidayImportPanel() {
               {report.unmatched_people.map((u) => (
                 <p key={u.airtable_user} className="text-recessive">
                   {u.airtable_user} {u.email ? `· ${u.email}` : ""} — {u.ranges} range{u.ranges === 1 ? "" : "s"}, {u.days} days
+                </p>
+              ))}
+            </div>
+          )}
+
+          {report.freelancers_skipped?.length > 0 && (
+            <div>
+              <p className="text-label mb-2">Freelancers — skipped by design</p>
+              <p className="text-recessive mb-1.5 text-[11px] leading-relaxed">
+                Freelancers have no paid holiday, and their Airtable rows are all past days off.
+                Their calendars fill forward from the days they block out themselves.
+              </p>
+              {report.freelancers_skipped.map((f) => (
+                <p key={f.person} className="text-recessive">
+                  {f.person} — {f.ranges} range{f.ranges === 1 ? "" : "s"}, {f.days} days not imported
                 </p>
               ))}
             </div>
