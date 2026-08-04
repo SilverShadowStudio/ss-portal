@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { clearSessionId, insertClientActivity } from "@/lib/clientActivity";
+import { clearSessionId, getOrCreateSessionId, insertClientActivity } from "@/lib/clientActivity";
 import { checkAccountAgreementForUser } from "@/lib/agreementStatus";
 
 const GHOST_KEY = "ss-ghost-mode";
 const GHOST_BACKUP_KEY = "ss-ghost-admin-backup";
+// Per-session marker so a "logged in" activity row is written at most once per
+// browser session (see the SIGNED_IN handler).
+const LOGIN_LOGGED_KEY = "ss-client-login-logged";
 
 /**
  * Read-only helper used by the activity tracker to hard-skip logging
@@ -110,6 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // clock skew between auth and the activity_log clock.
         if (event === "SIGNED_IN" && session?.user && !isGhostModeActive()) {
           const userId = session.user.id;
+          // One "logged in" per browser session. Supabase fires SIGNED_IN many
+          // times within a single session (tab focus, storage sync, refresh);
+          // the last_sign_in_at guard below doesn't catch these because that
+          // stamp is frozen for the session. Keyed on the per-tab session id
+          // (sessionStorage), we log at most once, and set the marker up-front
+          // so near-simultaneous SIGNED_IN events don't race in a second row.
+          const sid = getOrCreateSessionId();
+          try {
+            if (sessionStorage.getItem(LOGIN_LOGGED_KEY) === sid) return;
+            sessionStorage.setItem(LOGIN_LOGGED_KEY, sid);
+          } catch { /* sessionStorage unavailable — fall through to the time guard */ }
           (async () => {
             try {
               // Skip admin logins. Also skip if the role lookup errors — better
