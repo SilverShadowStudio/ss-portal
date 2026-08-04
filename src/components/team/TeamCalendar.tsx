@@ -483,11 +483,9 @@ function DayRow(props: {
               {isAdmin ? "Add for this person" : props.isEmployee ? "Request this day" : "Mark this day"}
             </p>
             {/* Paid holiday is employee-only; freelancers can only block days out. */}
+            {/* Full days only — no half days, for anyone. */}
             {props.isEmployee && (
-              <>
-                <button disabled={busy} className="w-full rounded bg-gold/20 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/30 text-left" onClick={() => props.onSet("holiday", 1)}>Paid holiday — full day</button>
-                <button disabled={busy} className="w-full rounded bg-gold/10 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/20 text-left" onClick={() => props.onSet("holiday", 0.5)}>Paid holiday — half day</button>
-              </>
+              <button disabled={busy} className="w-full rounded bg-gold/20 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/30 text-left" onClick={() => props.onSet("holiday", 1)}>Paid holiday</button>
             )}
             <button disabled={busy} className="w-full rounded bg-white/5 px-2 py-1.5 text-xs text-standard hover:bg-white/10 text-left" onClick={() => props.onSet("unavailable", 1)}>Not available</button>
           </div>

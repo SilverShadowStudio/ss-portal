@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
         const auto = isAdmin || (isFreelancer && kind === "unavailable");
         return {
           account_id: accountId, leave_date: d.date, kind,
-          fraction: d.fraction && d.fraction > 0 && d.fraction <= 1 ? d.fraction : 1,
+          fraction: 1, // full days only — half days were dropped for everyone
           status: auto ? "approved" : "pending",
           note: body?.note ?? null, requested_by: caller.id,
           reviewed_by: auto ? caller.id : null, reviewed_at: auto ? now : null, updated_at: now,
@@ -237,6 +237,49 @@ Deno.serve(async (req) => {
       });
       const { error } = await sb.from("team_leave_requests").upsert(rows, { onConflict: "account_id,leave_date,kind" });
       if (error) return json({ error: error.message }, 500);
+
+      // Tell the admins when something actually needs a decision. Without this a
+      // request just sits in the database and nobody knows to look.
+      const pendingRows = rows.filter((r) => r.status === "pending");
+      if (pendingRows.length) {
+        try {
+          const { data: acctRow } = await sb.from("accounts").select("company_name").eq("id", accountId).maybeSingle();
+          const who = (acctRow?.company_name as string) || "A team member";
+          const dates = pendingRows.map((r) => r.leave_date).sort();
+          const label = dates.length === 1
+            ? new Date(`${dates[0]}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+            : `${dates.length} days · ${dates[0]} → ${dates[dates.length - 1]}`;
+          const kindLabel = pendingRows[0].kind === "holiday" ? "paid holiday" : "unavailability";
+
+          // Every admin, resolved live — no hardcoded recipients.
+          const { data: adminRoles } = await sb.from("user_roles").select("user_id").eq("role", "admin");
+          const to: string[] = [];
+          for (const a of (adminRoles ?? []) as { user_id: string }[]) {
+            const { data: au } = await sb.auth.admin.getUserById(a.user_id);
+            if (au?.user?.email) to.push(au.user.email);
+          }
+          const resendKey = Deno.env.get("RESEND_API_KEY");
+          if (resendKey && to.length) {
+            const url = `${Deno.env.get("APP_BASE_URL") || "https://portal.silvershadowstudio.com"}/admin/team/${accountId}/calendar`;
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: "Silver Shadow Studio <portal@silvershadowstudio.com>",
+                to,
+                subject: `${who} has requested ${kindLabel} — ${label}`,
+                html: `<div style="font-family:Georgia,serif;color:#1b1916;max-width:520px;margin:0 auto;padding:24px;background:#EDE8E0">
+                  <p style="font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#8A8070;margin:0 0 18px">Leave request</p>
+                  <p style="font-size:15px;margin:0 0 8px"><strong>${who}</strong> has requested ${kindLabel}.</p>
+                  <p style="font-size:14px;color:#5b554d;margin:0 0 22px">${label}</p>
+                  <p style="margin:0"><a href="${url}" style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#1A1814">Review the request</a></p>
+                </div>`,
+              }),
+            });
+          }
+        } catch { /* never fail the request because the email didn't send */ }
+      }
+
       return json({ ok: true, status: rows[0]?.status ?? "pending", count: rows.length });
     }
 

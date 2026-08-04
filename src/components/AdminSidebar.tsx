@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNewClientsCount } from "@/hooks/useNewClientsCount";
 import { useDueOverheadsCount } from "@/hooks/useDueOverheadsCount";
+import { usePendingLeaveCount } from "@/hooks/usePendingLeaveCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
@@ -70,6 +71,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   } | null>(null);
   const newClientsCount = useNewClientsCount();
   const dueOverheadsCount = useDueOverheadsCount();
+  const pendingLeaveCount = usePendingLeaveCount();
 
   useEffect(() => {
     if (!user) return;
@@ -95,6 +97,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       }
       if (item.path === "/admin/finance/pnl") {
         return { ...item, badgeCount: dueOverheadsCount };
+      }
+      // Leave awaiting a decision — otherwise only visible inside one person's calendar.
+      if (item.path === "/admin/team") {
+        return { ...item, badgeCount: pendingLeaveCount };
       }
       return item;
     }),
