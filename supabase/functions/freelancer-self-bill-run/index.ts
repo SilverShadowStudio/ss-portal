@@ -253,7 +253,12 @@ Deno.serve(async (req) => {
       const email = (row.payee_email || "").toLowerCase();
       const name = row.payee_name || email || "unknown";
       if (Number(row.invoice_total) <= 0) { skipped.push({ source, name, reason: "zero total" }); continue; }
-      if (already.has(`${source}|${email}`)) { skipped.push({ source, name, reason: "already billed" }); continue; }
+      // `ignore_existing` is dry-run only: it lets an already-issued month be
+      // re-rendered for preview. A real run always respects the skip, so an
+      // invoice can never be issued twice.
+      if (already.has(`${source}|${email}`) && !(doDry && body.ignore_existing === true)) {
+        skipped.push({ source, name, reason: "already billed" }); continue;
+      }
 
       // Match freelancer profile (needs country for VAT + bank for payment).
       const { data: prof } = await sb.from("freelancer_profiles")

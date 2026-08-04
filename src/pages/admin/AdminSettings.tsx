@@ -5,6 +5,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionStatus";
 import { AirtableSyncPanel } from "@/components/admin/AirtableSyncPanel";
 import { HolidayImportPanel } from "@/components/admin/HolidayImportPanel";
+import { SelfBillPanel } from "@/components/admin/SelfBillPanel";
 import { AccordionHeader, AccordionPanel } from "@/components/ui/SectionAccordion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +31,7 @@ export default function AdminSettings() {
     | "airtable_contact_sync"
     | "airtable_project_sync"
     | "holiday_import"
+    | "self_bill"
     | null;
   const [openSection, setOpenSection] = useState<SectionKey>(null);
   const [defaultPicked, setDefaultPicked] = useState(false);
@@ -690,6 +692,18 @@ export default function AdminSettings() {
           />
           <AccordionPanel isOpen={openSection === "holiday_import"}>
             <HolidayImportPanel />
+          </AccordionPanel>
+        </section>
+
+        {/* ── Self-billed freelancer invoices ───────────────────────── */}
+        <section className={cn(openSection === "self_bill" ? "mb-12" : "mb-6")}>
+          <AccordionHeader
+            label="Freelancer Invoices"
+            isOpen={openSection === "self_bill"}
+            onToggle={() => toggleSection("self_bill")}
+          />
+          <AccordionPanel isOpen={openSection === "self_bill"}>
+            <SelfBillPanel />
           </AccordionPanel>
         </section>
 
