@@ -119,11 +119,20 @@ Deno.serve(async (req) => {
     .in("source_table", Object.keys(SOURCES));
   if (error) return json({ error: error.message }, 500);
 
+  // Earliest year shown anywhere in the portal — matches the calendar's floor.
+  // Future years are unbounded; this only ever hides history before 2026.
+  const MIN_YEAR = 2026;
   const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const periods: Record<string, unknown>[] = [];
   let earned = 0, paid = 0, outstanding = 0;
 
   for (const row of rows ?? []) {
+    // Earnings start in 2026 — nothing before that is shown, and it's excluded
+    // from the totals too so the summary always matches the periods listed.
+    // Rows with no year are kept (they'd otherwise vanish with no way to see them).
+    const rowYear = row.period_year as number | null;
+    if (rowYear != null && rowYear < MIN_YEAR) continue;
+
     const source = row.source_table as string;
     const total = Number(row.invoice_total) || 0;
     // Airtable tracks payment via paid_status + Remaining Balance (which is £0
