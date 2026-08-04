@@ -94,15 +94,30 @@ export function SendLaterDialog({ recipient, initial, busy, onCancel, onSchedule
           <p className="mt-2 text-xs" style={{ color: GOLD_BRIGHT }}>{recipient}</p>
         )}
 
-        {/* Date + time fields with steppers */}
+        {/* Date + time — type into them, or use the steppers */}
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <Stepper
             value={`${pad(when.getDate())}/${pad(when.getMonth() + 1)}/${when.getFullYear()}`}
+            width={98}
+            onCommit={(text) => {
+              const p = parseDate(text);
+              if (!p) return false;
+              set((d) => d.setFullYear(p.y, p.m, p.d));
+              setView({ y: p.y, m: p.m });
+              return true;
+            }}
             onUp={() => set((d) => d.setDate(d.getDate() + 1))}
             onDown={() => set((d) => d.setDate(d.getDate() - 1))}
           />
           <Stepper
             value={`${pad(when.getHours())}:${pad(when.getMinutes())}`}
+            width={54}
+            onCommit={(text) => {
+              const p = parseTime(text);
+              if (!p) return false;
+              set((d) => d.setHours(p.h, p.min, 0, 0));
+              return true;
+            }}
             onUp={() => set((d) => d.setMinutes(d.getMinutes() + 5))}
             onDown={() => set((d) => d.setMinutes(d.getMinutes() - 5))}
           />
@@ -190,14 +205,58 @@ export function SendLaterDialog({ recipient, initial, busy, onCancel, onSchedule
   );
 }
 
-function Stepper({ value, onUp, onDown }: { value: string; onUp: () => void; onDown: () => void }) {
+/** Type into it, or nudge with the arrows. `onCommit` returns false if the text
+ *  can't be parsed, in which case the field snaps back to the real value. */
+function Stepper({ value, width, onCommit, onUp, onDown }: {
+  value: string; width: number;
+  onCommit: (text: string) => boolean;
+  onUp: () => void; onDown: () => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => { if (draft !== null) { onCommit(draft); setDraft(null); } };
   return (
-    <span className="inline-flex items-stretch overflow-hidden rounded-lg border border-white/12">
-      <span className="px-3 py-2 font-sans text-sm tabular-nums text-strong">{value}</span>
+    <span className="inline-flex items-stretch overflow-hidden rounded-lg border border-white/12 focus-within:border-[#C9A96A]/60">
+      <input
+        value={draft ?? value}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+          else if (e.key === "Escape") { setDraft(null); e.currentTarget.blur(); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setDraft(null); onUp(); }
+          else if (e.key === "ArrowDown") { e.preventDefault(); setDraft(null); onDown(); }
+        }}
+        inputMode="numeric"
+        style={{ width }}
+        className="bg-transparent px-3 py-2 font-sans text-sm tabular-nums text-strong outline-none"
+      />
       <span className="flex flex-col border-l border-white/12">
-        <button onClick={onUp} className="grid h-[17px] w-6 place-items-center text-[8px] text-white/50 hover:bg-white/5 hover:text-white">▲</button>
-        <button onClick={onDown} className="grid h-[17px] w-6 place-items-center border-t border-white/12 text-[8px] text-white/50 hover:bg-white/5 hover:text-white">▼</button>
+        <button type="button" onClick={onUp} className="grid h-[17px] w-6 place-items-center text-[8px] text-white/50 hover:bg-white/5 hover:text-white">▲</button>
+        <button type="button" onClick={onDown} className="grid h-[17px] w-6 place-items-center border-t border-white/12 text-[8px] text-white/50 hover:bg-white/5 hover:text-white">▼</button>
       </span>
     </span>
   );
+}
+
+/** "5/8/2026", "05/08/2026" or "05/08/26" → parts. Day-first, as displayed. */
+function parseDate(text: string): { y: number; m: number; d: number } | null {
+  const m = text.trim().match(/^(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{2}|\d{4})$/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2];
+  let y = +m[3];
+  if (y < 100) y += 2000;
+  if (mo < 1 || mo > 12 || d < 1) return null;
+  if (d > new Date(y, mo, 0).getDate()) return null;   // rejects 31 February
+  return { y, m: mo - 1, d };
+}
+
+/** "8:15", "08:15" or "0815" → parts. 24-hour. */
+function parseTime(text: string): { h: number; min: number } | null {
+  const t = text.trim();
+  const m = t.match(/^(\d{1,2})\s*[:.h]?\s*(\d{2})$/) ?? t.match(/^(\d{1,2})$/);
+  if (!m) return null;
+  const h = +m[1], min = m[2] != null ? +m[2] : 0;
+  if (h > 23 || min > 59) return null;
+  return { h, min };
 }
