@@ -355,7 +355,12 @@ Deno.serve(async (req) => {
       .from('freelancer_profiles')
       .upsert({
         user_id: user.id,
-        first_name: p.firstName, last_name: p.lastName, email: p.email,
+        first_name: p.firstName, last_name: p.lastName,
+        // The email is taken from the SESSION, never the payload. Worked days and
+        // self-billing match Airtable on this address, so a mismatch means a
+        // silently empty calendar — the field is read-only in the UI and this
+        // makes that authoritative rather than merely cosmetic.
+        email: user.email ?? p.email,
         role: p.role || null, day_rate: p.rateAmount || null,
         rate_currency: p.rateCurrency || 'GBP', rate_period: p.ratePeriod || 'day',
         flat_number: p.flatNumber || null, house_number: p.houseNumber || null,
@@ -368,6 +373,30 @@ Deno.serve(async (req) => {
       .select('id')
       .single()
     if (profileErr) throw profileErr
+
+    // Team code (first initial + 4 of surname, e.g. KDORO). Invites are
+    // email-only, so a name — and therefore a code — only exists from here.
+    // Shares accounts.client_code and its unique index, so a clash is possible:
+    // try a couple of numbered variants, then give up rather than write a wrong
+    // one. Never overwrites an existing code.
+    try {
+      const initial = (p.firstName || '').replace(/[^A-Za-z]/g, '').slice(0, 1)
+      const surname = (p.lastName || '').replace(/[^A-Za-z]/g, '').slice(0, 4)
+      if (initial && surname) {
+        const { data: mem } = await admin.from('account_members').select('account_id').eq('user_id', user.id).maybeSingle()
+        if (mem?.account_id) {
+          const { data: acctRow } = await admin.from('accounts').select('client_code').eq('id', mem.account_id).maybeSingle()
+          if (acctRow && !acctRow.client_code) {
+            const base = (initial + surname).toUpperCase()
+            for (const candidate of [base, `${base}2`, `${base}3`]) {
+              const { error: codeErr } = await admin.from('accounts')
+                .update({ client_code: candidate }).eq('id', mem.account_id).is('client_code', null)
+              if (!codeErr) break
+            }
+          }
+        }
+      }
+    } catch { /* a missing code is cosmetic — never fail onboarding for it */ }
 
     const { data: membership } = await admin.from('account_members').select('account_id').eq('user_id', user.id).maybeSingle()
     const accountId = membership?.account_id ?? null

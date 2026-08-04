@@ -479,6 +479,11 @@ export default function Onboarding() {
                     readOnly={field === "email"}
                     className={inputClass(field) + (field === "email" ? " opacity-50 cursor-default" : "")}
                   />
+                  {field === "email" && (
+                    <p className="font-sans text-foreground/35" style={{ fontSize: 10 }}>
+                      This is the address we invited you on — your worked days and invoices are matched to it.
+                    </p>
+                  )}
                   {showError(field) && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
                 </div>
               ))}
