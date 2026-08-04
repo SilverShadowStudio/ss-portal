@@ -52,9 +52,13 @@ function money(n: number, ccy: string) {
   const sym = ccy === "GBP" ? "£" : ccy === "EUR" ? "€" : ccy === "USD" ? "$" : `${ccy} `;
   return sym + new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 }
-function qtyLabel(l: EarningsLine, ccy: string) {
-  if (l.qty == null || l.rate == null) return "";
-  return `${Number(l.qty).toLocaleString("en-GB")} ${l.unit} × ${money(l.rate, ccy)}`;
+/** The quantity on its own — "1 day", "0.8 days", "6 hrs". Singular only on an
+ *  exact 1, so a part-day still reads as days. */
+function qtyLabel(l: EarningsLine) {
+  if (l.qty == null) return "";
+  const q = Number(l.qty);
+  const unit = q === 1 ? l.unit.replace(/s$/, "") : l.unit;
+  return `${q.toLocaleString("en-GB")} ${unit}`;
 }
 
 interface Props {
@@ -264,18 +268,26 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                         )}
                         {isOpen && p.lines.map((l, i) => (
                           <tr key={`${p.key}-l${i}`} className="border-b border-white/[0.04] last:border-white/[0.05]">
+                            {/* Date · Project · Days · Rate — the same column order
+                                as the self-billed invoice, so the statement and the
+                                PDF read identically. Days and Rate sit at the right
+                                edge of this cell, immediately before Fee. */}
                             <td className="py-2.5 pl-4 pr-4">
                               <div className="flex items-baseline gap-6 border-l border-white/[0.08] pl-4">
                                 {l.date && (
-                                  <div className="w-[180px] shrink-0">
-                                    <p style={{ fontSize: 13, color: DETAIL }}>{niceDate(l.date)}</p>
-                                    {qtyLabel(l, ccy) && <p className="mt-0.5" style={{ fontSize: 11, color: DETAIL_DIM }}>{qtyLabel(l, ccy)}</p>}
-                                  </div>
+                                  <p className="w-[180px] shrink-0" style={{ fontSize: 13, color: DETAIL }}>
+                                    {niceDate(l.date)}
+                                  </p>
                                 )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate" style={{ fontSize: 13, color: DETAIL }}>{l.description}</p>
-                                  {!l.date && qtyLabel(l, ccy) && <p className="mt-0.5" style={{ fontSize: 11, color: DETAIL_DIM }}>{qtyLabel(l, ccy)}</p>}
-                                </div>
+                                <p className="min-w-0 flex-1 truncate" style={{ fontSize: 13, color: DETAIL }}>
+                                  {l.description}
+                                </p>
+                                <p className="w-[72px] shrink-0 text-right tabular-nums" style={{ fontSize: 13, color: DETAIL_DIM }}>
+                                  {qtyLabel(l)}
+                                </p>
+                                <p className="w-[90px] shrink-0 text-right tabular-nums" style={{ fontSize: 13, color: DETAIL_DIM }}>
+                                  {l.rate != null ? money(l.rate, ccy) : ""}
+                                </p>
                               </div>
                             </td>
                             <td className="py-2.5 pr-4 text-right align-top tabular-nums" style={{ fontSize: 13, color: DETAIL_AMOUNT }}>
