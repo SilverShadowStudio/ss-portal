@@ -7,6 +7,18 @@ export interface SortableColumn<T> {
   id: string;
   accessor: (row: T) => string | number | null | undefined;
   type: SortColumnType;
+  /**
+   * How empty values sort.
+   *
+   * "pinned" (default) keeps them out of the way — a half-filled column
+   * shouldn't dominate the table.
+   *
+   * "lowest" treats an empty value as the smallest one, so it sits beside the
+   * oldest date or the smallest number and flips with the sort direction like
+   * any real value. Use it where "no date" means overdue rather than distant —
+   * a lead with no next action is the most neglected, not the least urgent.
+   */
+  nulls?: "pinned" | "lowest";
 }
 
 /**
@@ -39,7 +51,20 @@ export function useTableSort<T>(
     const col = columns.find((c) => c.id === sortKey);
     if (!col) return rows;
     const dirMul = sortDir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => compare(col.accessor(a), col.accessor(b), col.type) * dirMul);
+    return [...rows].sort((a, b) => {
+      const av = col.accessor(a);
+      const bv = col.accessor(b);
+      const aNull = av == null || av === "";
+      const bNull = bv == null || bv === "";
+      if (aNull || bNull) {
+        if (aNull && bNull) return 0;
+        // Sort as the smallest value — so it moves with the direction and
+        // lands next to the oldest entries at both ends.
+        if (col.nulls === "lowest") return (aNull ? -1 : 1) * dirMul;
+        return aNull ? 1 : -1;
+      }
+      return compare(av, bv, col.type) * dirMul;
+    });
   }, [rows, sortKey, sortDir, columns]);
 
   return { sortedRows, sortKey, sortDir, toggle };
