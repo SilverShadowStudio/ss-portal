@@ -28,10 +28,12 @@ interface CalData {
 
 const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
-// Paid + bank holiday blue. Brighter and far more saturated than the old slate
-// (#6E8CA8, hsl 209/25%/55%) so it reads clearly against the gold worked days.
-const HOLIDAY = "#59AEF8";        // hsl(208, 92%, 66%)
-const HOLIDAY_RGB = "89,174,248";  // same colour, for rgba() tints
+// Day-type colours — INVERTED 2026-08-04: holidays are yellow, worked days blue.
+// Both get the same tint strength so a holiday reads as a full day, not a gap.
+const HOLIDAY = GOLD_BRIGHT;         // paid + bank holiday — yellow
+const HOLIDAY_RGB = "236,211,156";   // #ecd39c
+const WORKED = "#59AEF8";            // worked days — blue, hsl(208, 92%, 66%)
+const WORKED_RGB = "89,174,248";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -258,13 +260,12 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
 // ── Legend ────────────────────────────────────────────────────────────────────
 function Legend() {
   const items: { label: string; color: string; kind?: "dashed" | "hollow" }[] = [
-    { label: "Worked", color: GOLD },
+    { label: "Worked", color: WORKED },
     { label: "Paid holiday", color: HOLIDAY },
     { label: "Not available", color: "#6b6b6b" },
-    // Bank holidays render in the holiday blue on the grid — the legend swatch
-    // was grey-brown and didn't match what it labelled.
+    // Swatches match what the grid actually renders for each state.
     { label: "Bank holiday", color: HOLIDAY, kind: "hollow" },
-    { label: "Pending", color: GOLD, kind: "dashed" },
+    { label: "Pending", color: HOLIDAY, kind: "dashed" },
   ];
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -272,7 +273,7 @@ function Legend() {
         <div key={label} className="flex items-center gap-2">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{
             background: kind ? "transparent" : color,
-            border: kind === "dashed" ? `1px dashed ${GOLD}` : kind === "hollow" ? `1px solid ${color}` : "none",
+            border: kind ? `1px ${kind === "dashed" ? "dashed" : "solid"} ${color}` : "none",
           }} />
           <span className="text-xs text-recessive">{label}</span>
         </div>
@@ -336,8 +337,8 @@ function DayRow(props: {
   } else if (unavailable?.status === "pending") {
     bg = "rgba(107,107,107,0.16)"; dashed = true; leftAccent = "#8a8378"; numColor = "#c2bcb2"; sideLabel = "Not available"; sideColor = "#a49d92";
   } else if (derivedWorked != null && derivedWorked > 0) {
-    bg = "rgba(211,180,124,0.16)"; leftAccent = "rgba(211,180,124,0.55)";
-    marker = <span style={{ fontSize: 9, color: GOLD }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>;
+    bg = `rgba(${WORKED_RGB},0.24)`; leftAccent = `rgba(${WORKED_RGB},0.9)`;
+    marker = <span style={{ fontSize: 9, color: WORKED }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>;
   } else if (weekend) {
     bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)";
   }
