@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 // owner come back as a card that Fred has to click. That split is enforced in
 // SQL — this page only renders the consequence of it.
 
-interface Block { type: string; text?: string; name?: string; [k: string]: unknown }
+interface Citation { url?: string; title?: string; cited_text?: string }
+interface Block { type: string; text?: string; name?: string; citations?: Citation[]; [k: string]: unknown }
+interface Source { url: string; title: string }
 interface Msg { id: string; role: "user" | "assistant"; body: string | null; blocks: Block[] | null; created_at: string }
 interface Action {
   id: string; lead_id: string; kind: string;
@@ -33,6 +35,8 @@ const TOOL_LABEL: Record<string, string> = {
   log_interaction: "logged it",
   set_commitment: "set a commitment",
   update_lead: "updated the lead",
+  web_search: "searched the web",
+  web_fetch: "read the page",
 };
 const STAGE_LABEL: Record<string, string> = {
   new: "New", contacted: "Contacted", engaged: "Engaged", qualified: "Qualified",
@@ -52,11 +56,31 @@ const prettyValue = (kind: string, v: string | null) => {
  *  role:'user' with no body — they're wire traffic, not conversation. */
 function toItems(msgs: Msg[]) {
   return msgs.flatMap((m) => {
-    if (m.role === "user") return m.body ? [{ id: m.id, who: "user" as const, text: m.body, tools: [] as string[] }] : [];
-    const tools = (m.blocks ?? []).filter((b) => b.type === "tool_use").map((b) => String(b.name));
+    if (m.role === "user") {
+      return m.body ? [{ id: m.id, who: "user" as const, text: m.body, tools: [] as string[], sources: [] as Source[] }] : [];
+    }
+    const blocks = m.blocks ?? [];
+    // server_tool_use is web search/fetch — run by Anthropic, but it's still
+    // work the Director did and Fred should see it happen.
+    const tools = blocks
+      .filter((b) => b.type === "tool_use" || b.type === "server_tool_use")
+      .map((b) => String(b.name));
+
+    // Citations ride on the text blocks. Dedupe by URL — one page cited six
+    // times is one source, not six.
+    const seen = new Set<string>();
+    const sources: Source[] = [];
+    for (const b of blocks) {
+      for (const c of b.citations ?? []) {
+        if (!c.url || seen.has(c.url)) continue;
+        seen.add(c.url);
+        sources.push({ url: c.url, title: c.title || new URL(c.url).hostname.replace(/^www\./, "") });
+      }
+    }
+
     const text = m.body ?? "";
     if (!text && !tools.length) return [];
-    return [{ id: m.id, who: "director" as const, text, tools }];
+    return [{ id: m.id, who: "director" as const, text, tools, sources }];
   });
 }
 
@@ -226,7 +250,7 @@ export default function AdminSalesDirector() {
           </div>
         </div>
         <p className="mt-3 text-sm text-recessive">
-          Ask it anything about the pipeline. It logs calls and adds prospects on its own — stage, value and outcome come back for you to confirm.
+          Ask it anything about the pipeline, or point it at a company to research. It logs calls and adds prospects on its own — stage, value and outcome come back for you to confirm.
         </p>
       </div>
 
@@ -240,7 +264,7 @@ export default function AdminSalesDirector() {
               <div className="py-16 text-center">
                 <p className="font-serif text-lg text-white/70">What are we working on?</p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {["What's gone cold?", "How's the pipeline?", "What should I do today?"].map((s) => (
+                  {["What's gone cold?", "How's the pipeline?", "What should I do today?", "Research a prospect for me"].map((s) => (
                     <button key={s} onClick={() => { setInput(s); taRef.current?.focus(); }}
                       className="rounded-full border border-white/10 px-4 py-1.5 text-xs text-white/50 hover:border-[#C9A96A]/40 hover:text-[#ecd39c]">
                       {s}
@@ -265,6 +289,17 @@ export default function AdminSalesDirector() {
                     )}
                     {it.text && (
                       <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-strong">{it.text}</p>
+                    )}
+                    {it.sources.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-white/25">From the web</span>
+                        {it.sources.map((sc) => (
+                          <a key={sc.url} href={sc.url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex max-w-[280px] items-center gap-1 truncate text-xs text-white/40 underline decoration-white/15 underline-offset-2 hover:text-[#ecd39c]">
+                            <LinkIcon className="h-3 w-3 shrink-0" strokeWidth={1.5} />{sc.title}
+                          </a>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ),
