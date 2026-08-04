@@ -54,6 +54,7 @@ import Orders from "./pages/Orders";
 import AdminSales from "./pages/admin/AdminSales";
 import AdminSalesDebrief from "./pages/admin/AdminSalesDebrief";
 import AdminSalesDirector from "./pages/admin/AdminSalesDirector";
+import AdminSalesCommitments from "./pages/admin/AdminSalesCommitments";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
@@ -313,6 +314,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminSales />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/sales/commitments"
+              element={
+                <AdminProtectedRoute>
+                  <AdminSalesCommitments />
                 </AdminProtectedRoute>
               }
             />

@@ -135,6 +135,22 @@ const TOOLS = [
     },
   },
   {
+    name: "list_commitments",
+    description:
+      "Every commitment across the whole pipeline — what was promised, by whom, by when. Use this for 'what's due this week', 'what have I promised', 'what are they late on'. Prefer it over calling get_lead repeatedly.",
+    input_schema: {
+      type: "object",
+      properties: {
+        party: { type: "string", description: "us = Fred promised it, them = the client did. Omit for both." },
+        status: { type: "string", description: "open | kept | missed | cancelled. Defaults to open." },
+        due_before: { type: "string", description: "ISO date. Only commitments due on or before this — use it for 'this week'." },
+        overdue_only: { type: "boolean", description: "Only ones already past their date." },
+        slipped_only: { type: "boolean", description: "Only ones that have been pushed at least once. A date that keeps moving is the strongest signal a deal isn't real." },
+        limit: { type: "number", description: "Default 50, cap 200." },
+      },
+    },
+  },
+  {
     name: "update_lead",
     description:
       "Update a lead. Contact details, sector, notes and next action apply immediately. stage, value_estimate, outcome and owner_id are QUEUED for Fred to confirm — when you set one of those, tell him you've proposed it, never that it's done.",
@@ -293,6 +309,36 @@ async function runTool(
             value: rows.reduce((a, r) => a + r.value, 0),
             weighted: Math.round(rows.reduce((a, r) => a + r.weighted, 0)),
           },
+        },
+        queued,
+      };
+    }
+
+    case "list_commitments": {
+      const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 200);
+      const today = new Date().toISOString().slice(0, 10);
+      let q = uc.from("commitments")
+        .select("id, lead_id, party, description, due_date, status, slip_count, original_due_date, leads(company, stage)")
+        .eq("status", typeof input.status === "string" && input.status ? input.status : "open")
+        .order("due_date", { ascending: true })
+        .limit(limit);
+      if (input.party === "us" || input.party === "them") q = q.eq("party", input.party);
+      if (typeof input.due_before === "string" && input.due_before) q = q.lte("due_date", input.due_before);
+      if (input.overdue_only) q = q.lt("due_date", today);
+      if (input.slipped_only) q = q.gt("slip_count", 0);
+
+      const { data, error } = await q;
+      if (error) return { result: { error: error.message }, queued };
+
+      const rows = (data ?? []) as Any[];
+      const overdue = rows.filter((r) => r.status === "open" && r.due_date < today);
+      return {
+        result: {
+          today,
+          count: rows.length,
+          overdue_count: overdue.length,
+          commitments: rows,
+          note: "Fred works these on the Commitments page (Sales → Commitments), where he can mark them kept or missed and push a date.",
         },
         queued,
       };

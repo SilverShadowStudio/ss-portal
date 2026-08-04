@@ -34,6 +34,7 @@ const TOOL_LABEL: Record<string, string> = {
   create_lead: "created a lead",
   log_interaction: "logged it",
   set_commitment: "set a commitment",
+  list_commitments: "checked what's promised",
   update_lead: "updated the lead",
   web_search: "searched the web",
   web_fetch: "read the page",
