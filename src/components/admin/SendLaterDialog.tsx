@@ -98,7 +98,7 @@ export function SendLaterDialog({ recipient, initial, busy, onCancel, onSchedule
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <Stepper
             value={`${pad(when.getDate())}/${pad(when.getMonth() + 1)}/${when.getFullYear()}`}
-            width={98}
+            width={126}
             onCommit={(text) => {
               const p = parseDate(text);
               if (!p) return false;
@@ -111,7 +111,7 @@ export function SendLaterDialog({ recipient, initial, busy, onCancel, onSchedule
           />
           <Stepper
             value={`${pad(when.getHours())}:${pad(when.getMinutes())}`}
-            width={54}
+            width={86}
             onCommit={(text) => {
               const p = parseTime(text);
               if (!p) return false;
