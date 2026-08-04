@@ -298,8 +298,8 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
   const R = 22, C = 2 * Math.PI * R;
   return (
     <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0">
-      <circle cx="28" cy="28" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-      <circle cx="28" cy="28" r={R} fill="none" stroke={HOLIDAY} strokeWidth="4" strokeLinecap="round"
+      <circle cx="28" cy="28" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+      <circle cx="28" cy="28" r={R} fill="none" stroke={HOLIDAY} strokeWidth="2" strokeLinecap="round"
         strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 28 28)" />
     </svg>
   );
