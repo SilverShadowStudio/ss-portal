@@ -29,11 +29,12 @@ export interface EarningsData {
   periods: EarningsPeriod[];
 }
 
-// Expanded line items sit in a muted gold so they read as supporting detail and
-// don't compete with the month rows above them.
-const DETAIL = "rgba(201,169,106,0.72)";
-const DETAIL_DIM = "rgba(201,169,106,0.42)";
-const DETAIL_AMOUNT = "rgba(201,169,106,0.88)";
+// Expanded line items use the same gold as the summary figures — the --gold
+// token, not a translucent approximation of it — so the two read as one colour.
+// The sub-line stays dimmer to keep some hierarchy inside the row.
+const DETAIL = "hsl(var(--gold))";
+const DETAIL_DIM = "hsl(var(--gold) / 0.55)";
+const DETAIL_AMOUNT = "hsl(var(--gold))";
 
 function niceDate(iso: string | null): string | null {
   if (!iso) return null;
