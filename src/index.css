@@ -112,7 +112,7 @@
     --secondary-foreground: 36 14% 78%;
 
     --muted: 36 10% 12%;
-    --muted-foreground: 32 10% 66%;
+    --muted-foreground: 32 8% 52%;
 
     --accent: var(--brand-gold-hsl, 36 35% 57%);
     --accent-foreground: 40 12% 5%;
@@ -133,10 +133,8 @@
     /* Four-tier text contrast tokens (role-based; dark values). */
     --text-strong: #FBF7F0;
     --text-standard: #C8C2B5;
-    /* Secondary/tertiary text lifted to ~63–66% brightness so metadata,
-       labels and timestamps clear WCAG-AA on the dark plum ground. */
-    --text-label: #ADA595;
-    --text-recessive: #9C9488;
+    --text-label: #8A8378;
+    --text-recessive: #5A554E;
     --divider: #2A2820;
     
     /* Shadows */
@@ -530,15 +528,14 @@ input:-webkit-autofill:active {
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
 }
 
-/* brighter zone — tonal lift plus a subtle plum stroke for clean separation */
-.ssr-zone { border-radius: 18px; padding: 24px 26px; background: rgba(150, 138, 177, 0.13); border: 1px solid rgba(140, 120, 160, 0.15); }
+/* brighter zone — distinguished by tone only (no border/highlight) */
+.ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(150, 138, 177, 0.13); }
 .ssr-zone + .ssr-zone { margin-top: 16px; }
 
 /* dark data tile — translucent, composited over the panel gradient, bevelled */
 .ssr-tile {
   border-radius: 14px;
   background: linear-gradient(163deg, rgba(18, 15, 26, 0.44) 0%, rgba(8, 6, 13, 0.60) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     inset 0 -1px 0 rgba(0, 0, 0, 0.35),
