@@ -1508,8 +1508,12 @@ export function AccountList({
                       <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isCreating} className="text-muted-foreground">
                         Back
                       </Button>
-                      {/* Send later — holds the invitation until a chosen time. */}
-                      <Button variant="ghost" onClick={() => setSendLaterOpen(true)} disabled={isCreating}
+                      {/* Send later — holds the invitation until a chosen time.
+                          Needs the same inputs as sending now, so it's disabled
+                          until they're filled rather than failing at Schedule. */}
+                      <Button variant="ghost" onClick={() => setSendLaterOpen(true)}
+                        disabled={isCreating || !inviteEmail.trim() || !inviteRole}
+                        title={!inviteEmail.trim() || !inviteRole ? "Enter an email and role first" : undefined}
                         className="border border-white/12 text-foreground/75">
                         Send later
                       </Button>

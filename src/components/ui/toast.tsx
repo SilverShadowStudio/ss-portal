@@ -14,7 +14,10 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      // z-[200]: above every overlay in the app (dialogs sit at z-50, the
+      // send-later / debrief sheets at z-130..140). A toast that reports an
+      // error must never be hidden behind the thing that caused it.
+      "fixed top-0 z-[200] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
       className,
     )}
     {...props}
