@@ -213,7 +213,7 @@ function CircleButton({
               "group relative flex h-9 w-9 items-center justify-center rounded-[11px] shrink-0 transition-all duration-200 ease-out " +
               (active
                 ? "bg-gradient-to-b from-[#C9A96A]/25 to-[#C9A96A]/[0.08] text-[#ecd39c] ring-1 ring-inset ring-[#C9A96A]/40 shadow-[0_0_14px_-3px_rgba(201,169,106,0.45)]"
-                : "bg-white/[0.03] text-white/35 ring-1 ring-inset ring-white/[0.06] hover:-translate-y-px hover:bg-[#C9A96A]/[0.12] hover:text-[#ecd39c] hover:ring-[#C9A96A]/30 hover:shadow-[0_0_16px_-3px_rgba(201,169,106,0.5)]")
+                : "bg-white/[0.03] text-white/55 ring-1 ring-inset ring-white/[0.06] hover:-translate-y-px hover:bg-[#C9A96A]/[0.12] hover:text-[#ecd39c] hover:ring-[#C9A96A]/30 hover:shadow-[0_0_16px_-3px_rgba(201,169,106,0.5)]")
             }
           >
             <Icon className="h-[15px] w-[15px] transition-transform duration-200 ease-out group-hover:scale-110" strokeWidth={1.5} />
@@ -1273,7 +1273,7 @@ export function AccountList({
                       <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add team member</DialogTitle>
                     </div>
                   </DialogHeader>
-                  <p className="text-sm text-foreground/45 mt-3">Choose how to bring this team member on.</p>
+                  <p className="text-sm text-foreground/60 mt-3">Choose how to bring this team member on.</p>
                   <div className="space-y-3 pt-4">
                     <button type="button" onClick={() => setTeamAddMode("invite")} className="group w-full text-left ssr-tile ssr-tile-hover p-5 transition-colors">
                       <div className="mb-2.5 flex items-center gap-2.5">
@@ -1281,7 +1281,7 @@ export function AccountList({
                         <span className="text-[10px] uppercase tracking-[0.2em] text-white/85 transition-colors group-hover:text-[#ecd39c]">Add member</span>
                       </div>
                       <p className="text-[13px] text-white/70">The member gets an invite, sets a password, adds their details, and signs.</p>
-                      <p className="mt-0.5 text-[12px] text-white/40">They sign the agreement in the portal.</p>
+                      <p className="mt-0.5 text-[12px] text-white/60">They sign the agreement in the portal.</p>
                     </button>
                     <button type="button" onClick={() => setTeamAddMode("presigned")} className="group w-full text-left ssr-tile ssr-tile-hover p-5 transition-colors">
                       <div className="mb-2.5 flex items-center gap-2.5">
@@ -1289,7 +1289,7 @@ export function AccountList({
                         <span className="text-[10px] uppercase tracking-[0.2em] text-white/85 transition-colors group-hover:text-[#ecd39c]">Add member with existing agreement</span>
                       </div>
                       <p className="text-[13px] text-white/70">The member gets an invite, sets a password, and adds their details.</p>
-                      <p className="mt-0.5 text-[12px] text-white/40">You upload a signed agreement.</p>
+                      <p className="mt-0.5 text-[12px] text-white/60">You upload a signed agreement.</p>
                     </button>
                   </div>
                 </>
@@ -1301,7 +1301,7 @@ export function AccountList({
                       <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Add member</DialogTitle>
                     </div>
                   </DialogHeader>
-                  <p className="text-sm text-foreground/45 mt-3">
+                  <p className="text-sm text-foreground/60 mt-3">
                     They&rsquo;ll enter their name and details during onboarding — you set their role here.
                   </p>
                   <div className="space-y-4 pt-2">
@@ -1348,7 +1348,7 @@ export function AccountList({
                       <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">Choose a contract template</DialogTitle>
                     </div>
                   </DialogHeader>
-                  <p className="text-sm text-foreground/45 mt-3">
+                  <p className="text-sm text-foreground/60 mt-3">
                     Select a template to pre-populate the contract form, or start from blank.
                   </p>
                   <div className="space-y-3 pt-3">
@@ -1405,7 +1405,7 @@ export function AccountList({
                       <DialogTitle className="!text-[10px] !font-medium uppercase !tracking-[0.24em] !leading-none text-[#ecd39c]">{presignedForExisting ? "Add a document" : "Existing agreement"}</DialogTitle>
                     </div>
                   </DialogHeader>
-                  <p className="mt-3 text-sm text-foreground/45">
+                  <p className="mt-3 text-sm text-foreground/60">
                     {presignedForExisting
                       ? <>Upload another signed document for <span className="text-foreground/70">{presignedMemberName}</span> — it's added to their file. No new invite.</>
                       : "Upload the signed contract and read it — the portal fills in the details below for you to check, then sends the invite."}
@@ -1415,7 +1415,7 @@ export function AccountList({
                     {/* Engagement — segmented toggle (new members only) */}
                     {!presignedForExisting && (
                     <div className="space-y-2">
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Engagement</span>
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/60">Engagement</span>
                       <div className="grid grid-cols-2 gap-2">
                         {([
                           { v: "freelancer", t: "Freelancer", d: "Paid per work" },
@@ -1430,7 +1430,7 @@ export function AccountList({
                               className={`rounded-sm border px-3.5 py-3 text-left transition-colors ${on ? "border-[#C9A96A]/70 bg-[#C9A96A]/[0.08]" : "border-white/10 hover:border-[#C9A96A]/40 hover:bg-white/[0.02]"}`}
                             >
                               <div className={`text-sm ${on ? "text-[#ecd39c]" : "text-foreground/80"}`}>{o.t}</div>
-                              <div className="text-[11px] text-foreground/40">{o.d}</div>
+                              <div className="text-[11px] text-foreground/60">{o.d}</div>
                             </button>
                           );
                         })}
@@ -1440,7 +1440,7 @@ export function AccountList({
 
                     {/* Contract first — read it to prefill everything below */}
                     <div className="space-y-2">
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">Signed contract</span>
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/60">Signed contract</span>
                       <div
                         onClick={() => document.getElementById("presigned-pdf-input")?.click()}
                         onDragOver={(e) => { e.preventDefault(); setPresignedDragging(true); }}
@@ -1460,10 +1460,10 @@ export function AccountList({
                         className={`cursor-pointer rounded-sm border border-dashed px-4 py-4 transition-colors ${presignedDragging ? "border-[#C9A96A]/70 bg-[#C9A96A]/[0.06]" : presignedPdfFile ? "border-[#C9A96A]/50 bg-white/[0.02]" : "border-white/15 hover:border-[#C9A96A]/45 hover:bg-white/[0.02]"}`}
                       >
                         <div className="flex min-w-0 items-center justify-between gap-3">
-                          <span className={`min-w-0 flex-1 truncate text-sm ${presignedPdfFile ? "text-foreground" : "text-foreground/45"}`}>
+                          <span className={`min-w-0 flex-1 truncate text-sm ${presignedPdfFile ? "text-foreground" : "text-foreground/60"}`}>
                             {presignedPdfFile ? presignedPdfFile.name : "Drop the signed contract, or click to browse"}
                           </span>
-                          <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-foreground/40">
+                          <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-foreground/60">
                             {presignedPdfFile ? `${(presignedPdfFile.size / 1024 / 1024).toFixed(2)} MB` : "PDF"}
                           </span>
                         </div>
@@ -1493,7 +1493,7 @@ export function AccountList({
                     <div className="space-y-4 border-t border-white/[0.07] pt-5">
                       <div className="flex items-center gap-3">
                         <div className="h-px w-6 bg-gold-muted" />
-                        <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/40">
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/60">
                           {presignedForExisting ? "Document" : agreementParsed ? "From the agreement — check before sending" : "Member details"}
                         </span>
                       </div>
@@ -1506,24 +1506,24 @@ export function AccountList({
                       {!presignedForExisting && presignedEmploymentType === "employee" && (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Position</Label>
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Position</Label>
                             <Input value={presignedPosition} onChange={(e) => setPresignedPosition(e.target.value)} placeholder="Production Director" className="rounded-sm" />
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Gross annual salary (£)</Label>
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Gross annual salary (£)</Label>
                             <Input inputMode="decimal" value={presignedSalary} onChange={(e) => setPresignedSalary(e.target.value)} placeholder="45000" className="rounded-sm" />
-                            <p className="text-[10px] text-foreground/40">Gross — the portal derives net &amp; true cost from payslips.</p>
+                            <p className="text-[10px] text-foreground/60">Gross — the portal derives net &amp; true cost from payslips.</p>
                           </div>
                         </div>
                       )}
                       {!presignedForExisting && (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">First name</Label>
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">First name</Label>
                             <Input value={presignedFirstName} onChange={(e) => setPresignedFirstName(e.target.value)} placeholder="Jane" className="rounded-sm" />
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Last name</Label>
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Last name</Label>
                             <Input value={presignedLastName} onChange={(e) => setPresignedLastName(e.target.value)} placeholder="Smith" className="rounded-sm" />
                           </div>
                         </div>
@@ -1531,19 +1531,19 @@ export function AccountList({
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {!presignedForExisting && (
                           <div className="space-y-1.5">
-                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Email</Label>
+                            <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Email</Label>
                             <Input type="email" value={presignedEmail} onChange={(e) => setPresignedEmail(e.target.value)} placeholder="jane@company.com" className="rounded-sm" />
                           </div>
                         )}
                         <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Date signed</Label>
+                          <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Date signed</Label>
                           <Input type="date" value={presignedSigningDate} onChange={(e) => setPresignedSigningDate(e.target.value)} className="rounded-sm" />
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Document <span className="opacity-50">(optional)</span></Label>
+                        <Label className="text-[10px] uppercase tracking-[0.16em] text-foreground/60">Document <span className="opacity-50">(optional)</span></Label>
                         <Input value={presignedSubjectLine} onChange={(e) => setPresignedSubjectLine(e.target.value)} placeholder="e.g. Employment Agreement, Variation Letter" className="rounded-sm" />
-                        <p className="text-[10px] text-foreground/40">Names the file &amp; labels it in their Documents. A member can have several — upload each one. Defaults by engagement if left blank.</p>
+                        <p className="text-[10px] text-foreground/60">Names the file &amp; labels it in their Documents. A member can have several — upload each one. Defaults by engagement if left blank.</p>
                       </div>
                     </div>
 
@@ -1754,7 +1754,7 @@ export function AccountList({
                           className={`text-[10px] uppercase tracking-[0.18em] font-medium transition-colors ${
                             linkedAirtableId
                               ? "text-muted-foreground hover:text-foreground"
-                              : "text-foreground/45 cursor-default"
+                              : "text-foreground/60 cursor-default"
                           }`}
                           disabled={!linkedAirtableId}
                         >
@@ -1786,7 +1786,7 @@ export function AccountList({
               <button
                 type="button"
                 onClick={() => setShowArchived((v) => !v)}
-                className="ml-1 text-[10px] uppercase tracking-[0.16em] text-white/40 transition-colors hover:text-[#ecd39c]"
+                className="ml-1 text-[10px] uppercase tracking-[0.16em] text-white/60 transition-colors hover:text-[#ecd39c]"
               >
                 {showArchived ? "← Active" : `Archived · ${archivedCount}`}
               </button>
@@ -1829,7 +1829,7 @@ export function AccountList({
                   <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
                     <div className="h-px w-6 bg-gold-muted" />
                     <h3 className="text-label">{section.label}</h3>
-                    <span className="font-sans uppercase text-white/30" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{section.groups.length}</span>
+                    <span className="font-sans uppercase text-white/55" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{section.groups.length}</span>
                   </div>
                 )}
                 <div className="space-y-6">
@@ -1845,7 +1845,7 @@ export function AccountList({
                   <div
                     onClick={headerClickable ? () => navigate(`/admin/projects?client=${group.account_id}`) : undefined}
                     className={
-                      "flex items-center justify-between px-5 py-4 bg-muted/10 border-b border-border/40 transition-colors " +
+                      "flex items-center justify-between px-6 py-5 bg-muted/10 border-b border-border/40 transition-colors " +
                       (headerClickable ? "cursor-pointer hover:bg-muted/20" : "")
                     }
                   >
@@ -1856,7 +1856,7 @@ export function AccountList({
                       </h3>
                       {showClientCode && group.client_code && (
                         <span
-                          className="font-sans uppercase text-foreground/45"
+                          className="font-sans uppercase text-foreground/60"
                           style={{ fontSize: 9, letterSpacing: "0.24em" }}
                         >
                           {group.client_code}
@@ -1949,7 +1949,7 @@ export function AccountList({
                       return (
                         <div key={u.user_id}>
                         <div
-                          className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
+                          className="flex items-center gap-4 px-6 py-4 hover:bg-muted/15 transition-colors"
                         >
                           <div className="min-w-0 flex-1">
                             {/* Team title already shows the name — don't repeat it here. */}
@@ -1958,7 +1958,7 @@ export function AccountList({
                             )}
                             {u.position && (
                               <p
-                                className={`font-sans uppercase text-foreground/40 ${isTeamOnly ? "" : "mt-0.5"}`}
+                                className={`font-sans uppercase text-foreground/60 ${isTeamOnly ? "" : "mt-0.5"}`}
                                 style={{ fontSize: 9, letterSpacing: "0.18em" }}
                               >
                                 {u.position}
@@ -1972,7 +1972,7 @@ export function AccountList({
                           <div className="text-right shrink-0 min-w-[120px]">
                             {!u.last_login_at ? (
                               <p
-                                className="font-sans uppercase text-foreground/30"
+                                className="font-sans uppercase text-foreground/55"
                                 style={{ fontSize: 9, letterSpacing: "0.18em" }}
                               >
                                 Never signed in
@@ -1989,7 +1989,7 @@ export function AccountList({
                                   {lastSession ? ` · ${formatSessionDuration(lastSession.durationMs)} session` : ""}
                                 </p>
                                 <p
-                                  className="font-sans uppercase text-foreground/30 mt-0.5 group-hover/ls:text-foreground/55 transition-colors"
+                                  className="font-sans uppercase text-foreground/55 mt-0.5 group-hover/ls:text-foreground/55 transition-colors"
                                   style={{ fontSize: 9, letterSpacing: "0.18em" }}
                                 >
                                   Last seen · {isHistoryOpen ? "Hide" : "History"}
@@ -1999,7 +1999,7 @@ export function AccountList({
                               <>
                                 <p className="text-xs text-foreground/65">{timeAgo(u.last_login_at)}</p>
                                 <p
-                                  className="font-sans uppercase text-foreground/30 mt-0.5"
+                                  className="font-sans uppercase text-foreground/55 mt-0.5"
                                   style={{ fontSize: 9, letterSpacing: "0.18em" }}
                                 >
                                   Last seen
@@ -2109,15 +2109,15 @@ export function AccountList({
                                       {isExp && (
                                         <div className="ml-5 mb-1 border-l border-border/30 pl-3 py-1 flex flex-col gap-y-1">
                                           {activityLoading.has(accountId) ? (
-                                            <span className="text-foreground/30 animate-pulse" style={{ fontSize: 10 }}>Loading activity…</span>
+                                            <span className="text-foreground/55 animate-pulse" style={{ fontSize: 10 }}>Loading activity…</span>
                                           ) : acts.length === 0 ? (
-                                            <span className="font-sans uppercase text-foreground/30" style={{ fontSize: 9, letterSpacing: "0.14em" }}>No activity in this session</span>
+                                            <span className="font-sans uppercase text-foreground/55" style={{ fontSize: 9, letterSpacing: "0.14em" }}>No activity in this session</span>
                                           ) : acts.map((ev) => (
                                             <div key={ev.id} className="flex items-baseline justify-between gap-3">
                                               <span className="text-foreground/60 truncate" style={{ fontSize: 11 }}>
                                                 {ACTION_LABELS[ev.action] ?? ev.action}{ev.description ? ` — ${ev.description}` : ""}
                                               </span>
-                                              <span className="font-sans uppercase text-foreground/30 tabular-nums shrink-0" style={{ fontSize: 9, letterSpacing: "0.12em" }}>
+                                              <span className="font-sans uppercase text-foreground/55 tabular-nums shrink-0" style={{ fontSize: 9, letterSpacing: "0.12em" }}>
                                                 {new Date(ev.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                                               </span>
                                             </div>
@@ -2193,7 +2193,7 @@ export function AccountList({
                                     })}
                                   </div>
                                   {docs.length > 20 && (
-                                    <p className="text-[10px] uppercase tracking-[0.18em] text-foreground/30 mt-2">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-foreground/55 mt-2">
                                       Showing 20 most recent
                                     </p>
                                   )}
@@ -2265,7 +2265,7 @@ export function AccountList({
             <button
               type="button"
               onClick={() => setResultBanner(null)}
-              className="w-full text-[10px] uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground/60 transition-colors pt-2"
+              className="w-full text-[10px] uppercase tracking-[0.2em] text-foreground/55 hover:text-foreground/60 transition-colors pt-2"
             >
               Dismiss
             </button>
@@ -2283,7 +2283,7 @@ export function AccountList({
       <Dialog open={!!editMember} onOpenChange={(o) => { if (!o) setEditMember(null); }}>
         <DialogContent className="max-w-md rounded-sm border-divider bg-background">
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Team · Edit member</p>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/60">Team · Edit member</p>
             <DialogTitle className="font-serif font-normal text-2xl">Edit member</DialogTitle>
           </DialogHeader>
           {editMember && (
