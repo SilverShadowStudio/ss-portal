@@ -4,6 +4,27 @@ Supersedes §8 phase 4 and §9 questions 1–2 of `sales-director-build-spec.md`
 
 ---
 
+## 0. Reality check (2026-08-04) — this is a DEDUPE-AND-ENRICH, not a 286-row import
+
+The 272 leads already in the `leads` table were bulk-imported from *this same source list* earlier. Matching the 226 cleaned companies against the 272 leads (normalised company name, then website domain):
+
+- **Already exist:** 208 / 226 (207 by name, 184 by domain). **Genuinely new: 18.**
+
+So the "import" is really an **enrich of existing leads**, not 286 fresh inserts. And the earlier import was **lossy**, which is exactly what makes this enrich valuable:
+
+| Field | On the 272 existing leads | In the cleaned CSV |
+|---|---|---|
+| `next_action_at` | **16 / 272** (the ~73 follow-up dates were mostly dropped) | present → the day-one overdue-commitment backlog |
+| `phone` | **0 / 272** | 107 |
+| `segment` | **0 / 272** | interior_design/hospitality/yachts/fashion |
+| call reports | buried, unstructured, inside the `notes` blob ("Last report: …") | clean `last_contact_report` (57 real reports) |
+| gatekeeper / qualification_note | not split out | `gatekeeper_reception` vs `qualification_note` |
+| `last_contacted_at` | 33 / 272 | derived from `last_contact_date` |
+
+**Consequence for the importer:** §4's rules (dry-run → report, existing-wins-on-conflict, idempotent) now matter *more*, not less. The primary job is to **fill blanks and structure the buried report/date/phone data on the 208 matches**, and insert only the 18 new companies. Never blind-insert 286 rows.
+
+---
+
 ## 1. What this file actually is
 
 **It is a contact database, not a deal history.** That distinction changes the plan.
