@@ -295,7 +295,10 @@ Deno.serve(async (req) => {
         .eq("account_members.user_id", prof.user_id as string)
         .eq("account_type", "team").maybeSingle();
       const code = (codeRow?.client_code as string | null) || teamCode(prof.first_name as string, prof.last_name as string);
-      const invoiceNumber = `SB-${code}-${year}-${String(month).padStart(2, "0")}`;
+      // FRL-MSANT-2026-08 — 17 chars, so it fits an 18-char UK bank payment
+      // reference. The PDF is already titled "SELF-BILLED INVOICE", so the
+      // number identifies rather than re-stating the legal mechanism.
+      const invoiceNumber = `FRL-${code}-${year}-${String(month).padStart(2, "0")}`;
       const input = {
         invoice_number: invoiceNumber,
         issued_at: new Date(Date.UTC(year, month, 1)).toISOString(), // 1st of the following month
