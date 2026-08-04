@@ -174,11 +174,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Newest period first.
+  // Oldest month at the top, most recent at the bottom — same reading order as
+  // the employee salary statement.
   periods.sort((a, b) => {
     const ay = (a.period_year as number) || 0, by = (b.period_year as number) || 0;
     const am = (a.period_month as number) || 0, bm = (b.period_month as number) || 0;
-    return by - ay || bm - am;
+    return ay - by || am - bm;
   });
 
   // Role for the header: the freelancer's profile role, else the first source seen.
