@@ -114,10 +114,6 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
     const total = (data?.workedDays ?? []).reduce((s, w) => s + (Number(w.fraction) || 1), 0);
     return Number(total.toFixed(2)).toLocaleString("en-GB", { maximumFractionDigits: 2 });
   }, [data?.workedDays]);
-  const unavailableCount = useMemo(
-    () => (data?.leave ?? []).filter((l) => l.kind === "unavailable" && l.status === "approved").length,
-    [data?.leave],
-  );
   const now = new Date();
   const todayIso = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -177,15 +173,9 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
             )}
           </div>
           ) : (
-            <div className="ssr-tile flex items-center gap-8 px-5 py-4">
-              <div>
-                <p className="font-serif text-strong" style={{ fontSize: 22, lineHeight: 1 }}>{workedCount}</p>
-                <p className="text-label mt-1">Days worked · {year}</p>
-              </div>
-              <div className="border-l border-white/10 pl-8">
-                <p className="font-serif text-strong" style={{ fontSize: 22, lineHeight: 1 }}>{unavailableCount}</p>
-                <p className="text-label mt-1">Not available</p>
-              </div>
+            <div className="ssr-tile px-5 py-4">
+              <p className="font-serif text-strong" style={{ fontSize: 22, lineHeight: 1 }}>{workedCount}</p>
+              <p className="text-label mt-1">Days worked · {year}</p>
             </div>
           )}
 
