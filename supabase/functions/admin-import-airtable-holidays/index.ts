@@ -98,13 +98,16 @@ Deno.serve(async (req) => {
   }
 
   // ── Portal team accounts, keyed by email and by normalised name ─────────────
-  const { data: accounts } = await admin.from("accounts").select("id, company_name").eq("account_type", "team");
+  const { data: accounts } = await admin.from("accounts").select("id, company_name, employment_type").eq("account_type", "team");
+  // Only EMPLOYEES get paid holiday. A freelancer's days off are "not available"
+  // — days they've blocked out so we don't count on them.
+  const isEmployee = new Map((accounts ?? []).map((a: { id: string; employment_type: string | null }) => [a.id, a.employment_type === "employee"]));
   const { data: members } = await admin.from("account_members").select("account_id, user_id");
   const { data: profiles } = await admin.from("freelancer_profiles").select("user_id, email");
   const emailByUser = new Map((profiles ?? []).map((p: { user_id: string; email: string | null }) => [p.user_id, (p.email ?? "").toLowerCase()]));
   const byEmail = new Map<string, string>();
   const byName = new Map<string, string>();
-  for (const a of (accounts ?? []) as { id: string; company_name: string }[]) {
+  for (const a of (accounts ?? []) as { id: string; company_name: string; employment_type: string | null }[]) {
     byName.set(norm(a.company_name), a.id);
     for (const m of (members ?? []) as { account_id: string; user_id: string }[]) {
       if (m.account_id !== a.id) continue;
@@ -119,7 +122,7 @@ Deno.serve(async (req) => {
 
   // ── Build the plan ─────────────────────────────────────────────────────────
   const toInsert: { account_id: string; leave_date: string; kind: string; fraction: number; status: string; note: string }[] = [];
-  const perPerson: Record<string, { matched: boolean; ranges: number; days: number; new_days: number; already: number }> = {};
+  const perPerson: Record<string, { matched: boolean; kind: string; ranges: number; days: number; new_days: number; already: number }> = {};
   const unmatched: { airtable_user: string; email: string; ranges: number; days: number }[] = [];
   const skipped: string[] = [];
 
@@ -143,7 +146,8 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    const p = perPerson[label] ?? (perPerson[label] = { matched: true, ranges: 0, days: 0, new_days: 0, already: 0 });
+    const kind = isEmployee.get(accountId) ? "holiday" : "unavailable";
+    const p = perPerson[label] ?? (perPerson[label] = { matched: true, kind, ranges: 0, days: 0, new_days: 0, already: 0 });
     p.ranges++; p.days += days.length;
     for (const d of days) {
       const key = `${accountId}|${d}`;
@@ -151,7 +155,7 @@ Deno.serve(async (req) => {
       seen.add(key);
       p.new_days++;
       toInsert.push({
-        account_id: accountId, leave_date: d, kind: "holiday", fraction: 1,
+        account_id: accountId, leave_date: d, kind, fraction: 1,
         status: "approved", note: `Imported from Airtable ${start}→${end}`,
       });
     }

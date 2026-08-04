@@ -91,6 +91,17 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
 
   const isAdmin = data?.isAdmin ?? false;
   const employeePattern = data?.workPattern === "weekdays";
+  // Only employees have paid holiday. Freelancers (modellers, scene managers,
+  // photographers) have worked days + days they've marked not available.
+  const isEmployee = data?.employmentType === "employee";
+  const workedCount = useMemo(
+    () => (data?.workedDays ?? []).reduce((s, w) => s + (Number(w.fraction) || 1), 0),
+    [data?.workedDays],
+  );
+  const unavailableCount = useMemo(
+    () => (data?.leave ?? []).filter((l) => l.kind === "unavailable" && l.status === "approved").length,
+    [data?.leave],
+  );
   const now = new Date();
   const todayIso = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -121,6 +132,10 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-6">
+          {/* Paid holiday is an EMPLOYEE benefit. Freelancers get a worked-days
+              summary instead — their calendar is worked days + days they've
+              blocked out as not available. */}
+          {isEmployee ? (
           <div className="ssr-tile flex items-center gap-5 px-5 py-4">
             <AllowanceRing remaining={data?.remaining ?? 0} allowance={data?.allowance ?? 20} />
             <div>
@@ -145,6 +160,18 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
               </div>
             )}
           </div>
+          ) : (
+            <div className="ssr-tile flex items-center gap-8 px-5 py-4">
+              <div>
+                <p className="font-serif text-strong" style={{ fontSize: 22, lineHeight: 1 }}>{workedCount}</p>
+                <p className="text-label mt-1">Days worked · {year}</p>
+              </div>
+              <div className="border-l border-white/10 pl-8">
+                <p className="font-serif text-strong" style={{ fontSize: 22, lineHeight: 1 }}>{unavailableCount}</p>
+                <p className="text-label mt-1">Not available</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5 disabled:opacity-25 disabled:hover:bg-transparent"
@@ -158,7 +185,7 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
           </div>
         </div>
 
-        <Legend />
+        <Legend isEmployee={isEmployee} />
       </div>
 
       {/* Admin: pending approvals */}
@@ -223,6 +250,7 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
                             bankHoliday={bankMap.get(dateIso)}
                             worked={workedMap.get(dateIso)}
                             employeePattern={employeePattern}
+                            isEmployee={isEmployee}
                             leave={leaveMap.get(dateIso)}
                             isAdmin={isAdmin}
                             busy={busy}
@@ -258,14 +286,15 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────────
-function Legend() {
+function Legend({ isEmployee }: { isEmployee: boolean }) {
   const items: { label: string; color: string; kind?: "dashed" | "hollow" }[] = [
     { label: "Worked", color: WORKED },
-    { label: "Paid holiday", color: HOLIDAY },
+    // Paid holiday is employee-only — freelancers never see that key.
+    ...(isEmployee ? [{ label: "Paid holiday", color: HOLIDAY }] : []),
     { label: "Not available", color: "#6b6b6b" },
     // Swatches match what the grid actually renders for each state.
-    { label: "Bank holiday", color: HOLIDAY, kind: "hollow" },
-    { label: "Pending", color: HOLIDAY, kind: "dashed" },
+    { label: "Bank holiday", color: HOLIDAY, kind: "hollow" as const },
+    { label: "Pending", color: HOLIDAY, kind: "dashed" as const },
   ];
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -285,7 +314,7 @@ function Legend() {
 // ── One day row in a month column ─────────────────────────────────────────────
 function DayRow(props: {
   dayNum: number; dowLabel: string; weekend: boolean; fullDate: string;
-  isToday: boolean; isPast: boolean; beforeStart: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean;
+  isToday: boolean; isPast: boolean; beforeStart: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean; isEmployee: boolean;
   leave?: { holiday?: LeaveDay; unavailable?: LeaveDay };
   isAdmin: boolean; busy: boolean;
   onSet: (kind: LeaveKind, fraction: number) => void;
@@ -394,8 +423,13 @@ function DayRow(props: {
         ) : (
           <div className="space-y-1.5">
             <p className="text-xs text-recessive mb-1">{isAdmin ? "Add for this person" : "Request this day"}</p>
-            <button disabled={busy} className="w-full rounded bg-gold/20 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/30 text-left" onClick={() => props.onSet("holiday", 1)}>Paid holiday — full day</button>
-            <button disabled={busy} className="w-full rounded bg-gold/10 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/20 text-left" onClick={() => props.onSet("holiday", 0.5)}>Paid holiday — half day</button>
+            {/* Paid holiday is employee-only; freelancers can only block days out. */}
+            {props.isEmployee && (
+              <>
+                <button disabled={busy} className="w-full rounded bg-gold/20 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/30 text-left" onClick={() => props.onSet("holiday", 1)}>Paid holiday — full day</button>
+                <button disabled={busy} className="w-full rounded bg-gold/10 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/20 text-left" onClick={() => props.onSet("holiday", 0.5)}>Paid holiday — half day</button>
+              </>
+            )}
             <button disabled={busy} className="w-full rounded bg-white/5 px-2 py-1.5 text-xs text-standard hover:bg-white/10 text-left" onClick={() => props.onSet("unavailable", 1)}>Not available</button>
           </div>
         )}
