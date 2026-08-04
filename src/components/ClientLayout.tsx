@@ -13,7 +13,9 @@ interface ClientLayoutProps {
 }
 
 export function ClientLayout({ children, fullWidth = false, panel = false }: ClientLayoutProps) {
-  const { user } = useAuth();
+  const { user, accountType } = useAuth();
+  // Team-member portals use the blue theme; client portals use green.
+  const panelTheme = accountType === "team" ? "ssr-panel--team" : "ssr-panel--client";
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-sidebar-expanded");
     return stored === null ? true : stored === "true";
@@ -39,7 +41,7 @@ export function ClientLayout({ children, fullWidth = false, panel = false }: Cli
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         {panel ? (
           <div className="ssr-panelwrap pb-24 md:pb-4">
-            <div className="ssr-panel ssr-panel--client">{children}</div>
+            <div className={cn("ssr-panel", panelTheme)}>{children}</div>
           </div>
         ) : (
           <div

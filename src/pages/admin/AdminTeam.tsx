@@ -8,7 +8,7 @@ export default function AdminTeam() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   return (
-    <AdminLayout panel>
+    <AdminLayout panel panelClassName="ssr-panel--team">
       <AccountList
         title="Team"
         eyebrow="Team Management"

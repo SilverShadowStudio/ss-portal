@@ -7,7 +7,7 @@ export default function AdminTeamCalendar() {
   const { accountId } = useParams();
   const navigate = useNavigate();
   return (
-    <AdminLayout panel>
+    <AdminLayout panel panelClassName="ssr-panel--team">
       <div className="mb-8 animate-fade-in">
         <button onClick={() => navigate("/admin/team")} className="mb-4 inline-flex items-center gap-2 text-xs text-recessive hover:text-standard">
           <ArrowLeft className="h-3.5 w-3.5" /> Team
