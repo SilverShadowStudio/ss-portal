@@ -37,11 +37,12 @@ const HOLIDAY_RGB = "89,174,248";
 const WORKED = GOLD_BRIGHT;          // worked days — yellow
 const WORKED_RGB = "236,211,156";    // #ecd39c
 // TODAY. Deliberately outside the state palette (yellow worked / blue holiday /
-// grey unavailable) so "today" never reads as a status — a cool silver against
-// the warm gold. Defined ONCE here and used by both the employee and freelancer
-// calendars (they're the same component), so changing it changes both.
-const TODAY = "#E6ECF5";
-const TODAY_RGB = "230,236,245";
+// grey unavailable) so "today" never reads as a status — a warm crimson, clearly
+// red rather than orange so it can't be mistaken for the gold. Defined ONCE here
+// and used by both the employee and freelancer calendars (they're the same
+// component), so changing this one line changes both.
+const TODAY = "#F0544C";
+const TODAY_RGB = "240,84,76";
 // Earliest year any calendar shows. Nothing before this exists in Airtable.
 const MIN_YEAR = 2026;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
