@@ -49,7 +49,13 @@ function fractionLabel(f: number): string {
   return String(f);
 }
 
-export function TeamCalendar({ accountId, className }: { accountId?: string; className?: string }) {
+export function TeamCalendar({ accountId, className, onLoaded }: {
+  accountId?: string;
+  className?: string;
+  /** Fires once the calendar knows who this is — lets the page word its header
+   *  for an employee vs a freelancer. */
+  onLoaded?: (info: { employmentType: string | null }) => void;
+}) {
   const { toast } = useToast();
   const [data, setData] = useState<CalData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,12 +74,13 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
       if (error) throw error;
       if ((res as { error?: string })?.error) throw new Error((res as { error: string }).error);
       setData(res as CalData);
+      onLoaded?.({ employmentType: (res as CalData)?.employmentType ?? null });
     } catch (e) {
       toast({ title: "Could not load calendar", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [accountId, year, toast]);
+  }, [accountId, year, toast, onLoaded]);
 
   useEffect(() => { load(); }, [load]);
 
