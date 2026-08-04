@@ -62,6 +62,15 @@ function num(v: unknown): number | null {
 }
 function str(v: unknown): string { const u = unwrap(v); return u == null || typeof u === "object" ? "" : String(u); }
 
+/** Team code: first initial + first 4 letters of surname, e.g. Maycon Santos →
+ *  MSANT. Five characters, deliberately unlike the clients' three, so the two
+ *  are distinguishable on sight. Mirrors accounts.client_code. */
+function teamCode(first: string, last: string): string {
+  const a = (first || "").replace(/[^A-Za-z]/g, "");
+  const b = (last || "").replace(/[^A-Za-z]/g, "");
+  return (a.slice(0, 1) + b.slice(0, 4)).toUpperCase();
+}
+
 async function atFetch(pat: string, url: string): Promise<Record<string, unknown>> {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${pat}` } });
   if (!r.ok) throw new Error(`Airtable ${r.status}: ${await r.text()}`);
@@ -228,7 +237,6 @@ Deno.serve(async (req) => {
   const { data: existing } = await sb.from("self_bill_invoices")
     .select("source_table, payee_email, invoice_number").eq("period_year", year).eq("period_month", month);
   const already = new Set((existing ?? []).map((e) => `${e.source_table}|${(e.payee_email || "").toLowerCase()}`));
-  let seq = (existing ?? []).length;
 
   // Dropbox connection (only needed for a real run).
   let dbxToken: string | null = null, dbxNs: string | null = null;
@@ -277,8 +285,17 @@ Deno.serve(async (req) => {
       const addressLines = [street, cityLine].filter(Boolean);
       if (!addressLines.length && prof.address) addressLines.push(...String(prof.address).split("\n").filter(Boolean));
 
-      seq += 1;
-      const invoiceNumber = `SB-${year}-${String(month).padStart(2, "0")}-${String(seq).padStart(4, "0")}`;
+      // Invoice number is derived from the person's code + the period, so it's
+      // unique by construction — the DB already enforces one invoice per
+      // (source, person, month). The previous scheme counted existing rows, so
+      // deleting an invoice made the next run reuse a number.
+      // Prefer the account's stored code; fall back to deriving it from the name.
+      const { data: codeRow } = await sb.from("accounts")
+        .select("client_code, id, account_members!inner(user_id)")
+        .eq("account_members.user_id", prof.user_id as string)
+        .eq("account_type", "team").maybeSingle();
+      const code = (codeRow?.client_code as string | null) || teamCode(prof.first_name as string, prof.last_name as string);
+      const invoiceNumber = `SB-${code}-${year}-${String(month).padStart(2, "0")}`;
       const input = {
         invoice_number: invoiceNumber,
         issued_at: new Date(Date.UTC(year, month, 1)).toISOString(), // 1st of the following month

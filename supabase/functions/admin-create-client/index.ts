@@ -416,7 +416,18 @@ Deno.serve(async (req) => {
       inviteUrl = buildPortalVerifyUrl(props, props.action_link as string)
     }
 
-    const clientCode = body.clientCode?.trim().toUpperCase() || null
+    // Team members get a 5-char code automatically: first initial + first 4
+    // letters of surname (Maycon Santos → MSANT). Deliberately a different
+    // length from the clients' 3-char codes so the two are told apart on sight.
+    // Shares the accounts.client_code unique index, so the two can never clash.
+    const teamAutoCode = (() => {
+      if (accountType !== 'team') return null
+      const first = (body.contact.firstName ?? '').replace(/[^A-Za-z]/g, '')
+      const last = (body.contact.lastName ?? '').replace(/[^A-Za-z]/g, '')
+      if (!first || !last) return null   // invite-by-email only: filled in at onboarding
+      return (first.slice(0, 1) + last.slice(0, 4)).toUpperCase()
+    })()
+    const clientCode = body.clientCode?.trim().toUpperCase() || teamAutoCode || null
     // Optional: if the admin chose to link to an existing Airtable Clients
     // row in the Add Client pre-flight match panel, the chosen record id
     // arrives here. Writing it onto the account row at insert time lets
