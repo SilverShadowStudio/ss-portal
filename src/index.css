@@ -544,7 +544,7 @@ input:-webkit-autofill:active {
 /* Sales: same gradient geometry, hue→burgundy (345°) with richer saturation
    (a low-sat red read as terracotta), luminance-matched to the plum. */
 .ssr-panel--sales {
-  background: linear-gradient(165deg, #471a25 0%, #511726 26%, #1f1517 68%, #180f11 100%);
+  background: linear-gradient(165deg, #3c1620 0%, #471421 26%, #191113 68%, #130c0e 100%);
 }
 
 /* brighter zone — distinguished by tone only (no border/highlight) */
