@@ -49,9 +49,10 @@ alter table public.leads
 -- 4. Now the stage lookup can be dropped.
 drop table if exists public.pipeline_stages cascade;
 
--- 5. Functions.
+-- 5. Functions. (trg_coach_settings_touch drops with the coach_settings table.)
 drop function if exists public.tg_lead_events();
 drop function if exists public.tg_interaction_touch();
+drop function if exists public.tg_touch_updated_at();
 drop function if exists public.can_see_all_sales();
 
 commit;

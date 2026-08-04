@@ -41,6 +41,14 @@ create policy pipeline_stages_read on public.pipeline_stages
   for select using (
     exists (select 1 from public.user_roles
       where user_id = auth.uid() and role::text in ('admin','sales_manager','sales')));
+-- Stages are addable (spec: via row insert, not code) and tunable (probability
+-- "seed then tune") by the manager tier only. No delete policy (leads FK the key).
+drop policy if exists pipeline_stages_insert on public.pipeline_stages;
+create policy pipeline_stages_insert on public.pipeline_stages
+  for insert with check (public.can_see_all_sales());
+drop policy if exists pipeline_stages_update on public.pipeline_stages;
+create policy pipeline_stages_update on public.pipeline_stages
+  for update using (public.can_see_all_sales()) with check (public.can_see_all_sales());
 
 -- ── 2. leads — extend. Margin left NULL (no invented default); actual_margin_pct
 --       is a column only for now (3 invoices vs cost-only payables ≠ a real number). ──
@@ -58,6 +66,19 @@ alter table public.leads
   add column if not exists stalled_at           timestamptz,
   add column if not exists import_source        text,
   add column if not exists import_row_hash      text;
+
+-- State-column CHECKs (an LLM writes many of these values; constraints stop
+-- silent drift). Named + drop-if-exists so they're idempotent.
+alter table public.leads drop constraint if exists leads_outcome_chk;
+alter table public.leads add  constraint leads_outcome_chk
+  check (outcome is null or outcome in ('won','lost','dead'));
+alter table public.leads drop constraint if exists leads_loss_reason_category_chk;
+alter table public.leads add  constraint leads_loss_reason_category_chk
+  check (loss_reason_category is null or loss_reason_category in
+    ('price','timing','no_budget','competitor','no_decision','wrong_fit','ghosted','other'));
+alter table public.leads drop constraint if exists leads_margin_source_chk;
+alter table public.leads add  constraint leads_margin_source_chk
+  check (margin_source is null or margin_source in ('manual','airtable','computed'));
 
 update public.leads set stage = 'won', outcome = 'won' where status = 'won' and stage is null;
 update public.leads set stage = 'new' where stage is null;
@@ -117,11 +138,11 @@ create policy contacts_sales_visibility on public.contacts
 create table if not exists public.lead_events (
   id uuid primary key default gen_random_uuid(),
   lead_id uuid not null references public.leads(id) on delete cascade,
-  event_type text not null,   -- 'created'|'stage_change'|'outcome_set'|'owner_change'|'value_change'
+  event_type text not null check (event_type in ('created','stage_change','outcome_set','owner_change','value_change')),
   from_value text,
   to_value   text,
   actor_id   uuid,
-  source     text not null default 'ui',   -- 'ui'|'coach'|'import'|'system'|'migration'
+  source     text not null default 'ui' check (source in ('ui','coach','import','system','migration')),
   created_at timestamptz not null default now()
 );
 create index if not exists lead_events_lead_idx on public.lead_events (lead_id, created_at);
@@ -167,13 +188,13 @@ drop trigger if exists trg_lead_events on public.leads;
 create trigger trg_lead_events after insert or update on public.leads
   for each row execute function public.tg_lead_events();
 
--- Idempotent: only for leads that don't already have a 'migration' created event,
--- so a second successful run of this file is a no-op.
+-- Idempotent: skip any lead that already has a 'created' event (from this backfill
+-- OR from the trigger on a later UI/import insert), so a re-run never duplicates.
 insert into public.lead_events (lead_id, event_type, to_value, source, created_at)
   select l.id, 'created', l.stage, 'migration', coalesce(l.created_at, now())
   from public.leads l
   where not exists (
-    select 1 from public.lead_events e where e.lead_id = l.id and e.source = 'migration');
+    select 1 from public.lead_events e where e.lead_id = l.id and e.event_type = 'created');
 
 alter table public.lead_events enable row level security;
 drop policy if exists lead_events_sales_read on public.lead_events;
@@ -192,9 +213,9 @@ create table if not exists public.interactions (
   id uuid primary key default gen_random_uuid(),
   lead_id    uuid not null references public.leads(id) on delete cascade,
   contact_id uuid references public.contacts(id) on delete set null,
-  type       text not null,   -- 'call'|'email'|'meeting'|'linkedin'|'whatsapp'|'other'
-  direction  text,            -- 'outbound'|'inbound'
-  outcome    text,            -- 'no_answer'|'left_message'|'spoke'|'meeting_booked'|'pushed'|'objection'|'dead'|'other'
+  type       text not null check (type in ('call','email','meeting','linkedin','whatsapp','other')),
+  direction  text check (direction is null or direction in ('outbound','inbound')),
+  outcome    text check (outcome is null or outcome in ('no_answer','left_message','spoke','meeting_booked','pushed','objection','dead','other')),
   summary    text,            -- LLM-normalised
   raw_debrief text,           -- exactly what the rep typed. NEVER discard.
   objection  text,
@@ -234,10 +255,10 @@ create table if not exists public.commitments (
   id uuid primary key default gen_random_uuid(),
   lead_id        uuid not null references public.leads(id) on delete cascade,
   interaction_id uuid references public.interactions(id) on delete set null,
-  party          text not null,   -- 'us'|'them'
+  party          text not null check (party in ('us','them')),
   description    text not null,
   due_date       date not null,
-  status         text not null default 'open',  -- 'open'|'kept'|'missed'|'cancelled'
+  status         text not null default 'open' check (status in ('open','kept','missed','cancelled')),
   owner_id       uuid not null references auth.users(id),
   slip_count     int not null default 0,
   original_due_date date,
@@ -266,11 +287,12 @@ create table if not exists public.coach_directives (
   score               numeric,
   generated_for       date,
   owner_id            uuid not null references auth.users(id),
-  status              text not null default 'pending',  -- 'pending'|'acted'|'dismissed'|'expired'
+  status              text not null default 'pending' check (status in ('pending','acted','dismissed','expired')),
   acted_interaction_id uuid references public.interactions(id) on delete set null,
   created_at          timestamptz not null default now()
 );
 create index if not exists coach_directives_owner_idx on public.coach_directives (owner_id, generated_for);
+create index if not exists coach_directives_lead_idx  on public.coach_directives (lead_id);
 
 alter table public.coach_directives enable row level security;
 drop policy if exists coach_directives_owner_all on public.coach_directives;
@@ -301,7 +323,7 @@ create policy sales_targets_owner_all on public.sales_targets
 -- ── 9. coach_settings — one row per rep. ─────────────────────────────────────
 create table if not exists public.coach_settings (
   user_id             uuid primary key references auth.users(id) on delete cascade,
-  intensity           text not null default 'hard',  -- 'direct'|'hard'|'brutal'
+  intensity           text not null default 'hard' check (intensity in ('direct','hard','brutal')),
   daily_call_target   int not null default 10,
   daily_meeting_target int not null default 2,
   created_at          timestamptz not null default now(),
@@ -314,3 +336,12 @@ create policy coach_settings_owner_all on public.coach_settings
   for all
   using      (user_id = auth.uid() or public.can_see_all_sales())
   with check (user_id = auth.uid() or public.can_see_all_sales());
+
+-- Keep coach_settings.updated_at honest on every update.
+create or replace function public.tg_touch_updated_at()
+returns trigger language plpgsql set search_path = public
+as $$
+begin new.updated_at = now(); return new; end $$;
+drop trigger if exists trg_coach_settings_touch on public.coach_settings;
+create trigger trg_coach_settings_touch before update on public.coach_settings
+  for each row execute function public.tg_touch_updated_at();
