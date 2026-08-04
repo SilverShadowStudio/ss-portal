@@ -3,8 +3,11 @@
 // Silver Shadow Studio (subject + body) via the Anthropic API. Returns JSON.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { SALES_MODEL } from "../_shared/anthropicModel.ts";
 
-const MODEL = "claude-sonnet-4-5";
+// One model id for the whole sales module. claude-sonnet-4-5 was hardcoded here
+// and had drifted out of step with the verified id in _shared.
+const MODEL = SALES_MODEL;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -38,8 +41,53 @@ async function callAnthropic(apiKey: string, prompt: string, mode: string): Prom
   return fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: mode === "call" ? SYSTEM_CALL : SYSTEM, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: MODEL, max_tokens: mode === "call" ? 2500 : 1200, system: mode === "call" ? SYSTEM_CALL : SYSTEM, messages: [{ role: "user", content: prompt }] }),
   });
+}
+
+/** Turn the model's reply into {subject, body}, tolerating the two ways a long
+ *  call brief goes wrong: raw newlines inside a JSON string (invalid JSON, even
+ *  though the prompt asks for \\n), and a response cut off mid-string.
+ *  Falls back to field extraction so a usable brief beats a clean error. */
+function parseDraft(raw: string): { subject?: string; body?: string } | null {
+  const attempts = [raw];
+  const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
+  if (a >= 0 && z > a) attempts.push(raw.slice(a, z + 1));
+  // Escape literal control characters that appear INSIDE string literals.
+  attempts.push(...attempts.map(escapeInsideStrings));
+
+  for (const t of attempts) {
+    try {
+      const o = JSON.parse(t);
+      if (o && typeof o === "object") return o as { subject?: string; body?: string };
+    } catch { /* next */ }
+  }
+
+  // Nothing parsed — pull the fields out directly. This is what rescues a reply
+  // that was truncated before its closing brace.
+  const subject = /"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(raw)?.[1];
+  const bodyM = /"body"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(raw);
+  const body = bodyM?.[1];
+  if (!body && !subject) return null;
+  const unescape = (v?: string) =>
+    v?.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  return { subject: unescape(subject), body: unescape(body) };
+}
+
+/** JSON forbids raw newlines/tabs inside strings; models emit them anyway on
+ *  multi-line output. Escape only those inside quotes, leaving structure alone. */
+function escapeInsideStrings(s: string): string {
+  let out = "", inStr = false, esc = false;
+  for (const ch of s) {
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr && ch === "\n") { out += "\\n"; continue; }
+    if (inStr && ch === "\r") { out += "\\r"; continue; }
+    if (inStr && ch === "\t") { out += "\\t"; continue; }
+    out += ch;
+  }
+  return out;
 }
 
 Deno.serve(async (req) => {
@@ -88,11 +136,16 @@ Deno.serve(async (req) => {
 
   const data = await res.json();
   const text: string = data.content?.[0]?.text ?? "";
+  const truncated = data.stop_reason === "max_tokens";
   const raw = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
-  let parsed: { subject?: string; body?: string };
-  try { parsed = JSON.parse(raw); } catch {
-    const a = raw.indexOf("{"), z = raw.lastIndexOf("}");
-    try { parsed = JSON.parse(raw.slice(a, z + 1)); } catch { return json({ error: "Draft came back unreadable — try again." }, 200); }
+
+  const parsed = parseDraft(raw);
+  if (!parsed) {
+    return json({
+      error: truncated
+        ? "The brief ran past its length limit and came back cut off. Try again — it's usually shorter the second time."
+        : "Draft came back unreadable — try again.",
+    }, 200);
   }
-  return json({ success: true, subject: parsed.subject ?? "", body: parsed.body ?? "" });
+  return json({ success: true, subject: parsed.subject ?? "", body: parsed.body ?? "", truncated });
 });

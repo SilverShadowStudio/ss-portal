@@ -251,6 +251,11 @@ export default function AdminSales() {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Couldn't draft");
       setPitch({ lead: r, subject: data.subject, body: data.body, loading: false, mode });
+      // Recovered from a reply that hit the length limit — usable, but the last
+      // section is likely missing. Say so rather than letting it look complete.
+      if (data.truncated) {
+        toast({ title: "Brief may be cut short", description: "It ran past the length limit. Re-draft if the end looks missing." });
+      }
       await supabase.from("leads").update(mode === "call" ? { call_script: data.body } : { pitch_subject: data.subject, pitch_draft: data.body }).eq("id", r.id);
     } catch (e) {
       setPitch((p) => p && { ...p, loading: false });
