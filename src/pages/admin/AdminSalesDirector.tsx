@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +84,36 @@ function toItems(msgs: Msg[]) {
   });
 }
 
+// ── Voice ────────────────────────────────────────────────────────────────────
+// Browser SpeechRecognition. Free, no key, no per-minute cost — but Chrome and
+// Edge are where it's good, Safari is patchy and iOS weaker still. When it
+// isn't available we hide the button rather than showing one that fails:
+// macOS Fn-dictation types into the same box and works everywhere.
+
+interface SRAlternative { transcript: string }
+interface SRResult { isFinal: boolean; 0: SRAlternative; length: number }
+interface SREvent { resultIndex: number; results: { length: number; [i: number]: SRResult } }
+interface SRErrorEvent { error: string }
+interface SRInstance {
+  lang: string; continuous: boolean; interimResults: boolean;
+  start(): void; stop(): void;
+  onresult: ((e: SREvent) => void) | null;
+  onerror: ((e: SRErrorEvent) => void) | null;
+  onend: (() => void) | null;
+}
+type SRCtor = new () => SRInstance;
+
+const SpeechCtor: SRCtor | undefined =
+  (window as unknown as { SpeechRecognition?: SRCtor; webkitSpeechRecognition?: SRCtor }).SpeechRecognition ??
+  (window as unknown as { webkitSpeechRecognition?: SRCtor }).webkitSpeechRecognition;
+
+const SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Microphone access is blocked. Allow it for this site in your browser settings.",
+  "service-not-allowed": "Your browser refused the speech service.",
+  "audio-capture": "No microphone found.",
+  network: "The speech service couldn't be reached.",
+};
+
 export default function AdminSalesDirector() {
   const { toast } = useToast();
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -100,8 +130,14 @@ export default function AdminSalesDirector() {
   const [brief, setBrief] = useState("");
   const [briefMeta, setBriefMeta] = useState<{ edited_by_user: boolean; updated_at: string | null } | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const recRef = useRef<SRInstance | null>(null);
+  // Chrome ends a "continuous" session after a pause. This tracks whether Fred
+  // still means to be dictating, so a natural pause resumes instead of stopping.
+  const wantVoice = useRef(false);
 
   const items = useMemo(() => toItems(msgs), [msgs]);
   const pending = actions.filter((a) => a.status === "pending");
@@ -142,6 +178,7 @@ export default function AdminSalesDirector() {
   async function send() {
     const text = input.trim();
     if (!text || thinking) return;
+    if (listening) stopVoice();
     setInput("");
     if (taRef.current) taRef.current.style.height = "auto";
 
@@ -185,6 +222,74 @@ export default function AdminSalesDirector() {
         : "Nothing changed.",
     });
   }
+
+  function stopVoice() {
+    wantVoice.current = false;
+    setListening(false);
+    setInterim("");
+    try { recRef.current?.stop(); } catch { /* already stopped */ }
+    recRef.current = null;
+  }
+
+  function startVoice() {
+    if (!SpeechCtor) return;
+    if (listening) { stopVoice(); return; }
+
+    const rec = new SpeechCtor();
+    rec.lang = "en-GB";
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onresult = (e) => {
+      let done = "", live = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) done += r[0].transcript;
+        else live += r[0].transcript;
+      }
+      if (done.trim()) {
+        // Append with one space, never doubling one Fred already typed.
+        setInput((p) => (p.trim() ? `${p.replace(/\s+$/, "")} ` : "") + done.trim());
+      }
+      setInterim(live);
+    };
+
+    rec.onerror = (e) => {
+      // Silence isn't a failure — it's a pause. Everything else is worth saying.
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      wantVoice.current = false;
+      setListening(false);
+      toast({ title: "Dictation stopped", description: SPEECH_ERRORS[e.error] ?? e.error, variant: "destructive" });
+    };
+
+    rec.onend = () => {
+      setInterim("");
+      // A pause ends the session; resume it unless Fred actually stopped.
+      if (wantVoice.current) { try { rec.start(); return; } catch { /* fall through */ } }
+      setListening(false);
+    };
+
+    try {
+      rec.start();
+      recRef.current = rec;
+      wantVoice.current = true;
+      setListening(true);
+      taRef.current?.focus();
+    } catch {
+      toast({ title: "Couldn't start dictation", variant: "destructive" });
+    }
+  }
+
+  // Never leave the mic live on a page the user has left.
+  useEffect(() => () => { wantVoice.current = false; try { recRef.current?.stop(); } catch { /* gone */ } }, []);
+
+  // The textarea also grows when text arrives by voice, not just by typing.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, [input]);
 
   async function openBrief() {
     setBriefOpen(true); setBriefBusy(true);
@@ -348,15 +453,27 @@ export default function AdminSalesDirector() {
                 ref={taRef}
                 rows={1}
                 value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                }}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder="Just had a call with…"
                 className="max-h-[200px] flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-strong placeholder:text-white/25 focus:outline-none"
               />
+              {SpeechCtor && (
+                <button
+                  onClick={startVoice}
+                  aria-label={listening ? "Stop dictating" : "Dictate"}
+                  aria-pressed={listening}
+                  title={listening ? "Stop dictating" : "Dictate"}
+                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                    listening
+                      ? "border-[#F0544C]/50 bg-[#F0544C]/10 text-[#F0544C]"
+                      : "border-white/10 text-white/40 hover:border-[#C9A96A]/40 hover:text-[#ecd39c]"
+                  }`}
+                >
+                  {listening && <span className="absolute inset-0 animate-ping rounded-full bg-[#F0544C]/15" />}
+                  {listening ? <MicOff className="relative h-4 w-4" strokeWidth={1.75} /> : <Mic className="relative h-4 w-4" strokeWidth={1.75} />}
+                </button>
+              )}
               <button
                 onClick={send}
                 disabled={!input.trim() || thinking}
@@ -366,8 +483,15 @@ export default function AdminSalesDirector() {
                 <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
+            {listening && (
+              <p className="mt-2 text-xs italic text-white/30">
+                {interim || "Listening…"}
+              </p>
+            )}
             <p className="mt-2 text-[10px] text-white/20">
-              Enter to send · Shift + Enter for a new line
+              {listening
+                ? "Speak — it types as you go. Tap the mic to stop, Enter to send."
+                : "Enter to send · Shift + Enter for a new line"}
             </p>
           </div>
         </div>
