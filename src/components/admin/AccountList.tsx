@@ -2024,6 +2024,9 @@ export function AccountList({
                             )}
                           </div>
 
+                          {/* Right-side last-seen text — clients only; on team cards the
+                              status badge by the name already carries this. */}
+                          {!isTeamOnly && (
                           <div className="text-right shrink-0 min-w-[120px]">
                             {!u.last_login_at ? (
                               <p
@@ -2062,6 +2065,7 @@ export function AccountList({
                               </>
                             )}
                           </div>
+                          )}
 
                           <div className="flex items-center gap-1.5 shrink-0 self-start flex-wrap justify-end">
                             {isTeamOnly && (
