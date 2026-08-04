@@ -370,9 +370,8 @@ export function AccountList({
 
   useEffect(() => { fetchAccounts(); }, [accountTypes.join(",")]);
 
-  // Poll live presence (team view) so the Active badge is near real-time.
+  // Poll live presence so the Active badge is near real-time (team + clients).
   useEffect(() => {
-    if (!isTeamOnly) return;
     let cancelled = false;
     const load = async () => {
       const { data } = await supabase.from("user_presence").select("user_id, last_seen_at");
@@ -386,7 +385,7 @@ export function AccountList({
     load();
     const iv = setInterval(load, 30_000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [isTeamOnly]);
+  }, []);
 
   // Clients only: which accounts are in active production (have a live project).
   useEffect(() => {
@@ -1991,81 +1990,24 @@ export function AccountList({
                           className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/15 transition-colors"
                         >
                           <div className="min-w-0 flex-1">
-                            {isTeamOnly ? (
-                              <>
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <span className="font-sans text-sm font-medium text-strong truncate">{displayName}</span>
-                                  {online ? (
-                                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px]" style={{ color: "#6FBE8A" }}>
-                                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#6FBE8A", boxShadow: "0 0 6px rgba(111,190,138,0.75)" }} />
-                                      Active
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-recessive">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-                                      {lastActiveMs ? timeAgo(new Date(lastActiveMs).toISOString()) : "Never"}
-                                    </span>
-                                  )}
-                                </div>
-                                {u.position && (
-                                  <p className="mt-1 font-sans uppercase text-[#C9A96A] truncate" style={{ fontSize: 10, letterSpacing: "0.14em" }}>{u.position}</p>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <p className="font-sans text-sm text-foreground truncate">{displayName}</p>
-                                {u.position && (
-                                  <p className="font-sans uppercase text-foreground/60 mt-0.5" style={{ fontSize: 9, letterSpacing: "0.18em" }}>{u.position}</p>
-                                )}
-                                {u.email && (
-                                  <p className="truncate text-xs text-muted-foreground mt-1">{u.email}</p>
-                                )}
-                              </>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="font-sans text-sm font-medium text-strong truncate">{displayName}</span>
+                              {online ? (
+                                <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px]" style={{ color: "#6FBE8A" }}>
+                                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#6FBE8A", boxShadow: "0 0 6px rgba(111,190,138,0.75)" }} />
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-recessive">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
+                                  {lastActiveMs ? timeAgo(new Date(lastActiveMs).toISOString()) : "Never"}
+                                </span>
+                              )}
+                            </div>
+                            {u.position && (
+                              <p className="mt-1 font-sans uppercase text-[#C9A96A] truncate" style={{ fontSize: 10, letterSpacing: "0.14em" }}>{u.position}</p>
                             )}
                           </div>
-
-                          {/* Right-side last-seen text — clients only; on team cards the
-                              status badge by the name already carries this. */}
-                          {!isTeamOnly && (
-                          <div className="text-right shrink-0 min-w-[120px]">
-                            {!u.last_login_at ? (
-                              <p
-                                className="font-sans uppercase text-foreground/50"
-                                style={{ fontSize: 9, letterSpacing: "0.18em" }}
-                              >
-                                Never signed in
-                              </p>
-                            ) : hasSessions ? (
-                              <button
-                                type="button"
-                                onClick={() => togglePanel(u.user_id, "history", accountId)}
-                                className="group/ls text-right"
-                                aria-expanded={isHistoryOpen}
-                              >
-                                <p className="text-xs text-foreground/80">
-                                  {timeAgo(u.last_login_at)}
-                                  {lastSession ? ` · ${formatSessionDuration(lastSession.durationMs)} session` : ""}
-                                </p>
-                                <p
-                                  className="font-sans uppercase text-foreground/50 mt-0.5 group-hover/ls:text-foreground/55 transition-colors"
-                                  style={{ fontSize: 9, letterSpacing: "0.18em" }}
-                                >
-                                  Last seen · {isHistoryOpen ? "Hide" : "History"}
-                                </p>
-                              </button>
-                            ) : (
-                              <>
-                                <p className="text-xs text-foreground/80">{timeAgo(u.last_login_at)}</p>
-                                <p
-                                  className="font-sans uppercase text-foreground/50 mt-0.5"
-                                  style={{ fontSize: 9, letterSpacing: "0.18em" }}
-                                >
-                                  Last seen
-                                </p>
-                              </>
-                            )}
-                          </div>
-                          )}
 
                           {/* Action icons grouped by purpose, separated by hairlines:
                               1) Records — schedule / pay / files (view their data)
