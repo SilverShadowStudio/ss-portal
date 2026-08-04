@@ -394,7 +394,7 @@ function Tile({ label, value, tone, hero }: { label: string; value: number; tone
   return (
     <div className="ssr-tile p-5">
       <p className="text-[9px] uppercase tracking-[0.28em] text-white/40">{label}</p>
-      <p className={`mt-2 font-serif tabular-nums ${hero ? "text-3xl" : "text-2xl"} ${tone === "pos" ? "text-[#84b594]" : "text-strong"}`}>{money(value)}</p>
+      <p className={`mt-2 ${hero ? "ssr-figure-lg" : "ssr-figure"} ${tone === "pos" ? "text-[#84b594]" : "text-strong"}`}>{money(value)}</p>
     </div>
   );
 }

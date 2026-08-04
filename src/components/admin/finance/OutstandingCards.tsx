@@ -49,7 +49,7 @@ function Card({
       </div>
       <p
         className={cn(
-          "font-serif text-2xl tabular-nums",
+          "ssr-figure",
           zero ? "text-recessive" : "text-strong",
         )}
       >

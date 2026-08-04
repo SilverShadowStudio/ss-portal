@@ -576,6 +576,29 @@ input:-webkit-autofill:active {
   box-shadow: inset 2px 0 0 rgba(201,169,106,0.75);
 }
 
+/* ── Numbers ────────────────────────────────────────────────────────────────
+   Every figure in the portal is Montserrat with tabular digits. Three sizes,
+   no inline font-size — a figure picks a role, not a number.
+
+   The table rule is the important one: it makes EVERY column of digits in the
+   portal align, rather than depending on whoever wrote the cell remembering
+   tabular-nums. Proportional digits are why totals don't sit under each other. */
+.ssr-panel table,
+.ssr-figure-lg, .ssr-figure, .ssr-figure-sm, .ssr-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.ssr-figure-lg, .ssr-figure, .ssr-figure-sm {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.015em;
+}
+.ssr-figure-lg { font-size: 2.25rem; }   /* the single figure a page is about */
+.ssr-figure    { font-size: 1.75rem; }   /* a summary tile */
+.ssr-figure-sm { font-size: 1.25rem; }   /* a compact stat in a page header */
+
 /* Logo-only serif: the portal chrome uses the clean sans everywhere. The brand
    wordmark is an image, and this is scoped to .ssr-panel, so the public
    marketing pages keep their editorial serif. */

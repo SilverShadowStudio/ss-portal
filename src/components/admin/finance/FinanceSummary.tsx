@@ -115,7 +115,7 @@ function SourceTile({
           →
         </span>
       </span>
-      <span className="shrink-0 font-serif text-xl text-strong tabular-nums">
+      <span className="ssr-figure-sm shrink-0 text-strong">
         {formatCurrency(value)}
       </span>
     </button>

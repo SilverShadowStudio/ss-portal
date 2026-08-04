@@ -189,7 +189,7 @@ function Metric({
       </p>
       <p
         className={
-          "mt-1 font-serif text-xl tabular-nums " +
+          "mt-1 ssr-figure-sm " +
           (accent ? "text-gold" : "text-strong")
         }
       >

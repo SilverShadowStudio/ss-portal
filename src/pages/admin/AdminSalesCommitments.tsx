@@ -133,15 +133,15 @@ export default function AdminSalesCommitments() {
             <div className="flex items-center gap-6 text-right">
               <div>
                 <p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Overdue</p>
-                <p className={`font-serif text-xl tabular-nums leading-none mt-1 ${overdue.length ? "text-[#F0544C]" : "text-strong"}`}>{overdue.length}</p>
+                <p className={`ssr-figure-sm mt-1 ${overdue.length ? "text-[#F0544C]" : "text-strong"}`}>{overdue.length}</p>
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Due today</p>
-                <p className={`font-serif text-xl tabular-nums leading-none mt-1 ${dueToday.length ? "text-[#ecd39c]" : "text-strong"}`}>{dueToday.length}</p>
+                <p className={`ssr-figure-sm mt-1 ${dueToday.length ? "text-[#ecd39c]" : "text-strong"}`}>{dueToday.length}</p>
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-[0.22em] text-white/35">On you</p>
-                <p className="font-serif text-xl text-strong tabular-nums leading-none mt-1">{mine.length}</p>
+                <p className="ssr-figure-sm text-strong mt-1">{mine.length}</p>
               </div>
             </div>
           )}

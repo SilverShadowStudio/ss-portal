@@ -138,7 +138,7 @@ export default function AdminFreelancerPayments() {
           {!loading && (
             <div className="text-right">
               <p className="text-[9px] uppercase tracking-[0.28em] text-white/35">Total outstanding</p>
-              <p className="font-serif text-4xl text-strong tabular-nums leading-none mt-1.5">{money(grandTotal)}</p>
+              <p className="ssr-figure-lg text-strong mt-1.5">{money(grandTotal)}</p>
             </div>
           )}
         </div>

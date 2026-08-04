@@ -284,9 +284,9 @@ export default function AdminSales() {
           </div>
           {!loading && (
             <div className="flex items-center gap-6 text-right">
-              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Open leads</p><p className="font-serif text-xl text-strong tabular-nums leading-none mt-1">{open.length}</p></div>
-              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Follow-ups due</p><p className={`font-serif text-xl tabular-nums leading-none mt-1 ${dueCount ? "text-[#ecd39c]" : "text-strong"}`}>{dueCount}</p></div>
-              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Pipeline</p><p className="font-serif text-xl text-strong tabular-nums leading-none mt-1">{money(pipelineValue)}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Open leads</p><p className="ssr-figure-sm text-strong mt-1">{open.length}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Follow-ups due</p><p className={`ssr-figure-sm mt-1 ${dueCount ? "text-[#ecd39c]" : "text-strong"}`}>{dueCount}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Pipeline</p><p className="ssr-figure-sm text-strong mt-1">{money(pipelineValue)}</p></div>
             </div>
           )}
         </div>

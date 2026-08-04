@@ -167,7 +167,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
               ].map((s) => (
                 <div key={s.label} className="ssr-tile p-6">
                   <p className="text-label text-white/45">{s.label}</p>
-                  <p className={`mt-3 font-serif tabular-nums ${s.gold ? "text-gold" : "text-strong"}`} style={{ fontSize: "1.85rem", letterSpacing: "-0.01em" }}>
+                  <p className={`ssr-figure mt-3 ${s.gold ? "text-gold" : "text-strong"}`}>
                     {money(s.value, ccy)}
                   </p>
                 </div>
