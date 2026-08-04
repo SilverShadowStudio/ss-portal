@@ -30,8 +30,8 @@ const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
 // Paid + bank holiday blue. Brighter and far more saturated than the old slate
 // (#6E8CA8, hsl 209/25%/55%) so it reads clearly against the gold worked days.
-const HOLIDAY = "#67A8E4";        // hsl(209, 70%, 65%)
-const HOLIDAY_RGB = "103,168,228"; // same colour, for rgba() tints
+const HOLIDAY = "#59AEF8";        // hsl(208, 92%, 66%)
+const HOLIDAY_RGB = "89,174,248";  // same colour, for rgba() tints
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -326,7 +326,7 @@ function DayRow(props: {
   } else if (holiday?.status === "approved") {
     // Same treatment as a worked day (tinted fill + left accent + dot), in the
     // paid-holiday blue rather than gold — a holiday is a full day, not a gap.
-    bg = `rgba(${HOLIDAY_RGB},0.18)`; leftAccent = `rgba(${HOLIDAY_RGB},0.75)`;
+    bg = `rgba(${HOLIDAY_RGB},0.24)`; leftAccent = `rgba(${HOLIDAY_RGB},0.9)`;
     marker = <span style={{ fontSize: 9, color: HOLIDAY }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "●"}</span>;
   } else if (holiday?.status === "pending") {
     dashed = true; leftAccent = HOLIDAY;
