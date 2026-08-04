@@ -28,7 +28,10 @@ interface CalData {
 
 const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
-const HOLIDAY = "#6E8CA8"; // paid holiday (slate blue, distinct from worked gold)
+// Paid + bank holiday blue. Brighter and far more saturated than the old slate
+// (#6E8CA8, hsl 209/25%/55%) so it reads clearly against the gold worked days.
+const HOLIDAY = "#67A8E4";        // hsl(209, 70%, 65%)
+const HOLIDAY_RGB = "103,168,228"; // same colour, for rgba() tints
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -258,7 +261,9 @@ function Legend() {
     { label: "Worked", color: GOLD },
     { label: "Paid holiday", color: HOLIDAY },
     { label: "Not available", color: "#6b6b6b" },
-    { label: "Bank holiday", color: "#7d7669", kind: "hollow" },
+    // Bank holidays render in the holiday blue on the grid — the legend swatch
+    // was grey-brown and didn't match what it labelled.
+    { label: "Bank holiday", color: HOLIDAY, kind: "hollow" },
     { label: "Pending", color: GOLD, kind: "dashed" },
   ];
   return (
@@ -321,7 +326,7 @@ function DayRow(props: {
   } else if (holiday?.status === "approved") {
     // Same treatment as a worked day (tinted fill + left accent + dot), in the
     // paid-holiday blue rather than gold — a holiday is a full day, not a gap.
-    bg = "rgba(110,140,168,0.16)"; leftAccent = "rgba(110,140,168,0.55)";
+    bg = `rgba(${HOLIDAY_RGB},0.18)`; leftAccent = `rgba(${HOLIDAY_RGB},0.75)`;
     marker = <span style={{ fontSize: 9, color: HOLIDAY }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "●"}</span>;
   } else if (holiday?.status === "pending") {
     dashed = true; leftAccent = HOLIDAY;
@@ -344,7 +349,7 @@ function DayRow(props: {
   const boxShadow = noCell
     ? "none"
     : dashed
-      ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px ${holiday ? "rgba(110,140,168,0.5)" : "rgba(138,131,120,0.45)"}`
+      ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px ${holiday ? `rgba(${HOLIDAY_RGB},0.65)` : "rgba(138,131,120,0.45)"}`
       : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)";
 
   const row = (
