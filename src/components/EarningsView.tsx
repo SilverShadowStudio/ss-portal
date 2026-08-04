@@ -1,14 +1,25 @@
+import { Fragment, useState } from "react";
+import { ChevronRight, Eye, Download } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
+import { supabase } from "@/integrations/supabase/client";
 
 // Shared presentational view for a freelancer's Earnings — rendered both on the
 // team member's own portal (src/pages/Earnings.tsx) and, read-only, by an admin
-// viewing a member's earnings (src/pages/admin/AdminTeamEarnings.tsx). It only
-// renders the inner content; each caller wraps it in its own layout.
+// (src/pages/admin/AdminTeamEarnings.tsx). It only renders the inner content;
+// each caller wraps it in its own layout.
+//
+// A monthly statement, mirroring the employee Salary page: one row per month
+// showing the FEE (no gross/net — a freelancer invoices a single figure), when
+// it fell due, what's been paid, its status, and the self-billed invoice.
+// Clicking a month expands its Airtable line items underneath.
 
 export interface EarningsLine { description: string; date: string | null; qty: number | null; unit: string; rate: number | null; amount: number }
 export interface EarningsPeriod {
   key: string; role: string; period_label: string;
-  total: number; amount_paid: number; balance: number; paid_status: string | null; lines: EarningsLine[];
+  due_date?: string | null;
+  total: number; amount_paid: number; balance: number; paid_status: string | null;
+  invoice?: { id: string; invoice_number: string | null; filed: boolean } | null;
+  lines: EarningsLine[];
 }
 export interface EarningsData {
   name: string | null; role: string | null; currency: string;
@@ -21,6 +32,12 @@ function niceDate(iso: string | null): string | null {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" });
+}
+function shortDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 function money(n: number, ccy: string) {
   const sym = ccy === "GBP" ? "£" : ccy === "EUR" ? "€" : ccy === "USD" ? "$" : `${ccy} `;
@@ -35,21 +52,45 @@ interface Props {
   data: EarningsData | null;
   loading: boolean;
   error: string | null;
-  /** Header eyebrow label (defaults to "Earnings"). */
   eyebrow?: string;
-  /** When set, shown in the subtitle in place of the role — e.g. the member's name for admins. */
   nameOverride?: string | null;
 }
 
 export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameOverride }: Props) {
   const ccy = data?.currency ?? "GBP";
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [busyInvoice, setBusyInvoice] = useState<string | null>(null);
+
+  const toggle = (key: string) =>
+    setOpen((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  async function openInvoice(invoiceId: string, download: boolean) {
+    setBusyInvoice(invoiceId);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("freelancer-invoice-link", { body: { invoice_id: invoiceId } });
+      if (error) throw new Error(error.message);
+      if ((res as { error?: string })?.error) throw new Error((res as { error: string }).error);
+      const url = (res as { url: string }).url;
+      window.open(download ? `${url}${url.includes("?") ? "&" : "?"}dl=1` : url, "_blank", "noopener,noreferrer");
+    } catch {
+      /* the row simply stays as it was — no invoice is not an error state */
+    } finally {
+      setBusyInvoice(null);
+    }
+  }
+
   const lead = nameOverride
     ? `${nameOverride}${data?.role ? ` — ${data.role}` : ""} · work in detail, `
     : data?.role ? `${data.role} — your work in detail, ` : "Your work in detail, ";
 
+  function statusOf(p: EarningsPeriod) {
+    if (p.balance <= 0.005) return { label: "Paid", tone: "rest" as const };
+    if (p.amount_paid > 0.005) return { label: `${money(p.amount_paid, ccy)} of ${money(p.total, ccy)}`, tone: "part" as const };
+    return { label: "Awaiting payment", tone: "action" as const };
+  }
+
   return (
     <>
-      {/* Page header — gold eyebrow */}
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
@@ -88,50 +129,122 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
             </div>
           </div>
 
-          {/* ── Per-period breakdown ──────────────────────────────────── */}
-          {data.periods.map((p) => (
-            <div key={p.key} className="ssr-zone">
-              <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-px w-6 bg-gold-muted" />
-                  <h2 className="text-label">{p.period_label}</h2>
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-white/35">{p.role}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="font-serif text-strong tabular-nums" style={{ fontSize: "1.05rem" }}>{money(p.total, ccy)}</span>
-                  {p.balance <= 0.005
-                    ? <span className="text-[9px] uppercase tracking-[0.22em] text-gold">Paid</span>
-                    : <span className="text-[9px] uppercase tracking-[0.22em] text-white/40">{money(p.balance, ccy)} due</span>}
-                </div>
-              </div>
-
-              {p.lines.length === 0 ? (
-                <div className="ssr-tile p-6 text-center text-recessive text-sm">Detail not available for this period.</div>
-              ) : (
-                <div className="ssr-tile overflow-hidden">
-                  {p.lines.map((l, i) => (
-                    <div key={i} className="flex items-baseline gap-6 px-6 py-3.5 border-b border-white/[0.05] last:border-0">
-                      {l.date ? (
-                        <>
-                          <div className="w-[200px] shrink-0">
-                            <p className="text-standard" style={{ fontSize: 13.5 }}>{niceDate(l.date)}</p>
-                            {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
-                          </div>
-                          <p className="text-standard flex-1 min-w-0 truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
-                        </>
-                      ) : (
-                        <div className="flex-1 min-w-0">
-                          <p className="text-standard truncate" style={{ fontSize: 13.5 }}>{l.description}</p>
-                          {qtyLabel(l, ccy) && <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
-                        </div>
-                      )}
-                      <p className="text-strong shrink-0 tabular-nums" style={{ fontSize: 13.5 }}>{money(l.amount, ccy)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* ── Monthly statement ─────────────────────────────────────── */}
+          <div className="ssr-zone">
+            <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Monthly statement</h2>
             </div>
-          ))}
+
+            <div className="ssr-tile overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.08]">
+                    {["Month", "Fee", "Due", "Payments", "Status", "Invoice"].map((h, i) => (
+                      <th key={h}
+                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal text-white/40 ${i === 1 ? "text-right" : i === 5 ? "text-center" : "text-left"}`}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.periods.map((p) => {
+                    const st = statusOf(p);
+                    const isOpen = open.has(p.key);
+                    return (
+                      <Fragment key={p.key}>
+                        <tr
+                          onClick={() => toggle(p.key)}
+                          data-open={isOpen}
+                          className="ssr-row-sweep group cursor-pointer border-b border-white/[0.05]"
+                        >
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-2">
+                              <ChevronRight
+                                className="h-3 w-3 shrink-0 text-white/35 transition-transform"
+                                style={{ transform: isOpen ? "rotate(90deg)" : "none" }}
+                                strokeWidth={1.6}
+                              />
+                              <span className="text-strong">{p.period_label}</span>
+                              <span className="text-[9px] uppercase tracking-[0.16em] text-white/30">{p.role}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-strong">{money(p.total, ccy)}</td>
+                          <td className="px-4 py-3 text-standard">{shortDate(p.due_date)}</td>
+                          <td className="px-4 py-3 text-[12px] text-recessive tabular-nums">
+                            {p.amount_paid > 0.005 ? money(p.amount_paid, ccy) : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={
+                              st.tone === "rest" ? "text-[11px] uppercase tracking-[0.16em] text-white/45"
+                                : st.tone === "part" ? "text-[11px] tabular-nums text-[#ecd39c]"
+                                : "text-[11px] uppercase tracking-[0.16em] text-[#C9A96A]"
+                            }>{st.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            {busyInvoice === p.invoice?.id ? (
+                              <BrandLoader size="sm" className="inline-block h-3.5 w-3.5" />
+                            ) : p.invoice?.filed ? (
+                              <span className="inline-flex items-center gap-4" style={{ fontSize: 10, letterSpacing: "0.16em" }}>
+                                <button onClick={() => openInvoice(p.invoice!.id, false)} className="flex items-center gap-1.5 text-white/40 transition-colors hover:text-gold">
+                                  <Eye style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">View</span>
+                                </button>
+                                <button onClick={() => openInvoice(p.invoice!.id, true)} className="flex items-center gap-1.5 text-white/40 transition-colors hover:text-gold">
+                                  <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">PDF</span>
+                                </button>
+                              </span>
+                            ) : <span className="text-white/20">—</span>}
+                          </td>
+                        </tr>
+
+                        {isOpen && (
+                          <tr className="border-b border-white/[0.05]">
+                            <td colSpan={6} className="px-4 pb-4 pt-1">
+                              {p.lines.length === 0 ? (
+                                <p className="py-3 text-center text-xs text-recessive">Detail not available for this month.</p>
+                              ) : (
+                                <div className="ml-5 border-l border-white/[0.08] pl-4">
+                                  {p.lines.map((l, i) => (
+                                    <div key={i} className="flex items-baseline gap-6 border-b border-white/[0.04] py-2.5 last:border-0">
+                                      {l.date ? (
+                                        <>
+                                          <div className="w-[190px] shrink-0">
+                                            <p className="text-standard" style={{ fontSize: 13 }}>{niceDate(l.date)}</p>
+                                            {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                          </div>
+                                          <p className="min-w-0 flex-1 truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
+                                        </>
+                                      ) : (
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
+                                          {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                        </div>
+                                      )}
+                                      <p className="shrink-0 tabular-nums text-strong" style={{ fontSize: 13 }}>{money(l.amount, ccy)}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 px-1">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Click a month to see the work behind it</p>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">
+                Outstanding{" "}
+                <span className={`tabular-nums ${data.totals.outstanding > 0.005 ? "text-[#ecd39c]" : "text-white/45"}`}>
+                  {money(data.totals.outstanding, ccy)}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </>

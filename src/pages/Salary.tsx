@@ -157,6 +157,11 @@ export default function Salary() {
     return new Date(y, m, 1).getTime();
   };
   const dueSlips = slips.filter((s) => dueFromTs(s) <= Date.now());
+  // Still owed across every month that has fallen due.
+  const outstandingTotal = dueSlips.reduce(
+    (sum, s) => sum + Math.max(0, Number(s.net || 0) - paidFor(s.id)),
+    0,
+  );
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort(dueSlips, sortCols, { key: "month", dir: "asc" });
 
   const alignCls = (a: Col["align"]) => a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
@@ -221,7 +226,14 @@ export default function Salary() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">Net is your take-home pay. A month paid in instalments shows each payment above.</p>
+          {/* What's still owed matters more than a definition of "net". */}
+          <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 px-1">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Net is your take-home pay</p>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">
+              Outstanding{" "}
+              <span className={`tabular-nums ${outstandingTotal > 0.005 ? "text-[#ecd39c]" : "text-white/45"}`}>{money(outstandingTotal)}</span>
+            </p>
+          </div>
         </div>
       )}
 

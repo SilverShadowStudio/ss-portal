@@ -122,6 +122,13 @@ Deno.serve(async (req) => {
   // Earliest year shown anywhere in the portal — matches the calendar's floor.
   // Future years are unbounded; this only ever hides history before 2026.
   const MIN_YEAR = 2026;
+
+  // Self-billed invoices we've raised for this person, to hang off each month.
+  const { data: sbRows } = await sb.from("self_bill_invoices")
+    .select("id, invoice_number, period_year, period_month, dropbox_path")
+    .ilike("payee_email", email);
+  const selfBills = (sbRows ?? []) as { id: string; invoice_number: string | null; period_year: number; period_month: number; dropbox_path: string | null }[];
+
   const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const periods: Record<string, unknown>[] = [];
   let earned = 0, paid = 0, outstanding = 0;
@@ -150,13 +157,19 @@ Deno.serve(async (req) => {
 
     const y = row.period_year as number | null;
     const m = row.period_month as number | null;
+    // A month's fee falls due at the end of that month (same rule as Debts).
+    const dueDate = y && m ? new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) : null;
+    // The self-billed invoice we raised for that month, if it's been generated.
+    const inv = y && m ? selfBills.find((s) => s.period_year === y && s.period_month === m) : undefined;
     periods.push({
       key: `${source}-${row.airtable_record_id}`,
       role: SOURCES[source].role,
       period_year: y, period_month: m,
       period_label: y && m ? `${MONTHS[m - 1]} ${y}` : (row.period_date ?? "—"),
+      due_date: dueDate,
       total, amount_paid: amtPaid, balance: bal,
       paid_status: row.paid_status ?? null,
+      invoice: inv ? { id: inv.id, invoice_number: inv.invoice_number, filed: !!inv.dropbox_path } : null,
       lines,
     });
   }
