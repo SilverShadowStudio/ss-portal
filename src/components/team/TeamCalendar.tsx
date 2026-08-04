@@ -103,10 +103,12 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   // Only employees have paid holiday. Freelancers (modellers, scene managers,
   // photographers) have worked days + days they've marked not available.
   const isEmployee = data?.employmentType === "employee";
-  const workedCount = useMemo(
-    () => (data?.workedDays ?? []).reduce((s, w) => s + (Number(w.fraction) || 1), 0),
-    [data?.workedDays],
-  );
+  // Round: summing fractions like 0.938 + 0.813 leaks float artefacts
+  // (77.49000000000001). Two decimals, and drop a trailing ".00".
+  const workedCount = useMemo(() => {
+    const total = (data?.workedDays ?? []).reduce((s, w) => s + (Number(w.fraction) || 1), 0);
+    return Number(total.toFixed(2)).toLocaleString("en-GB", { maximumFractionDigits: 2 });
+  }, [data?.workedDays]);
   const unavailableCount = useMemo(
     () => (data?.leave ?? []).filter((l) => l.kind === "unavailable" && l.status === "approved").length,
     [data?.leave],
@@ -303,7 +305,8 @@ function Legend({ isEmployee }: { isEmployee: boolean }) {
     ...(isEmployee ? [{ label: "Paid holiday", color: HOLIDAY }] : []),
     { label: "Not available", color: "#6b6b6b" },
     // Swatches match what the grid actually renders for each state.
-    { label: "Bank holiday", color: HOLIDAY, kind: "hollow" as const },
+    // Bank holidays are employee-only, so freelancers never see that key either.
+    ...(isEmployee ? [{ label: "Bank holiday", color: HOLIDAY, kind: "hollow" as const }] : []),
     { label: "Pending", color: HOLIDAY, kind: "dashed" as const },
   ];
   return (

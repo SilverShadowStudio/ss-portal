@@ -180,8 +180,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      const { data: holidays } = await sb.from("bank_holidays")
-        .select("holiday_date, name").eq("division", "england-and-wales").gte("holiday_date", from).lte("holiday_date", to);
+      // Bank holidays are an EMPLOYEE benefit (paid days the studio is closed).
+      // A freelancer either works a day or blocks it out — a UK bank holiday
+      // means nothing on their calendar, so they never see them.
+      const { data: holidays } = acct.employment_type === "employee"
+        ? await sb.from("bank_holidays")
+            .select("holiday_date, name").eq("division", "england-and-wales").gte("holiday_date", from).lte("holiday_date", to)
+        : { data: [] as { holiday_date: string; name: string }[] };
 
       const { data: leave } = await sb.from("team_leave_requests")
         .select("id, leave_date, kind, fraction, status, note").eq("account_id", accountId).gte("leave_date", from).lte("leave_date", to);
