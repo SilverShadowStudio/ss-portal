@@ -2067,66 +2067,85 @@ export function AccountList({
                           </div>
                           )}
 
-                          <div className="flex items-center gap-1.5 shrink-0 self-start flex-wrap justify-end">
-                            {isTeamOnly && (
+                          {/* Action icons grouped by purpose, separated by hairlines:
+                              1) Records — schedule / pay / files (view their data)
+                              2) Activity — sessions + portal emails (monitor)
+                              3) Admin — upload a doc / view-as (act on the account) */}
+                          <div className="flex items-center shrink-0 self-start flex-wrap justify-end gap-y-1.5">
+                            {/* 1 · Records */}
+                            <div className="flex items-center gap-1.5">
+                              {isTeamOnly && (
+                                <CircleButton
+                                  icon={CalendarDays}
+                                  label="Calendar"
+                                  active={false}
+                                  onClick={() => navigate(`/admin/team/${accountId}/calendar`)}
+                                />
+                              )}
+                              {/* Earnings is freelancer-only (employees are salaried → Salary). */}
+                              {isTeamOnly && u.employment_type !== "employee" && (
+                                <CircleButton
+                                  icon={Wallet}
+                                  label="Earnings"
+                                  active={false}
+                                  onClick={() => navigate(`/admin/team/${accountId}/earnings?name=${encodeURIComponent(displayName)}`)}
+                                />
+                              )}
                               <CircleButton
-                                icon={CalendarDays}
-                                label="Calendar"
-                                active={false}
-                                onClick={() => navigate(`/admin/team/${accountId}/calendar`)}
+                                icon={FileText}
+                                label="Documents"
+                                active={isDocsOpen}
+                                onClick={() => togglePanel(u.user_id, "docs", accountId)}
                               />
-                            )}
-                            {/* Earnings is freelancer-only (employees are salaried → Salary). */}
-                            {isTeamOnly && u.employment_type !== "employee" && (
+                            </div>
+
+                            <div className="mx-2 h-4 w-px self-center bg-white/10" />
+
+                            {/* 2 · Activity & comms */}
+                            <div className="flex items-center gap-1.5">
                               <CircleButton
-                                icon={Wallet}
-                                label="Earnings"
-                                active={false}
-                                onClick={() => navigate(`/admin/team/${accountId}/earnings?name=${encodeURIComponent(displayName)}`)}
+                                icon={Clock}
+                                label="Sessions & activity"
+                                active={isHistoryOpen}
+                                onClick={() => togglePanel(u.user_id, "history", accountId)}
                               />
-                            )}
-                            {isTeamOnly && (
                               <CircleButton
-                                icon={FilePlus2}
-                                label="Upload a document"
+                                icon={Mail}
+                                label="Portal emails"
                                 active={false}
-                                onClick={() => openUploadForMember(u, group.company_name || displayName)}
+                                onClick={() => setEmailsModal({ accountId: group.account_id, name: group.company_name || displayName })}
                               />
-                            )}
-                            <CircleButton
-                              icon={Ghost}
-                              label={`View as ${displayName}`}
-                              active={false}
-                              onClick={async () => {
-                                const { error } = await enterGhostMode({
-                                  userId: u.user_id,
-                                  name: displayName,
-                                });
-                                if (error) {
-                                  toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
-                                  return;
-                                }
-                                navigate(postGhostPath);
-                              }}
-                            />
-                            <CircleButton
-                              icon={FileText}
-                              label="Documents"
-                              active={isDocsOpen}
-                              onClick={() => togglePanel(u.user_id, "docs", accountId)}
-                            />
-                            <CircleButton
-                              icon={Clock}
-                              label="Sessions & activity"
-                              active={isHistoryOpen}
-                              onClick={() => togglePanel(u.user_id, "history", accountId)}
-                            />
-                            <CircleButton
-                              icon={Mail}
-                              label="Portal emails"
-                              active={false}
-                              onClick={() => setEmailsModal({ accountId: group.account_id, name: group.company_name || displayName })}
-                            />
+                            </div>
+
+                            <div className="mx-2 h-4 w-px self-center bg-white/10" />
+
+                            {/* 3 · Admin actions */}
+                            <div className="flex items-center gap-1.5">
+                              {isTeamOnly && (
+                                <CircleButton
+                                  icon={FilePlus2}
+                                  label="Upload a document"
+                                  active={false}
+                                  onClick={() => openUploadForMember(u, group.company_name || displayName)}
+                                />
+                              )}
+                              <CircleButton
+                                icon={Ghost}
+                                label={`View as ${displayName}`}
+                                active={false}
+                                onClick={async () => {
+                                  const { error } = await enterGhostMode({
+                                    userId: u.user_id,
+                                    name: displayName,
+                                  });
+                                  if (error) {
+                                    toast({ title: "Ghost Mode failed", description: error.message, variant: "destructive" });
+                                    return;
+                                  }
+                                  navigate(postGhostPath);
+                                }}
+                              />
+                            </div>
                           </div>
                           {isTeamOnly && showDropdown && (
                             <div className="shrink-0 self-start" onClick={(e) => e.stopPropagation()}>
