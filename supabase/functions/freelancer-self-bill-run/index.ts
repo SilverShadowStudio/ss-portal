@@ -34,6 +34,8 @@ function json(d: Record<string, unknown>, s = 200) { return new Response(JSON.st
 // ── Airtable line-item mapping (field IDs from the base schema) ───────────────
 interface LineMap { desc: string; project?: string; date?: string; qty: string; unit: string; rate: string; amount: string; }
 interface SourceCfg { invoiceTable: string; lineLink: string; lineTable: string; map: LineMap; }
+// SelfBillLine plus a transient key used only to order the days before render.
+type DatedLine = SelfBillLine & { sortKey?: string };
 const SOURCES: Record<string, SourceCfg> = {
   modeller_invoices: {
     invoiceTable: "tbl6WfMgznJYgevRt", lineLink: "fldyx5HEpDWR1aJp9", lineTable: "tbls6j4jyNifFyucU",
@@ -66,12 +68,12 @@ async function atFetch(pat: string, url: string): Promise<Record<string, unknown
   return await r.json();
 }
 
-async function fetchLineItems(pat: string, base: string, source: string, invoiceRecId: string): Promise<SelfBillLine[]> {
+async function fetchLineItems(pat: string, base: string, source: string, invoiceRecId: string): Promise<DatedLine[]> {
   const cfg = SOURCES[source];
   const rec = await atFetch(pat, `https://api.airtable.com/v0/${base}/${cfg.invoiceTable}/${invoiceRecId}?returnFieldsByFieldId=true`);
   const linked = ((rec.fields as Record<string, unknown>)[cfg.lineLink] as string[] | undefined) ?? [];
   if (!linked.length) return [];
-  const lines: SelfBillLine[] = [];
+  const lines: DatedLine[] = [];
   for (let i = 0; i < linked.length; i += 40) {
     const chunk = linked.slice(i, i + 40);
     const formula = `OR(${chunk.map((id) => `RECORD_ID()='${id}'`).join(",")})`;
@@ -82,11 +84,29 @@ async function fetchLineItems(pat: string, base: string, source: string, invoice
       const qty = num(fl[m.qty]); const rate = num(fl[m.rate]);
       let amount = num(fl[m.amount]);
       if (amount == null && qty != null && rate != null) amount = Math.round(qty * rate * 100) / 100;
-      const description = (m.date ? `${str(fl[m.date])} — ${str(fl[m.desc])}` : str(fl[m.desc])) || "Work item";
-      lines.push({ description, qty, unit: m.unit, rate, amount: amount ?? 0 });
+      // Date and project are separate columns on the invoice — the date spelled
+      // out in full ("13 July 2026"), the project aligned in its own column.
+      const rawDate = m.date ? str(fl[m.date]).slice(0, 10) : "";
+      const project = str(fl[m.desc]);
+      const description = rawDate ? longDate(rawDate) : (project || "Work item");
+      lines.push({
+        description,
+        project: rawDate ? (project || null) : null, // no date → the project IS the description
+        sortKey: rawDate,
+        qty, unit: m.unit, rate, amount: amount ?? 0,
+      });
     }
   }
+  // Earliest day at the top, latest at the bottom.
+  lines.sort((a, b) => String(a.sortKey ?? "").localeCompare(String(b.sortKey ?? "")));
   return lines;
+}
+
+/** "2026-07-13" → "13 July 2026". Falls back to the raw value if unparseable. */
+function longDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 // ── Dropbox (mirror dropbox-save-invoice-file) ───────────────────────────────
@@ -243,7 +263,7 @@ Deno.serve(async (req) => {
       if (!prof.country) { skipped.push({ source, name, reason: "profile missing country (VAT undecidable)" }); continue; }
 
       // Line items from Airtable (fallback to a summary line).
-      let lines: SelfBillLine[] = [];
+      let lines: DatedLine[] = [];
       try { lines = await fetchLineItems(pat, base, source, row.airtable_record_id as string); }
       catch (e) { skipped.push({ source, name, reason: `airtable: ${e instanceof Error ? e.message : e}` }); continue; }
 

@@ -49,7 +49,10 @@ const STUDIO = {
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 export interface SelfBillLine {
+  /** The day/item — e.g. "13 July 2026", spelled out in full. */
   description: string;
+  /** The project, rendered in its own column so they align down the page. */
+  project?: string | null;
   qty?: number | null;
   unit?: string | null;   // "hrs" | "days"
   rate?: number | null;
@@ -93,6 +96,8 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
   const rawLines = (input.line_items && input.line_items.length)
     ? input.line_items
     : [{ description: `${input.role_label} — ${periodLabel}`, amount: input.amount ?? 0 } as SelfBillLine];
+  // Only reserve the project column when there's something to put in it.
+  const hasProject = rawLines.some((l) => !!l.project);
   const net = rawLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const vatAmt = vatApplies ? Math.round(net * 0.2 * 100) / 100 : 0;
   const gross = net + vatAmt;
@@ -118,7 +123,11 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
   };
 
   // Line-item columns: Description | Qty | Rate | Amount (each on its own axis).
-  const QTY_X = 116, RATE_X = 150, DESC_W = QTY_X - LEFT - 10;
+  // DATE | PROJECT | QTY | RATE | AMOUNT. The project sits in its own column so
+  // every project name starts on the same x, rather than trailing the date.
+  const QTY_X = 116, RATE_X = 150, PROJ_X = 60;
+  const DESC_W = PROJ_X - LEFT - 3;          // room for "13 September 2026"
+  const PROJ_W = QTY_X - PROJ_X - 12;
   const firstUnit = (rawLines.find((l) => l.unit)?.unit || "").toLowerCase();
   const unitHeader = firstUnit.startsWith("day") ? "DAYS" : firstUnit ? "HOURS" : "QTY";
   const qtyStr = (q: number) => (+q).toLocaleString("en-GB");
@@ -151,6 +160,7 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
   };
   const drawItemHeads = (y: number) => {
     micro("DESCRIPTION", LEFT, y);
+    if (hasProject) micro("PROJECT", PROJ_X, y);
     micro(unitHeader, QTY_X, y, "r");
     micro("RATE", RATE_X, y, "r");
     micro(`AMOUNT, ${currency}`, RIGHT, y, "r");
@@ -182,6 +192,7 @@ export function generateSelfBillPdf(input: SelfBillInput): Uint8Array {
     for (const p of placed.filter((x) => x.page === pg)) {
       const l = p.l;
       left(fit(l.description, "reg", SIZE.itemTitle, DESC_W), LEFT, p.y, "reg", SIZE.itemTitle, INK);
+      if (l.project) left(fit(l.project, "reg", SIZE.body, PROJ_W), PROJ_X, p.y, "reg", SIZE.body, SECONDARY);
       if (l.qty != null) right(qtyStr(l.qty), QTY_X, p.y, "reg", SIZE.body, SECONDARY);
       if (l.rate != null) right(`${symbol(currency)}${money(l.rate)}`, RATE_X, p.y, "reg", SIZE.body, SECONDARY);
       right(money(l.amount), RIGHT, p.y, "reg", SIZE.itemTitle, INK);
