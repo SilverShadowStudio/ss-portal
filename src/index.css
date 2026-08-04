@@ -532,7 +532,7 @@ input:-webkit-autofill:active {
 /* Client-facing pages use the same gradient geometry + lightness levels as the
    admin plum panel, hue-shifted to British Racing Green. Admin stays plum. */
 .ssr-panel--client {
-  background: linear-gradient(165deg, #2d4239 0%, #2e4f40 26%, #1b201e 68%, #151a18 100%);
+  background: linear-gradient(165deg, #24352d 0%, #213a2f 26%, #191d1b 68%, #121615 100%);
 }
 
 /* brighter zone — distinguished by tone only (no border/highlight) */
