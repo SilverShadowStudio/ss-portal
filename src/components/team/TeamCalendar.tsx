@@ -37,6 +37,8 @@ const HOLIDAY = "#59AEF8";           // paid + bank holiday — blue, hsl(208, 9
 const HOLIDAY_RGB = "89,174,248";
 const WORKED = GOLD_BRIGHT;          // worked days — yellow
 const WORKED_RGB = "236,211,156";    // #ecd39c
+// Earliest year any calendar shows. Nothing before this exists in Airtable.
+const MIN_YEAR = 2026;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -52,7 +54,10 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   const [data, setData] = useState<CalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [year, setYear] = useState(() => new Date().getFullYear());
+  // Calendars start in 2026 — there's no worked-day history in Airtable before
+  // that, so earlier years would only ever render empty. Land on the current
+  // year (clamped to the floor), and let future years run on freely.
+  const [year, setYear] = useState(() => Math.max(MIN_YEAR, new Date().getFullYear()));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,12 +191,12 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
 
           <div className="flex items-center gap-2">
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5 disabled:opacity-25 disabled:hover:bg-transparent"
-              disabled={data?.workStartDate ? year <= Number(data.workStartDate.slice(0, 4)) : false}
-              onClick={() => setYear((y) => y - 1)}><ChevronLeft className="h-4 w-4" /></button>
+              disabled={year <= Math.max(MIN_YEAR, data?.workStartDate ? Number(data.workStartDate.slice(0, 4)) : MIN_YEAR)}
+              onClick={() => setYear((y) => Math.max(MIN_YEAR, y - 1))}><ChevronLeft className="h-4 w-4" /></button>
             <span className="font-serif text-strong" style={{ fontSize: 18, minWidth: 56, textAlign: "center" }}>{year}</span>
             <button className="grid h-8 w-8 place-items-center rounded text-standard hover:bg-white/5" onClick={() => setYear((y) => y + 1)}><ChevronRight className="h-4 w-4" /></button>
             {year !== now.getFullYear() && (
-              <button className="rounded px-2.5 py-1 text-xs text-recessive hover:bg-white/5 hover:text-standard" onClick={() => setYear(now.getFullYear())}>This year</button>
+              <button className="rounded px-2.5 py-1 text-xs text-recessive hover:bg-white/5 hover:text-standard" onClick={() => setYear(Math.max(MIN_YEAR, now.getFullYear()))}>This year</button>
             )}
           </div>
         </div>
