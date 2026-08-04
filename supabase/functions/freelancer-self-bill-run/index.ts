@@ -295,7 +295,11 @@ Deno.serve(async (req) => {
       let pdf: Uint8Array;
       try { pdf = generateSelfBillPdf(input); } catch (e) { skipped.push({ source, name, reason: `pdf: ${e instanceof Error ? e.message : e}` }); continue; }
 
-      const filename = `Freelancer_Invoice_${sanitize(`${input.freelancer.first_name}-${input.freelancer.last_name}`)}_${year}-${String(month).padStart(2, "0")}.pdf`;
+      // Date first, then the person: sorts chronologically wherever it lands —
+      // Dropbox, Finder, an accountant's flat batch, or an email attachment
+      // where there's no folder context at all.
+      //   Freelancer_Invoice_2026-07_Maycon-Santos.pdf
+      const filename = `Freelancer_Invoice_${year}-${String(month).padStart(2, "0")}_${sanitize(`${input.freelancer.first_name}-${input.freelancer.last_name}`)}.pdf`;
       const record = { source, name, email, invoiceNumber, lines: lines.length, net, vat, gross: net + vat, filename };
 
       if (doDry) {
