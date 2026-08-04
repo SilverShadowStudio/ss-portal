@@ -161,7 +161,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--gradient-auth)" }}>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex w-full max-w-[360px] flex-col items-center">
         {/* Logo */}
         <div className="animate-fade-in" style={{ marginBottom: "64px" }}>

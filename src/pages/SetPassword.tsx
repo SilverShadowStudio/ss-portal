@@ -99,7 +99,7 @@ export default function SetPassword() {
   if (urlError || urlErrorCode) {
     const isExpired = urlErrorCode === "otp_expired";
     return (
-      <div className="flex min-h-screen items-center justify-center px-4" style={{ background: "var(--gradient-auth)" }}>
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="flex w-full max-w-[360px] flex-col items-center">
           <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
             <img
@@ -125,7 +125,7 @@ export default function SetPassword() {
 
   if (!sessionReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--gradient-auth)" }}>
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <BrandLoader size="lg" />
       </div>
     );

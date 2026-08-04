@@ -144,7 +144,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4" style={{ background: "var(--gradient-auth)" }}>      <div className="mb-10 animate-fade-in">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">      <div className="mb-10 animate-fade-in">
         <img
           src={silvershadowLogo}
           alt="Silver Shadow Studio"
