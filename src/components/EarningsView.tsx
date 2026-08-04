@@ -58,11 +58,12 @@ interface Props {
 
 export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameOverride }: Props) {
   const ccy = data?.currency ?? "GBP";
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // One month open at a time — opening another closes the previous, so the
+  // statement never becomes a long scroll of expanded detail.
+  const [open, setOpen] = useState<string | null>(null);
   const [busyInvoice, setBusyInvoice] = useState<string | null>(null);
 
-  const toggle = (key: string) =>
-    setOpen((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggle = (key: string) => setOpen((cur) => (cur === key ? null : key));
 
   async function openInvoice(invoiceId: string, download: boolean) {
     setBusyInvoice(invoiceId);
@@ -151,7 +152,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                 <tbody>
                   {data.periods.map((p) => {
                     const st = statusOf(p);
-                    const isOpen = open.has(p.key);
+                    const isOpen = open === p.key;
                     return (
                       <Fragment key={p.key}>
                         <tr
