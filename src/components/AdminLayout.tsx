@@ -9,9 +9,12 @@ interface AdminLayoutProps {
   /** Opt-in: render children inside the redesigned gradient panel (dark-only
    *  layered look). Pages that don't set this are rendered exactly as before. */
   panel?: boolean;
+  /** Extra class on the .ssr-panel surface — e.g. "ssr-panel--client" to share
+   *  the British-Racing-Green client theme on client-related admin pages. */
+  panelClassName?: string;
 }
 
-export function AdminLayout({ children, fullWidth = false, noPadding = false, panel = false }: AdminLayoutProps) {
+export function AdminLayout({ children, fullWidth = false, noPadding = false, panel = false, panelClassName }: AdminLayoutProps) {
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-admin-sidebar-expanded");
     return stored === null ? true : stored === "true";
@@ -27,7 +30,7 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "ml-64" : "ml-20")}>
         {panel ? (
           <div className="ssr-panelwrap">
-            <div className="ssr-panel">{children}</div>
+            <div className={cn("ssr-panel", panelClassName)}>{children}</div>
           </div>
         ) : (
           <div className={cn(noPadding ? "" : "py-10", fullWidth || noPadding ? "px-8" : "mx-auto max-w-7xl px-8", noPadding && "!p-0")}>
