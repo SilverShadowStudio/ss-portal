@@ -988,6 +988,22 @@ export function AccountList({
     }
   }
 
+  async function handleClearActivity(accountId: string, name: string) {
+    if (!window.confirm(`Clear ${name}'s activity history?\n\nThis removes tracked sessions, page views and "logged in" entries (test/setup noise). Onboarding milestones (invite, password, onboarding) are kept. Cannot be undone.`)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-clear-member-activity", { body: { account_id: accountId } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const c = data?.cleared ?? {};
+      toast({ title: "Activity cleared", description: `Removed ${c.client_activity ?? 0} session rows and ${c.logins ?? 0} login entries.` });
+      setActivityByAccount((m) => { const n = new Map(m); n.delete(accountId); return n; });
+      setExpandedPanel(null);
+      fetchAccounts();
+    } catch (e: unknown) {
+      toast({ title: "Couldn't clear activity", description: (e as Error)?.message, variant: "destructive" });
+    }
+  }
+
   // Submit handler — dispatches to the right invite shape based on isTeamOnly.
   async function handleSubmit() {
     if (isTeamOnly) {
@@ -1878,6 +1894,11 @@ export function AccountList({
                             {isTeamOnly && (
                               <DropdownMenuItem onClick={() => openEditMember(group)}>
                                 <Pencil className="mr-2 h-4 w-4" /> Edit member
+                              </DropdownMenuItem>
+                            )}
+                            {isTeamOnly && (
+                              <DropdownMenuItem onClick={() => handleClearActivity(group.account_id, fullNameOf(group.users[0]) || group.company_name)}>
+                                <Clock className="mr-2 h-4 w-4" /> Clear activity history
                               </DropdownMenuItem>
                             )}
                             {showEditProfile && (

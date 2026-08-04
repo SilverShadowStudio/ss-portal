@@ -19,6 +19,10 @@
     --background: var(--brand-bg-hsl, 38 30% 96%);
     --foreground: 30 10% 15%;
 
+    /* Auth pages (login / reset / set-password) — single fixed purple glow,
+       theme-independent. Top-left violet falling to near-black plum. */
+    --gradient-auth: radial-gradient(circle at 20% 10%, #6b21a8 0%, #4c1d95 45%, #2e1065 100%);
+
     --card: 40 25% 94%;
     --card-foreground: 30 10% 15%;
 
