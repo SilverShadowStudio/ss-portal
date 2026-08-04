@@ -112,7 +112,7 @@
     --secondary-foreground: 36 14% 78%;
 
     --muted: 36 10% 12%;
-    --muted-foreground: 34 9% 64%;
+    --muted-foreground: 32 8% 52%;
 
     --accent: var(--brand-gold-hsl, 36 35% 57%);
     --accent-foreground: 40 12% 5%;
@@ -130,13 +130,11 @@
     --surface-elevated: var(--brand-dark-elevated-hsl, 36 12% 8%);
     --surface-overlay: var(--brand-dark-elevated-hsl, 40 9% 7%);
 
-    /* Four-tier text contrast tokens (role-based; dark values). Secondary and
-       tertiary lifted so labels/metadata/timestamps read clearly on the near-
-       neutral graphite ground (blend direction, Aug 2026). */
-    --text-strong: #F3EFE7;
-    --text-standard: #C6C1B6;
-    --text-label: #ADA697;
-    --text-recessive: #928B7F;
+    /* Four-tier text contrast tokens (role-based; dark values). */
+    --text-strong: #FBF7F0;
+    --text-standard: #C8C2B5;
+    --text-label: #8A8378;
+    --text-recessive: #5A554E;
     --divider: #2A2820;
     
     /* Shadows */
@@ -526,27 +524,25 @@ input:-webkit-autofill:active {
      between the panel top and the first card. Applies to every panel page. */
   padding: 32px 34px 40px;
   min-height: calc(100vh - 32px);
-  /* Neutral warm-charcoal (blend of Adobe-neutral + a faint plum warmth). */
-  background: linear-gradient(168deg, #211d26 0%, #191620 55%, #141216 100%);
+  background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
 }
 
-/* section zone — a subtle neutral lift with a hairline for clean separation */
-.ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(255, 255, 255, 0.028); border: 1px solid rgba(255, 255, 255, 0.06); }
+/* brighter zone — distinguished by tone only (no border/highlight) */
+.ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(150, 138, 177, 0.13); }
 .ssr-zone + .ssr-zone { margin-top: 16px; }
 
-/* dark data tile — floats above the zone with a hairline + soft shadow */
+/* dark data tile — translucent, composited over the panel gradient, bevelled */
 .ssr-tile {
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.022);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(163deg, rgba(18, 15, 26, 0.44) 0%, rgba(8, 6, 13, 0.60) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 6px 16px -12px rgba(0, 0, 0, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 4px 12px -8px rgba(0, 0, 0, 0.6);
 }
 .ssr-tile-hover:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.11);
+  background: linear-gradient(163deg, rgba(40, 33, 58, 0.46) 0%, rgba(16, 13, 24, 0.58) 100%);
 }
 
 /* Logo-only serif: the portal chrome uses the clean sans everywhere. The brand
