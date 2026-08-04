@@ -309,9 +309,11 @@ function AllowanceRing({ remaining, allowance }: { remaining: number; allowance:
 function Legend({ isEmployee }: { isEmployee: boolean }) {
   const items: { label: string; color: string; kind?: "dashed" | "hollow" }[] = [
     { label: "Worked", color: WORKED },
-    // Paid holiday is employee-only — freelancers never see that key.
-    ...(isEmployee ? [{ label: "Paid holiday", color: HOLIDAY }] : []),
-    { label: "Not available", color: "#6b6b6b" },
+    // Each side only sees the states it can actually have: employees take paid
+    // holiday, freelancers block days out.
+    ...(isEmployee
+      ? [{ label: "Paid holiday", color: HOLIDAY }]
+      : [{ label: "Not available", color: "#6b6b6b" }]),
     // Swatches match what the grid actually renders for each state.
     // Bank holidays are employee-only, so freelancers never see that key either.
     ...(isEmployee ? [{ label: "Bank holiday", color: HOLIDAY, kind: "hollow" as const }] : []),
@@ -483,11 +485,13 @@ function DayRow(props: {
               {isAdmin ? "Add for this person" : props.isEmployee ? "Request this day" : "Mark this day"}
             </p>
             {/* Paid holiday is employee-only; freelancers can only block days out. */}
-            {/* Full days only — no half days, for anyone. */}
-            {props.isEmployee && (
+            {/* Full days only — no half days, for anyone. An employee books paid
+                holiday; a freelancer blocks days out. Neither sees the other's. */}
+            {props.isEmployee ? (
               <button disabled={busy} className="w-full rounded bg-gold/20 px-2 py-1.5 text-xs text-[#ecd39c] hover:bg-gold/30 text-left" onClick={() => props.onSet("holiday", 1)}>Paid holiday</button>
+            ) : (
+              <button disabled={busy} className="w-full rounded bg-white/5 px-2 py-1.5 text-xs text-standard hover:bg-white/10 text-left" onClick={() => props.onSet("unavailable", 1)}>Not available</button>
             )}
-            <button disabled={busy} className="w-full rounded bg-white/5 px-2 py-1.5 text-xs text-standard hover:bg-white/10 text-left" onClick={() => props.onSet("unavailable", 1)}>Not available</button>
           </div>
         )}
       </PopoverContent>
