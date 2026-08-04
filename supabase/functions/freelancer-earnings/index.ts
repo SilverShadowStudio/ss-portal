@@ -75,8 +75,9 @@ async function fetchLineItems(pat: string, baseId: string, source: string, invoi
       lines.push({ description, date: dateVal, qty, unit: m.unit, rate, amount: amount ?? 0 });
     }
   }
-  // Chronological: latest date at the top, earliest at the bottom.
-  lines.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  // Chronological: earliest day at the top, latest at the bottom — same reading
+  // order as the months themselves.
+  lines.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   return lines;
 }
 

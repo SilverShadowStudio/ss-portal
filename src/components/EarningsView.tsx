@@ -29,6 +29,12 @@ export interface EarningsData {
   periods: EarningsPeriod[];
 }
 
+// Expanded line items sit in a muted gold so they read as supporting detail and
+// don't compete with the month rows above them.
+const DETAIL = "rgba(201,169,106,0.72)";
+const DETAIL_DIM = "rgba(201,169,106,0.42)";
+const DETAIL_AMOUNT = "rgba(201,169,106,0.88)";
+
 function niceDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -261,17 +267,17 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                               <div className="flex items-baseline gap-6 border-l border-white/[0.08] pl-4">
                                 {l.date && (
                                   <div className="w-[180px] shrink-0">
-                                    <p className="text-standard" style={{ fontSize: 13 }}>{niceDate(l.date)}</p>
-                                    {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                    <p style={{ fontSize: 13, color: DETAIL }}>{niceDate(l.date)}</p>
+                                    {qtyLabel(l, ccy) && <p className="mt-0.5" style={{ fontSize: 11, color: DETAIL_DIM }}>{qtyLabel(l, ccy)}</p>}
                                   </div>
                                 )}
                                 <div className="min-w-0 flex-1">
-                                  <p className="truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
-                                  {!l.date && qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                  <p className="truncate" style={{ fontSize: 13, color: DETAIL }}>{l.description}</p>
+                                  {!l.date && qtyLabel(l, ccy) && <p className="mt-0.5" style={{ fontSize: 11, color: DETAIL_DIM }}>{qtyLabel(l, ccy)}</p>}
                                 </div>
                               </div>
                             </td>
-                            <td className="py-2.5 pr-4 text-right align-top tabular-nums text-standard" style={{ fontSize: 13 }}>
+                            <td className="py-2.5 pr-4 text-right align-top tabular-nums" style={{ fontSize: 13, color: DETAIL_AMOUNT }}>
                               {money(l.amount, ccy)}
                             </td>
                             <td colSpan={4} />
