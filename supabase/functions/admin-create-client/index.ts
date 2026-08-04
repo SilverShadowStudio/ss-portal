@@ -81,6 +81,8 @@ interface RequestBody {
   tempPassword?: string
   accountId?: string
   clientCode?: string
+  /** Create the account but hold the invite email; caller schedules the send. */
+  defer_email?: boolean
 }
 
 Deno.serve(async (req) => {
@@ -100,25 +102,34 @@ Deno.serve(async (req) => {
   if (!authHeader?.startsWith('Bearer ')) {
     return json({ error: 'Unauthorized' }, 401)
   }
-  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const { data: userData, error: userError } = await userClient.auth.getUser()
-  if (userError || !userData?.user) {
-    return json({ error: 'Unauthorized' }, 401)
-  }
-  const callerUserId = userData.user.id
-
   const admin = createClient(supabaseUrl, supabaseServiceKey)
 
-  const { data: roleRow } = await admin
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', callerUserId)
-    .eq('role', 'admin')
-    .maybeSingle()
-  if (!roleRow) {
-    return json({ error: 'Forbidden — admin only' }, 403)
+  // A function-to-function caller holding the service-role key (the scheduled
+  // invite dispatcher). Deliberately narrow: it is rejected below for anything
+  // other than `resend`, so it can never create an account or a user.
+  const bearer = authHeader.slice(7).trim()
+  const isInternal = bearer === supabaseServiceKey
+
+  let callerUserId = ''
+  if (!isInternal) {
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: userData, error: userError } = await userClient.auth.getUser()
+    if (userError || !userData?.user) {
+      return json({ error: 'Unauthorized' }, 401)
+    }
+    callerUserId = userData.user.id
+
+    const { data: roleRow } = await admin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', callerUserId)
+      .eq('role', 'admin')
+      .maybeSingle()
+    if (!roleRow) {
+      return json({ error: 'Forbidden — admin only' }, 403)
+    }
   }
 
   // ---- Parse + validate body ----
@@ -132,6 +143,11 @@ Deno.serve(async (req) => {
   const mode = body.mode
   if (mode !== 'invite' && mode !== 'provision' && mode !== 'resend') {
     return json({ error: 'mode must be "invite", "provision", or "resend"' }, 400)
+  }
+  // The service-role path exists solely to re-send an invitation for an account
+  // that already exists. It must never create one.
+  if (isInternal && mode !== 'resend') {
+    return json({ error: 'Forbidden — internal caller may only resend' }, 403)
   }
 
   const email = body.contact?.email?.trim().toLowerCase()
@@ -532,6 +548,16 @@ Deno.serve(async (req) => {
       if (cfgRow?.value) emailConfig = cfgRow.value as InviteEmailConfig
     } catch { /* use defaults */ }
     const brand = await loadBrand(admin)
+
+    // defer_email: create the account now, hold the invitation. The caller then
+    // records a scheduled_invites row and cron sends it (resend mode) when due.
+    // The account existing immediately means the admin's work is never lost.
+    if (body.defer_email === true) {
+      return json({
+        success: true, deferred: true,
+        accountId: account.id, userId: invitedUserId, email,
+      })
+    }
 
     if (resendKey && inviteUrl) {
       try {

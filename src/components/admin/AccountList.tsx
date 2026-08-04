@@ -45,6 +45,7 @@ import {
 import { formatCurrency } from "@/lib/invoiceUtils";
 import { ACTION_LABELS } from "@/lib/activityLog";
 import { TeamContractFormDialog } from "@/components/admin/TeamContractFormDialog";
+import { SendLaterDialog } from "@/components/admin/SendLaterDialog";
 
 interface AccountUserRow {
   account_id: string;
@@ -353,6 +354,8 @@ export function AccountList({
   const [inviteEmail, setInviteEmail] = useState("");
   // Airtable match check. Worked days + earnings are matched ON EMAIL, so an
   // address that isn't in Airtable means a silently empty calendar later.
+  // Send-later sheet for the invitation email.
+  const [sendLaterOpen, setSendLaterOpen] = useState(false);
   const [airtableMatch, setAirtableMatch] = useState<
     { state: "idle" | "checking" } | { state: "found"; name: string | null; role: string | null } | { state: "missing" } | { state: "unknown" }
   >({ state: "idle" });
@@ -1116,6 +1119,51 @@ export function AccountList({
     }
   }
 
+  // Create the account now but hold the invitation, then record when to send it.
+  // Creating immediately means a scheduled invite can't be lost, and the link is
+  // generated fresh at send time so it's never stale on arrival.
+  async function scheduleInvite(when: Date) {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !inviteRole) {
+      toast({ title: "Email and role are required", variant: "destructive" });
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-create-client`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "invite", accountType: "team", role: inviteRole,
+          company: { companyName: email }, contact: { email },
+          defer_email: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      const { error } = await supabase.from("scheduled_invites").insert({
+        account_id: data.accountId, email, send_at: when.toISOString(), created_by: session.user.id,
+      });
+      if (error) throw new Error(error.message);
+
+      toast({
+        title: "Invitation scheduled",
+        description: `${email} will be invited on ${when.toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.`,
+      });
+      setSendLaterOpen(false);
+      setInviteEmail(""); setInviteRole("");
+      setIsAddDialogOpen(false);
+      fetchAccounts();
+    } catch (e) {
+      toast({ title: "Couldn't schedule the invitation", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   // Submit handler — dispatches to the right invite shape based on isTeamOnly.
   async function handleSubmit() {
     if (isTeamOnly) {
@@ -1460,8 +1508,13 @@ export function AccountList({
                       <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isCreating} className="text-muted-foreground">
                         Back
                       </Button>
+                      {/* Send later — holds the invitation until a chosen time. */}
+                      <Button variant="ghost" onClick={() => setSendLaterOpen(true)} disabled={isCreating}
+                        className="border border-white/12 text-foreground/75">
+                        Send later
+                      </Button>
                       <Button onClick={handleSubmit} disabled={isCreating} className="flex-1">
-                        {isCreating ? "Sending…" : "Send invite"}
+                        {isCreating ? "Sending…" : "Send now"}
                       </Button>
                     </div>
                   </div>
@@ -2291,6 +2344,15 @@ export function AccountList({
         initialValues={contractInitialValues ?? undefined}
         templateId={contractTemplateId ?? undefined}
       />
+
+      {/* Send-later sheet for the invitation email */}
+      {sendLaterOpen && (
+        <SendLaterDialog
+          busy={isCreating}
+          onCancel={() => setSendLaterOpen(false)}
+          onSchedule={scheduleInvite}
+        />
+      )}
 
       {/* Invitation success overlay */}
       {resultBanner && (
