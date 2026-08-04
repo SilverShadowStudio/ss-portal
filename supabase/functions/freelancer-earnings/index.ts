@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     periods.push({
       key: `${source}-${row.airtable_record_id}`,
       role: SOURCES[source].role,
-      period_year: y, period_month: m,
+      period_year: y, period_month: m, source_table: source,
       period_label: y && m ? `${MONTHS[m - 1]} ${y}` : (row.period_date ?? "—"),
       due_date: dueDate,
       total, amount_paid: amtPaid, balance: bal,
@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
 
   return json({
     name: prof ? [prof.first_name, prof.last_name].filter(Boolean).join(" ") : null,
+    payee_email: email,
     role: prof?.role ?? (periods[0]?.role ?? null),
     currency,
     totals: { earned, paid, outstanding },

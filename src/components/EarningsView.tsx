@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { ChevronRight, Eye, Download } from "lucide-react";
+import { ChevronRight, Eye, Download, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface EarningsLine { description: string; date: string | null; qty: number | null; unit: string; rate: number | null; amount: number }
 export interface EarningsPeriod {
   key: string; role: string; period_label: string;
+  period_year?: number | null; period_month?: number | null; source_table?: string | null;
   due_date?: string | null;
   total: number; amount_paid: number; balance: number; paid_status: string | null;
   invoice?: { id: string; invoice_number: string | null; filed: boolean } | null;
@@ -23,6 +24,7 @@ export interface EarningsPeriod {
 }
 export interface EarningsData {
   name: string | null; role: string | null; currency: string;
+  payee_email?: string | null;
   totals: { earned: number; paid: number; outstanding: number };
   periods: EarningsPeriod[];
 }
@@ -54,14 +56,20 @@ interface Props {
   error: string | null;
   eyebrow?: string;
   nameOverride?: string | null;
+  /** Admin only: file a historical invoice for a month that predates self-billing. */
+  canUpload?: boolean;
+  /** The freelancer's email — needed to file an uploaded invoice against them. */
+  payeeEmail?: string | null;
+  onUploaded?: () => void;
 }
 
-export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameOverride }: Props) {
+export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameOverride, canUpload, payeeEmail, onUploaded }: Props) {
   const ccy = data?.currency ?? "GBP";
   // One month open at a time — opening another closes the previous, so the
   // statement never becomes a long scroll of expanded detail.
   const [open, setOpen] = useState<string | null>(null);
   const [busyInvoice, setBusyInvoice] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const toggle = (key: string) => setOpen((cur) => (cur === key ? null : key));
 
@@ -75,6 +83,32 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
       window.open(download ? `${url}${url.includes("?") ? "&" : "?"}dl=1` : url, "_blank", "noopener,noreferrer");
     } catch {
       /* the row simply stays as it was — no invoice is not an error state */
+    } finally {
+      setBusyInvoice(null);
+    }
+  }
+
+  async function uploadInvoice(p: EarningsPeriod, file: File) {
+    if (!payeeEmail || !p.period_year || !p.period_month) return;
+    setBusyInvoice(p.key);
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] ?? "");
+        r.onerror = () => rej(new Error("Couldn't read that file"));
+        r.readAsDataURL(file);
+      });
+      const { data: out, error } = await supabase.functions.invoke("freelancer-invoice-upload", {
+        body: {
+          payee_email: payeeEmail, period_year: p.period_year, period_month: p.period_month,
+          source_table: p.source_table ?? undefined, pdf_base64: b64,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if ((out as { error?: string })?.error) throw new Error((out as { error: string }).error);
+      onUploaded?.();
+    } catch (e) {
+      setUploadError((e as Error).message);
     } finally {
       setBusyInvoice(null);
     }
@@ -195,6 +229,19 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                                   <Download style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">PDF</span>
                                 </button>
                               </span>
+                            ) : canUpload ? (
+                              <label
+                                className="inline-flex cursor-pointer items-center gap-1.5 text-white/35 transition-colors hover:text-gold"
+                                style={{ fontSize: 10, letterSpacing: "0.16em" }}
+                                title="File a historical invoice for this month"
+                              >
+                                <Upload style={{ width: 12, height: 12 }} strokeWidth={1.5} />
+                                <span className="font-sans uppercase">Upload</span>
+                                <input
+                                  type="file" accept="application/pdf" className="hidden"
+                                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) uploadInvoice(p, f); }}
+                                />
+                              </label>
                             ) : <span className="text-white/20">—</span>}
                           </td>
                         </tr>
@@ -236,6 +283,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                 </tbody>
               </table>
             </div>
+            {uploadError && <p className="mt-3 px-1 text-xs text-[#FF6B5A]">{uploadError}</p>}
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 px-1">
               <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Click a month to see the work behind it</p>
               <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">
