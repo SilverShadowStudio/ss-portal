@@ -39,7 +39,7 @@ export function ClientLayout({ children, fullWidth = false, panel = false }: Cli
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         {panel ? (
           <div className="ssr-panelwrap pb-24 md:pb-4">
-            <div className="ssr-panel">{children}</div>
+            <div className="ssr-panel ssr-panel--client">{children}</div>
           </div>
         ) : (
           <div

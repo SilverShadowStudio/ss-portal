@@ -529,6 +529,12 @@ input:-webkit-autofill:active {
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
 }
 
+/* Client-facing pages use the same gradient geometry + lightness levels as the
+   admin plum panel, hue-shifted to British Racing Green. Admin stays plum. */
+.ssr-panel--client {
+  background: linear-gradient(165deg, #2d4239 0%, #2e4f40 26%, #1b201e 68%, #151a18 100%);
+}
+
 /* brighter zone — distinguished by tone only (no border/highlight) */
 .ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(150, 138, 177, 0.13); }
 .ssr-zone + .ssr-zone { margin-top: 16px; }
