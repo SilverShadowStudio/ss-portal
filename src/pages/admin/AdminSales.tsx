@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
+import { DebriefSheet } from "@/components/admin/sales/DebriefSheet";
 
 interface Lead {
   id: string;
@@ -91,6 +92,8 @@ export default function AdminSales() {
   const [importing, setImporting] = useState(false);
 
   const [pitch, setPitch] = useState<{ lead: Lead; subject: string; body: string; loading: boolean; mode: "call" | "email" } | null>(null);
+  // Debrief sheet — opens in place over the table; never navigates away.
+  const [debrief, setDebrief] = useState<{ id: string; company: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   async function load() {
@@ -339,6 +342,7 @@ export default function AdminSales() {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
                           <button onClick={() => draftPitch(r, "call")} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c]"><Sparkles className="h-3 w-3" strokeWidth={1.5} />Call script</button>
+                          <button onClick={() => setDebrief({ id: r.id, company: r.company })} className="text-[10px] uppercase tracking-[0.14em] text-white/55 hover:text-[#ecd39c]">Debrief</button>
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                           <button onClick={() => removeLead(r)} className="text-white/30 hover:text-rose-400" title="Remove"><Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                         </span>
@@ -438,6 +442,14 @@ export default function AdminSales() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {debrief && (
+        <DebriefSheet
+          leadId={debrief.id}
+          company={debrief.company}
+          onClose={() => { setDebrief(null); load(); }}
+        />
+      )}
     </AdminLayout>
   );
 }

@@ -52,6 +52,7 @@ import AdminLanes from "./pages/admin/AdminLanes";
 import AdminOrders from "./pages/admin/AdminOrders";
 import Orders from "./pages/Orders";
 import AdminSales from "./pages/admin/AdminSales";
+import AdminSalesDebrief from "./pages/admin/AdminSalesDebrief";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
@@ -311,6 +312,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminSales />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/sales/:leadId/debrief"
+              element={
+                <AdminProtectedRoute>
+                  <AdminSalesDebrief />
                 </AdminProtectedRoute>
               }
             />
