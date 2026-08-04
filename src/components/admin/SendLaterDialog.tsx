@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // "Send Later" — the shape of Apple Mail's scheduling sheet (date field + time
@@ -71,9 +72,17 @@ export function SendLaterDialog({ initial, busy, onCancel, onSchedule }: Props) 
     });
   }
 
-  return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 backdrop-blur-sm animate-fade-in" onClick={onCancel}>
-      <div className="ssr-tile w-full max-w-[520px] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+  // Portalled to <body> and given explicit pointer-events. This opens on top of
+  // the Radix "Add member" dialog, which sets `pointer-events: none` on <body>
+  // while it's open — without this the sheet renders but every click falls
+  // through to the dialog underneath.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 backdrop-blur-sm animate-fade-in"
+      style={{ pointerEvents: "auto" }}
+      onClick={onCancel}
+    >
+      <div className="ssr-tile w-full max-w-[520px] rounded-2xl p-6" style={{ pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()}>
         <p className="font-sans text-sm font-medium text-strong">Send later</p>
         <p className="mt-1.5 text-xs leading-relaxed text-recessive">
           The invitation is held and sent at the time you choose. The account is created now,
@@ -171,7 +180,8 @@ export function SendLaterDialog({ initial, busy, onCancel, onSchedule }: Props) 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
