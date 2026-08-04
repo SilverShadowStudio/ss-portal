@@ -29,7 +29,6 @@ interface CalData {
   remaining: number;
 }
 
-const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
 // Day-type colours: holidays blue, worked days yellow. Both get the same tint
 // strength so a holiday reads as a full day, not a gap.
@@ -37,6 +36,12 @@ const HOLIDAY = "#59AEF8";           // paid + bank holiday — blue, hsl(208, 9
 const HOLIDAY_RGB = "89,174,248";
 const WORKED = GOLD_BRIGHT;          // worked days — yellow
 const WORKED_RGB = "236,211,156";    // #ecd39c
+// TODAY. Deliberately outside the state palette (yellow worked / blue holiday /
+// grey unavailable) so "today" never reads as a status — a cool silver against
+// the warm gold. Defined ONCE here and used by both the employee and freelancer
+// calendars (they're the same component), so changing it changes both.
+const TODAY = "#E6ECF5";
+const TODAY_RGB = "230,236,245";
 // Earliest year any calendar shows. Nothing before this exists in Airtable.
 const MIN_YEAR = 2026;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -391,15 +396,23 @@ function DayRow(props: {
     bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)";
   }
 
-  if (isToday) leftAccent = GOLD_BRIGHT;
+  // Today takes the silver accent and a soft ring, and brightens its number —
+  // legible whatever state the day is in, without pretending to be one.
+  if (isToday) { leftAccent = TODAY; numColor = TODAY; }
 
-  const clickable = !bankHoliday && (isAdmin || !isPast);
+  // A day that has already passed can't be set — neither a freelancer marking
+  // themselves unavailable nor an employee booking time off. (Admins previously
+  // bypassed this.) An admin can still open a past day that already has an entry,
+  // to correct or remove it.
+  const clickable = !bankHoliday && (!isPast || (isAdmin && !!activeLeave));
 
+  const todayRing = isToday && !noCell ? `, inset 0 0 0 1px rgba(${TODAY_RGB},0.45)` : "";
   const boxShadow = noCell
     ? "none"
-    : dashed
-      ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px ${holiday ? `rgba(${HOLIDAY_RGB},0.65)` : "rgba(138,131,120,0.45)"}`
-      : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)";
+    : (dashed
+        ? `inset 2px 0 0 ${leftAccent}, inset 0 0 0 1px ${holiday ? `rgba(${HOLIDAY_RGB},0.65)` : "rgba(138,131,120,0.45)"}`
+        : leftAccent !== "transparent" ? `inset 2px 0 0 ${leftAccent}` : "inset 0 1px 0 rgba(255,255,255,0.03)"
+      ) + todayRing;
 
   const row = (
     <div
