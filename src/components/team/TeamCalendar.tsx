@@ -319,7 +319,9 @@ function DayRow(props: {
   if (bankHoliday) {
     noCell = true; numColor = HOLIDAY; sideLabel = "Bank holiday"; sideColor = HOLIDAY;
   } else if (holiday?.status === "approved") {
-    // A normal transparent day card, marked paid holiday by a slate-blue dot.
+    // Same treatment as a worked day (tinted fill + left accent + dot), in the
+    // paid-holiday blue rather than gold — a holiday is a full day, not a gap.
+    bg = "rgba(110,140,168,0.16)"; leftAccent = "rgba(110,140,168,0.55)";
     marker = <span style={{ fontSize: 9, color: HOLIDAY }}>{holiday.fraction < 1 ? fractionLabel(holiday.fraction) : "●"}</span>;
   } else if (holiday?.status === "pending") {
     dashed = true; leftAccent = HOLIDAY;
