@@ -5,11 +5,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 // ── Types mirroring the team-calendar edge function `get` response ────────────
 type LeaveKind = "holiday" | "unavailable";
 type LeaveStatus = "pending" | "approved" | "declined";
 interface LeaveDay { id: string; date: string; kind: LeaveKind; fraction: number; status: LeaveStatus; note: string | null }
+/** What a freelancer actually did on a day — from the Airtable day logs. */
+interface WorkEntry { role: string; project: string; qty: number | null; unit: string }
 interface CalData {
   accountId: string;
   accountName: string | null;
@@ -18,7 +21,7 @@ interface CalData {
   year: number;
   workStartDate: string | null;
   workPattern: "airtable" | "weekdays";
-  workedDays: { date: string; fraction: number }[];
+  workedDays: { date: string; fraction: number; entries?: WorkEntry[] }[];
   bankHolidays: { date: string; name: string }[];
   leave: LeaveDay[];
   allowance: number;
@@ -72,6 +75,12 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
   const workedMap = useMemo(() => {
     const m = new Map<string, number>();
     data?.workedDays.forEach((w) => m.set(w.date, w.fraction));
+    return m;
+  }, [data]);
+  // What was done on each worked day, for the hover detail.
+  const workDetailMap = useMemo(() => {
+    const m = new Map<string, WorkEntry[]>();
+    data?.workedDays.forEach((w) => { if (w.entries?.length) m.set(w.date, w.entries); });
     return m;
   }, [data]);
   const bankMap = useMemo(() => {
@@ -249,6 +258,7 @@ export function TeamCalendar({ accountId, className }: { accountId?: string; cla
                             beforeStart={data?.workStartDate ? dateIso < data.workStartDate : false}
                             bankHoliday={bankMap.get(dateIso)}
                             worked={workedMap.get(dateIso)}
+                            workDetail={workDetailMap.get(dateIso)}
                             employeePattern={employeePattern}
                             isEmployee={isEmployee}
                             leave={leaveMap.get(dateIso)}
@@ -314,14 +324,14 @@ function Legend({ isEmployee }: { isEmployee: boolean }) {
 // ── One day row in a month column ─────────────────────────────────────────────
 function DayRow(props: {
   dayNum: number; dowLabel: string; weekend: boolean; fullDate: string;
-  isToday: boolean; isPast: boolean; beforeStart: boolean; bankHoliday?: string; worked?: number; employeePattern: boolean; isEmployee: boolean;
+  isToday: boolean; isPast: boolean; beforeStart: boolean; bankHoliday?: string; worked?: number; workDetail?: WorkEntry[]; employeePattern: boolean; isEmployee: boolean;
   leave?: { holiday?: LeaveDay; unavailable?: LeaveDay };
   isAdmin: boolean; busy: boolean;
   onSet: (kind: LeaveKind, fraction: number) => void;
   onCancel: (id: string) => void;
   onReview: (id: string, decision: "approved" | "declined") => void;
 }) {
-  const { dayNum, dowLabel, weekend, fullDate, isToday, isPast, beforeStart, bankHoliday, worked, employeePattern, leave, isAdmin, busy } = props;
+  const { dayNum, dowLabel, weekend, fullDate, isToday, isPast, beforeStart, bankHoliday, worked, workDetail, employeePattern, leave, isAdmin, busy } = props;
 
   // Before this person joined the studio: an empty, non-interactive placeholder.
   if (beforeStart) {
@@ -396,11 +406,36 @@ function DayRow(props: {
     </div>
   );
 
-  if (!clickable) return row;
+  // Hover detail: what was actually logged that day (role + project + time).
+  // Wraps the row so it works whether or not the day is clickable.
+  const withHover = (node: ReactNode) =>
+    workDetail?.length ? (
+      <HoverCard openDelay={120} closeDelay={60}>
+        <HoverCardTrigger asChild>{node}</HoverCardTrigger>
+        <HoverCardContent align="start" className="w-60">
+          <p className="mb-2 font-serif text-strong" style={{ fontSize: 13 }}>{fullDate}</p>
+          <div className="space-y-2">
+            {workDetail.map((e, i) => (
+              <div key={i}>
+                <p className="text-xs" style={{ color: WORKED }}>{e.role}</p>
+                {e.project && <p className="text-xs text-standard truncate">{e.project}</p>}
+                {e.qty != null && (
+                  <p className="text-[11px] text-recessive">
+                    {e.qty} {e.unit === "days" ? (e.qty === 1 ? "day" : "days") : "hrs"}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    ) : node;
+
+  if (!clickable) return withHover(row);
 
   return (
     <Popover>
-      <PopoverTrigger asChild>{row}</PopoverTrigger>
+      <PopoverTrigger asChild>{withHover(row)}</PopoverTrigger>
       <PopoverContent className="w-56 border-white/10 bg-[#1b1720] p-3" align="start">
         <p className="mb-2 font-serif text-strong" style={{ fontSize: 14 }}>{fullDate}</p>
         {activeLeave ? (

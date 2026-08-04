@@ -31,17 +31,22 @@ const json = (d: Record<string, unknown>, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 // ── Airtable day-log mapping (dated sources only — worked days need a date) ────
-interface LineMap { date: string; qty: string; unit: string; }
-const DAY_SOURCES: Record<string, { invoiceTable: string; lineLink: string; lineTable: string; map: LineMap }> = {
+interface LineMap { date: string; qty: string; unit: string; desc?: string; }
+const DAY_SOURCES: Record<string, { invoiceTable: string; lineLink: string; lineTable: string; role: string; map: LineMap }> = {
   scene_manager_invoice: {
     invoiceTable: "tblhYCC3InxUJUK3H", lineLink: "fldsmMtc29qeZGdWx", lineTable: "tblCOVVdOsjRt06iO",
-    map: { date: "fldQTfPwfe0E4oNcF", qty: "fldaIEHxMv3eF8wQJ", unit: "days" },
+    role: "Scene management",
+    map: { date: "fldQTfPwfe0E4oNcF", qty: "fldaIEHxMv3eF8wQJ", unit: "days", desc: "fldCXuxsXzomGNuU4" },
   },
   photographer_invoice: {
     invoiceTable: "tblCoQXYZuUCh0Vgc", lineLink: "fldjSsRGpHvlXdyPf", lineTable: "tblsqmojQaxNM27GG",
-    map: { date: "fldGvGiChWeAnqOAx", qty: "fld0k5aDOdhaYaxeB", unit: "hrs" },
+    role: "Photography",
+    map: { date: "fldGvGiChWeAnqOAx", qty: "fld0k5aDOdhaYaxeB", unit: "hrs", desc: "fldoyw861KQuk6SwU" },
   },
 };
+
+/** One logged piece of work on a day — powers the calendar hover detail. */
+interface WorkEntry { role: string; project: string; qty: number | null; unit: string; }
 
 function unwrap(v: unknown): unknown { return Array.isArray(v) ? v[0] : v; }
 function num(v: unknown): number | null {
@@ -63,8 +68,8 @@ async function atFetch(pat: string, url: string): Promise<Record<string, unknown
 // count as a worked day (fraction 1) on the logged date.
 async function fetchWorkedDays(
   sb: ReturnType<typeof createClient>, pat: string, baseId: string, email: string, from: string, to: string,
-): Promise<Record<string, number>> {
-  const worked: Record<string, number> = {};
+): Promise<Record<string, { fraction: number; entries: WorkEntry[] }>> {
+  const worked: Record<string, { fraction: number; entries: WorkEntry[] }> = {};
   const { data: invoices } = await sb.from("payables_snapshot")
     .select("source_table, airtable_record_id")
     .ilike("payee_email", email)
@@ -88,7 +93,13 @@ async function fetchWorkedDays(
         if (!date || date < from || date > to) continue;
         const qty = num(r.fields[cfg.map.qty]);
         const frac = cfg.map.unit === "days" && qty != null ? qty : 1;
-        worked[date] = (worked[date] ?? 0) + frac;
+        const slot = worked[date] ?? (worked[date] = { fraction: 0, entries: [] });
+        slot.fraction += frac;
+        slot.entries.push({
+          role: cfg.role,
+          project: cfg.map.desc ? str(r.fields[cfg.map.desc]) : "",
+          qty, unit: cfg.map.unit,
+        });
       }
     }
   }
@@ -148,7 +159,7 @@ Deno.serve(async (req) => {
       if (!acct) return json({ error: "Account not found" }, 404);
 
       // Worked days: freelancers → Airtable; employees → weekday pattern (client renders).
-      let workedDays: { date: string; fraction: number }[] = [];
+      let workedDays: { date: string; fraction: number; entries: WorkEntry[] }[] = [];
       let workPattern: "airtable" | "weekdays" = "weekdays";
       if (acct.employment_type !== "employee") {
         workPattern = "airtable";
@@ -163,7 +174,9 @@ Deno.serve(async (req) => {
         }
         if (pat && baseId && email) {
           const worked = await fetchWorkedDays(sb, pat, baseId, email.toLowerCase(), from, to);
-          workedDays = Object.entries(worked).map(([date, fraction]) => ({ date, fraction: Math.round(fraction * 100) / 100 }));
+          workedDays = Object.entries(worked).map(([date, v]) => ({
+            date, fraction: Math.round(v.fraction * 100) / 100, entries: v.entries,
+          }));
         }
       }
 
