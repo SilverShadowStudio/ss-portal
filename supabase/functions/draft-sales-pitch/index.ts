@@ -135,17 +135,30 @@ Deno.serve(async (req) => {
   if (!res) return json({ error: `Couldn't draft (upstream ${lastStatus || "error"}): ${lastBody.replace(/\s+/g, " ").slice(0, 240)}` }, 200);
 
   const data = await res.json();
-  const text: string = data.content?.[0]?.text ?? "";
+  // Never assume content[0] is the text — a reply can lead with another block
+  // type, and reading only the first one yields "" and a bogus parse failure.
+  const blocks: { type?: string; text?: string }[] = Array.isArray(data.content) ? data.content : [];
+  const text: string = blocks.filter((c) => c?.type === "text").map((c) => c.text ?? "").join("\n").trim();
   const truncated = data.stop_reason === "max_tokens";
   const raw = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/, "").trim();
 
   const parsed = parseDraft(raw);
   if (!parsed) {
-    return json({
-      error: truncated
-        ? "The brief ran past its length limit and came back cut off. Try again — it's usually shorter the second time."
-        : "Draft came back unreadable — try again.",
-    }, 200);
+    // Log enough to diagnose without another round of guessing.
+    console.error("draft-sales-pitch parse failure", JSON.stringify({
+      mode, model: MODEL,
+      stop_reason: data.stop_reason ?? null,
+      block_types: blocks.map((c) => c?.type ?? "?"),
+      text_length: text.length,
+      sample: raw.slice(0, 400),
+      usage: data.usage ?? null,
+    }));
+    const why = text.length === 0
+      ? `came back empty (stop_reason ${data.stop_reason ?? "unknown"}, blocks: ${blocks.map((c) => c?.type ?? "?").join(", ") || "none"})`
+      : truncated
+      ? "ran past its length limit and was cut off"
+      : `wasn't in the expected shape — it started: "${raw.slice(0, 90).replace(/\s+/g, " ")}"`;
+    return json({ error: `The brief ${why}. Try again.` }, 200);
   }
   return json({ success: true, subject: parsed.subject ?? "", body: parsed.body ?? "", truncated });
 });
