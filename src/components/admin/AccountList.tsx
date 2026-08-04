@@ -351,6 +351,11 @@ export function AccountList({
 
   // Team-only simple invite state.
   const [inviteEmail, setInviteEmail] = useState("");
+  // Airtable match check. Worked days + earnings are matched ON EMAIL, so an
+  // address that isn't in Airtable means a silently empty calendar later.
+  const [airtableMatch, setAirtableMatch] = useState<
+    { state: "idle" | "checking" } | { state: "found"; name: string | null; role: string | null } | { state: "missing" } | { state: "unknown" }
+  >({ state: "idle" });
   const [inviteRole, setInviteRole] = useState("");
 
   // Airtable pre-flight match panel. Populated by a debounced lookup on
@@ -369,6 +374,25 @@ export function AccountList({
   const [linkedAirtableId, setLinkedAirtableId] = useState<string | null>(null);
 
   useEffect(() => { fetchAccounts(); }, [accountTypes.join(",")]);
+
+  // Debounced Airtable lookup while typing the invite email.
+  useEffect(() => {
+    if (!isTeamOnly) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@") || !email.includes(".")) { setAirtableMatch({ state: "idle" }); return; }
+    setAirtableMatch({ state: "checking" });
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("admin-check-airtable-user", { body: { email } });
+        if (error) { setAirtableMatch({ state: "unknown" }); return; }
+        const d = data as { checked?: boolean; found?: boolean; name?: string | null; role?: string | null };
+        if (!d?.checked) setAirtableMatch({ state: "unknown" });
+        else if (d.found) setAirtableMatch({ state: "found", name: d.name ?? null, role: d.role ?? null });
+        else setAirtableMatch({ state: "missing" });
+      } catch { setAirtableMatch({ state: "unknown" }); }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [inviteEmail, isTeamOnly]);
 
   // Poll live presence so the Active badge is near real-time (team + clients).
   useEffect(() => {
@@ -1403,6 +1427,20 @@ export function AccountList({
                         autoFocus
                         placeholder="contact@company.com"
                       />
+                      {airtableMatch.state === "checking" && (
+                        <p className="text-[11px] text-foreground/40">Checking Airtable…</p>
+                      )}
+                      {airtableMatch.state === "found" && (
+                        <p className="text-[11px]" style={{ color: "#6FBE8A" }}>
+                          Matches Airtable{airtableMatch.name ? ` · ${airtableMatch.name}` : ""}{airtableMatch.role ? ` · ${airtableMatch.role}` : ""}
+                        </p>
+                      )}
+                      {airtableMatch.state === "missing" && (
+                        <p className="text-[11px]" style={{ color: "#E4B95B" }}>
+                          Not in Airtable. Their worked days and earnings are matched on this
+                          address — if it differs from Airtable, both stay empty with no error.
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Role *</label>
