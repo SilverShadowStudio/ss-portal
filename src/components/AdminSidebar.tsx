@@ -8,7 +8,7 @@ import { usePendingLeaveCount } from "@/hooks/usePendingLeaveCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
-  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks,
+  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -41,6 +41,7 @@ const SECTIONS: SidebarNavSection[] = [
   {
     items: [
       { path: "/admin/sales", label: "Sales", Icon: Target, matchActive: (p) => p === "/admin/sales" },
+      { path: "/admin/sales/director", label: "Director", Icon: MessageSquare, indent: true },
       { path: "/admin/sales/commitments", label: "Commitments", Icon: ListChecks, indent: true },
     ],
   },
