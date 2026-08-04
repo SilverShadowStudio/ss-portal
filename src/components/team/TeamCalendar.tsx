@@ -337,7 +337,9 @@ function DayRow(props: {
   } else if (unavailable?.status === "pending") {
     bg = "rgba(107,107,107,0.16)"; dashed = true; leftAccent = "#8a8378"; numColor = "#c2bcb2"; sideLabel = "Not available"; sideColor = "#a49d92";
   } else if (derivedWorked != null && derivedWorked > 0) {
-    bg = `rgba(${WORKED_RGB},0.24)`; leftAccent = `rgba(${WORKED_RGB},0.9)`;
+    // Dimmer fill than holidays — worked days are the common case and shouldn't
+    // shout; the left accent + dot still carry the colour.
+    bg = `rgba(${WORKED_RGB},0.10)`; leftAccent = `rgba(${WORKED_RGB},0.9)`;
     marker = <span style={{ fontSize: 9, color: WORKED }}>{derivedWorked < 1 ? (fractionLabel(derivedWorked) || derivedWorked) : "●"}</span>;
   } else if (weekend) {
     bg = "rgba(18,15,26,0.14)"; numColor = "var(--text-recessive)";
