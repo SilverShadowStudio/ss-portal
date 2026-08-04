@@ -122,7 +122,7 @@ export function SelfBillPanel() {
           ) : (
             <div className="space-y-2">
               <p className="mb-2 text-xs text-recessive">
-                {needing.length} file{needing.length === 1 ? "" : "s"} predate the current naming format.
+                {needing.length} file{needing.length === 1 ? " predates" : "s predate"} the current naming format.
                 Renaming moves the PDF in Dropbox — it doesn&rsquo;t re-render or re-number the invoice.
               </p>
               {needing.map((i) => (
