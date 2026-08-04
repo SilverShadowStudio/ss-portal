@@ -535,10 +535,10 @@ input:-webkit-autofill:active {
   background: linear-gradient(165deg, #24352d 0%, #213a2f 26%, #191d1b 68%, #121615 100%);
 }
 
-/* Team management + team-member portals: same gradient geometry, hue→blue (214°),
+/* Team management + team-member portals: same gradient geometry, hue→blue (224°),
    luminance-matched to the plum. */
 .ssr-panel--team {
-  background: linear-gradient(165deg, #29323c 0%, #293646 26%, #1a1c1f 68%, #141619 100%);
+  background: linear-gradient(165deg, #2b313f 0%, #2c344b 26%, #1b1c20 68%, #141619 100%);
 }
 
 /* brighter zone — distinguished by tone only (no border/highlight) */
