@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2, Phone } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2, Phone, MessageSquare } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -288,6 +289,7 @@ export default function AdminSales() {
         <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
           <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Leads</h2></div>
           <div className="flex items-center gap-5">
+            <Link to="/admin/sales/director" className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><MessageSquare className="h-3 w-3" strokeWidth={1.5} />Director</Link>
             <button onClick={() => setImportOpen(true)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><Upload className="h-3 w-3" strokeWidth={1.5} />Import CSV</button>
             <button onClick={openAdd} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]"><Plus className="h-3 w-3" strokeWidth={1.5} />Add lead</button>
           </div>
