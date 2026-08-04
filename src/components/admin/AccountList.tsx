@@ -265,6 +265,9 @@ export function AccountList({
   // Client accounts that are in current production (own at least one active
   // project). Used to split the Clients directory into Active / Inactive.
   const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
+  // Live presence: user_id → last heartbeat (ms). Polled so the "Active" badge
+  // updates without a manual refresh.
+  const [presence, setPresence] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   // Per-user reconstructed login sessions (newest first) for the
   // last-connection summary + expandable history. Computed at render time.
@@ -366,6 +369,24 @@ export function AccountList({
   const [linkedAirtableId, setLinkedAirtableId] = useState<string | null>(null);
 
   useEffect(() => { fetchAccounts(); }, [accountTypes.join(",")]);
+
+  // Poll live presence (team view) so the Active badge is near real-time.
+  useEffect(() => {
+    if (!isTeamOnly) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase.from("user_presence").select("user_id, last_seen_at");
+      if (cancelled) return;
+      const m = new Map<string, number>();
+      for (const r of (data ?? []) as { user_id: string; last_seen_at: string }[]) {
+        m.set(r.user_id, new Date(r.last_seen_at).getTime());
+      }
+      setPresence(m);
+    };
+    load();
+    const iv = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [isTeamOnly]);
 
   // Clients only: which accounts are in active production (have a live project).
   useEffect(() => {
@@ -755,13 +776,13 @@ export function AccountList({
     </DropdownMenu>
   );
 
-  // "Active" = activity within the last 5 minutes (no heartbeat, so this is a
-  // recent-activity proxy); otherwise the dot goes grey and shows last seen.
-  const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+  // "Active" = a heartbeat within the last 90s (2× the 45s client ping).
+  // last-seen falls back to the freshest of heartbeat / sessions / last login.
+  const ONLINE_WINDOW_MS = 90 * 1000;
   const lastActiveMsOf = (userId: string, lastLogin: string | null): number | null => {
     const sess = sessionsByUser.get(userId) ?? [];
     const newest = sess[0];
-    const stamps = [lastLogin, newest?.end, newest?.start]
+    const stamps = [lastLogin, newest?.end, newest?.start, presence.get(userId) ? new Date(presence.get(userId)!).toISOString() : null]
       .filter(Boolean)
       .map((s) => new Date(s as string).getTime());
     return stamps.length ? Math.max(...stamps) : null;
@@ -1986,13 +2007,9 @@ export function AccountList({
                                     </span>
                                   )}
                                 </div>
-                                <div className="mt-1 flex min-w-0 items-center gap-2">
-                                  {u.position && (
-                                    <span className="font-sans uppercase text-label shrink-0" style={{ fontSize: 10, letterSpacing: "0.12em" }}>{u.position}</span>
-                                  )}
-                                  {u.position && u.email && <span className="text-white/20">·</span>}
-                                  {u.email && <span className="truncate text-xs text-muted-foreground">{u.email}</span>}
-                                </div>
+                                {u.position && (
+                                  <p className="mt-1 font-sans uppercase text-[#C9A96A] truncate" style={{ fontSize: 10, letterSpacing: "0.14em" }}>{u.position}</p>
+                                )}
                               </>
                             ) : (
                               <>

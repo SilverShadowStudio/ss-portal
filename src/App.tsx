@@ -65,6 +65,7 @@ import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
 import AdminReconcile from "./pages/admin/AdminReconcile";
 import AdminReconciliation from "./pages/admin/AdminReconciliation";
 import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import {
   AdminAlertBanner,
@@ -78,6 +79,7 @@ const queryClient = new QueryClient();
 
 function ActivityTrackerMount() {
   useClientActivityTracker();
+  usePresenceHeartbeat();
   return null;
 }
 
