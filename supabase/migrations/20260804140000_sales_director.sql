@@ -129,26 +129,35 @@ create index if not exists lead_events_lead_idx on public.lead_events (lead_id, 
 create or replace function public.tg_lead_events()
 returns trigger language plpgsql security definer set search_path = public
 as $$
+-- `source` is read from a TRANSACTION-LOCAL GUC the caller sets in the SAME
+-- transaction as the write:
+--     select set_config('app.event_source', 'coach'|'import'|'system', true);
+-- is_local = true keeps it scoped to that transaction (never leaks across pooled
+-- requests). Call-site contract: coach/cron/import writes go through an RPC or an
+-- explicit begin/commit so set_config and the UPDATE share one transaction.
+-- Unset (a human editing in the UI) defaults to 'ui'.
+declare
+  src text := coalesce(nullif(current_setting('app.event_source', true), ''), 'ui');
 begin
   if (tg_op = 'INSERT') then
     insert into public.lead_events (lead_id, event_type, to_value, actor_id, source)
-      values (new.id, 'created', new.stage, auth.uid(), 'system');
+      values (new.id, 'created', new.stage, auth.uid(), src);
   elsif (tg_op = 'UPDATE') then
     if new.stage is distinct from old.stage then
       insert into public.lead_events (lead_id, event_type, from_value, to_value, actor_id, source)
-        values (new.id, 'stage_change', old.stage, new.stage, auth.uid(), 'ui');
+        values (new.id, 'stage_change', old.stage, new.stage, auth.uid(), src);
     end if;
     if new.outcome is distinct from old.outcome then
       insert into public.lead_events (lead_id, event_type, from_value, to_value, actor_id, source)
-        values (new.id, 'outcome_set', old.outcome, new.outcome, auth.uid(), 'ui');
+        values (new.id, 'outcome_set', old.outcome, new.outcome, auth.uid(), src);
     end if;
     if new.owner_id is distinct from old.owner_id then
       insert into public.lead_events (lead_id, event_type, from_value, to_value, actor_id, source)
-        values (new.id, 'owner_change', old.owner_id::text, new.owner_id::text, auth.uid(), 'ui');
+        values (new.id, 'owner_change', old.owner_id::text, new.owner_id::text, auth.uid(), src);
     end if;
     if new.value_estimate is distinct from old.value_estimate then
       insert into public.lead_events (lead_id, event_type, from_value, to_value, actor_id, source)
-        values (new.id, 'value_change', old.value_estimate::text, new.value_estimate::text, auth.uid(), 'ui');
+        values (new.id, 'value_change', old.value_estimate::text, new.value_estimate::text, auth.uid(), src);
     end if;
   end if;
   return new;
@@ -158,8 +167,13 @@ drop trigger if exists trg_lead_events on public.leads;
 create trigger trg_lead_events after insert or update on public.leads
   for each row execute function public.tg_lead_events();
 
+-- Idempotent: only for leads that don't already have a 'migration' created event,
+-- so a second successful run of this file is a no-op.
 insert into public.lead_events (lead_id, event_type, to_value, source, created_at)
-  select id, 'created', stage, 'migration', coalesce(created_at, now()) from public.leads;
+  select l.id, 'created', l.stage, 'migration', coalesce(l.created_at, now())
+  from public.leads l
+  where not exists (
+    select 1 from public.lead_events e where e.lead_id = l.id and e.source = 'migration');
 
 alter table public.lead_events enable row level security;
 drop policy if exists lead_events_sales_read on public.lead_events;
