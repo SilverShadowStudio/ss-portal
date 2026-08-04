@@ -111,11 +111,13 @@ async function fetchLineItems(pat: string, base: string, source: string, invoice
   return lines;
 }
 
-/** "2026-07-13" → "13 July 2026". Falls back to the raw value if unparseable. */
+/** "2026-01-05" → "Monday 05 January". No year: the invoice period already
+ *  states it, and the weekday is what makes a day's work recognisable.
+ *  Falls back to the raw value if unparseable. */
 function longDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", timeZone: "UTC" });
 }
 
 // ── Dropbox (mirror dropbox-save-invoice-file) ───────────────────────────────
