@@ -17,6 +17,8 @@ const GOLD_BRIGHT = "#ecd39c";
 const pad = (n: number) => String(n).padStart(2, "0");
 
 interface Props {
+  /** Who the invitation goes to — shown so it's clear what's being scheduled. */
+  recipient?: string;
   /** Initial value; defaults to one hour from now. */
   initial?: Date;
   busy?: boolean;
@@ -24,7 +26,7 @@ interface Props {
   onSchedule: (when: Date) => void;
 }
 
-export function SendLaterDialog({ initial, busy, onCancel, onSchedule }: Props) {
+export function SendLaterDialog({ recipient, initial, busy, onCancel, onSchedule }: Props) {
   const start = useMemo(() => initial ?? new Date(Date.now() + 60 * 60 * 1000), [initial]);
   const [when, setWhen] = useState<Date>(start);
   // Which month the grid is showing — independent of the selected day.
@@ -88,6 +90,9 @@ export function SendLaterDialog({ initial, busy, onCancel, onSchedule }: Props) 
           The invitation is held and sent at the time you choose. The account is created now,
           so nothing is lost if you close this.
         </p>
+        {recipient && (
+          <p className="mt-2 text-xs" style={{ color: GOLD_BRIGHT }}>{recipient}</p>
+        )}
 
         {/* Date + time fields with steppers */}
         <div className="mt-5 flex flex-wrap items-center gap-4">

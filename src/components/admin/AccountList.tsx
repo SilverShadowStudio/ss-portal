@@ -354,8 +354,10 @@ export function AccountList({
   const [inviteEmail, setInviteEmail] = useState("");
   // Airtable match check. Worked days + earnings are matched ON EMAIL, so an
   // address that isn't in Airtable means a silently empty calendar later.
-  // Send-later sheet for the invitation email.
-  const [sendLaterOpen, setSendLaterOpen] = useState(false);
+  // Send-later sheet. Holds a SNAPSHOT of the email + role taken when the sheet
+  // opens: the sheet is portalled to <body>, so opening it reads as an outside
+  // click on the Radix dialog, which closes and clears those fields.
+  const [sendLater, setSendLater] = useState<{ email: string; role: string } | null>(null);
   const [airtableMatch, setAirtableMatch] = useState<
     { state: "idle" | "checking" } | { state: "found"; name: string | null; role: string | null } | { state: "missing" } | { state: "unknown" }
   >({ state: "idle" });
@@ -1123,8 +1125,9 @@ export function AccountList({
   // Creating immediately means a scheduled invite can't be lost, and the link is
   // generated fresh at send time so it's never stale on arrival.
   async function scheduleInvite(when: Date) {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email || !inviteRole) {
+    const email = sendLater?.email ?? "";
+    const role = sendLater?.role ?? "";
+    if (!email || !role) {
       toast({ title: "Email and role are required", variant: "destructive" });
       return;
     }
@@ -1136,7 +1139,7 @@ export function AccountList({
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "invite", accountType: "team", role: inviteRole,
+          mode: "invite", accountType: "team", role,
           company: { companyName: email }, contact: { email },
           defer_email: true,
         }),
@@ -1153,7 +1156,7 @@ export function AccountList({
         title: "Invitation scheduled",
         description: `${email} will be invited on ${when.toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.`,
       });
-      setSendLaterOpen(false);
+      setSendLater(null);
       setInviteEmail(""); setInviteRole("");
       setIsAddDialogOpen(false);
       fetchAccounts();
@@ -1511,7 +1514,8 @@ export function AccountList({
                       {/* Send later — holds the invitation until a chosen time.
                           Needs the same inputs as sending now, so it's disabled
                           until they're filled rather than failing at Schedule. */}
-                      <Button variant="ghost" onClick={() => setSendLaterOpen(true)}
+                      <Button variant="ghost"
+                        onClick={() => setSendLater({ email: inviteEmail.trim().toLowerCase(), role: inviteRole })}
                         disabled={isCreating || !inviteEmail.trim() || !inviteRole}
                         title={!inviteEmail.trim() || !inviteRole ? "Enter an email and role first" : undefined}
                         className="border border-white/12 text-foreground/75">
@@ -2350,10 +2354,11 @@ export function AccountList({
       />
 
       {/* Send-later sheet for the invitation email */}
-      {sendLaterOpen && (
+      {sendLater && (
         <SendLaterDialog
           busy={isCreating}
-          onCancel={() => setSendLaterOpen(false)}
+          recipient={sendLater.email}
+          onCancel={() => setSendLater(null)}
           onSchedule={scheduleInvite}
         />
       )}
