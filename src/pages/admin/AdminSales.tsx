@@ -263,7 +263,7 @@ export default function AdminSales() {
   }
 
   return (
-    <AdminLayout panel>
+    <AdminLayout panel panelClassName="ssr-panel--sales">
       <div className="mb-10">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div className="flex items-center gap-3">
