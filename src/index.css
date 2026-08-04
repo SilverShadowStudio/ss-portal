@@ -19,10 +19,6 @@
     --background: var(--brand-bg-hsl, 38 30% 96%);
     --foreground: 30 10% 15%;
 
-    /* Gradient panel (the three-tier Page surface, .ssr-panel) — a single fixed
-       purple glow: top-left violet falling to near-black plum. Theme-independent. */
-    --gradient-panel: radial-gradient(circle at 20% 10%, #6b21a8 0%, #4c1d95 45%, #2e1065 100%);
-
     --card: 40 25% 94%;
     --card-foreground: 30 10% 15%;
 
@@ -528,7 +524,7 @@ input:-webkit-autofill:active {
      between the panel top and the first card. Applies to every panel page. */
   padding: 32px 34px 40px;
   min-height: calc(100vh - 32px);
-  background: var(--gradient-panel);
+  background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
   box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.42);  /* soft float, no highlight rim */
 }
 
