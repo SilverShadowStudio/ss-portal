@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
 
     const { data: acct } = await admin
       .from('accounts')
-      .select('id, company_name')
+      .select('id, company_name, account_type, employment_type')
       .eq('id', targetAccountId)
       .maybeSingle()
     if (!acct) return json({ error: 'Account not found' }, 404)
@@ -228,7 +228,17 @@ Deno.serve(async (req) => {
             from: 'Silver Shadow Studio <portal@silvershadowstudio.com>',
             to: [email],
             subject: emailConfig.subject || EMAIL_INVITE_DEFAULTS.subject,
-            html: buildInviteEmailHtml(acct.company_name, inviteUrl, { backgroundColor: brand.background_color, ...emailConfig, ctaUrl: undefined, firstName: resendFirstName }),
+            html: buildInviteEmailHtml(acct.company_name, inviteUrl, {
+              backgroundColor: brand.background_color,
+              ...emailConfig,
+              // Team members have no projects or deliveries — a scheduled invite
+              // comes through this path, so it needs the same copy as a direct one.
+              ...(acct.account_type === 'team'
+                ? { bodyCopy: teamInviteBody((acct.employment_type as string | undefined) ?? undefined) }
+                : {}),
+              ctaUrl: undefined,
+              firstName: resendFirstName,
+            }),
             headers: { 'X-Entity-Ref-ID': crypto.randomUUID() },
             tags: [{ name: 'category', value: 'reinvite' }],
           }),
