@@ -28,12 +28,12 @@ interface CalData {
 
 const GOLD = "#d3b47c";
 const GOLD_BRIGHT = "#ecd39c";
-// Day-type colours — INVERTED 2026-08-04: holidays are yellow, worked days blue.
-// Both get the same tint strength so a holiday reads as a full day, not a gap.
-const HOLIDAY = GOLD_BRIGHT;         // paid + bank holiday — yellow
-const HOLIDAY_RGB = "236,211,156";   // #ecd39c
-const WORKED = "#59AEF8";            // worked days — blue, hsl(208, 92%, 66%)
-const WORKED_RGB = "89,174,248";
+// Day-type colours: holidays blue, worked days yellow. Both get the same tint
+// strength so a holiday reads as a full day, not a gap.
+const HOLIDAY = "#59AEF8";           // paid + bank holiday — blue, hsl(208, 92%, 66%)
+const HOLIDAY_RGB = "89,174,248";
+const WORKED = GOLD_BRIGHT;          // worked days — yellow
+const WORKED_RGB = "236,211,156";    // #ecd39c
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoOf = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
