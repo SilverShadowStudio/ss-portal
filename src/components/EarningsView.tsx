@@ -198,37 +198,37 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                           </td>
                         </tr>
 
-                        {isOpen && (
+                        {/* Line items are real rows, not a nested block, so each day's
+                            amount lands directly under the Fee column. */}
+                        {isOpen && p.lines.length === 0 && (
                           <tr className="border-b border-white/[0.05]">
-                            <td colSpan={6} className="px-4 pb-4 pt-1">
-                              {p.lines.length === 0 ? (
-                                <p className="py-3 text-center text-xs text-recessive">Detail not available for this month.</p>
-                              ) : (
-                                <div className="ml-5 border-l border-white/[0.08] pl-4">
-                                  {p.lines.map((l, i) => (
-                                    <div key={i} className="flex items-baseline gap-6 border-b border-white/[0.04] py-2.5 last:border-0">
-                                      {l.date ? (
-                                        <>
-                                          <div className="w-[190px] shrink-0">
-                                            <p className="text-standard" style={{ fontSize: 13 }}>{niceDate(l.date)}</p>
-                                            {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
-                                          </div>
-                                          <p className="min-w-0 flex-1 truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
-                                        </>
-                                      ) : (
-                                        <div className="min-w-0 flex-1">
-                                          <p className="truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
-                                          {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
-                                        </div>
-                                      )}
-                                      <p className="shrink-0 tabular-nums text-strong" style={{ fontSize: 13 }}>{money(l.amount, ccy)}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                            <td colSpan={6} className="px-4 py-3 text-center text-xs text-recessive">
+                              Detail not available for this month.
                             </td>
                           </tr>
                         )}
+                        {isOpen && p.lines.map((l, i) => (
+                          <tr key={`${p.key}-l${i}`} className="border-b border-white/[0.04] last:border-white/[0.05]">
+                            <td className="py-2.5 pl-4 pr-4">
+                              <div className="flex items-baseline gap-6 border-l border-white/[0.08] pl-4">
+                                {l.date && (
+                                  <div className="w-[180px] shrink-0">
+                                    <p className="text-standard" style={{ fontSize: 13 }}>{niceDate(l.date)}</p>
+                                    {qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-standard" style={{ fontSize: 13 }}>{l.description}</p>
+                                  {!l.date && qtyLabel(l, ccy) && <p className="mt-0.5 text-white/40" style={{ fontSize: 11 }}>{qtyLabel(l, ccy)}</p>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2.5 pr-4 text-right align-top tabular-nums text-standard" style={{ fontSize: 13 }}>
+                              {money(l.amount, ccy)}
+                            </td>
+                            <td colSpan={4} />
+                          </tr>
+                        ))}
                       </Fragment>
                     );
                   })}
