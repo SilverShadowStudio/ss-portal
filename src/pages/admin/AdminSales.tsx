@@ -337,7 +337,14 @@ export default function AdminSales() {
                 </thead>
                 <tbody>
                   {sortedRows.map((r) => (
-                    <tr key={r.id} className="border-b border-white/[0.05] last:border-0">
+                    <tr
+                      key={r.id}
+                      /* Due today gets the green sweep — the row you're meant to
+                         act on should be findable without reading the dates. */
+                      className={`border-b border-white/[0.05] last:border-0 ${
+                        r.next_action_at === todayISO ? "ssr-row-today" : ""
+                      }`}
+                    >
                       <td className="px-4 py-3 text-strong">
                         <span className="inline-flex items-center gap-2">{r.company}{r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-white/30 hover:text-gold">↗</a>}</span>
                         {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
