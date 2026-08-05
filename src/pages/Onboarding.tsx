@@ -584,11 +584,11 @@ export default function Onboarding() {
           </section>
 
           {preSignedMode ? (
-            <button onClick={handleConfirm} disabled={confirming} className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors disabled:opacity-50" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
+            <button onClick={handleConfirm} disabled={confirming} className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#C9A96A] text-[#1a1013] py-4 font-sans font-medium uppercase hover:bg-[#ecd39c] transition-colors disabled:opacity-50" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
               {confirming ? <><BrandLoader size="sm" className="h-3 w-3 mr-2" />Saving…</> : "Confirm & Enter Portal"}
             </button>
           ) : (
-            <button onClick={handleNext} className="w-full flex items-center justify-center gap-2 bg-foreground text-background py-4 font-sans uppercase hover:bg-foreground/90 transition-colors" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
+            <button onClick={handleNext} className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#C9A96A] text-[#1a1013] py-4 font-sans font-medium uppercase hover:bg-[#ecd39c] transition-colors" style={{ fontSize: 10, letterSpacing: "0.22em" }}>
               Next — Review Agreements
             </button>
           )}
