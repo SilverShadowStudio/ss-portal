@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, AlertTriangle, Check } from "lucide-react";
+import { X, AlertTriangle, Check, Mic, MicOff } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
+import { useDictation } from "@/hooks/useDictation";
 
 // The debrief must take ~15 seconds or the rep stops doing it. One tap for the
 // common outcome + one sentence. Submitting shows the coach's reply IN PLACE —
@@ -87,12 +88,21 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
   });
 
   const busy = submit.isPending;
+  // Append with one space, never doubling one that's already there.
+  const dictation = useDictation({
+    onPhrase: (phrase) => setText((p) => (p.trim() ? `${p.replace(/\s+$/, "")} ` : "") + phrase),
+    onError: (m) => setErrorMsg(m),
+  });
+
   const canSubmit = (!!quick || text.trim().length > 0) && !busy;
 
   return (
     <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div
-        className="ssr-tile w-full sm:max-w-[560px] max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5 sm:p-6"
+        // The sales panel gradient, so a debrief looks like it belongs to the
+        // pipeline rather than to a generic dialog.
+        className="ssr-panel ssr-panel--sales w-full sm:max-w-[560px] max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5 sm:p-6"
+        style={{ border: "1px solid rgba(201,169,106,0.18)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between gap-4">
@@ -124,21 +134,49 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
               ))}
             </div>
 
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={4}
-              autoFocus
-              placeholder="What happened? One sentence is enough — who you spoke to, what they said, what you agreed and when."
-              className="w-full rounded-lg border border-white/10 bg-black/25 p-3.5 text-sm text-standard placeholder:text-white/30 focus:border-[#C9A96A]/50 focus:outline-none"
-            />
+            <div className="relative">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={4}
+                autoFocus
+                placeholder="What happened? One sentence is enough — who you spoke to, what they said, what you agreed and when. Or press the mic and just say it."
+                className="w-full rounded-lg border border-white/10 bg-black/25 p-3.5 pr-14 text-sm text-standard placeholder:text-white/30 focus:border-[#C9A96A]/50 focus:outline-none"
+              />
+
+              {/* Speaking a debrief between calls is the whole point — typing one
+                  up afterwards is the tax nobody keeps paying. */}
+              {dictation.supported && (
+                <button
+                  type="button"
+                  onClick={dictation.toggle}
+                  aria-label={dictation.listening ? "Stop dictating" : "Dictate the debrief"}
+                  aria-pressed={dictation.listening}
+                  title={dictation.listening ? "Stop dictating" : "Speak it instead"}
+                  className={`absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
+                    dictation.listening
+                      ? "border-[#F0544C]/50 bg-[#F0544C]/10 text-[#F0544C]"
+                      : "border-white/12 text-white/40 hover:border-[#C9A96A]/40 hover:text-[#ecd39c]"
+                  }`}
+                >
+                  {dictation.listening && <span className="absolute inset-0 animate-ping rounded-full bg-[#F0544C]/15" />}
+                  {dictation.listening
+                    ? <MicOff className="relative h-4 w-4" strokeWidth={1.75} />
+                    : <Mic className="relative h-4 w-4" strokeWidth={1.75} />}
+                </button>
+              )}
+            </div>
+
+            {dictation.listening && (
+              <p className="mt-2 text-xs italic text-white/35">{dictation.interim || "Listening — speak as you would to a colleague."}</p>
+            )}
 
             {errorMsg && (
               <p className="mt-3 text-xs text-[#FF6B5A]">{errorMsg}</p>
             )}
 
             <button
-              onClick={() => submit.mutate()}
+              onClick={() => { dictation.stop(); submit.mutate(); }}
               disabled={!canSubmit}
               className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#C9A96A] text-sm font-medium text-[#211a0f] transition-opacity disabled:opacity-40"
             >
