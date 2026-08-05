@@ -345,10 +345,16 @@ export default function Onboarding() {
   const handleChange = (field: keyof FormData, value: string) => setForm((p) => ({ ...p, [field]: value }));
 
   const borderFor = (field: keyof FormData) =>
-    showError(field) ? "border-destructive focus:border-destructive" : "border-border focus:border-gold";
+    showError(field) ? "border-[#F0544C]/60" : "border-white/10";
 
-  const inputClass  = (field: keyof FormData) => `w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-colors text-sm ${borderFor(field)}`;
-  const selectClass = (field: keyof FormData) => `w-full border-0 border-b bg-transparent py-3 text-foreground focus:outline-none transition-colors appearance-none cursor-pointer text-sm ${borderFor(field)}`;
+  // A field you can see the edges of. The old underline-only treatment left the
+  // form looking like unstyled text on a dark page — the empty boxes in Fred's
+  // screenshot are simply invisible inputs.
+  const FIELD_BASE =
+    "w-full rounded-md border bg-black/25 px-3.5 py-2.5 text-sm text-strong placeholder:text-white/25 " +
+    "transition-colors focus:outline-none focus:border-[#C9A96A]/50";
+  const inputClass  = (field: keyof FormData) => `${FIELD_BASE} ${borderFor(field)}`;
+  const selectClass = (field: keyof FormData) => `${FIELD_BASE} appearance-none cursor-pointer ${borderFor(field)}`;
 
   function handleNext() {
     const allTouched = REQUIRED_FIELDS.reduce((a, f) => ({ ...a, [f]: true }), {} as Touched);
@@ -452,27 +458,34 @@ export default function Onboarding() {
   // ── Page 1: form ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background px-4 py-16">
+    <div className="ssr-shell min-h-screen">
       <OnboardingGuide copy={GUIDE_DETAILS} />
+      <div className="ssr-panelwrap" style={{ padding: 16 }}>
+        <div className="ssr-panel ssr-panel--team min-h-[calc(100vh-32px)] px-6 py-12 sm:px-12">
       <div className="mx-auto max-w-2xl">
-        <div className="mb-14 animate-fade-in">
-          <div className="flex items-start gap-4">
-            <div className="w-0.5 self-stretch bg-gold" style={{ opacity: 0.4 }} />
-            <div>
-              <h1 className="font-serif text-4xl font-normal tracking-tight text-foreground">{preSignedMode ? "Confirm your details" : "Join the Studio"}</h1>
-              <p className="mt-3 font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.24em" }}>{preSignedMode ? "Your agreement is already signed — check everything is right and confirm" : "Complete your details to sign your agreements"}</p>
-            </div>
+        <div className="mb-12 animate-fade-in">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px w-12 bg-gold-muted" />
+            <span className="text-label-gold">{preSignedMode ? "Confirm" : "Join the studio"}</span>
           </div>
+          <h1 className="text-3xl font-normal tracking-[-0.01em] text-strong">
+            {preSignedMode ? "Confirm your details" : "Tell us who you are"}
+          </h1>
+          <p className="mt-3 text-sm text-recessive">
+            {preSignedMode
+              ? "Your agreement is already signed — check everything is right and confirm."
+              : "Once, and about five minutes. This is what lets the studio pay you correctly and raise your invoices for you."}
+          </p>
         </div>
 
         <div className="space-y-14 animate-fade-in" style={{ animationDelay: "0.1s" }}>
           {/* 01 Personal Details */}
-          <section>
-            <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>01 — Personal Details</span></div>
+          <section className="ssr-zone">
+            <div className="mb-7 flex items-center gap-3 border-b border-white/[0.07] pb-3"><div className="h-px w-6 bg-gold-muted" /><span className="text-label">01 — Personal Details</span></div>
             <div className="space-y-7">
               {(["firstName", "lastName", "email"] as const).map((field) => (
                 <div key={field} className="space-y-1.5" data-field={field}>
-                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">
                     {FIELD_LABELS[field]}{REQUIRED_FIELDS.includes(field) && <span className="ml-1 text-gold">*</span>}
                   </label>
                   <input
@@ -490,11 +503,11 @@ export default function Onboarding() {
                 </div>
               ))}
               <div className="space-y-1.5" data-field="role">
-                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">
                   {FIELD_LABELS.role}{REQUIRED_FIELDS.includes("role") && <span className="ml-1 text-gold">*</span>}
                 </label>
                 {roleLocked ? (
-                  <p className="w-full border-0 border-b border-border bg-transparent py-3 text-foreground text-sm">{form.role}</p>
+                  <p className="w-full rounded-md border border-white/[0.06] bg-black/15 px-3.5 py-2.5 text-sm text-white/60">{form.role}</p>
                 ) : (
                   <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
                     <option value="" disabled>Select a role…</option>
@@ -510,12 +523,12 @@ export default function Onboarding() {
           </section>
 
           {/* 02 Address */}
-          <section>
-            <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>02 — Address</span></div>
+          <section className="ssr-zone">
+            <div className="mb-7 flex items-center gap-3 border-b border-white/[0.07] pb-3"><div className="h-px w-6 bg-gold-muted" /><span className="text-label">02 — Address</span></div>
             <div className="space-y-7">
               {(["flatNumber", "houseNumber", "streetName", "city", "postcode"] as const).map((field) => (
                 <div key={field} className="space-y-1.5" data-field={field}>
-                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>
+                  <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">
                     {FIELD_LABELS[field]}{REQUIRED_FIELDS.includes(field) && <span className="ml-1 text-gold">*</span>}
                   </label>
                   <input type="text" value={form[field]} onChange={(e) => handleChange(field, e.target.value)} onBlur={() => handleBlur(field)} className={inputClass(field)} />
@@ -523,7 +536,7 @@ export default function Onboarding() {
                 </div>
               ))}
               <div className="space-y-1.5" data-field="country">
-                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS.country} <span className="text-gold">*</span></label>
+                <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">{FIELD_LABELS.country} <span className="text-gold">*</span></label>
                 <CountryCombobox value={form.country} onChange={(v) => handleChange("country", v)} onBlur={() => handleBlur("country")} hasError={showError("country")} />
                 {showError("country") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
               </div>
@@ -532,22 +545,22 @@ export default function Onboarding() {
 
           {/* 03 Rate — employees are salaried, no per-work rate */}
           {!isEmployee && (
-          <section>
-            <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>03 — Rate</span></div>
+          <section className="ssr-zone">
+            <div className="mb-7 flex items-center gap-3 border-b border-white/[0.07] pb-3"><div className="h-px w-6 bg-gold-muted" /><span className="text-label">03 — Rate</span></div>
             <div className="grid grid-cols-3 gap-6">
               <div className="space-y-1.5" data-field="rateAmount">
-                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS.rateAmount} <span className="text-gold">*</span></label>
+                <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">{FIELD_LABELS.rateAmount} <span className="text-gold">*</span></label>
                 <input type="text" inputMode="decimal" value={form.rateAmount} onChange={(e) => handleChange("rateAmount", e.target.value)} onBlur={() => handleBlur("rateAmount")} placeholder="100" className={inputClass("rateAmount")} />
                 {showError("rateAmount") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS.rateCurrency}</label>
+                <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">{FIELD_LABELS.rateCurrency}</label>
                 <select value={form.rateCurrency} onChange={(e) => handleChange("rateCurrency", e.target.value)} className={selectClass("rateCurrency")}>
                   <option value="GBP">GBP</option><option value="EUR">EUR</option><option value="USD">USD</option>
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS.ratePeriod}</label>
+                <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">{FIELD_LABELS.ratePeriod}</label>
                 <select value={form.ratePeriod} onChange={(e) => handleChange("ratePeriod", e.target.value)} className={selectClass("ratePeriod")}>
                   <option value="hour">Per hour</option><option value="day">Per day</option><option value="week">Per week</option><option value="month">Per month</option>
                 </select>
@@ -557,12 +570,12 @@ export default function Onboarding() {
           )}
 
           {/* 04 Bank Details */}
-          <section>
-            <div className="border-b border-border pb-2 mb-8"><span className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.28em" }}>04 — Bank Details</span></div>
+          <section className="ssr-zone">
+            <div className="mb-7 flex items-center gap-3 border-b border-white/[0.07] pb-3"><div className="h-px w-6 bg-gold-muted" /><span className="text-label">04 — Bank Details</span></div>
             <div className="space-y-7">
               {(["bankName", "accountHolder", "sortCode", "accountNumber"] as const).map((field) => (
                 <div key={field} className="space-y-1.5" data-field={field}>
-                  <label className="font-sans uppercase text-foreground/40" style={{ fontSize: 9, letterSpacing: "0.2em" }}>{FIELD_LABELS[field]} <span className="text-gold">*</span></label>
+                  <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">{FIELD_LABELS[field]} <span className="text-gold">*</span></label>
                   <input type="text" value={form[field]} onChange={(e) => handleChange(field, e.target.value)} onBlur={() => handleBlur(field)} className={inputClass(field)} />
                   {showError(field) && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
                 </div>
@@ -579,6 +592,8 @@ export default function Onboarding() {
               Next — Review Agreements
             </button>
           )}
+        </div>
+      </div>
         </div>
       </div>
     </div>
