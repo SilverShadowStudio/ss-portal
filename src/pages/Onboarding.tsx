@@ -502,8 +502,15 @@ export default function Onboarding() {
           border, not a wide margin. There's no sidebar here, so it's 16 on all
           four sides rather than the usual three. */}
       <div style={{ padding: 16 }}>
-        <div className="ssr-panel ssr-panel--team min-h-[calc(100vh-32px)] px-6 py-12 sm:px-12">
-      <div className="mx-auto max-w-2xl">
+        {/* The panel is capped and centred rather than full-width with the
+            content floating inside it — so the 34px .ssr-panel already keeps
+            IS the gap between its edge and each section, left and right.
+            672px of content (max-w-2xl) + 34 either side. */}
+        <div
+          className="ssr-panel ssr-panel--team mx-auto min-h-[calc(100vh-32px)]"
+          style={{ maxWidth: 740 }}
+        >
+      <div>
         <div className="mb-12 animate-fade-in">
           <div className="mb-4 flex items-center gap-3">
             <div className="h-px w-12 bg-gold-muted" />
