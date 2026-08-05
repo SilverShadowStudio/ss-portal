@@ -309,6 +309,29 @@ export function AccountList({
   // Per-user reconstructed login sessions (newest first) for the
   // last-connection summary + expandable history. Computed at render time.
   const [sessionsByUser, setSessionsByUser] = useState<Map<string, SessionSummary[]>>(new Map());
+
+  // "Active" = a heartbeat within the last 90s (2× the 45s client ping).
+  // last-seen falls back to the freshest of heartbeat / sessions / last login.
+  // Declared here rather than beside the card markup because the section
+  // ordering sorts on it — the list must rank by the SAME signal the badge
+  // shows, or the order silently disagrees with what you're reading.
+  const ONLINE_WINDOW_MS = 90 * 1000;
+  const lastActiveMsOf = (userId: string, lastLogin: string | null): number | null => {
+    const sess = sessionsByUser.get(userId) ?? [];
+    const newest = sess[0];
+    const stamps = [lastLogin, newest?.end, newest?.start, presence.get(userId) ? new Date(presence.get(userId)!).toISOString() : null]
+      .filter(Boolean)
+      .map((s) => new Date(s as string).getTime());
+    return stamps.length ? Math.max(...stamps) : null;
+  };
+
+  /** Freshest activity across everyone on an account. Never-connected → null. */
+  const groupLastActive = (g: AccountGroup): number | null => {
+    const stamps = g.users
+      .map((u) => lastActiveMsOf(u.user_id, u.last_login_at ?? null))
+      .filter((n): n is number => n != null);
+    return stamps.length ? Math.max(...stamps) : null;
+  };
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel | null>(null);
   // Lazy-fetched, per-account caches for the Documents + Activity accordions.
   // Fetched on first open of that circle for any user in the account; reused
@@ -757,7 +780,20 @@ export function AccountList({
     }
     return TEAM_SECTION_ORDER
       .filter((k) => map.has(k))
-      .map((label) => ({ label, groups: map.get(label)! }));
+      .map((label) => ({
+        label,
+        // Most recently connected at the top of each discipline. Ranked on the
+        // same signal the card's badge shows (heartbeat / session / login), so
+        // the order always agrees with what's written on the row. Anyone who has
+        // never signed in sits at the bottom, alphabetically.
+        groups: [...map.get(label)!].sort((a, b) => {
+          const ta = groupLastActive(a), tb = groupLastActive(b);
+          if (ta != null && tb != null) return tb - ta;
+          if (ta != null) return -1;
+          if (tb != null) return 1;
+          return a.company_name.localeCompare(b.company_name);
+        }),
+      }));
   }, [filteredGroups]);
 
   // Clients view: Active clients (in production) on top, Inactive below.
@@ -839,18 +875,6 @@ export function AccountList({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-
-  // "Active" = a heartbeat within the last 90s (2× the 45s client ping).
-  // last-seen falls back to the freshest of heartbeat / sessions / last login.
-  const ONLINE_WINDOW_MS = 90 * 1000;
-  const lastActiveMsOf = (userId: string, lastLogin: string | null): number | null => {
-    const sess = sessionsByUser.get(userId) ?? [];
-    const newest = sess[0];
-    const stamps = [lastLogin, newest?.end, newest?.start, presence.get(userId) ? new Date(presence.get(userId)!).toISOString() : null]
-      .filter(Boolean)
-      .map((s) => new Date(s as string).getTime());
-    return stamps.length ? Math.max(...stamps) : null;
-  };
 
   const updateForm = (key: keyof typeof initialForm, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
