@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TEAM_ACCOUNT_TYPES } from "@/lib/accountTypes";
 import { Settings } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { AccountList } from "@/components/admin/AccountList";
@@ -13,7 +14,7 @@ export default function AdminTeam() {
         title="Team"
         eyebrow="Team Management"
         subtitle="Manage freelancers and team members."
-        accountTypes={["team"]}
+        accountTypes={[...TEAM_ACCOUNT_TYPES]}
         addButtonLabel="Add Member"
         showClientCode={false}
         showAccountType={false}

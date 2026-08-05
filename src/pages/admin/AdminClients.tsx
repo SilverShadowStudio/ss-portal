@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/AdminLayout";
+import { CLIENT_ACCOUNT_TYPES } from "@/lib/accountTypes";
 import { AccountList } from "@/components/admin/AccountList";
 
 export default function AdminClients() {
@@ -8,7 +9,7 @@ export default function AdminClients() {
         title="Clients"
         eyebrow="Client Management"
         subtitle="Manage all studio clients and their access."
-        accountTypes={["partnership", "project"]}
+        accountTypes={[...CLIENT_ACCOUNT_TYPES]}
         addButtonLabel="Add Client"
         showClientCode
         showAccountType

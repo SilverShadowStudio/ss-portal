@@ -2,9 +2,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { CLIENT_ACCOUNT_TYPES } from "@/lib/accountTypes";
 
 /**
- * Counts accounts created after the admin's last visit to /admin/clients.
+ * Counts CLIENT accounts created after the admin's last visit to /admin/clients.
+ * The type filter matters: without it, adding a team member showed as a new
+ * client, because every account — team, partnership, project — shares one table.
  * The "last seen" timestamp is stored per-admin in localStorage and is
  * cleared (set to now) whenever the admin lands on /admin/clients.
  */
@@ -30,6 +33,7 @@ export function useNewClientsCount() {
     const { count: newCount, error } = await supabase
       .from("accounts")
       .select("id", { count: "exact", head: true })
+      .in("account_type", [...CLIENT_ACCOUNT_TYPES])
       .gt("created_at", lastSeen);
     if (!error) setCount(newCount ?? 0);
   }, [storageKey]);
