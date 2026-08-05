@@ -181,8 +181,14 @@ const TOOLS = [
 const SERVER_TOOLS = [
   { type: "web_search_20250305", name: "web_search", max_uses: 5 },
   {
+    // Citations are deliberately OFF for fetch. A fetch citation is a
+    // char_location carrying a document_index, and on a later turn that index
+    // no longer resolves — the API rejects the whole conversation with
+    // "Invalid document index in document citation", permanently bricking the
+    // thread. They also contributed nothing here: the source links need a url,
+    // which char_location citations don't carry. Web SEARCH citations are
+    // unaffected — they're web_search_result_location and do carry a url.
     type: "web_fetch_20250910", name: "web_fetch", max_uses: 5,
-    citations: { enabled: true },
     // A large PDF can be 125k tokens. Cap it: research is worth paying for,
     // an accidental whitepaper is not.
     max_content_tokens: 30000,
@@ -438,6 +444,21 @@ const textOf = (blocks: Any[]): string =>
 
 // ── Memory ───────────────────────────────────────────────────────────────────
 
+/** Strip citations that reference a document by index.
+ *  Their indices are only valid inside the turn that produced them; replayed
+ *  later they resolve to nothing and the API rejects the entire request. This
+ *  is what un-bricks a thread that already has them stored. */
+function stripDeadCitations(blocks: Any): Any {
+  if (!Array.isArray(blocks)) return blocks;
+  return blocks.map((b: Any) => {
+    if (!b || b.type !== "text" || !Array.isArray(b.citations)) return b;
+    const kept = b.citations.filter((c: Any) => c && c.document_index === undefined);
+    if (kept.length === b.citations.length) return b;
+    const { citations: _drop, ...rest } = b;
+    return kept.length ? { ...rest, citations: kept } : rest;
+  });
+}
+
 /** A message that OPENS an exchange: Fred speaking, not a tool_result batch.
  *  Both are stored with role 'user' — only this one is safe to start a replay
  *  on, because a tool_result must be preceded by its matching tool_use. */
@@ -641,7 +662,10 @@ Deno.serve(async (req) => {
   let start = 0;
   while (start < tail.length && !isUserTurn(tail[start] as Any)) start++;
   const history: Any[] = tail.slice(start)
-    .map((m: Any) => ({ role: m.role, content: m.blocks ?? [{ type: "text", text: m.body ?? "" }] }))
+    .map((m: Any) => ({
+      role: m.role,
+      content: stripDeadCitations(m.blocks) ?? [{ type: "text", text: m.body ?? "" }],
+    }))
     .filter((m: Any) => Array.isArray(m.content) && m.content.length > 0);
 
   const messages: Any[] = [...history, { role: "user", content: [{ type: "text", text: message }] }];

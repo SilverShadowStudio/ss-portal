@@ -3,6 +3,9 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
+// Toasts stay until dismissed. Radix treats Infinity as "never auto-close";
+// this is passed on every toast so a message can't vanish before it's read.
+const TOAST_DURATION = Infinity;
 const TOAST_REMOVE_DELAY = 1000000;
 
 type ToasterToast = ToastProps & {
@@ -147,6 +150,8 @@ function toast({ ...props }: Toast) {
   dispatch({
     type: "ADD_TOAST",
     toast: {
+      // duration first so an explicit one on the call still wins.
+      duration: TOAST_DURATION,
       ...props,
       id,
       open: true,
