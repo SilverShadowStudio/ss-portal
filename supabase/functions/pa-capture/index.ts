@@ -32,7 +32,9 @@ type Any = any;
 const SYSTEM = `You turn one spoken or typed line into a reminder. Return ONLY this JSON, no prose, no fences:
 { "body": "", "due_at": "", "understood": true }
 
-body — what to put in front of him when it fires, in HIS words. Strip the instruction ("remind me to", "reminder for tomorrow at 9") and keep the substance. "Did the mike@ email bounce back" stays exactly that — a question he asked himself stays a question. Never expand, explain or tidy it.
+HE WILL USUALLY WRITE IT BARE. "16:30 wednesday did john call", "tomorrow 9:45 chase spink", "friday send the maybourne quote". There is no "remind me" and there does not need to be — everything he says here is a reminder. Read the leading time and day tokens as the WHEN, and everything after them as the WHAT. The order varies: "wednesday 16:30", "16:30 wed", "9:45 tomorrow" all mean the same thing.
+
+body — what to put in front of him when it fires, in HIS words. Strip the timing tokens and any instruction wrapper ("remind me to", "reminder for"), and keep the substance. "Did the mike@ email bounce back" stays exactly that — a question he asked himself stays a question. Never expand, explain or tidy it.
 
 due_at — ISO 8601 with the offset, resolved against the current time and timezone you are given.
 - "tomorrow morning 9:45" → tomorrow at 09:45 local.
@@ -40,6 +42,7 @@ due_at — ISO 8601 with the offset, resolved against the current time and timez
 - "monday" with no time → 09:00 that Monday.
 - "this afternoon" → 14:00 today. "tonight" → 19:00. "first thing" → 08:00.
 - A time already past today means tomorrow, unless he named a date.
+- A bare weekday means the NEXT one — on a Wednesday, "wednesday" is seven days away, not this morning.
 
 understood — false ONLY if there is no way to tell when he means. Do not guess wildly: a reminder that fires at the wrong time is worse than one he has to restate. When false, still return your best body so nothing he said is lost.
 

@@ -108,7 +108,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder="Remind me tomorrow at 9:45 — did the mike@ email bounce back"
+                placeholder="9:45 tomorrow  did the mike@ email bounce back"
                 className="max-h-[140px] flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-strong placeholder:text-white/25 focus:outline-none"
               />
               {dictation.supported && (
@@ -139,7 +139,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
               <p className="mt-2 text-xs italic text-white/30">{dictation.interim || "Listening…"}</p>
             )}
             {error && <p className="mt-2 text-xs text-[#F0544C]">{error}</p>}
-            <p className="mt-2 text-[10px] text-white/20">Enter to save · it closes itself</p>
+            <p className="mt-2 text-[10px] text-white/20">Time, day, then the thing · Enter to save</p>
 
             {!!list?.length && (() => {
               const now = Date.now();
