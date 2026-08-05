@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { DirectorSheet, DirectorLauncher, useDirector } from "@/components/admin/sales/DirectorSheet";
+import { DirectorSheet, DirectorLauncher, useDirector, DIRECTOR_WIDTH } from "@/components/admin/sales/DirectorSheet";
 import { AdminSidebar } from "./AdminSidebar";
 import { cn } from "@/lib/utils";
 
@@ -38,11 +38,21 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
 
   const { pathname } = useLocation();
   const onDirectorPage = pathname.startsWith("/admin/sales/director");
+  const { isOpen: directorOpen } = useDirector();
 
   return (
     <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
       <AdminSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
-      <main className={cn("min-h-screen transition-all duration-300", expanded ? "ml-64" : "ml-20")}>
+      <main
+        className="min-h-screen"
+        style={{
+          // The Director takes the sidebar's place and the page steps aside for
+          // it — both stay live and clickable, which an overlay can't do.
+          marginLeft: directorOpen ? DIRECTOR_WIDTH + 12 : undefined,
+          transition: "margin-left var(--duration-deliberate) var(--ease-signature)",
+        }}
+      >
+      <div className={cn(directorOpen ? "" : expanded ? "ml-64" : "ml-20", "transition-all duration-300")}>
         {panel ? (
           <div className="ssr-panelwrap">
             <div className={cn("ssr-panel", panelClassName)}>{children}</div>
@@ -52,6 +62,7 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
             {children}
           </div>
         )}
+      </div>
       </main>
 
       {/* The Director, reachable from any admin page. Hidden on its own page —

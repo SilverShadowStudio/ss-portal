@@ -10,8 +10,11 @@ import { DirectorChat } from "@/components/admin/sales/DirectorChat";
 // about the page. The full-page version still exists and holds the same
 // conversation; "Open in full" hands off to it.
 
-// One opener for the whole portal, so any page can summon the drawer without
-// navigating away from itself — which was the point of having a drawer.
+/** How much room the layout gives up when the Director is open. */
+export const DIRECTOR_WIDTH = 520;
+
+// One opener for the whole portal, so any page can summon the panel without
+// navigating away from itself — which was the point of having it.
 const DirectorCtx = createContext<{ open: () => void; close: () => void; isOpen: boolean }>({
   open: () => {}, close: () => {}, isOpen: false,
 });
@@ -52,53 +55,45 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
   if (!mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[160]" style={{ pointerEvents: "auto" }}>
-      <div
-        onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-opacity duration-[420ms]"
-        style={{ opacity: shown ? 1 : 0 }}
+    // No backdrop and no full-screen wrapper: the page beside it stays live and
+    // clickable. This is a panel the layout makes room for, not something
+    // covering the page — so you can read a lead and ask about it at once.
+    <aside
+      role="complementary"
+      aria-label="Sales Director"
+      className="ssr-panel ssr-panel--sales fixed flex flex-col overflow-hidden"
+      style={{
+        // Fixed to the viewport, not the document: it ends before the bottom of
+        // the screen and stays put while the page beside it scrolls.
+        top: 16, bottom: 16, left: 0,
+        width: DIRECTOR_WIDTH,
+        maxWidth: "calc(100vw - 32px)",
+        zIndex: 60,
+        borderRadius: 22,
+        transform: shown ? "translateX(0)" : "translateX(-100%)",
+        opacity: shown ? 1 : 0,
+        transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
+        boxShadow: "inset -1px 0 0 rgba(201,169,106,0.20), 24px 0 60px -30px rgba(0,0,0,0.8)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
+        style={{ background: "linear-gradient(180deg, transparent, rgba(201,169,106,0.45), transparent)" }}
       />
 
-      <aside
-        role="dialog"
-        aria-label="Sales Director"
-        className="ssr-panel ssr-panel--sales absolute flex flex-col overflow-hidden"
-        style={{
-          // Over the sidebar, in the sidebar's own footprint: it takes the
-          // navigation's place rather than crowding the page. Same inset and
-          // same 22px radius as .ssr-panel, so it reads as one of the portal's
-          // own surfaces that happens to have slid in.
-          top: 16, bottom: 16, left: 0,
-          width: "min(520px, calc(100vw - 32px))",
-          borderRadius: 22,
-          transform: shown ? "translateX(0)" : "translateX(-100%)",
-          opacity: shown ? 1 : 0,
-          // The studio's own easing — the same curve the rest of the portal
-          // moves on, so the drawer belongs to it rather than arriving from
-          // some other application.
-          transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
-          boxShadow: "inset -1px 0 0 rgba(201,169,106,0.20), 40px 0 90px -30px rgba(0,0,0,0.85)",
-        }}
+      <button
+        onClick={onClose}
+        aria-label="Close the Director"
+        className="absolute right-5 top-5 z-10 text-white/35 transition-colors hover:text-white/80"
       >
-        <span
-          aria-hidden
-          className="pointer-events-none absolute right-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
-          style={{ background: "linear-gradient(180deg, transparent, rgba(201,169,106,0.45), transparent)" }}
-        />
+        <X className="h-4 w-4" strokeWidth={1.5} />
+      </button>
 
-        <button
-          onClick={onClose}
-          aria-label="Close the Director"
-          className="absolute right-5 top-5 z-10 text-white/35 transition-colors hover:text-white/80"
-        >
-          <X className="h-4 w-4" strokeWidth={1.5} />
-        </button>
-
-        <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-6">
-          <DirectorChat variant="sheet" onClose={onClose} />
-        </div>
-      </aside>
-    </div>,
+      <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-6">
+        <DirectorChat variant="sheet" onClose={onClose} />
+      </div>
+    </aside>,
     document.body,
   );
 }
