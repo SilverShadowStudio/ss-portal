@@ -14,6 +14,137 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 5 August 2026, later (fc1 — Director grown up, a PA, onboarding rescued)
+
+Continuation of the same day. 58 commits, `be05d49`..`ce0454e`. Everything deployed and pushed.
+
+## 1 · The Director became usable rather than merely built
+
+- **Sees the client book.** It could not see a single client and would have drafted cold outreach to a
+  company already paying. `list_clients` + an `already_a_client` flag on every lead lookup, matched
+  FUZZILY on purpose — the pipeline says "Rose Uniacke Interiors", the books say "ROSE UNIACKE STUDIO
+  LTD". `companyKey()` strips the legal and descriptive tail.
+- **Web search + page fetch** (`web_search_20250305`, `web_fetch_20250910` — verified against the live
+  docs, not assumed). Handles `pause_turn`; `server_tool_use` is NOT routed to the client tool
+  executor. Findings are attributed ("per their website") and the brief refuses to store an
+  unattributed web claim.
+- **`recent_activity` tool.** Fred logged a debrief and the Director said nothing had come through:
+  `get_lead` was the only tool reading interactions, so a debrief on a lead it wasn't already
+  discussing was invisible. Rule added: "nothing has come through" is a claim about data and may not
+  be made without looking.
+- **`remember` tool.** It told Fred it couldn't retain anything — true, because it had a standing
+  brief and no tool to write to it. Refuses silent duplicates; says what it would drop when full.
+- **Context ring**, clickable, showing distance to the FOLD (not the model's window, which is never
+  what bites) and the thread summary itself — its memory of the conversation, previously invisible.
+- **Slide-over panel** at the left over the sidebar, page steps aside, no backdrop, both live.
+- **Conversations can be deleted** — the confirmation says deleting frees NO context (the window is
+  per thread; New is the button that does that) and that the Brief survives.
+
+## 2 · LOGGING IS ASK-ONLY — do not revert this
+
+It logged an email and a follow-up because Fred mentioned sending one. My authority model made
+logging free on the reasoning that it was cheap to undo. It wasn't: nothing could undo it.
+`log_interaction` and `set_commitment` are now ask-only; it says what it WOULD log and waits.
+`sales_delete_entry` removes an interaction or commitment and writes an `entry_removed` lead_event —
+deletion is NOT a Director tool. It writes; only Fred removes.
+
+## 3 · Sales voice — one register for anything sent to a prospect
+
+A draft went out reading like American sales copy ("Dear Mike" to a stranger of seventy, "simply my
+favourite address in the world", "ultra high end"). The hole: the Director had NO drafting guidance —
+its "how you write" governs how it talks to Fred. `_shared/salesVoice.ts` now carries it, used by
+both drafters: surname by default, no superlatives, admire the work not the address, British idiom,
+the telephone named as the telephone, a posted portfolio offered, VR out of a first approach,
+conservation and listed building consent named as the sharpest hook, honest subject lines.
+
+**The Director no longer writes copy at all** — `draft_email` briefs the copywriter and it shows the
+result unrewritten. Two registers, one judgement. Fred agreed personas (Musk/Schmidt) are the wrong
+frame; keep the trait, not the person.
+
+## 4 · Calls recorded and graded (Fred's decision, legal flagged once)
+
+`lead_calls` + `sales-call-assess`: a transcript is graded 0-100 on how Fred played it and 0-100 on
+the chance of winning, independently — a well-played call against a hopeless lead is worth knowing.
+Grading is deliberately harsh and banded (a cold call ending "send it to the general inbox" is under
+25%). Its actions become real commitments with dates. `leads.win_probability` carries the latest
+onto every row, sortable, writable ONLY through `sales_call_assess`.
+
+`consent_note` is recorded per call, not assumed. I flagged that processing a recording to profile
+someone engages UK GDPR and that France, Italy and Monaco are stricter; Fred reaffirmed, so it was
+built. **Audio→text still needs a vendor** — Anthropic has no STT. Pasted transcripts work today.
+
+`sales-email-ingest` splits a pasted thread into separate interactions at their REAL send times. A
+message with no readable date is dropped, never stamped "now".
+
+## 5 · The lead card is now the lead
+
+Dossier at the company name (the icon was removed — the row's name is the door). Everything known,
+the whole history oldest-first, calls and grades, the debrief inline, the call script. Delete asks
+first and quotes what it will remove.
+
+## 6 · Pocket assistant (new)
+
+Bubble bottom-right on every page. `reminders` table + `pa-capture`. Bare form: "16:30 wednesday did
+john call" — no "remind me". A bare weekday means the NEXT one. The alarm fills the screen with no
+backdrop click, no Escape, no cross; only "Got it" stops it. Polls every 30s. The list of past and
+future lives in the capture sheet. `google_event_id` exists so the calendar mirror is a fill-in.
+
+## 7 · Onboarding rescued — this was the Shukrullo problem
+
+- `password_set_failed` is now logged with its reason. It paid off within hours: Fiodor's trail shows
+  "shorter than 8 characters" then success 15 seconds later. That is almost certainly what stopped
+  Shukrullo three times.
+- **The 8-character minimum was mine, not the system's.** Supabase's floor is 6 with no character
+  rules. Now 6, stated under the field BEFORE it can be failed, error in a bordered block.
+- Set-password sent everyone to `/sign-agreement`, which tells a team member it's for clients. Team
+  members go straight to `/onboarding`.
+- Three guide cards (password / details / welcome), once each, no click-outside. The welcome card is
+  role-aware: a modeller is offered the calendar for unavailability, never "your days" — the portal
+  cannot show a modeller's worked days, `team-calendar` has no modeller source at all.
+- **Save and come back later**, plus a quiet autosave. Draft is device-local: half-entered bank
+  details don't belong on the server against an unfinished account.
+- Join the Studio brought onto the design system (it predated the redesign entirely).
+
+## 8 · Two traps worth remembering
+
+- **`npx tsc --noEmit` reported CLEAN on a file with eight undefined identifiers.** A bad splice had
+  deleted half of DirectorChat; only `npm run build` caught it. **Build before trusting a refactor.**
+- **`.ssr-panel` outranks Tailwind utilities.** Its `position: relative` beat `fixed` (panel rendered
+  below the page), its `margin-left: 0` beat `mx-auto` (panel pinned left), and its padding stacked
+  with added padding classes (insets doubled). Override anything `.ssr-panel` declares INLINE.
+
+## Migrations applied
+`20260805150000` leads_linkedin_url · `…170000` lead_calls · `20260806100000` lead_events
+entry_removed · `…120000` reminders. Plus `sales_delete_entry`, `sales_commitment_update`.
+
+## Deleted from prod
+The empty "Silver Shadow Studio" partnership placeholder account (0 members/invoices/projects). Its
+signed test agreement SURVIVED — the FK is ON DELETE SET NULL — and is now unattached. Five client
+accounts remain.
+
+## Still open
+- **Google OAuth** — blocks Meet links AND the reminder calendar mirror. Needs Fred: Cloud project,
+  consent screen, Calendar API, client ID + secret.
+- **Xero** — still Fred's own re-flagged commitment, untouched today.
+- **Speech-to-text vendor** for real call audio (~£0.005/min). Browser dictation only hears Fred.
+- **Push to phone** — I recommended this over the calendar mirror; the portal is already a PWA, so
+  web push needs no Google at all. Not built.
+- Airtable Users `role` fix is deployed but UNVERIFIED — it reads the Role select's real options and
+  leaves the field blank on no match. Kateryna and Timur are still tagged "Client" in Kieran's base.
+- Fiodor reached `/onboarding` and stopped; no profile. Shukrullo never set a password at all.
+- Edge functions at 99/100 — **the cap is PER PROJECT, not per organisation.** ss-portal has 99,
+  clairecolomb has 4, same org. Work on clairecolomb costs ss-portal nothing. At the cap even
+  REDEPLOYS 402, so the ceiling has to be cleared before the next new function: either raise it in
+  Supabase (the error names the spend cap) or consolidate — four dead ones were deleted on 5 Aug and
+  more could be merged.
+
+## Next step to resume from (as of 5 August 2026, evening)
+1. **Chase Fiodor and Shukrullo** — Fiodor is one form from done; Shukrullo needs a fresh invite and
+   will now be told the password rule up front.
+2. **Google credentials** — the single thing unblocking two features.
+3. Verify the Airtable role fix on the next invite, and correct Kateryna and Timur in the base.
+4. Xero.
+
 # Session — 5 August 2026 (fc1 — Sales Director built end-to-end, number typography, fixes)
 
 Autonomous session under the standing build-it-end-to-end mandate, model Opus 5. 16 commits,
