@@ -62,23 +62,27 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
       <aside
         role="dialog"
         aria-label="Sales Director"
-        className="ssr-panel ssr-panel--sales absolute inset-y-3 right-3 flex w-full max-w-[560px] flex-col overflow-hidden"
+        className="ssr-panel ssr-panel--sales absolute flex flex-col overflow-hidden"
         style={{
-          transform: shown ? "translateX(0)" : "translateX(calc(100% + 12px))",
+          // Over the sidebar, in the sidebar's own footprint: it takes the
+          // navigation's place rather than crowding the page. Same inset and
+          // same 22px radius as .ssr-panel, so it reads as one of the portal's
+          // own surfaces that happens to have slid in.
+          top: 16, bottom: 16, left: 0,
+          width: "min(520px, calc(100vw - 32px))",
+          borderRadius: 22,
+          transform: shown ? "translateX(0)" : "translateX(-100%)",
           opacity: shown ? 1 : 0,
           // The studio's own easing — the same curve the rest of the portal
           // moves on, so the drawer belongs to it rather than arriving from
           // some other application.
           transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
-          // Inset from the edge and rounded, so it reads as a panel resting ON
-          // the page rather than a slab welded to the window.
-          borderRadius: 18,
-          boxShadow: "inset 1px 0 0 rgba(201,169,106,0.20), 0 40px 90px -30px rgba(0,0,0,0.85)",
+          boxShadow: "inset -1px 0 0 rgba(201,169,106,0.20), 40px 0 90px -30px rgba(0,0,0,0.85)",
         }}
       >
         <span
           aria-hidden
-          className="pointer-events-none absolute left-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
+          className="pointer-events-none absolute right-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
           style={{ background: "linear-gradient(180deg, transparent, rgba(201,169,106,0.45), transparent)" }}
         />
 

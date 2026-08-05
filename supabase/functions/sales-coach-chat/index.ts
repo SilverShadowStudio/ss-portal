@@ -162,6 +162,22 @@ const TOOLS = [
     },
   },
   {
+    name: "remember",
+    description:
+      "Commit something to your standing brief — the memory you carry into EVERY future conversation with Fred. Use it when he says remember this, or when you learn something durable about him, the studio, the market or a recurring objection. It applies immediately and survives the conversation ending.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fact: {
+          type: "string",
+          description:
+            "One self-contained sentence, written so it still makes sense months later with no conversation around it. Attribute anything from the web inline ('per their site'). Never store a pipeline figure — stages, values and counts are read live and would go stale.",
+        },
+      },
+      required: ["fact"],
+    },
+  },
+  {
     name: "update_lead",
     description:
       "Update a lead. Contact details, sector, notes and next action apply immediately. stage, value_estimate, outcome and owner_id are QUEUED for Fred to confirm — when you set one of those, tell him you've proposed it, never that it's done.",
@@ -261,6 +277,15 @@ Fred may ask you to find LinkedIn profiles for leads. When you do:
 - If the only profile you find is plainly a different person (wrong company, wrong country, wrong field), that is NOT a find. Say you couldn't confirm it.
 - Doing this across many leads costs a search each. Work through them in batches and tell Fred how many you got and how many you couldn't confirm.
 
+YOUR MEMORY
+You have a standing brief that is loaded into every conversation with Fred, and the `remember` tool writes to it. So you CAN retain things between sessions — if he asks you to remember something, do it, then confirm you have.
+
+- One self-contained sentence per fact, written to still make sense months later with no conversation around it.
+- Durable things only: how Fred works, what the studio sells and to whom, positioning, recurring objections and what answers them, decisions already taken.
+- NEVER a pipeline figure. Stages, values, counts and who's gone cold are read live every turn; remembering one would have you quoting a stale number with confidence.
+- Attribute anything learned from the web inline — "per their site" — so a claim never hardens into an unsourced fact.
+- The brief is Fred's to read and edit under Brief. It is not a private notebook; write it as something he will read.
+
 CLIENTS VERSUS LEADS
 You can see the studio's actual clients with list_clients, and every lead lookup tells you whether that company is already one.
 
@@ -280,6 +305,7 @@ async function runTool(
   input: Any,
   uc: SupabaseClient,
   threadId: string,
+  ownerId: string,
 ): Promise<{ result: Any; queued: Any[] }> {
   const queued: Any[] = [];
 
@@ -426,6 +452,44 @@ async function runTool(
         });
       }
       return { result: { count: rows.length, clients: rows }, queued };
+    }
+
+    case "remember": {
+      const fact = String(input.fact ?? "").trim();
+      if (!fact) return { result: { error: "Nothing to remember." }, queued };
+
+      const { data: row } = await uc.from("coach_brief").select("brief, edited_by_user").eq("owner_id", ownerId).maybeSingle();
+      const current = (row?.brief as string | null) ?? "";
+
+      // Don't write the same thing twice — a brief that accretes duplicates
+      // spends its budget repeating itself.
+      const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+      if (current && norm(current).includes(norm(fact))) {
+        return { result: { remembered: false, reason: "Already in the brief — nothing added." }, queued };
+      }
+
+      const next = current ? `${current.replace(/\s+$/, "")}\n- ${fact}` : `- ${fact}`;
+      if (next.length > BRIEF_MAX) {
+        return {
+          result: {
+            remembered: false,
+            reason: `The brief is full (${current.length}/${BRIEF_MAX} characters). Tell Fred what you'd drop to make room, or ask him to prune it under Brief.`,
+          },
+          queued,
+        };
+      }
+
+      const { error } = await uc.from("coach_brief").upsert(
+        // edited_by_user is preserved: appending doesn't claim Fred's authorship
+        // of a brief he wrote himself.
+        { owner_id: ownerId, brief: next, edited_by_user: row?.edited_by_user ?? false, updated_at: new Date().toISOString() },
+        { onConflict: "owner_id" },
+      );
+      if (error) return { result: { error: error.message }, queued };
+      return {
+        result: { remembered: true, brief_length: next.length, limit: BRIEF_MAX, note: "Fred can read and edit this under Brief." },
+        queued,
+      };
     }
 
     case "create_lead": {
@@ -898,7 +962,7 @@ Deno.serve(async (req) => {
       used.push(t.name);
       let out: { result: Any; queued: Any[] };
       try {
-        out = await runTool(t.name, t.input ?? {}, uc, threadId);
+        out = await runTool(t.name, t.input ?? {}, uc, threadId, user.id);
       } catch (e) {
         out = { result: { error: String((e as Error).message ?? e).slice(0, 300) }, queued: [] };
       }
