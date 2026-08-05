@@ -179,7 +179,9 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
   const timeline = [
     ...interactions.map((x) => ({ at: x.occurred_at, kind: "interaction" as const, x })),
     ...events.map((x) => ({ at: x.created_at, kind: "event" as const, x })),
-  ].sort((a, b) => b.at.localeCompare(a.at));
+    // Oldest first: the story reads top to bottom, and the newest thing sits
+    // where you finish rather than where you start.
+  ].sort((a, b) => a.at.localeCompare(b.at));
 
   return createPortal(
     <div className="fixed inset-0 z-[150] flex items-start justify-center overflow-y-auto p-6" style={{ pointerEvents: "auto" }}>
@@ -440,7 +442,7 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                             onClick={() => remove("interaction", row.x.id)}
                             disabled={removing === row.x.id}
                             title="Remove this entry"
-                            className="float-right text-white/15 opacity-0 transition-all hover:text-[#F0544C] group-hover/entry:opacity-100 disabled:opacity-30"
+                            className="float-right text-white/25 transition-colors hover:text-[#F0544C] disabled:opacity-30"
                           >
                             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
                           </button>
@@ -465,7 +467,9 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                       ) : (
                         <>
                           <p className="text-sm text-white/70">
-                            {row.x.event_type === "created"
+                            {row.x.event_type === "entry_removed"
+                              ? <>Removed a {row.x.from_value ?? "entry"} — <span className="text-white/40">“{row.x.to_value}”</span></>
+                              : row.x.event_type === "created"
                               ? "Added to the pipeline"
                               : row.x.event_type === "stage_change"
                               ? <>Moved <span className="text-white/40">{STAGE_LABEL[row.x.from_value ?? ""] ?? row.x.from_value ?? "—"}</span> → <span className="text-[#ecd39c]">{STAGE_LABEL[row.x.to_value ?? ""] ?? row.x.to_value}</span></>
