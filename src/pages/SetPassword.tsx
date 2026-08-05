@@ -82,9 +82,11 @@ export default function SetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      logFailure("shorter than 8 characters");
+    // Supabase's own floor is 6 with no character rules. The 8 here was
+    // invented, bought nothing, and cost two people a rejected first attempt.
+    if (password.length < 6) {
+      setError("A little longer — six characters or more.");
+      logFailure("shorter than 6 characters");
       return;
     }
     if (password !== confirm) {
@@ -182,10 +184,15 @@ export default function SetPassword() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => { setPassword(e.target.value); if (error) setError(null); }}
             className="sp-input"
             required
           />
+          {/* Said before it can be failed. The rule was only discoverable by
+              breaking it, which is the wrong way round. */}
+          <p className="mt-2 text-[11px] text-foreground/35">
+            Six characters or more. Nothing else required — no capitals, no symbols.
+          </p>
         </div>
 
         <div style={{ marginBottom: "32px" }}>
@@ -199,7 +206,13 @@ export default function SetPassword() {
           />
         </div>
 
-        {error && <p className="mb-4 text-xs text-destructive">{error}</p>}
+        {/* Unmissable rather than a line of small red text under a long form. */}
+        {error && (
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-[#F0544C]/40 bg-[#F0544C]/[0.08] px-4 py-3">
+            <span aria-hidden className="mt-[1px] text-[#F0544C]">!</span>
+            <p className="text-[13px] leading-relaxed text-[#F0544C]">{error}</p>
+          </div>
+        )}
 
         <button type="submit" disabled={isLoading} className="sp-submit">
           {isLoading ? (

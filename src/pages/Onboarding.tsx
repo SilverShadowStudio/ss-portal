@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { OnboardingGuide, GUIDE_DETAILS } from "@/components/OnboardingGuide";
 import { useNavigate } from "react-router-dom";
 import { BrandLoader } from "@/components/ui/BrandLoader";
@@ -283,13 +283,27 @@ export default function Onboarding() {
   const [page, setPage]       = useState<1 | 2>(1);
   const [signing, setSigning] = useState(false);
 
-  const [form, setForm] = useState<FormData>({
-    firstName: "", lastName: "", email: user?.email ?? "",
-    role: "",
-    flatNumber: "", houseNumber: "", streetName: "", city: "", postcode: "", country: "",
-    rateAmount: "10", rateCurrency: "USD", ratePeriod: "hour",
-    bankName: "", accountHolder: "", sortCode: "", accountNumber: "",
+  // Address, rate and bank details are a lot to do in one sitting, often on a
+  // phone in a second language. Closing the tab used to cost the lot — which is
+  // how "later" becomes "never".
+  const DRAFT_KEY = `ssr:onboarding:${user?.id ?? "anon"}`;
+  const [form, setForm] = useState<FormData>(() => {
+    const blank: FormData = {
+      firstName: "", lastName: "", email: user?.email ?? "",
+      role: "",
+      flatNumber: "", houseNumber: "", streetName: "", city: "", postcode: "", country: "",
+      rateAmount: "10", rateCurrency: "USD", ratePeriod: "hour",
+      bankName: "", accountHolder: "", sortCode: "", accountNumber: "",
+    };
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      // The email is always the session's, never the draft's — it's what the
+      // worked days and invoices are matched on.
+      if (raw) return { ...blank, ...JSON.parse(raw), email: user?.email ?? "" };
+    } catch { /* no draft, or unreadable — start blank */ }
+    return blank;
   });
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [touched, setTouched] = useState<Touched>({});
   const [roleLocked, setRoleLocked] = useState(false);
   // Pre-signed members proofread & confirm instead of signing (their paper
@@ -344,6 +358,29 @@ export default function Onboarding() {
   const handleBlur   = (field: keyof FormData) => setTouched((p) => ({ ...p, [field]: true }));
   const handleChange = (field: keyof FormData, value: string) => setForm((p) => ({ ...p, [field]: value }));
 
+  /** Keep the draft on this device. Deliberately NOT the server: bank details
+   *  and an address have no business being stored half-entered against an
+   *  account that hasn't finished being set up. */
+  const saveDraft = useCallback(() => {
+    try {
+      const { email: _drop, ...rest } = form;
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
+      setSavedAt(new Date());
+    } catch { /* private browsing — the button just does nothing visible */ }
+  }, [form, DRAFT_KEY]);
+
+  // Also saved quietly as he types, so closing the tab without pressing
+  // anything still costs him nothing.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const { email: _drop, ...rest } = form;
+        if (Object.values(rest).some((v) => String(v).trim())) localStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
+      } catch { /* ignore */ }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [form, DRAFT_KEY]);
+
   const borderFor = (field: keyof FormData) =>
     showError(field) ? "border-[#F0544C]/60" : "border-white/10";
 
@@ -387,6 +424,7 @@ export default function Onboarding() {
     if (!isEmployee && (isNaN(rateNum) || rateNum <= 0)) { toast({ title: "Please enter a valid rate amount", variant: "destructive" }); return; }
     setConfirming(true);
     try {
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       const { error } = await supabase.functions.invoke("complete-team-onboarding", {
         body: {
           role:          form.role.trim(),
@@ -585,6 +623,21 @@ export default function Onboarding() {
               ))}
             </div>
           </section>
+
+          <div className="flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={saveDraft}
+              className="text-[10px] uppercase tracking-[0.18em] text-white/40 transition-colors hover:text-[#ecd39c]"
+            >
+              Save and come back later
+            </button>
+            {savedAt && (
+              <span className="text-[10px] text-white/30">
+                Saved · {savedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
 
           {preSignedMode ? (
             <button onClick={handleConfirm} disabled={confirming} className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#C9A96A] text-[#1a1013] py-4 font-sans font-medium uppercase hover:bg-[#ecd39c] transition-colors disabled:opacity-50" style={{ fontSize: 10, letterSpacing: "0.22em" }}>

@@ -95,7 +95,7 @@ export const GUIDE_PASSWORD: GuideCopy = {
   eyebrow: "Step 1 of 2",
   title: "Choose your password",
   body:
-    "This is the only thing between you and your account. Pick a password of <b>at least 8 characters</b> — no symbols or capitals required — then type it twice and press Set password.",
+    "This is the only thing between you and your account. Pick a password of <b>six characters or more</b> — no symbols or capitals required — then type it twice and press Set password.",
   points: [
     "You'll sign in with this and your email address from now on.",
     "If the screen refuses you, your invitation link has expired — ask Fred for a new one rather than retrying.",
