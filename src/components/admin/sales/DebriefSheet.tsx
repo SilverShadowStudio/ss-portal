@@ -9,14 +9,26 @@ import { useDictation } from "@/hooks/useDictation";
 // common outcome + one sentence. Submitting shows the coach's reply IN PLACE —
 // it never navigates away. Thumb-usable: debriefs happen between calls, on a phone.
 
+// Only the two where there is genuinely nothing to say. Spoke, Meeting booked,
+// Pushed and Dead are read from the debrief itself — and always were: the
+// extractor's outcome already took precedence over a tapped chip, so those four
+// changed nothing whenever Fred described the call.
 const QUICK_OUTCOMES = [
+  { key: "no_answer", label: "No answer" },
+  { key: "left_message", label: "Left message" },
+] as const;
+
+/** How the Director's outcome reads back, and what it can be corrected to. */
+const OUTCOMES: { key: string; label: string }[] = [
   { key: "no_answer", label: "No answer" },
   { key: "left_message", label: "Left message" },
   { key: "spoke", label: "Spoke" },
   { key: "meeting_booked", label: "Meeting booked" },
   { key: "pushed", label: "Pushed" },
+  { key: "objection", label: "Objection" },
   { key: "dead", label: "Dead" },
-] as const;
+  { key: "other", label: "Other" },
+];
 
 export interface DebriefResult {
   success: boolean;
@@ -71,6 +83,8 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
     },
     onSuccess: (data) => {
       setResult(data);
+      // The extractor's reading of the call — shown back so it can be overruled.
+      setDecidedOutcome(data.applied?.outcome ?? null);
       setErrorMsg(null);
       qc.invalidateQueries({ queryKey: ["leads"] });
       qc.invalidateQueries({ queryKey: ["lead", leadId] });
@@ -109,6 +123,20 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
     if (error || data?.error) { setErrorMsg(data?.error ?? error?.message ?? "Couldn't read that."); return; }
     setEmailDone({ inserted: data.inserted ?? 0, skipped: data.skipped ?? 0 });
     setEmailRaw("");
+    qc.invalidateQueries({ queryKey: ["leads"] });
+  }
+
+  // What the Director read the call as, once saved — editable from here.
+  const [decidedOutcome, setDecidedOutcome] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState(false);
+
+  async function correctOutcome(next: string) {
+    if (!result?.interaction_id) return;
+    const before = decidedOutcome;
+    setDecidedOutcome(next); setCorrecting(true);
+    const { error } = await supabase.from("interactions").update({ outcome: next }).eq("id", result.interaction_id);
+    setCorrecting(false);
+    if (error) { setDecidedOutcome(before); setErrorMsg(error.message); return; }
     qc.invalidateQueries({ queryKey: ["leads"] });
   }
 
@@ -184,7 +212,9 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
           </>
         ) : !result ? (
           <>
-            {/* Quick outcome — one tap for the common case. */}
+            {/* One tap for the calls with nothing to describe. Everything else
+                is read from what you say. */}
+            <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-white/25">Didn't get through?</p>
             <div className="mb-4 flex flex-wrap gap-2">
               {QUICK_OUTCOMES.map((o) => (
                 <button
@@ -269,8 +299,23 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
               {result.applied.stage && (
                 <p className="flex items-center gap-1.5 text-[#6FBE8A]"><Check className="h-3 w-3" /> Stage → {result.applied.stage}</p>
               )}
-              {result.applied.outcome && (
-                <p className="flex items-center gap-1.5 text-[#6FBE8A]"><Check className="h-3 w-3" /> Outcome → {result.applied.outcome}</p>
+              {/* Inference without a correction path is how bad data piles up
+                  quietly. It says what it decided, and it can be overruled. */}
+              {decidedOutcome && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="flex items-center gap-1.5 text-[#6FBE8A]">
+                    <Check className="h-3 w-3" /> Read as
+                  </span>
+                  <select
+                    value={decidedOutcome}
+                    onChange={(e) => correctOutcome(e.target.value)}
+                    disabled={correcting}
+                    className="rounded border border-white/12 bg-black/30 px-2 py-1 text-xs text-strong focus:border-[#C9A96A]/50 focus:outline-none disabled:opacity-50"
+                  >
+                    {OUTCOMES.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                  <span className="text-white/25">— change it if that's wrong</span>
+                </div>
               )}
               {result.applied.commitments > 0 && (
                 <p className="flex items-center gap-1.5 text-[#6FBE8A]"><Check className="h-3 w-3" /> {result.applied.commitments} commitment{result.applied.commitments === 1 ? "" : "s"} logged</p>
