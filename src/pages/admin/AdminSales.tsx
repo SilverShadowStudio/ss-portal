@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTableSort, type SortableColumn } from "@/hooks/useTableSort";
 import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/components/ui/TableToolbar";
 import { DebriefSheet } from "@/components/admin/sales/DebriefSheet";
+import { NextActionPicker } from "@/components/admin/sales/NextActionPicker";
 
 interface Lead {
   id: string;
@@ -143,6 +144,22 @@ export default function AdminSales() {
   })();
   const dueCount = open.filter((r) => r.next_action_at && r.next_action_at <= todayISO).length;
   const pipelineValue = open.reduce((s, r) => s + Number(r.value_estimate || 0), 0);
+
+  /** Set (or clear) a lead's follow-up date straight from the table. */
+  async function setNextAction(id: string, next: string | null) {
+    const before = rows.find((r) => r.id === id)?.next_action_at ?? null;
+    setRows((p) => p.map((r) => (r.id === id ? { ...r, next_action_at: next } : r)));
+    const { error } = await supabase.from("leads").update({ next_action_at: next }).eq("id", id);
+    if (error) {
+      setRows((p) => p.map((r) => (r.id === id ? { ...r, next_action_at: before } : r)));
+      toast({ title: "Couldn't set the follow-up", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({
+      title: next ? "Follow-up set" : "Follow-up cleared",
+      description: next ? fmtDate(next) : "This lead has no next action.",
+    });
+  }
 
   function openAdd() { setEditId(null); setForm({ ...EMPTY, sector: "Interior Design" }); setEditOpen(true); }
   function openEdit(r: Lead) {
@@ -370,9 +387,15 @@ export default function AdminSales() {
                             ? "text-[#ecd39c]"
                             : "text-standard"
                         }`}
-                        title={r.next_action_at === todayISO ? "Due today" : undefined}
                       >
-                        {fmtDate(r.next_action_at)}
+                        <NextActionPicker
+                          value={r.next_action_at}
+                          onChange={(next) => setNextAction(r.id, next)}
+                        >
+                          {/* A dash is still a target — an unplanned lead is the
+                              one most worth clicking. */}
+                          {r.next_action_at ? fmtDate(r.next_action_at) : <span className="text-white/25">—</span>}
+                        </NextActionPicker>
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-standard">{r.value_estimate ? money(Number(r.value_estimate)) : "—"}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
