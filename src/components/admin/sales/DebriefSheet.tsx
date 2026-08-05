@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X, AlertTriangle, Check, Mic, MicOff } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { useDictation } from "@/hooks/useDictation";
 
 // The debrief must take ~15 seconds or the rep stops doing it. One tap for the
@@ -61,12 +62,12 @@ interface Props {
 
 export function DebriefSheet({ leadId, company, onClose }: Props) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   // Call or email. They're different acts: a call is one moment you describe,
   // a thread is several that already have their own times.
   const [mode, setMode] = useState<"call" | "email">("call");
   const [emailRaw, setEmailRaw] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
-  const [emailDone, setEmailDone] = useState<{ inserted: number; skipped: number } | null>(null);
   const [quick, setQuick] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [result, setResult] = useState<DebriefResult | null>(null);
@@ -115,15 +116,28 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
   });
 
   async function ingestEmails() {
-    setEmailBusy(true); setErrorMsg(null); setEmailDone(null);
+    setEmailBusy(true); setErrorMsg(null);
     const { data, error } = await supabase.functions.invoke("sales-email-ingest", {
       body: { lead_id: leadId, raw: emailRaw },
     });
     setEmailBusy(false);
     if (error || data?.error) { setErrorMsg(data?.error ?? error?.message ?? "Couldn't read that."); return; }
-    setEmailDone({ inserted: data.inserted ?? 0, skipped: data.skipped ?? 0 });
     setEmailRaw("");
     qc.invalidateQueries({ queryKey: ["leads"] });
+    qc.invalidateQueries({ queryKey: ["lead", leadId] });
+
+    // Filing emails is a finished act — unlike a call debrief, there's no reply
+    // from the Director to read here. So the sheet closes, and the count goes
+    // to a toast where it can be seen without holding the screen open.
+    const n = data.inserted ?? 0;
+    const skipped = data.skipped ?? 0;
+    onClose();
+    toast({
+      title: n === 0 ? "Nothing new to file" : `${n} email${n === 1 ? "" : "s"} filed`,
+      description: n === 0
+        ? "Those were already on the lead, or carried no date."
+        : `On ${company}, at the times they were sent.${skipped ? ` ${skipped} skipped as already there or undated.` : ""}`,
+    });
   }
 
   // What the Director read the call as, once saved — editable from here.
@@ -167,7 +181,7 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
             {(["call", "email"] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setErrorMsg(null); setEmailDone(null); }}
+                onClick={() => { setMode(m); setErrorMsg(null); }}
                 className={`rounded-lg border px-4 py-2 text-xs capitalize transition-colors ${
                   mode === m
                     ? "border-[#C9A96A]/70 bg-[#C9A96A]/15 text-[#ecd39c]"
@@ -196,11 +210,6 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
             </p>
 
             {errorMsg && <p className="mt-3 text-xs text-[#F0544C]">{errorMsg}</p>}
-            {emailDone && (
-              <p className="mt-3 text-xs text-[#8FD9A8]">
-                {emailDone.inserted} filed{emailDone.skipped ? ` · ${emailDone.skipped} already there or undated` : ""}.
-              </p>
-            )}
 
             <button
               onClick={ingestEmails}
