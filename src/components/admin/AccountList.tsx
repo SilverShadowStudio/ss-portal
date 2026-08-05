@@ -47,6 +47,35 @@ import { ACTION_LABELS } from "@/lib/activityLog";
 import { TeamContractFormDialog } from "@/components/admin/TeamContractFormDialog";
 import { SendLaterDialog } from "@/components/admin/SendLaterDialog";
 
+interface ScheduledInvite {
+  id: string;
+  account_id: string;
+  email: string;
+  send_at: string;
+  sent_at: string | null;
+  cancelled_at: string | null;
+  last_error: string | null;
+  attempts: number;
+}
+
+/** What to say about a queued invitation, and whether it still needs action. */
+function inviteState(i: ScheduledInvite): { text: string; tone: "wait" | "done" | "bad"; actionable: boolean } {
+  if (i.cancelled_at) return { text: "Invitation cancelled", tone: "bad", actionable: false };
+  if (i.sent_at) return { text: `Invitation sent ${timeAgo(i.sent_at)}`, tone: "done", actionable: false };
+  if (i.last_error) return { text: `Invitation failed — ${i.last_error}`, tone: "bad", actionable: true };
+  const due = new Date(i.send_at);
+  const overdue = due.getTime() < Date.now() - 10 * 60_000;
+  return {
+    // Past its slot and still unsent is a fault, not a wait. Saying "scheduled"
+    // there is exactly how the broken cron stayed hidden.
+    text: overdue
+      ? `Invitation overdue — was due ${due.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+      : `Invitation scheduled for ${due.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`,
+    tone: overdue ? "bad" : "wait",
+    actionable: true,
+  };
+}
+
 interface AccountUserRow {
   account_id: string;
   company_name: string;
@@ -266,6 +295,13 @@ export function AccountList({
   // Client accounts that are in current production (own at least one active
   // project). Used to split the Clients directory into Active / Inactive.
   const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
+  // Scheduled invitations, keyed by account. A queued invite used to be
+  // invisible outside Supabase — when the dispatch cron broke, an invitation sat
+  // unsent for hours and the only way to know was to query the table. Surfaced
+  // here so a stuck queue is visible where you'd actually look for it.
+  const [invites, setInvites] = useState<Map<string, ScheduledInvite>>(new Map());
+  const [inviteBusy, setInviteBusy] = useState<string | null>(null);
+
   // Live presence: user_id → last heartbeat (ms). Polled so the "Active" badge
   // updates without a manual refresh.
   const [presence, setPresence] = useState<Map<string, number>>(new Map());
@@ -1122,6 +1158,44 @@ export function AccountList({
   }
 
   // Create the account now but hold the invitation, then record when to send it.
+  // Every invitation that hasn't been superseded. Cancelled ones are dropped;
+  // sent ones are kept so the card can say "invited, not yet joined".
+  async function fetchInvites() {
+    const { data } = await supabase.from("scheduled_invites")
+      .select("id, account_id, email, send_at, sent_at, cancelled_at, last_error, attempts")
+      .is("cancelled_at", null)
+      .order("send_at", { ascending: false });
+    const m = new Map<string, ScheduledInvite>();
+    for (const r of (data ?? []) as ScheduledInvite[]) if (!m.has(r.account_id)) m.set(r.account_id, r);
+    setInvites(m);
+  }
+  useEffect(() => { fetchInvites(); }, []);
+
+  /** Send a queued invitation immediately rather than waiting for the cron. */
+  async function sendInviteNow(i: ScheduledInvite) {
+    setInviteBusy(i.id);
+    const ok = await postInvite({ mode: "resend", accountId: i.account_id, contact: { email: i.email } }, i.email);
+    if (ok) {
+      const { error } = await supabase.from("scheduled_invites")
+        .update({ sent_at: new Date().toISOString(), attempts: (i.attempts ?? 0) + 1, last_error: null })
+        .eq("id", i.id);
+      if (error) toast({ title: "Sent, but not recorded", description: error.message, variant: "destructive" });
+      else toast({ title: "Invitation sent", description: `${i.email} has it now.` });
+      await fetchInvites();
+    }
+    setInviteBusy(null);
+  }
+
+  async function cancelInvite(i: ScheduledInvite) {
+    setInviteBusy(i.id);
+    const { error } = await supabase.from("scheduled_invites")
+      .update({ cancelled_at: new Date().toISOString() }).eq("id", i.id);
+    setInviteBusy(null);
+    if (error) { toast({ title: "Couldn't cancel", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Invitation cancelled", description: `Nothing will be sent to ${i.email}.` });
+    fetchInvites();
+  }
+
   // Creating immediately means a scheduled invite can't be lost, and the link is
   // generated fresh at send time so it's never stale on arrival.
   async function scheduleInvite(when: Date) {
@@ -1160,6 +1234,7 @@ export function AccountList({
       setInviteEmail(""); setInviteRole("");
       setIsAddDialogOpen(false);
       fetchAccounts();
+      fetchInvites();
     } catch (e) {
       toast({ title: "Couldn't schedule the invitation", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -2106,6 +2181,46 @@ export function AccountList({
                             {u.position && (
                               <p className="mt-1 font-sans uppercase text-[#C9A96A] truncate" style={{ fontSize: 10, letterSpacing: "0.14em" }}>{u.position}</p>
                             )}
+
+                            {/* Invitation state — shown until they've actually
+                                signed in, so it clears itself once they're in.
+                                A failure stays visible regardless. */}
+                            {(() => {
+                              const inv = invites.get(accountId);
+                              if (!inv) return null;
+                              const st = inviteState(inv);
+                              if (lastActiveMs && st.tone !== "bad") return null;
+                              const colour =
+                                st.tone === "bad" ? "text-[#F0544C]"
+                                : st.tone === "done" ? "text-white/45"
+                                : "text-[#ecd39c]";
+                              return (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                  <span className={`inline-flex items-center gap-1.5 text-[11px] ${colour}`}>
+                                    <Clock className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                                    {st.text}
+                                  </span>
+                                  {st.actionable && (
+                                    <>
+                                      <button
+                                        disabled={inviteBusy === inv.id}
+                                        onClick={() => sendInviteNow(inv)}
+                                        className="text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c] disabled:opacity-40"
+                                      >
+                                        {inviteBusy === inv.id ? "Sending…" : "Send now"}
+                                      </button>
+                                      <button
+                                        disabled={inviteBusy === inv.id}
+                                        onClick={() => cancelInvite(inv)}
+                                        className="text-[10px] uppercase tracking-[0.14em] text-white/35 hover:text-white/70 disabled:opacity-40"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* Action icons grouped by purpose, separated by hairlines:
