@@ -661,7 +661,18 @@ Deno.serve(async (req) => {
   // orphaned tool_result or a bare assistant turn.
   let start = 0;
   while (start < tail.length && !isUserTurn(tail[start] as Any)) start++;
-  const history: Any[] = tail.slice(start)
+  // And drop any tool_result whose matching tool_use isn't in the window. A
+  // failed turn can leave one stranded mid-thread, and the API rejects the
+  // whole conversation over it rather than skipping the block.
+  const seenToolUse = new Set<string>();
+  const cleaned = tail.slice(start).filter((m: Any) => {
+    const bs = Array.isArray(m.blocks) ? m.blocks : [];
+    for (const b of bs) if (b?.type === "tool_use" && b.id) seenToolUse.add(b.id);
+    const results = bs.filter((b: Any) => b?.type === "tool_result");
+    if (!results.length) return true;
+    return results.every((b: Any) => seenToolUse.has(b.tool_use_id));
+  });
+  const history: Any[] = cleaned
     .map((m: Any) => ({
       role: m.role,
       content: stripDeadCitations(m.blocks) ?? [{ type: "text", text: m.body ?? "" }],
@@ -670,8 +681,15 @@ Deno.serve(async (req) => {
 
   const messages: Any[] = [...history, { role: "user", content: [{ type: "text", text: message }] }];
 
-  // Persist the user's turn before we call out, so nothing is lost on a failure.
-  await uc.from("coach_messages").insert({ thread_id: threadId, owner_id: user.id, role: "user", body: message, blocks: [{ type: "text", text: message }] });
+  // Persist the user's turn before calling out so a crash mid-flight doesn't
+  // lose what Fred typed — but remember the row, because if the turn fails he
+  // will retry, and an orphan per attempt is how one message became five.
+  const { data: userRow } = await uc.from("coach_messages")
+    .insert({ thread_id: threadId, owner_id: user.id, role: "user", body: message, blocks: [{ type: "text", text: message }] })
+    .select("id").single();
+  const rollbackUserTurn = async () => {
+    if (userRow?.id) await uc.from("coach_messages").delete().eq("id", userRow.id);
+  };
 
   const { data: stageRows } = await uc.from("pipeline_stages").select("key, label").order("sort_order");
   const stageList = (stageRows ?? []).map((s: Any) => s.key).join(" → ");
@@ -685,6 +703,9 @@ Deno.serve(async (req) => {
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const res = await callAnthropic(anthropicKey, system, messages);
     if ("err" in res) {
+      // Nothing came of this turn, so it leaves no trace. The message is handed
+      // back to the composer instead.
+      if (round === 0) await rollbackUserTurn();
       return json({ thread_id: threadId, error: `The Director is unavailable (${res.err})` }, 200);
     }
     const data = await res.json();
