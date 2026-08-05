@@ -125,10 +125,10 @@ export default function AdminSales() {
     { id: "contact", accessor: (r) => r.contact_name ?? "", type: "text" },
     { id: "country", accessor: (r) => r.country ?? "", type: "text" },
     { id: "status", accessor: (r) => STATUSES.indexOf(r.status as typeof STATUSES[number]), type: "number" },
-    // No next action means nobody has planned one — that's the most neglected
-    // lead, not the least urgent. It sorts beside the oldest dates, never
-    // beyond the furthest future one.
-    { id: "next", accessor: (r) => r.next_action_at, type: "date", nulls: "lowest" },
+    // A lead with no chase date sorts last in both directions — it never pushes
+    // a dated lead down the list. (Tried the opposite on 5 Aug 2026, ranking
+    // blanks with the oldest; Fred reverted it — the dates are the work.)
+    { id: "next", accessor: (r) => r.next_action_at, type: "date" },
     { id: "value", accessor: (r) => r.value_estimate ?? 0, type: "number" },
   ];
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Lead>(filtered, COLUMNS, { key: "priority", dir: "asc" });
