@@ -363,15 +363,6 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
             )}
 
             {/* ── Log what happened ─────────────────────────────────────── */}
-            <Section title="Log a call or an email">
-              <DebriefSheet
-                leadId={leadId}
-                company={lead.company}
-                variant="inline"
-                onClose={() => { /* inline — the card is the surround */ }}
-                onLogged={reload}
-              />
-            </Section>
 
             {/* ── The call script, where the lead is ─────────────────────── */}
             <Section title="Call script">
@@ -398,10 +389,19 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
             </Section>
 
             {/* ── Calls, and what the Director made of them ─────────────── */}
-            <Section title="Calls" count={calls.length || undefined}>
-              {calls.length === 0 && !capture && (
-                <p className="mb-4 text-sm text-recessive">No call transcripts yet.</p>
-              )}
+            {/* One section for contact: how you record it, then what's been
+                recorded. Two separate blocks both about calls was a seam left
+                over from merging the debrief in. */}
+            <Section title="Calls and emails" count={calls.length || undefined}>
+              <DebriefSheet
+                leadId={leadId}
+                company={lead.company}
+                variant="inline"
+                onClose={() => { /* inline — the card is the surround */ }}
+                onLogged={reload}
+              />
+
+              <div className="my-6 border-t border-white/[0.06]" />
 
               <div className="space-y-5">
                 {calls.map((c) => (
@@ -505,8 +505,8 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                 </div>
               ) : (
                 <button onClick={() => setCapture(true)}
-                  className="mt-4 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
-                  + Add a call transcript
+                  className="text-[10px] uppercase tracking-[0.16em] text-white/40 hover:text-[#ecd39c]">
+                  + Paste a full transcript to be graded
                 </button>
               )}
             </Section>

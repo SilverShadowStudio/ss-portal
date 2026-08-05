@@ -11,11 +11,26 @@ import { useDictation } from "@/hooks/useDictation";
 // say one line, press enter, forget it. The reminder is the whole artefact —
 // giving it a conversation would make it something you have to tend.
 
-interface Reminder { id: string; body: string; due_at: string }
+interface Reminder {
+  id: string; body: string; due_at: string;
+  acknowledged_at?: string | null; cancelled_at?: string | null;
+}
+
+const whenLabel = (iso: string) => {
+  const d = new Date(iso);
+  const days = Math.round((d.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  const time = new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  if (days === 0) return `Today · ${time}`;
+  if (days === 1) return `Tomorrow · ${time}`;
+  if (days === -1) return `Yesterday · ${time}`;
+  return `${new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · ${time}`;
+};
 
 /** Capture. Opens on the bubble, closes the moment it's taken. */
 function CaptureSheet({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState("");
+  const [list, setList] = useState<Reminder[] | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Reminder | null>(null);
@@ -27,6 +42,24 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
   });
 
   useEffect(() => { taRef.current?.focus(); }, []);
+
+  // Everything, both directions — a reminder you can't find again is a reminder
+  // you have to keep in your head, which was the point of not having to.
+  const loadList = useCallback(async () => {
+    const { data } = await supabase
+      .from("reminders")
+      .select("id, body, due_at, acknowledged_at, cancelled_at")
+      .is("cancelled_at", null)
+      .order("due_at", { ascending: false })
+      .limit(60);
+    setList((data ?? []) as Reminder[]);
+  }, []);
+  useEffect(() => { loadList(); }, [loadList]);
+
+  async function cancel(id: string) {
+    await supabase.from("reminders").update({ cancelled_at: new Date().toISOString() }).eq("id", id);
+    loadList();
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -45,6 +78,7 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
     if (err || data?.error) { setError(data?.error ?? err?.message ?? "Couldn't take that."); return; }
     // Confirm briefly, then get out of the way — this is fire-and-forget.
     setSaved(data as Reminder);
+    loadList();
     setTimeout(onClose, 1400);
   }
 
@@ -106,6 +140,50 @@ function CaptureSheet({ onClose }: { onClose: () => void }) {
             )}
             {error && <p className="mt-2 text-xs text-[#F0544C]">{error}</p>}
             <p className="mt-2 text-[10px] text-white/20">Enter to save · it closes itself</p>
+
+            {!!list?.length && (() => {
+              const now = Date.now();
+              const upcoming = list.filter((r) => !r.acknowledged_at && new Date(r.due_at).getTime() > now).reverse();
+              const past = list.filter((r) => r.acknowledged_at || new Date(r.due_at).getTime() <= now);
+              const shown = showAll ? [...upcoming, ...past] : upcoming.slice(0, 4);
+              if (!shown.length && !past.length) return null;
+              return (
+                <div className="mt-4 border-t border-white/[0.07] pt-3">
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-white/30">
+                      {showAll ? "Everything" : upcoming.length ? `Coming up · ${upcoming.length}` : "Nothing due"}
+                    </p>
+                    <button onClick={() => setShowAll((v) => !v)}
+                      className="text-[9px] uppercase tracking-[0.16em] text-white/30 hover:text-[#ecd39c]">
+                      {showAll ? "Just upcoming" : `All ${list.length}`}
+                    </button>
+                  </div>
+                  <ul className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                    {shown.map((r) => {
+                      const done = !!r.acknowledged_at;
+                      const overdue = !done && new Date(r.due_at).getTime() <= now;
+                      return (
+                        <li key={r.id} className="group/rem flex items-baseline justify-between gap-3">
+                          <span className={`min-w-0 flex-1 truncate text-xs ${done ? "text-white/25 line-through" : "text-white/70"}`}>
+                            {r.body}
+                          </span>
+                          <span className={`shrink-0 text-[10px] tabular-nums ${
+                            done ? "text-white/20" : overdue ? "text-[#F0544C]" : "text-white/35"}`}>
+                            {whenLabel(r.due_at)}
+                          </span>
+                          {!done && (
+                            <button onClick={() => cancel(r.id)} title="Drop it"
+                              className="shrink-0 text-[10px] text-white/0 transition-colors group-hover/rem:text-white/30 hover:!text-[#F0544C]">
+                              ✕
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

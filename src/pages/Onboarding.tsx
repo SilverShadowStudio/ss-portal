@@ -460,7 +460,10 @@ export default function Onboarding() {
   return (
     <div className="ssr-shell min-h-screen">
       <OnboardingGuide copy={GUIDE_DETAILS} />
-      <div className="ssr-panelwrap" style={{ padding: 16 }}>
+      {/* The same 16px frame a normal panel page has — grey showing as a thin
+          border, not a wide margin. There's no sidebar here, so it's 16 on all
+          four sides rather than the usual three. */}
+      <div style={{ padding: 16 }}>
         <div className="ssr-panel ssr-panel--team min-h-[calc(100vh-32px)] px-6 py-12 sm:px-12">
       <div className="mx-auto max-w-2xl">
         <div className="mb-12 animate-fade-in">

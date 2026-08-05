@@ -14,6 +14,8 @@ import { DirectorChat } from "@/components/admin/sales/DirectorChat";
 export const DIRECTOR_WIDTH = 520;
 /** How far the panel runs past the left edge of the screen. */
 const BLEED = 40;
+/** .ssr-panel's own horizontal padding — matched so this reads as a page. */
+const PANEL_PAD = 34;
 
 // One opener for the whole portal, so any page can summon the panel without
 // navigating away from itself — which was the point of having it.
@@ -100,7 +102,13 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
         <X className="h-4 w-4" strokeWidth={1.5} />
       </button>
 
-      <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-6">
+      {/* The same 34px a normal panel gives its content — plus the bleed on
+          the left, so the VISIBLE inset matches on both sides and the Director
+          reads as one of the portal's own pages rather than a narrower card. */}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        style={{ paddingLeft: BLEED + PANEL_PAD, paddingRight: PANEL_PAD, paddingTop: 26, paddingBottom: 22 }}
+      >
         <DirectorChat variant="sheet" onClose={onClose} />
       </div>
     </aside>,
