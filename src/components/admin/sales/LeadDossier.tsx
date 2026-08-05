@@ -109,10 +109,14 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
   const [assessing, setAssessing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  // What's about to be removed, held until it's confirmed. Deletion is
+  // permanent — the entry goes, and only a line saying it went remains.
+  const [confirm, setConfirm] = useState<{ kind: "interaction" | "commitment"; id: string; what: string } | null>(null);
 
   /** Take a wrong entry back out. Only Fred does this — the Director writes
    *  history, it never edits it — and the removal itself is recorded. */
   async function remove(kind: "interaction" | "commitment", id: string) {
+    setConfirm(null);
     setRemoving(id);
     const { error } = await supabase.rpc("sales_delete_entry", { p_kind: kind, p_id: id });
     setRemoving(null);
@@ -299,7 +303,7 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                         {c.slip_count > 0 && <span className="text-[#F0544C]">slipped {c.slip_count}×</span>}
                         <span className="text-white/25">{c.status}</span>
                         <button
-                          onClick={() => remove("commitment", c.id)}
+                          onClick={() => setConfirm({ kind: "commitment", id: c.id, what: c.description })}
                           disabled={removing === c.id}
                           title="Remove this — it shouldn't be here"
                           className="text-white/20 transition-colors hover:text-[#F0544C] disabled:opacity-30"
@@ -439,7 +443,11 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                       {row.kind === "interaction" ? (
                         <div className="group/entry">
                           <button
-                            onClick={() => remove("interaction", row.x.id)}
+                            onClick={() => setConfirm({
+                              kind: "interaction",
+                              id: row.x.id,
+                              what: row.x.summary || (row.x.raw_debrief ?? "").slice(0, 90) || TYPE_LABEL[row.x.type] || "this entry",
+                            })}
                             disabled={removing === row.x.id}
                             title="Remove this entry"
                             className="float-right text-white/25 transition-colors hover:text-[#F0544C] disabled:opacity-30"
@@ -507,6 +515,36 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
           </>
         )}
       </div>
+
+      {/* Sits above the dossier, and says what will go. A generic "are you
+          sure?" makes you click twice without telling you anything. */}
+      {confirm && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-6" style={{ pointerEvents: "auto" }}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] animate-in fade-in-0 duration-150" onClick={() => setConfirm(null)} />
+          <div className="relative w-full max-w-sm rounded-xl border border-[#F0544C]/25 bg-[#1a1013] p-6 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
+            <p className="text-[9px] uppercase tracking-[0.22em] text-[#F0544C]">Remove for good</p>
+            <p className="mt-3 text-sm leading-relaxed text-strong">
+              This {confirm.kind === "commitment" ? "promise" : "entry"} goes permanently:
+            </p>
+            <p className="mt-2 border-l border-white/12 pl-3 text-sm italic leading-relaxed text-white/55">
+              “{confirm.what}”
+            </p>
+            <p className="mt-3 text-[11px] leading-relaxed text-white/35">
+              It can't be brought back. The history will keep one line recording that you removed it.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-5">
+              <button onClick={() => setConfirm(null)}
+                className="text-[10px] uppercase tracking-[0.16em] text-white/40 hover:text-white/75">Keep it</button>
+              <button
+                onClick={() => remove(confirm.kind, confirm.id)}
+                className="rounded-lg border border-[#F0544C]/40 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-[#F0544C] transition-colors hover:bg-[#F0544C]/10"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
