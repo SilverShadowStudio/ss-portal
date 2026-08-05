@@ -71,6 +71,7 @@ import { useClientActivityTracker } from "@/hooks/useClientActivityTracker";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { GhostModeBanner } from "@/components/GhostModeBanner";
 import { DirectorProvider } from "@/components/admin/sales/DirectorSheet";
+import { PocketAssistant } from "@/components/PocketAssistant";
 import {
   AdminAlertBanner,
   useUnresolvedAdminAlerts,
@@ -119,6 +120,8 @@ const App = () => (
           {/* Above the routes: a page renders AdminLayout, not the other way
               round, so the opener has to live higher than either. */}
           <DirectorProvider>
+          {/* Reachable from every page, signed in or not it renders nothing. */}
+          <PocketAssistant />
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/forgot-password" element={<Auth />} />

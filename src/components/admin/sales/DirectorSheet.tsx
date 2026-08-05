@@ -114,7 +114,7 @@ export function DirectorLauncher({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       title="Ask the Director"
-      className="group fixed bottom-6 right-6 z-[120] flex h-12 items-center gap-2.5 rounded-full border border-[#C9A96A]/30 bg-[#1e1419]/90 px-5 text-[10px] uppercase tracking-[0.18em] text-[#C9A96A] shadow-2xl backdrop-blur transition-all hover:border-[#C9A96A]/60 hover:text-[#ecd39c]"
+      className="group fixed bottom-[76px] right-6 z-[120] flex h-12 items-center gap-2.5 rounded-full border border-[#C9A96A]/30 bg-[#1e1419]/90 px-5 text-[10px] uppercase tracking-[0.18em] text-[#C9A96A] shadow-2xl backdrop-blur transition-all hover:border-[#C9A96A]/60 hover:text-[#ecd39c]"
       style={{ boxShadow: "0 18px 40px -14px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.02)" }}
     >
       <MessageSquare className="h-3.5 w-3.5" strokeWidth={1.5} />
