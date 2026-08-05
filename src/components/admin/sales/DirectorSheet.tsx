@@ -12,6 +12,8 @@ import { DirectorChat } from "@/components/admin/sales/DirectorChat";
 
 /** How much room the layout gives up when the Director is open. */
 export const DIRECTOR_WIDTH = 520;
+/** How far the panel runs past the left edge of the screen. */
+const BLEED = 40;
 
 // One opener for the whole portal, so any page can summon the panel without
 // navigating away from itself — which was the point of having it.
@@ -70,23 +72,26 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
         // Fixed to the viewport, not the document: it ends before the bottom of
         // the screen and stays put while the page beside it scrolls.
         position: "fixed",
-        top: 16, bottom: 16, left: 0,
-        width: DIRECTOR_WIDTH,
-        maxWidth: "calc(100vw - 32px)",
+        top: 16, bottom: 16,
+        // The left edge runs off-screen, so its corner and rim are never seen.
+        // What's left is the gradient falling away to the left of the chat —
+        // the same band the leads panel has, rather than a card with a visible
+        // left side sitting on top of the page.
+        left: -BLEED,
+        width: DIRECTOR_WIDTH + BLEED,
+        maxWidth: `calc(100vw - 32px + ${BLEED}px)`,
         zIndex: 60,
-        borderRadius: 22,
+        // Rounded on the right only; there is no left corner in view to round.
+        borderRadius: "0 22px 22px 0",
         transform: shown ? "translateX(0)" : "translateX(-100%)",
         opacity: shown ? 1 : 0,
         transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
-        boxShadow: "inset -1px 0 0 rgba(201,169,106,0.20), 24px 0 60px -30px rgba(0,0,0,0.8)",
+        // No rim and no drop shadow: the gold hairline read as a highlight
+        // around a floating card, and the shadow made it sit above the page
+        // rather than beside it.
+        boxShadow: "none",
       }}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute right-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
-        style={{ background: "linear-gradient(180deg, transparent, rgba(201,169,106,0.45), transparent)" }}
-      />
-
       <button
         onClick={onClose}
         aria-label="Close the Director"
