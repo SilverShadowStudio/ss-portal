@@ -61,10 +61,15 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
     <aside
       role="complementary"
       aria-label="Sales Director"
-      className="ssr-panel ssr-panel--sales fixed flex flex-col overflow-hidden"
+      className="ssr-panel ssr-panel--sales flex flex-col overflow-hidden"
       style={{
+        // position MUST be inline: .ssr-panel sets `position: relative` in the
+        // stylesheet and outranks Tailwind's `fixed` utility, which dropped the
+        // panel into normal flow and rendered it below the page.
+        //
         // Fixed to the viewport, not the document: it ends before the bottom of
         // the screen and stays put while the page beside it scrolls.
+        position: "fixed",
         top: 16, bottom: 16, left: 0,
         width: DIRECTOR_WIDTH,
         maxWidth: "calc(100vw - 32px)",
