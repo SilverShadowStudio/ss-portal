@@ -49,6 +49,12 @@ interface Props {
 
 export function DebriefSheet({ leadId, company, onClose }: Props) {
   const qc = useQueryClient();
+  // Call or email. They're different acts: a call is one moment you describe,
+  // a thread is several that already have their own times.
+  const [mode, setMode] = useState<"call" | "email">("call");
+  const [emailRaw, setEmailRaw] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailDone, setEmailDone] = useState<{ inserted: number; skipped: number } | null>(null);
   const [quick, setQuick] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [result, setResult] = useState<DebriefResult | null>(null);
@@ -94,6 +100,18 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
     onError: (m) => setErrorMsg(m),
   });
 
+  async function ingestEmails() {
+    setEmailBusy(true); setErrorMsg(null); setEmailDone(null);
+    const { data, error } = await supabase.functions.invoke("sales-email-ingest", {
+      body: { lead_id: leadId, raw: emailRaw },
+    });
+    setEmailBusy(false);
+    if (error || data?.error) { setErrorMsg(data?.error ?? error?.message ?? "Couldn't read that."); return; }
+    setEmailDone({ inserted: data.inserted ?? 0, skipped: data.skipped ?? 0 });
+    setEmailRaw("");
+    qc.invalidateQueries({ queryKey: ["leads"] });
+  }
+
   const canSubmit = (!!quick || text.trim().length > 0) && !busy;
 
   return (
@@ -115,7 +133,56 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
           </button>
         </div>
 
-        {!result ? (
+        {/* What kind of contact this was. */}
+        {!result && (
+          <div className="mb-4 flex gap-2">
+            {(["call", "email"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setMode(m); setErrorMsg(null); setEmailDone(null); }}
+                className={`rounded-lg border px-4 py-2 text-xs capitalize transition-colors ${
+                  mode === m
+                    ? "border-[#C9A96A]/70 bg-[#C9A96A]/15 text-[#ecd39c]"
+                    : "border-white/10 text-white/55 hover:border-white/25"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!result && mode === "email" ? (
+          <>
+            <textarea
+              value={emailRaw}
+              onChange={(e) => setEmailRaw(e.target.value)}
+              rows={9}
+              autoFocus
+              placeholder="Paste the email, or the whole thread. Each message is filed separately at the time it was actually sent."
+              className="w-full rounded-lg border border-white/10 bg-black/25 p-3.5 text-sm text-standard placeholder:text-white/30 focus:border-[#C9A96A]/50 focus:outline-none"
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-white/30">
+              Keep the headers — the dates and From lines are what put each message in the right place. Re-pasting a longer
+              thread later tops it up rather than duplicating it.
+            </p>
+
+            {errorMsg && <p className="mt-3 text-xs text-[#F0544C]">{errorMsg}</p>}
+            {emailDone && (
+              <p className="mt-3 text-xs text-[#8FD9A8]">
+                {emailDone.inserted} filed{emailDone.skipped ? ` · ${emailDone.skipped} already there or undated` : ""}.
+              </p>
+            )}
+
+            <button
+              onClick={ingestEmails}
+              disabled={emailBusy || emailRaw.trim().length < 20}
+              className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#C9A96A] text-sm font-medium text-[#211a0f] transition-opacity disabled:opacity-40"
+            >
+              {emailBusy ? <BrandLoader size="sm" className="h-4 w-4" /> : "File these emails"}
+            </button>
+          </>
+        ) : !result ? (
           <>
             {/* Quick outcome — one tap for the common case. */}
             <div className="mb-4 flex flex-wrap gap-2">
