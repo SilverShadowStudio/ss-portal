@@ -167,25 +167,9 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
           <div className="ssr-zone">
             {/* Totals ride the section title rather than sitting in their own
                 tiles: they summarise this table, so they belong to its heading. */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-x-8 gap-y-2 border-b border-white/[0.07] pb-3">
-              <div className="flex items-center gap-3">
-                <div className="h-px w-6 bg-gold-muted" />
-                <h2 className="text-label">Monthly statement</h2>
-              </div>
-              <div className="flex items-center gap-x-7 gap-y-1">
-                {[
-                  { label: "Total earned", value: data.totals.earned, gold: false },
-                  { label: "Paid", value: data.totals.paid, gold: true },
-                  { label: "Outstanding", value: data.totals.outstanding, gold: data.totals.outstanding > 0.005 },
-                ].map((s) => (
-                  <span key={s.label} className="flex items-baseline gap-2">
-                    <span className="text-label text-white/35">{s.label}</span>
-                    <span className={`text-[11px] tabular-nums ${s.gold ? "text-gold" : "text-strong"}`}>
-                      {money(s.value, ccy)}
-                    </span>
-                  </span>
-                ))}
-              </div>
+            <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
+              <div className="h-px w-6 bg-gold-muted" />
+              <h2 className="text-label">Monthly statement</h2>
             </div>
 
             <div className="ssr-tile overflow-x-auto">
@@ -311,12 +295,25 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
             {uploadError && <p className="mt-3 px-1 text-xs text-[#FF6B5A]">{uploadError}</p>}
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 px-1">
               <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Click a month to see the work behind it</p>
-              <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">
-                Outstanding{" "}
-                <span className={`tabular-nums ${data.totals.outstanding > 0.005 ? "text-[#ecd39c]" : "text-white/45"}`}>
-                  {money(data.totals.outstanding, ccy)}
-                </span>
-              </p>
+              {/* The three totals live here, at the footnote size the single
+                  Outstanding figure already used — they close the table off
+                  rather than competing with its heading. */}
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                {[
+                  { label: "Total earned", value: data.totals.earned, cls: "text-white/70" },
+                  { label: "Paid", value: data.totals.paid, cls: "text-[#C9A96A]" },
+                  {
+                    label: "Outstanding",
+                    value: data.totals.outstanding,
+                    cls: data.totals.outstanding > 0.005 ? "text-[#ecd39c]" : "text-white/45",
+                  },
+                ].map((t) => (
+                  <p key={t.label} className="text-[10px] uppercase tracking-[0.16em] text-white/35">
+                    {t.label}{" "}
+                    <span className={`tabular-nums ${t.cls}`}>{money(t.value, ccy)}</span>
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
         </div>
