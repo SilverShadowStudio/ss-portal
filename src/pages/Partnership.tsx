@@ -268,7 +268,7 @@ export default function Partnership() {
               <thead className="text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="text-left px-6 py-3">Lane</th>
-                  <th className="text-right px-6 py-3">Cost / month</th>
+                  <th className="text-left px-6 py-3">Cost / month</th>
                 </tr>
               </thead>
               <tbody>

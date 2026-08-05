@@ -459,7 +459,7 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
                     <SortTh id="employee" label="Employee" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="month" label="Month" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="net" label="Net owed" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
-                    <th className="px-4 py-3 text-center text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal">Payslip</th>
+                    <th className="px-4 py-3 text-left text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal">Payslip</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>

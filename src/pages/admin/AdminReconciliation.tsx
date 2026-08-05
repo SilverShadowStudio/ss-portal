@@ -147,7 +147,7 @@ export default function AdminReconciliation() {
                       <th className="px-4 py-2 font-normal">Counterparty</th>
                       <th className="px-4 py-2 font-normal">Reference</th>
                       <th className="px-4 py-2 font-normal">Type</th>
-                      <th className="px-4 py-2 text-right font-normal">Amount</th>
+                      <th className="px-4 py-2 text-left font-normal">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -183,7 +183,7 @@ export default function AdminReconciliation() {
                       <th className="px-4 py-2 font-normal">File</th>
                       <th className="px-4 py-2 font-normal">Side</th>
                       <th className="px-4 py-2 font-normal">Parsed date</th>
-                      <th className="px-4 py-2 text-right font-normal">Parsed amount</th>
+                      <th className="px-4 py-2 text-left font-normal">Parsed amount</th>
                     </tr>
                   </thead>
                   <tbody>

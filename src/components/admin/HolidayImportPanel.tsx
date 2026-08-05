@@ -82,10 +82,10 @@ export function HolidayImportPanel() {
               <thead>
                 <tr className="text-[9px] uppercase tracking-[0.16em] text-foreground/40">
                   <th className="text-left py-1">Person</th>
-                  <th className="text-right py-1">Ranges</th>
-                  <th className="text-right py-1">Days</th>
-                  <th className="text-right py-1">New</th>
-                  <th className="text-right py-1">Already there</th>
+                  <th className="text-left py-1">Ranges</th>
+                  <th className="text-left py-1">Days</th>
+                  <th className="text-left py-1">New</th>
+                  <th className="text-left py-1">Already there</th>
                 </tr>
               </thead>
               <tbody>

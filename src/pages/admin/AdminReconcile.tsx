@@ -317,9 +317,9 @@ export default function AdminReconcile() {
                       <th className="px-3 py-3 text-left font-normal">Date</th>
                       <th className="px-3 py-3 text-left font-normal">Description</th>
                       <th className="px-3 py-3 text-left font-normal">Reference</th>
-                      <th className="px-3 py-3 text-right font-normal">Amount</th>
+                      <th className="px-3 py-3 text-left font-normal">Amount</th>
                       <th className="px-3 py-3 text-left font-normal">Type</th>
-                      <th className="px-3 py-3 text-right font-normal" />
+                      <th className="px-3 py-3 text-left font-normal" />
                     </tr>
                   </thead>
                   <tbody>

@@ -178,7 +178,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                   <tr className="border-b border-white/[0.08]">
                     {["Month", "Fee", "Due", "Payments", "Status", "Invoice"].map((h, i) => (
                       <th key={h}
-                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal text-white/40 ${i === 1 ? "text-right" : i === 5 ? "text-center" : "text-left"}`}>
+                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal text-white/40 ${i === 1 ? "text-left" : i === 5 ? "text-left" : "text-left"}`}>
                         {h}
                       </th>
                     ))}

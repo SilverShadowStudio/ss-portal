@@ -190,7 +190,7 @@ export default function AdminSalesCommitments() {
                       <SortTh id="party" label="Whose" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                       <SortTh id="slipped" label="Slipped" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                       <SortTh id="status" label="Status" activeKey={sortKey} dir={sortDir} onClick={toggle} />
-                      <th className="px-4 py-3 text-right text-[9px] font-normal uppercase tracking-[0.2em] text-white/40">Action</th>
+                      <th className="px-4 py-3 text-left text-[9px] font-normal uppercase tracking-[0.2em] text-white/40">Action</th>
                     </tr>
                   </thead>
                   <tbody>
