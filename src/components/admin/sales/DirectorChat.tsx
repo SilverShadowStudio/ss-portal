@@ -147,6 +147,7 @@ const TOOL_LABEL: Record<string, string> = {
   recent_activity: "caught up on what happened",
   list_clients: "checked the client book",
   remember: "committed it to memory",
+  draft_email: "briefed the copywriter",
   update_lead: "updated the lead",
   web_search: "searched the web",
   web_fetch: "read the page",

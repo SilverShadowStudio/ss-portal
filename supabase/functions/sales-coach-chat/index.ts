@@ -177,6 +177,23 @@ const TOOLS = [
     },
   },
   {
+    name: "draft_email",
+    description:
+      "Hand a brief to the studio's copywriter and get back a subject and body. Use this for ANY email to a prospect — never write one yourself. You are the coach; the copy is not your register, and an email in your voice reads as a sales pitch to people who commission architecture.",
+    input_schema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string", description: "Who it's to. Their record supplies the name, company and sector." },
+        brief: {
+          type: "string",
+          description:
+            "What this email has to achieve, and anything specific to use — a project you verified, what was said on a call, the ask. Facts, not phrasing: the copywriter decides the words.",
+        },
+      },
+      required: ["lead_id"],
+    },
+  },
+  {
     name: "remember",
     description:
       "Commit something to your standing brief — the memory you carry into EVERY future conversation with Fred. Use it when he says remember this, or when you learn something durable about him, the studio, the market or a recurring objection. It applies immediately and survives the conversation ending.",
@@ -318,8 +335,14 @@ You can see the studio's actual clients with list_clients, and every lead lookup
 - Company names won't match exactly: the pipeline says "Rose Uniacke Interiors", the books say "ROSE UNIACKE STUDIO LTD". The match is already done for you; trust the already_a_client flag over your own reading of the names.
 - A lead that IS a client is usually a duplicate worth merging, or a second department worth approaching warmly. Say which you think it is.
 
-WHEN YOU DRAFT SOMETHING TO SEND
-Everything below governs anything addressed to a prospect — an email, a letter, an opening line for a call. It does NOT govern how you talk to Fred; with him you stay short and blunt.
+WHEN SOMETHING HAS TO BE SENT
+You do not write it. Call draft_email and hand the copywriter a brief — what the email must achieve and the facts to use. Show Fred what comes back as it is; do not rewrite it in your voice.
+
+Two jobs, two registers. Yours is to push him: short, blunt, unsentimental. The copywriter's is to be read by a British architect of sixty who commissions photography and dislikes being sold to. Your voice in his inbox is exactly the mistake — an email that sounds like a sales coach marks the studio as a supplier rather than a peer.
+
+You still own the JUDGEMENT: whether to write at all, what the email must achieve, whether the draft is right, and whether the subject line is honest about what the studio sells. A subject naming a building when you are selling visualisation is bait — say so.
+
+The register below is what the copywriter works to. Know it so you can tell when a draft has missed it.
 
 ${SALES_VOICE}
 
@@ -336,6 +359,7 @@ async function runTool(
   uc: SupabaseClient,
   threadId: string,
   ownerId: string,
+  authHeader: string | null,
 ): Promise<{ result: Any; queued: Any[] }> {
   const queued: Any[] = [];
 
@@ -552,6 +576,34 @@ async function runTool(
       if (error) return { result: { error: error.message }, queued };
       return {
         result: { remembered: true, brief_length: next.length, limit: BRIEF_MAX, note: "Fred can read and edit this under Brief." },
+        queued,
+      };
+    }
+
+    case "draft_email": {
+      const { data: lead } = await uc.from("leads")
+        .select("company, contact_name, role, sector, website, notes, country")
+        .eq("id", input.lead_id).maybeSingle();
+      if (!lead) return { result: { error: "Lead not found." }, queued };
+
+      const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/draft-sales-pitch`, {
+        method: "POST",
+        headers: { Authorization: authHeader!, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...lead,
+          // The brief rides in as context; the copywriter owns the words.
+          notes: [lead.notes, input.brief ? `BRIEF FOR THIS EMAIL: ${input.brief}` : null].filter(Boolean).join("\n\n"),
+          mode: "email",
+        }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || out?.error) return { result: { error: out?.error ?? `Copywriter unavailable (${res.status})` }, queued };
+      return {
+        result: {
+          subject: out.subject,
+          body: out.body,
+          note: "This is the copywriter's draft. Show it to Fred as it is — don't rewrite it in your own voice.",
+        },
         queued,
       };
     }
@@ -1026,7 +1078,7 @@ Deno.serve(async (req) => {
       used.push(t.name);
       let out: { result: Any; queued: Any[] };
       try {
-        out = await runTool(t.name, t.input ?? {}, uc, threadId, user.id);
+        out = await runTool(t.name, t.input ?? {}, uc, threadId, user.id, authHeader);
       } catch (e) {
         out = { result: { error: String((e as Error).message ?? e).slice(0, 300) }, queued: [] };
       }

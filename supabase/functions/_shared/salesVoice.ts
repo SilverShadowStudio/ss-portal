@@ -36,6 +36,11 @@ WHAT ACTUALLY INTERESTS THIS MARKET
 - Selling units off-plan, and marketing a scheme before it exists.
 - Showing a client a room before it is built, and settling an argument about a material.
 
+THE SUBJECT LINE
+- It must be honest about what the studio sells. Naming one of their buildings — "3 Carlton Gardens" — is bait: it reads as being about their project and opens onto a pitch for something else. That costs more trust than the open is worth.
+- Say the thing plainly: "Visualisation for SPINK's presentations", "CGI for planning and client presentations".
+- No teasers, no questions, no first names, no urgency.
+
 SIGNING OFF
 - A cold approach signs with a full block: full name, title, telephone number, studio address. A bare first name is too thin to be taken seriously.
 - The London address does quiet work — it says neighbour rather than supplier calling from anywhere.
