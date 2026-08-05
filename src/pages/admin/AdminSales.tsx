@@ -373,30 +373,47 @@ export default function AdminSales() {
                         {/* The name IS the lead. Opening the record needs no
                             separate control — an icon in the action cluster was
                             a button for the thing the row is already about. */}
-                        <span className="inline-flex items-center gap-2">
-                          <button
-                            onClick={() => setDossier(r.id)}
-                            title="Everything we know"
-                            className="group/name relative inline-block max-w-full text-left transition-colors duration-200 hover:text-[#ecd39c]"
-                          >
-                            <span className="relative inline-flex items-center gap-1.5">
-                              {r.company}
-                              {/* Arrives only on approach, and travels the
-                                  distance the eye expects it to. */}
-                              <ChevronRight
-                                className="h-3 w-3 shrink-0 -translate-x-1 opacity-0 transition-all duration-300 ease-out group-hover/name:translate-x-0 group-hover/name:opacity-70"
-                                strokeWidth={2}
+                        {/* The arrow sits at the column's right edge rather
+                            than after the name, so every row's link lands on the
+                            same vertical line however long the company is. */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <button
+                              onClick={() => setDossier(r.id)}
+                              title="Everything we know"
+                              className="group/name relative inline-block max-w-full text-left transition-colors duration-200 hover:text-[#ecd39c]"
+                            >
+                              <span className="relative inline-flex items-center gap-1.5">
+                                {r.company}
+                                {/* Arrives only on approach, and travels the
+                                    distance the eye expects it to. */}
+                                <ChevronRight
+                                  className="h-3 w-3 shrink-0 -translate-x-1 opacity-0 transition-all duration-300 ease-out group-hover/name:translate-x-0 group-hover/name:opacity-70"
+                                  strokeWidth={2}
+                                />
+                              </span>
+                              {/* A hairline drawn in from the left, not switched on. */}
+                              <span
+                                aria-hidden
+                                className="absolute -bottom-0.5 left-0 right-4 h-px origin-left scale-x-0 bg-[#C9A96A]/60 transition-transform duration-300 ease-out group-hover/name:scale-x-100"
                               />
-                            </span>
-                            {/* A hairline drawn in from the left, not switched on. */}
-                            <span
-                              aria-hidden
-                              className="absolute -bottom-0.5 left-0 right-4 h-px origin-left scale-x-0 bg-[#C9A96A]/60 transition-transform duration-300 ease-out group-hover/name:scale-x-100"
-                            />
-                          </button>
-                          {r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-white/30 hover:text-gold">↗</a>}
-                        </span>
-                        {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
+                            </button>
+                            {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
+                          </div>
+
+                          {r.website && (
+                            <a
+                              href={r.website.startsWith("http") ? r.website : `https://${r.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open their website"
+                              className="mt-[3px] shrink-0 text-[11px] leading-none text-white/25 transition-all duration-200 hover:-translate-y-px hover:text-[#ecd39c]"
+                            >
+                              ↗
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-standard">
                         {/* The name itself is the link — LinkedIn's own dark-mode
