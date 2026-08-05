@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { ChevronRight, Eye, Download, Upload } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
+import { EarningsChart } from "@/components/EarningsChart";
 
 // Shared presentational view for a freelancer's Earnings — rendered both on the
 // team member's own portal (src/pages/Earnings.tsx) and, read-only, by an admin
@@ -153,33 +154,38 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
         <div className="ssr-zone"><div className="ssr-tile p-10 text-center text-recessive">No earnings recorded yet. Work will appear here as it&rsquo;s logged.</div></div>
       ) : (
         <div className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-          {/* ── Summary ───────────────────────────────────────────────── */}
+          {/* ── Earnings by month ─────────────────────────────────────── */}
           <div className="ssr-zone">
             <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
               <div className="h-px w-6 bg-gold-muted" />
-              <h2 className="text-label">Summary</h2>
+              <h2 className="text-label">Earnings by month</h2>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[
-                { label: "Total earned", value: data.totals.earned, gold: false },
-                { label: "Paid", value: data.totals.paid, gold: true },
-                { label: "Outstanding", value: data.totals.outstanding, gold: false },
-              ].map((s) => (
-                <div key={s.label} className="ssr-tile p-6">
-                  <p className="text-label text-white/45">{s.label}</p>
-                  <p className={`ssr-figure mt-3 ${s.gold ? "text-gold" : "text-strong"}`}>
-                    {money(s.value, ccy)}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <EarningsChart periods={data.periods} currency={ccy} />
           </div>
 
           {/* ── Monthly statement ─────────────────────────────────────── */}
           <div className="ssr-zone">
-            <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-3">
-              <div className="h-px w-6 bg-gold-muted" />
-              <h2 className="text-label">Monthly statement</h2>
+            {/* Totals ride the section title rather than sitting in their own
+                tiles: they summarise this table, so they belong to its heading. */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-x-8 gap-y-2 border-b border-white/[0.07] pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-px w-6 bg-gold-muted" />
+                <h2 className="text-label">Monthly statement</h2>
+              </div>
+              <div className="flex items-center gap-x-7 gap-y-1">
+                {[
+                  { label: "Total earned", value: data.totals.earned, gold: false },
+                  { label: "Paid", value: data.totals.paid, gold: true },
+                  { label: "Outstanding", value: data.totals.outstanding, gold: data.totals.outstanding > 0.005 },
+                ].map((s) => (
+                  <span key={s.label} className="flex items-baseline gap-2">
+                    <span className="text-label text-white/35">{s.label}</span>
+                    <span className={`text-[11px] tabular-nums ${s.gold ? "text-gold" : "text-strong"}`}>
+                      {money(s.value, ccy)}
+                    </span>
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="ssr-tile overflow-x-auto">
