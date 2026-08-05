@@ -37,6 +37,7 @@ interface Lead {
   last_contacted_at: string | null;
   next_action_at: string | null;
   linkedin_url: string | null;
+  win_probability: number | null;
 }
 
 const STATUSES = ["new", "contacted", "replied", "meeting", "proposal", "won", "lost"] as const;
@@ -107,7 +108,7 @@ export default function AdminSales() {
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("leads")
-      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url")
+      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url, win_probability")
       .order("next_action_at", { ascending: true, nullsFirst: false });
     setRows((data ?? []) as Lead[]);
     setLoading(false);
@@ -136,6 +137,7 @@ export default function AdminSales() {
     // blanks with the oldest; Fred reverted it — the dates are the work.)
     { id: "next", accessor: (r) => r.next_action_at, type: "date" },
     { id: "value", accessor: (r) => r.value_estimate ?? 0, type: "number" },
+    { id: "chance", accessor: (r) => r.win_probability, type: "number" },
   ];
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Lead>(filtered, COLUMNS, { key: "priority", dir: "asc" });
 
@@ -421,6 +423,16 @@ export default function AdminSales() {
                         </NextActionPicker>
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-standard">{r.value_estimate ? money(Number(r.value_estimate)) : "—"}</td>
+                      {/* The Director's rolling read after each assessed call.
+                          Blank until one exists — a probability nobody has
+                          judged would just be decoration. */}
+                      <td className={`px-4 py-3 text-right tabular-nums ${
+                        r.win_probability == null ? "text-white/20"
+                        : r.win_probability >= 70 ? "text-[#8FD9A8]"
+                        : r.win_probability >= 40 ? "text-[#ecd39c]"
+                        : "text-[#F0544C]"}`}>
+                        {r.win_probability == null ? "—" : `${r.win_probability}%`}
+                      </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
                           <button onClick={() => setDossier(r.id)} className="text-white/40 hover:text-[#ecd39c]" title="Everything we know"><ScrollText className="h-3.5 w-3.5" strokeWidth={1.5} /></button>

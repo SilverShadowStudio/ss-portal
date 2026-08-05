@@ -34,6 +34,15 @@ interface LeadEvent {
   id: string; event_type: string; from_value: string | null; to_value: string | null;
   source: string; created_at: string;
 }
+interface Call {
+  id: string; occurred_at: string; source: string; consent_note: string | null;
+  transcript: string; performance_score: number | null; win_probability: number | null;
+  assessment: {
+    read_of_them?: string; verdict?: string;
+    did_well?: string[]; cost_you?: string[]; blockers?: string[];
+    actions?: { what: string; by: string; why?: string }[];
+  } | null;
+}
 interface Commitment {
   id: string; party: string; description: string; due_date: string;
   status: string; slip_count: number; original_due_date: string | null;
@@ -56,6 +65,11 @@ const day = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const stamp = (d: string) =>
   new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** Colour for a score. Bad numbers should look bad — a coach whose grades all
+ *  read the same colour isn't grading. */
+const probTone = (n: number) =>
+  n >= 70 ? "text-[#8FD9A8]" : n >= 40 ? "text-[#ecd39c]" : "text-[#F0544C]";
 
 /** A labelled fact. Renders nothing when there's nothing to say, so the grid
  *  never fills with dashes on a thin lead. */
@@ -87,7 +101,13 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [events, setEvents] = useState<LeadEvent[]>([]);
   const [commitments, setCommitments] = useState<Commitment[]>([]);
+  const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
+  const [capture, setCapture] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [consent, setConsent] = useState("Announced at the start of the call");
+  const [assessing, setAssessing] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -98,7 +118,7 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [l, i, e, c] = await Promise.all([
+      const [l, i, e, c, k] = await Promise.all([
         supabase.from("leads").select("*").eq("id", leadId).maybeSingle(),
         supabase.from("interactions").select("id, type, direction, outcome, summary, raw_debrief, objection, occurred_at")
           .eq("lead_id", leadId).order("occurred_at", { ascending: false }),
@@ -106,14 +126,41 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
           .eq("lead_id", leadId).order("created_at", { ascending: false }),
         supabase.from("commitments").select("id, party, description, due_date, status, slip_count, original_due_date")
           .eq("lead_id", leadId).order("due_date"),
+        supabase.from("lead_calls")
+          .select("id, occurred_at, source, consent_note, transcript, performance_score, win_probability, assessment")
+          .eq("lead_id", leadId).order("occurred_at", { ascending: false }),
       ]);
       setLead((l.data ?? null) as Lead | null);
       setInteractions((i.data ?? []) as Interaction[]);
       setEvents((e.data ?? []) as LeadEvent[]);
       setCommitments((c.data ?? []) as Commitment[]);
+      setCalls((k.data ?? []) as Call[]);
       setLoading(false);
     })();
   }, [leadId]);
+
+  async function assess() {
+    const text = transcript.trim();
+    if (text.length < 40) { setCaptureError("That's too short to judge — paste the whole call."); return; }
+    setAssessing(true); setCaptureError(null);
+    const { data, error } = await supabase.functions.invoke("sales-call-assess", {
+      body: { lead_id: leadId, transcript: text, consent_note: consent.trim() || null, source: "recording" },
+    });
+    setAssessing(false);
+    if (error || data?.error) { setCaptureError(data?.error ?? error?.message ?? "Couldn't assess it."); return; }
+    setTranscript(""); setCapture(false);
+    const [k, l, c] = await Promise.all([
+      supabase.from("lead_calls")
+        .select("id, occurred_at, source, consent_note, transcript, performance_score, win_probability, assessment")
+        .eq("lead_id", leadId).order("occurred_at", { ascending: false }),
+      supabase.from("leads").select("*").eq("id", leadId).maybeSingle(),
+      supabase.from("commitments").select("id, party, description, due_date, status, slip_count, original_due_date")
+        .eq("lead_id", leadId).order("due_date"),
+    ]);
+    setCalls((k.data ?? []) as Call[]);
+    if (l.data) setLead(l.data as Lead);
+    setCommitments((c.data ?? []) as Commitment[]);
+  }
 
   // One timeline. A stage change and a phone call are both "what happened",
   // and splitting them into two lists makes the story impossible to follow.
@@ -153,9 +200,19 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                     </p>
                   )}
                 </div>
-                <button onClick={onClose} className="shrink-0 text-white/35 hover:text-white/80" aria-label="Close">
-                  <X className="h-4 w-4" strokeWidth={1.5} />
-                </button>
+                <div className="flex shrink-0 items-start gap-5">
+                  {(lead as Lead & { win_probability?: number | null }).win_probability != null && (
+                    <div className="text-right">
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-white/30">Chance of signing</p>
+                      <p className={`ssr-figure-sm mt-1 ${probTone((lead as Lead & { win_probability?: number | null }).win_probability!)}`}>
+                        {(lead as Lead & { win_probability?: number | null }).win_probability}%
+                      </p>
+                    </div>
+                  )}
+                  <button onClick={onClose} className="text-white/35 hover:text-white/80" aria-label="Close">
+                    <X className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                </div>
               </div>
 
               {/* Every way to reach them, on one line. */}
@@ -233,6 +290,120 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                 </div>
               </Section>
             )}
+
+            {/* ── Calls, and what the Director made of them ─────────────── */}
+            <Section title="Calls" count={calls.length || undefined}>
+              {calls.length === 0 && !capture && (
+                <p className="mb-4 text-sm text-recessive">No call transcripts yet.</p>
+              )}
+
+              <div className="space-y-5">
+                {calls.map((c) => (
+                  <div key={c.id} className="rounded-lg border border-white/[0.07] p-4">
+                    <div className="flex flex-wrap items-baseline justify-between gap-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-white/30">
+                        {stamp(c.occurred_at)}{c.consent_note ? ` · ${c.consent_note}` : ""}
+                      </p>
+                      {c.performance_score != null && (
+                        <div className="flex items-baseline gap-5 text-xs">
+                          <span className="text-white/35">
+                            You <span className={`ml-1.5 tabular-nums ${probTone(c.performance_score)}`}>{c.performance_score}%</span>
+                          </span>
+                          <span className="text-white/35">
+                            Chance <span className={`ml-1.5 tabular-nums ${probTone(c.win_probability ?? 0)}`}>{c.win_probability}%</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {c.assessment?.verdict && (
+                      <p className="mt-2.5 text-sm leading-relaxed text-strong">{c.assessment.verdict}</p>
+                    )}
+                    {c.assessment?.read_of_them && (
+                      <p className="mt-2 text-sm leading-relaxed text-white/60">
+                        <span className="text-white/30">Them — </span>{c.assessment.read_of_them}
+                      </p>
+                    )}
+
+                    {(c.assessment?.did_well?.length || c.assessment?.cost_you?.length) && (
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        {!!c.assessment?.did_well?.length && (
+                          <div>
+                            <p className="text-[9px] uppercase tracking-[0.18em] text-[#8FD9A8]/70">Played well</p>
+                            <ul className="mt-1.5 space-y-1">
+                              {c.assessment.did_well.map((x) => <li key={x} className="text-xs leading-relaxed text-white/55">{x}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {!!c.assessment?.cost_you?.length && (
+                          <div>
+                            <p className="text-[9px] uppercase tracking-[0.18em] text-[#F0544C]/70">Cost you</p>
+                            <ul className="mt-1.5 space-y-1">
+                              {c.assessment.cost_you.map((x) => <li key={x} className="text-xs leading-relaxed text-white/55">{x}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!!c.assessment?.actions?.length && (
+                      <div className="mt-3 border-t border-white/[0.06] pt-3">
+                        <p className="text-[9px] uppercase tracking-[0.18em] text-white/30">To move it</p>
+                        {c.assessment.actions.map((a) => (
+                          <p key={a.what} className="mt-1.5 text-xs leading-relaxed text-white/65">
+                            {a.what} <span className="tabular-nums text-[#ecd39c]">· by {day(a.by)}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-[10px] uppercase tracking-[0.16em] text-white/25 hover:text-white/50">
+                        Transcript
+                      </summary>
+                      <p className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-white/45">
+                        {c.transcript}
+                      </p>
+                    </details>
+                  </div>
+                ))}
+              </div>
+
+              {capture ? (
+                <div className="mt-4 rounded-lg border border-[#C9A96A]/25 p-4">
+                  <textarea
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    rows={7}
+                    autoFocus
+                    placeholder="Paste the call transcript here."
+                    className="w-full rounded-md border border-white/10 bg-black/25 p-3 text-sm text-standard placeholder:text-white/25 focus:border-[#C9A96A]/50 focus:outline-none"
+                  />
+                  {/* Recorded, not assumed: France, Italy and Monaco are stricter
+                      than the UK, and this is the field that can answer for it. */}
+                  <input
+                    value={consent}
+                    onChange={(e) => setConsent(e.target.value)}
+                    placeholder="How consent was handled"
+                    className="mt-2.5 w-full rounded-md border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/70 placeholder:text-white/25 focus:border-[#C9A96A]/50 focus:outline-none"
+                  />
+                  {captureError && <p className="mt-2 text-xs text-[#F0544C]">{captureError}</p>}
+                  <div className="mt-3 flex items-center gap-5">
+                    <button onClick={assess} disabled={assessing}
+                      className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c] disabled:opacity-40">
+                      {assessing ? <><BrandLoader size="sm" className="h-3 w-3" />Assessing…</> : "Assess this call"}
+                    </button>
+                    <button onClick={() => { setCapture(false); setCaptureError(null); }}
+                      className="text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-white/60">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setCapture(true)}
+                  className="mt-4 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+                  + Add a call transcript
+                </button>
+              )}
+            </Section>
 
             {/* ── The whole history ────────────────────────────────────── */}
             <Section title="History" count={timeline.length}>
