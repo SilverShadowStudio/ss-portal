@@ -1,16 +1,30 @@
 # Handoff Log
 
-## Resume (permanent, do not edit)
+## Resume (permanent — change only when the routine itself changes)
 
     cd ~/code/ss-portal
     git pull origin main
-    claude --dangerously-skip-permissions
 
-First command inside Claude Code:
+Then open a session and say:
 
-    cat HANDOFF.md && git status
+    Read HANDOFF.md, check git status, and tell me where we are.
 
-Then ask for the state summary before acting.
+**Wait for the state summary before giving work.** That step is what catches
+drift — a migration that never applied, a function that didn't deploy, work left
+uncommitted on the other machine. It has earned its place more than once.
+
+Closing: say **"close this session"**. The entry, the commit, the push and the
+clean-tree check all happen from that.
+
+TWO MACHINES (fc1 office, fc2 MacBook): git is the only sync, so the close
+routine is not optional — git cannot carry what was never committed. Run one
+session at a time; two agents committing to main in parallel is the one failure
+this routine doesn't protect against.
+
+Session titles match the handoff entry headings — date, then the through-line,
+never the project name. "5 Aug — onboarding rescue", not "ss-portal work". One
+scheme across both indexes, so a handoff entry and its conversation are findable
+from each other.
 
 ---
 
@@ -137,6 +151,14 @@ accounts remain.
   REDEPLOYS 402, so the ceiling has to be cleared before the next new function: either raise it in
   Supabase (the error names the spend cap) or consolidate — four dead ones were deleted on 5 Aug and
   more could be merged.
+
+## Closing notes (same session, after the entry above was written)
+- **The edge-function cap is per PROJECT.** Verified against the API: ss-portal 99, clairecolomb 4,
+  same org. Work on clairecolomb costs ss-portal nothing. ss-portal's own ceiling still needs
+  clearing before the next new function — at 100 even redeploys 402.
+- Resume block above rewritten for the desktop app (the `claude --dangerously-skip-permissions`
+  launch line was terminal-only) and extended with the two-machine and session-naming conventions.
+- Nothing else changed in the repo after `e12e666`; the rest of the session was working practice.
 
 ## Next step to resume from (as of 5 August 2026, evening)
 1. **Chase Fiodor and Shukrullo** — Fiodor is one form from done; Shukrullo needs a fresh invite and
