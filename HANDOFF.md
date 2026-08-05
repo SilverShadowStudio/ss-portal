@@ -95,6 +95,27 @@ inert. Fred was shown a real A/B of both faces and **chose Montserrat for all nu
   hardcoded `claude-sonnet-4-5` → now imports `SALES_MODEL`. Second commit fixed a real bug —
   `content[0].text` assumed the first block is the text block — and added failure logging.
 
+## 5 · Send Later was silently dead — fixed after the handoff (`bde1b0d`-ish, see git log)
+
+Fred asked whether Kateryna had received her invitation. She had not, and never would have.
+
+`dispatch-scheduled-invites` called `requireCronOrAdmin(req, { corsHeaders })` but `secretEnvVar`
+is REQUIRED — `Deno.env.get(undefined)` threw before any auth ran, so the function 500'd on every
+5-minute tick and never read the queue. **The queue row therefore showed `attempts=0`,
+`last_error=null`** — it looked pending, not failing, which is exactly why nobody noticed.
+Scheduled invitations had never been delivered since the feature shipped.
+
+Diagnosis path worth reusing: `cron.job_run_details` said "succeeded" (that only means the SQL ran)
+— the truth was in **`net._http_response`**, which showed a 500 every 5 minutes. Probing a function
+unauthenticated distinguishes the two failures cleanly: **401 = alive and gating, 500 = crashes at
+boot.** All 9 cron targets were swept this way and the other 8 are healthy.
+
+Fixed, deployed, and verified end-to-end: Kateryna's invite sent 09:00:10, attempts 1, no error.
+
+**Gap left open:** there is no UI anywhere showing whether a scheduled invitation was sent. Fred had
+to ask, and the answer only existed in Supabase. Offered: surface scheduled/sent/failed on the team
+member's card with a resend button. Not built — awaiting his yes.
+
 ## Migrations applied to prod this session
 `20260804180000` sales_director_chat · `20260805090000` sales_director_memory ·
 `20260805120000` sales_commitments_update. All additive.
