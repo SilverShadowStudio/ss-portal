@@ -15,6 +15,7 @@ import { TableToolbar, TableSearch, TableFilterSelect, SortTh } from "@/componen
 import { DebriefSheet } from "@/components/admin/sales/DebriefSheet";
 import { NextActionPicker } from "@/components/admin/sales/NextActionPicker";
 import { LeadDossier } from "@/components/admin/sales/LeadDossier";
+import { useDirector } from "@/components/admin/sales/DirectorSheet";
 
 interface Lead {
   id: string;
@@ -80,6 +81,7 @@ const EMPTY = { company: "", contact_name: "", email: "", role: "", sector: "", 
 
 export default function AdminSales() {
   const { toast } = useToast();
+  const { open: openDirector } = useDirector();
   const [rows, setRows] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -323,7 +325,7 @@ export default function AdminSales() {
           <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Leads</h2></div>
           <div className="flex items-center gap-5">
             <Link to="/admin/sales/commitments" className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><ListChecks className="h-3 w-3" strokeWidth={1.5} />Commitments</Link>
-            <Link to="/admin/sales/director" className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><MessageSquare className="h-3 w-3" strokeWidth={1.5} />Director</Link>
+            <button onClick={openDirector} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><MessageSquare className="h-3 w-3" strokeWidth={1.5} />Director</button>
             <button onClick={() => setImportOpen(true)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]"><Upload className="h-3 w-3" strokeWidth={1.5} />Import CSV</button>
             <button onClick={openAdd} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]"><Plus className="h-3 w-3" strokeWidth={1.5} />Add lead</button>
           </div>

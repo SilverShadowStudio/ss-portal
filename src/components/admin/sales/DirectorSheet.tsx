@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, MessageSquare } from "lucide-react";
 import { DirectorChat } from "@/components/admin/sales/DirectorChat";
@@ -9,6 +9,21 @@ import { DirectorChat } from "@/components/admin/sales/DirectorChat";
 // team member — so it comes to you rather than making you leave the page to ask
 // about the page. The full-page version still exists and holds the same
 // conversation; "Open in full" hands off to it.
+
+// One opener for the whole portal, so any page can summon the drawer without
+// navigating away from itself — which was the point of having a drawer.
+const DirectorCtx = createContext<{ open: () => void; close: () => void; isOpen: boolean }>({
+  open: () => {}, close: () => {}, isOpen: false,
+});
+export const useDirector = () => useContext(DirectorCtx);
+
+export function DirectorProvider({ children }: { children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const open = useCallback(() => setIsOpen(true), []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const value = useMemo(() => ({ open, close, isOpen }), [open, close, isOpen]);
+  return <DirectorCtx.Provider value={value}>{children}</DirectorCtx.Provider>;
+}
 
 export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Kept mounted through the closing animation so it slides out rather than
@@ -40,22 +55,33 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
     <div className="fixed inset-0 z-[160]" style={{ pointerEvents: "auto" }}>
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-black/55 backdrop-blur-[2px] transition-opacity duration-300"
+        className="absolute inset-0 bg-black/60 backdrop-blur-[3px] transition-opacity duration-[420ms]"
         style={{ opacity: shown ? 1 : 0 }}
       />
 
       <aside
         role="dialog"
         aria-label="Sales Director"
-        className="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col ssr-panel ssr-panel--sales shadow-2xl transition-transform duration-300 ease-out"
+        className="ssr-panel ssr-panel--sales absolute inset-y-3 right-3 flex w-full max-w-[560px] flex-col overflow-hidden"
         style={{
-          transform: shown ? "translateX(0)" : "translateX(100%)",
-          // A hairline of gold down the join, so the panel reads as arriving
-          // over the page rather than being cut out of it.
-          boxShadow: "inset 1px 0 0 rgba(201,169,106,0.22), -24px 0 60px -20px rgba(0,0,0,0.7)",
-          borderRadius: 0,
+          transform: shown ? "translateX(0)" : "translateX(calc(100% + 12px))",
+          opacity: shown ? 1 : 0,
+          // The studio's own easing — the same curve the rest of the portal
+          // moves on, so the drawer belongs to it rather than arriving from
+          // some other application.
+          transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
+          // Inset from the edge and rounded, so it reads as a panel resting ON
+          // the page rather than a slab welded to the window.
+          borderRadius: 18,
+          boxShadow: "inset 1px 0 0 rgba(201,169,106,0.20), 0 40px 90px -30px rgba(0,0,0,0.85)",
         }}
       >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute left-2 top-1/2 h-16 w-[3px] -translate-y-1/2 rounded-full"
+          style={{ background: "linear-gradient(180deg, transparent, rgba(201,169,106,0.45), transparent)" }}
+        />
+
         <button
           onClick={onClose}
           aria-label="Close the Director"
@@ -64,7 +90,7 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
           <X className="h-4 w-4" strokeWidth={1.5} />
         </button>
 
-        <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
+        <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-6">
           <DirectorChat variant="sheet" onClose={onClose} />
         </div>
       </aside>

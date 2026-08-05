@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { DirectorSheet, DirectorLauncher } from "@/components/admin/sales/DirectorSheet";
+import { DirectorSheet, DirectorLauncher, useDirector } from "@/components/admin/sales/DirectorSheet";
 import { AdminSidebar } from "./AdminSidebar";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,16 @@ interface AdminLayoutProps {
   panelClassName?: string;
 }
 
+function DirectorDock() {
+  const { isOpen, open, close } = useDirector();
+  return (
+    <>
+      <DirectorLauncher onClick={open} />
+      <DirectorSheet open={isOpen} onClose={close} />
+    </>
+  );
+}
+
 export function AdminLayout({ children, fullWidth = false, noPadding = false, panel = false, panelClassName }: AdminLayoutProps) {
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem("ss-admin-sidebar-expanded");
@@ -28,7 +38,6 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
 
   const { pathname } = useLocation();
   const onDirectorPage = pathname.startsWith("/admin/sales/director");
-  const [directorOpen, setDirectorOpen] = useState(false);
 
   return (
     <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
@@ -47,12 +56,7 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
 
       {/* The Director, reachable from any admin page. Hidden on its own page —
           a launcher for the thing you're already looking at is just noise. */}
-      {!onDirectorPage && (
-        <>
-          <DirectorLauncher onClick={() => setDirectorOpen(true)} />
-          <DirectorSheet open={directorOpen} onClose={() => setDirectorOpen(false)} />
-        </>
-      )}
+      {!onDirectorPage && <DirectorDock />}
     </div>
   );
 }
