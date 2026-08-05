@@ -152,12 +152,12 @@ export default function AdminSales() {
     const { error } = await supabase.from("leads").update({ next_action_at: next }).eq("id", id);
     if (error) {
       setRows((p) => p.map((r) => (r.id === id ? { ...r, next_action_at: before } : r)));
-      toast({ title: "Couldn't set the follow-up", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't set the chase", description: error.message, variant: "destructive" });
       return;
     }
     toast({
-      title: next ? "Follow-up set" : "Follow-up cleared",
-      description: next ? fmtDate(next) : "This lead has no next action.",
+      title: next ? "Chase set" : "Chase cleared",
+      description: next ? fmtDate(next) : "This lead has nothing scheduled.",
     });
   }
 
@@ -307,12 +307,12 @@ export default function AdminSales() {
           {!loading && (
             <div className="flex items-center gap-6 text-right">
               <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Open leads</p><p className="ssr-figure-sm text-strong mt-1">{open.length}</p></div>
-              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Follow-ups due</p><p className={`ssr-figure-sm mt-1 ${dueCount ? "text-[#ecd39c]" : "text-strong"}`}>{dueCount}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Chases due</p><p className={`ssr-figure-sm mt-1 ${dueCount ? "text-[#ecd39c]" : "text-strong"}`}>{dueCount}</p></div>
               <div><p className="text-[9px] uppercase tracking-[0.22em] text-white/35">Pipeline</p><p className="ssr-figure-sm text-strong mt-1">{money(pipelineValue)}</p></div>
             </div>
           )}
         </div>
-        <p className="mt-3 text-sm text-recessive">Warm outreach — work your list, draft tailored pitches, and never miss a follow-up. {withEmail ? `${withEmail} leads have an email.` : ""}</p>
+        <p className="mt-3 text-sm text-recessive">Warm outreach — work your list, draft tailored pitches, and never miss a chase. {withEmail ? `${withEmail} leads have an email.` : ""}</p>
       </div>
 
       <section className="ssr-zone mb-4">
@@ -347,7 +347,7 @@ export default function AdminSales() {
                     <SortTh id="contact" label="Contact" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="country" label="Country" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="status" label="Status" activeKey={sortKey} dir={sortDir} onClick={toggle} />
-                    <SortTh id="next" label="Next" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="next" label="Chase" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="value" label="Value" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                     <th className="px-4 py-3" />
                   </tr>
@@ -411,7 +411,7 @@ export default function AdminSales() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">{filtered.length} shown · sorted by soonest follow-up. Draft a pitch, send it from your own inbox, then set the next follow-up.</p>
+            <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">{filtered.length} shown · sorted by soonest chase. Draft a pitch, send it from your own inbox, then set the next chase.</p>
           </>
         )}
       </section>

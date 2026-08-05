@@ -6,6 +6,16 @@ export function Toaster() {
 
   return (
     <ToastProvider>
+      {/* Dim the page behind, like a dialog. Nothing auto-dismisses now, so the
+          toast is a modal moment — the backdrop says so, and clicking it is the
+          same as clicking the card. */}
+      {toasts.some((t) => t.open) && (
+        <div
+          aria-hidden
+          onClick={() => dismiss()}
+          className="fixed inset-0 z-[190] bg-black/60 backdrop-blur-[2px] animate-in fade-in-0 duration-200"
+        />
+      )}
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
           // Clicking anywhere on the card dismisses it — nothing times out now,

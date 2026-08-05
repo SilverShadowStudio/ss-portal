@@ -72,7 +72,7 @@ export function NextActionPicker({ value, onChange, children, disabled }: Props)
         <button
           type="button"
           className="rounded-sm text-left transition-colors hover:text-[#ecd39c] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#C9A96A]/50"
-          title="Set the next follow-up"
+          title="Set the next chase"
         >
           {children}
         </button>

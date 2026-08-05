@@ -429,7 +429,7 @@ async function callAnthropic(key: string, system: string, messages: Any[]): Prom
     const r = await fetch(ANTHROPIC_MESSAGES_URL, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
-      body: JSON.stringify({ model: SALES_MODEL, max_tokens: 2000, system, tools: [...TOOLS, ...SERVER_TOOLS], messages }),
+      body: JSON.stringify({ model: SALES_MODEL, max_tokens: 4000, system, tools: [...TOOLS, ...SERVER_TOOLS], messages }),
     });
     if (r.ok) return r;
     lastStatus = r.status; lastBody = await r.text().catch(() => "");
@@ -664,14 +664,32 @@ Deno.serve(async (req) => {
   // And drop any tool_result whose matching tool_use isn't in the window. A
   // failed turn can leave one stranded mid-thread, and the API rejects the
   // whole conversation over it rather than skipping the block.
+  const window = tail.slice(start);
+
+  // Every tool_result present in the window, so a tool_use can be checked
+  // against what actually came back.
+  const answered = new Set<string>();
+  for (const m of window as Any[]) {
+    for (const b of (Array.isArray(m.blocks) ? m.blocks : [])) {
+      if (b?.type === "tool_result" && b.tool_use_id) answered.add(b.tool_use_id);
+    }
+  }
+
+  // The pairing rule cuts both ways, and the API rejects the entire
+  // conversation for either half: a tool_result with no tool_use before it, and
+  // a tool_use with no tool_result after it. Drop both orphans.
   const seenToolUse = new Set<string>();
-  const cleaned = tail.slice(start).filter((m: Any) => {
-    const bs = Array.isArray(m.blocks) ? m.blocks : [];
-    for (const b of bs) if (b?.type === "tool_use" && b.id) seenToolUse.add(b.id);
-    const results = bs.filter((b: Any) => b?.type === "tool_result");
-    if (!results.length) return true;
-    return results.every((b: Any) => seenToolUse.has(b.tool_use_id));
-  });
+  const cleaned = (window as Any[]).map((m: Any) => {
+    const bs = Array.isArray(m.blocks) ? m.blocks : null;
+    if (!bs) return m;
+    const kept = bs.filter((b: Any) => {
+      if (b?.type === "tool_use") return b.id && answered.has(b.id);
+      if (b?.type === "tool_result") return b.tool_use_id && seenToolUse.has(b.tool_use_id);
+      return true;
+    });
+    for (const b of kept) if (b?.type === "tool_use" && b.id) seenToolUse.add(b.id);
+    return { ...m, blocks: kept };
+  }).filter((m: Any) => !Array.isArray(m.blocks) || m.blocks.length > 0);
   const history: Any[] = cleaned
     .map((m: Any) => ({
       role: m.role,
@@ -699,6 +717,7 @@ Deno.serve(async (req) => {
   const used: string[] = [];
   const allQueued: Any[] = [];
   let reply = "";
+  let lastStored: string | null = null;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const res = await callAnthropic(anthropicKey, system, messages);
@@ -712,10 +731,11 @@ Deno.serve(async (req) => {
     const content: Any[] = data.content ?? [];
 
     messages.push({ role: "assistant", content });
-    await uc.from("coach_messages").insert({
+    const { data: stored } = await uc.from("coach_messages").insert({
       thread_id: threadId, owner_id: user.id, role: "assistant",
       body: textOf(content) || null, blocks: content,
-    });
+    }).select("id").single();
+    lastStored = stored?.id ?? null;
 
     // A long-running search pauses the turn. The only correct continuation is
     // to send the assistant message back untouched and go round again.
@@ -728,6 +748,17 @@ Deno.serve(async (req) => {
     // run by Anthropic and its results are already in the content we just stored.
     const toolUses = content.filter((c: Any) => c?.type === "tool_use");
     if (!toolUses.length || data.stop_reason !== "tool_use") {
+      // We're stopping without running these. A stored tool_use with no
+      // tool_result after it makes the API reject the WHOLE conversation on
+      // every later turn — so the calls that never happened are not recorded.
+      // (This fires when a reply is cut off mid-tool-call: stop_reason is
+      // max_tokens, but the partial tool_use blocks are still in the content.)
+      if (toolUses.length && lastStored) {
+        const textOnly = content.filter((c: Any) => c?.type === "text");
+        await uc.from("coach_messages")
+          .update({ blocks: textOnly.length ? textOnly : null })
+          .eq("id", lastStored);
+      }
       reply = textOf(content);
       break;
     }
