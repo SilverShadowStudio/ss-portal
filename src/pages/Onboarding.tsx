@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { OnboardingGuide, GUIDE_DETAILS } from "@/components/OnboardingGuide";
 import { useNavigate } from "react-router-dom";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -452,6 +453,7 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-background px-4 py-16">
+      <OnboardingGuide copy={GUIDE_DETAILS} />
       <div className="mx-auto max-w-2xl">
         <div className="mb-14 animate-fade-in">
           <div className="flex items-start gap-4">

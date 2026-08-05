@@ -1,4 +1,5 @@
 import { ReactNode, useState, useEffect } from "react";
+import { WelcomeGuide } from "@/components/OnboardingGuide";
 import { ClientSidebar } from "./ClientSidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +38,9 @@ export function ClientLayout({ children, fullWidth = false, panel = false }: Cli
   return (
     <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
       <ClientSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
+
+      {/* Shown once, on whichever page a team member lands on first. */}
+      {accountType === "team" && <WelcomeGuide />}
 
       <main className={cn("min-h-screen transition-all duration-300", expanded ? "md:ml-64" : "md:ml-20")}>
         {panel ? (

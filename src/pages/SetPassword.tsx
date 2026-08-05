@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { OnboardingGuide, GUIDE_PASSWORD } from "@/components/OnboardingGuide";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import silvershadowLogo from "@/assets/silvershadow-logo.png";
@@ -159,6 +160,9 @@ export default function SetPassword() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      {/* Only once the link has actually established a session — a guide over an
+          expired-link error would be telling them to do something they can't. */}
+      <OnboardingGuide copy={GUIDE_PASSWORD} when={sessionReady && !urlError && !urlErrorCode} />
       <div className="flex w-full max-w-[360px] flex-col items-center">
       <div className="animate-fade-in" style={{ marginBottom: "64px" }}>
         <img
