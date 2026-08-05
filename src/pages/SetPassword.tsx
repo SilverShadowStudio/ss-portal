@@ -71,15 +71,24 @@ export default function SetPassword() {
     })();
   }, [sessionReady]);
 
+  // Only success was ever logged, so a person who bounced off this screen left
+  // no trace of why — which is exactly what happened to the first freelancer to
+  // hit it. Failures are now recorded with their reason.
+  const logFailure = (reason: string) =>
+    logActivity({ action: "password_set_failed", description: `Could not set password — ${reason}` })
+      .catch(() => { /* best-effort; never block the form */ });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
+      logFailure("shorter than 8 characters");
       return;
     }
     if (password !== confirm) {
       setError("Passwords do not match.");
+      logFailure("the two entries didn't match");
       return;
     }
     setIsLoading(true);
@@ -87,9 +96,26 @@ export default function SetPassword() {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
       await logActivity({ action: "password_set", description: "Set initial password" });
-      navigate("/sign-agreement");
+
+      // A team member has no agreement to sign — /sign-agreement renders them a
+      // page saying it's for project and partnership clients. It only hasn't
+      // stranded anyone because a downstream guard happens to bounce them to
+      // /onboarding; that is working by accident, so send them there directly.
+      const { data: { user } } = await supabase.auth.getUser();
+      let isTeam = false;
+      if (user) {
+        const { data: member } = await supabase
+          .from("account_members")
+          .select("accounts(account_type)")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        isTeam = (member as { accounts?: { account_type?: string } } | null)?.accounts?.account_type === "team";
+      }
+      navigate(isTeam ? "/onboarding" : "/sign-agreement");
     } catch (err: any) {
+      const reason = err?.message || "the server rejected it";
       setError(err.message || "Failed to set password. Please try again.");
+      logFailure(reason);
     } finally {
       setIsLoading(false);
     }
