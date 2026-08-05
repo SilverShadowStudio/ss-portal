@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff, Maximize2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
@@ -24,7 +25,8 @@ interface Action {
 interface Thread { id: string; title: string | null; last_message_at: string }
 interface Ctx {
   messages: number; compact_at: number; keep_tail: number;
-  summarised: boolean; input_tokens: number;
+  summarised: boolean; summary?: string | null;
+  input_tokens: number; total_messages?: number;
 }
 
 /** How full the conversation is, as a ring.
@@ -33,20 +35,15 @@ interface Ctx {
  *  window is 200k tokens and never the thing that bites. What bites is the
  *  point where the oldest turns stop being replayed verbatim and become a
  *  summary. That's what's worth watching, so that's what this counts. */
-function ContextRing({ ctx }: { ctx: Ctx }) {
+function ContextRing({ ctx, onClick }: { ctx: Ctx; onClick: () => void }) {
   const pct = Math.min(1, ctx.messages / ctx.compact_at);
   const R = 7, C = 2 * Math.PI * R;
   const tone = pct >= 0.85 ? "#ecd39c" : pct >= 0.6 ? "#C9A96A" : "rgba(201,169,106,0.55)";
-  const kb = ctx.input_tokens ? `${Math.round(ctx.input_tokens / 100) / 10}k tokens last turn · ` : "";
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/35"
-      title={
-        `${kb}${ctx.messages} of ${ctx.compact_at} turns held in full.\n` +
-        (ctx.summarised
-          ? `Older turns are already summarised — nothing is lost, but they're condensed.`
-          : `At ${ctx.compact_at} the oldest fold into a summary and the last ${ctx.keep_tail} stay verbatim.`)
-      }
+    <button
+      onClick={onClick}
+      title="What this conversation is holding"
+      className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/35 transition-colors hover:text-[#ecd39c]"
     >
       <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
         <circle cx="9" cy="9" r={R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={2} />
@@ -58,106 +55,82 @@ function ContextRing({ ctx }: { ctx: Ctx }) {
         {ctx.summarised && <circle cx="9" cy="9" r="1.6" fill={tone} />}
       </svg>
       {Math.round(pct * 100)}%
-    </span>
+    </button>
   );
 }
 
-const KIND_LABEL: Record<string, string> = {
-  stage_change: "Stage", value_change: "Value", outcome_set: "Outcome", owner_change: "Owner",
-};
-const TOOL_LABEL: Record<string, string> = {
-  search_pipeline: "searched the pipeline",
-  get_lead: "read the lead",
-  pipeline_summary: "totalled the pipeline",
-  create_lead: "created a lead",
-  log_interaction: "logged it",
-  set_commitment: "set a commitment",
-  list_commitments: "checked what's promised",
-  update_lead: "updated the lead",
-  web_search: "searched the web",
-  web_fetch: "read the page",
-};
-const STAGE_LABEL: Record<string, string> = {
-  new: "New", contacted: "Contacted", engaged: "Engaged", qualified: "Qualified",
-  proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost", dead: "Dead",
-};
+/** The detail behind the ring — including the summary itself, which is the
+ *  Director's memory of this conversation and had no way of being seen. */
+function ContextDetail({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
+  const pct = Math.min(1, ctx.messages / ctx.compact_at);
+  const R = 34, C = 2 * Math.PI * R;
+  const tone = pct >= 0.85 ? "#ecd39c" : "#C9A96A";
+  const remaining = Math.max(0, ctx.compact_at - ctx.messages);
 
-const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
-const prettyValue = (kind: string, v: string | null) => {
-  if (v == null || v === "") return "—";
-  if (kind === "stage_change") return STAGE_LABEL[v] ?? v;
-  if (kind === "value_change") return money(Number(v));
-  if (kind === "outcome_set") return v.charAt(0).toUpperCase() + v.slice(1);
-  return v;
-};
+  return createPortal(
+    <div className="fixed inset-0 z-[170] flex items-center justify-center p-6" style={{ pointerEvents: "auto" }}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[3px] animate-in fade-in-0 duration-200" onClick={onClose} />
+      <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-[#C9A96A]/20 bg-[#1a1013] shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
+        <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px w-5 bg-gold-muted" />
+            <h2 className="text-[10px] uppercase tracking-[0.2em] text-white/70">This conversation</h2>
+          </div>
+          <button onClick={onClose} className="text-white/35 hover:text-white/80" aria-label="Close">
+            <X className="h-4 w-4" strokeWidth={1.5} />
+          </button>
+        </div>
 
-/** Walk stored messages into display items. Tool-result turns are stored as
- *  role:'user' with no body — they're wire traffic, not conversation. */
-function toItems(msgs: Msg[]) {
-  return msgs.flatMap((m) => {
-    if (m.role === "user") {
-      return m.body ? [{ id: m.id, who: "user" as const, text: m.body, tools: [] as string[], sources: [] as Source[] }] : [];
-    }
-    const blocks = m.blocks ?? [];
-    // server_tool_use is web search/fetch — run by Anthropic, but it's still
-    // work the Director did and Fred should see it happen.
-    const tools = blocks
-      .filter((b) => b.type === "tool_use" || b.type === "server_tool_use")
-      .map((b) => String(b.name));
+        <div className="flex items-center gap-6 px-6 py-6">
+          <svg width={84} height={84} viewBox="0 0 84 84" className="shrink-0">
+            <circle cx="42" cy="42" r={R} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={4} />
+            <circle cx="42" cy="42" r={R} fill="none" stroke={tone} strokeWidth={4} strokeLinecap="round"
+                    strokeDasharray={`${C * pct} ${C}`} transform="rotate(-90 42 42)" />
+            <text x="42" y="46" textAnchor="middle" fill="#FCF8F1" fontSize={17}
+                  style={{ fontVariantNumeric: "tabular-nums" }}>{Math.round(pct * 100)}%</text>
+          </svg>
+          <div className="min-w-0 space-y-2.5 text-sm">
+            <p className="text-strong">
+              <span className="tabular-nums">{ctx.messages}</span>
+              <span className="text-white/40"> of {ctx.compact_at} turns held word for word</span>
+            </p>
+            <p className="text-white/50">
+              {remaining > 0
+                ? <>In <span className="tabular-nums text-[#ecd39c]">{remaining}</span> more, the oldest fold into a summary and the last {ctx.keep_tail} stay verbatim.</>
+                : <>Folding now — the oldest turns become a summary, the last {ctx.keep_tail} stay verbatim.</>}
+            </p>
+            {ctx.input_tokens > 0 && (
+              <p className="text-xs text-white/30">
+                Last turn sent <span className="tabular-nums">{ctx.input_tokens.toLocaleString("en-GB")}</span> tokens
+                {ctx.total_messages ? ` · ${ctx.total_messages} messages on record` : ""}
+              </p>
+            )}
+          </div>
+        </div>
 
-    // Citations ride on the text blocks. Dedupe by URL — one page cited six
-    // times is one source, not six.
-    const seen = new Set<string>();
-    const sources: Source[] = [];
-    for (const b of blocks) {
-      for (const c of b.citations ?? []) {
-        if (!c.url || seen.has(c.url)) continue;
-        seen.add(c.url);
-        sources.push({ url: c.url, title: c.title || new URL(c.url).hostname.replace(/^www\./, "") });
-      }
-    }
+        <div className="border-t border-white/[0.07] px-6 py-5">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/30">
+            {ctx.summarised ? "What it remembers of the earlier part" : "Nothing summarised yet"}
+          </p>
+          {ctx.summarised && ctx.summary ? (
+            <p className="mt-3 max-h-[210px] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-white/65">
+              {ctx.summary}
+            </p>
+          ) : (
+            <p className="mt-2.5 text-sm leading-relaxed text-white/45">
+              Every turn so far is still being replayed in full. Nothing has been condensed, so nothing has been lost.
+            </p>
+          )}
+        </div>
 
-    const text = m.body ?? "";
-    if (!text && !tools.length) return [];
-    return [{ id: m.id, who: "director" as const, text, tools, sources }];
-  });
-}
-
-// ── Voice ────────────────────────────────────────────────────────────────────
-// Browser SpeechRecognition. Free, no key, no per-minute cost — but Chrome and
-// Edge are where it's good, Safari is patchy and iOS weaker still. When it
-// isn't available we hide the button rather than showing one that fails:
-// macOS Fn-dictation types into the same box and works everywhere.
-
-interface SRAlternative { transcript: string }
-interface SRResult { isFinal: boolean; 0: SRAlternative; length: number }
-interface SREvent { resultIndex: number; results: { length: number; [i: number]: SRResult } }
-interface SRErrorEvent { error: string }
-interface SRInstance {
-  lang: string; continuous: boolean; interimResults: boolean;
-  start(): void; stop(): void;
-  onresult: ((e: SREvent) => void) | null;
-  onerror: ((e: SRErrorEvent) => void) | null;
-  onend: (() => void) | null;
-}
-type SRCtor = new () => SRInstance;
-
-const SpeechCtor: SRCtor | undefined =
-  (window as unknown as { SpeechRecognition?: SRCtor; webkitSpeechRecognition?: SRCtor }).SpeechRecognition ??
-  (window as unknown as { webkitSpeechRecognition?: SRCtor }).webkitSpeechRecognition;
-
-const SPEECH_ERRORS: Record<string, string> = {
-  "not-allowed": "Microphone access is blocked. Allow it for this site in your browser settings.",
-  "service-not-allowed": "Your browser refused the speech service.",
-  "audio-capture": "No microphone found.",
-  network: "The speech service couldn't be reached.",
-};
-
-interface ChatProps {
-  /** "page" fills a panel; "sheet" fills the slide-over. Only the chrome and
-   *  the chat's height differ — one implementation, two homes. */
-  variant?: "page" | "sheet";
-  onClose?: () => void;
+        <p className="border-t border-white/[0.07] px-6 py-3.5 text-[10px] leading-relaxed text-white/25">
+          This is the fold, not the model's limit — its window is far larger and nowhere near full. Folding is what keeps a long
+          conversation affordable and coherent; a fresh thread starts this at zero.
+        </p>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 export function DirectorChat({ variant = "page", onClose }: ChatProps) {
@@ -178,6 +151,7 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
   const [briefMeta, setBriefMeta] = useState<{ edited_by_user: boolean; updated_at: string | null } | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [ctx, setCtx] = useState<Ctx | null>(null);
+  const [ctxOpen, setCtxOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -392,7 +366,7 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
             <span className="text-label-gold text-[#ecd39c]">Director</span>
           </div>
           <div className="relative flex items-center gap-5">
-            {ctx && ctx.messages > 0 && <ContextRing ctx={ctx} />}
+            {ctx && ctx.messages > 0 && <ContextRing ctx={ctx} onClick={() => setCtxOpen(true)} />}
             <button onClick={openBrief} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
               <Brain className="h-3 w-3" strokeWidth={1.5} />Brief
             </button>
@@ -570,6 +544,8 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
           What the Director carries between conversations. Visible and editable
           on purpose: memory that shapes every future answer shouldn't be
           something Fred can only infer from behaviour. */}
+      {ctxOpen && ctx && <ContextDetail ctx={ctx} onClose={() => setCtxOpen(false)} />}
+
       {briefOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-6" style={{ pointerEvents: "auto" }}>
           <div className="absolute inset-0 bg-black/70" onClick={() => setBriefOpen(false)} />

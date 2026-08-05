@@ -743,7 +743,9 @@ Deno.serve(async (req) => {
         compact_at: COMPACT_AT,
         keep_tail: KEEP_TAIL,
         summarised: !!tr?.summary,
+        summary: (tr?.summary as string | null) ?? null,
         input_tokens: 0,
+        total_messages: (msgs ?? []).length,
       },
     });
   }
@@ -924,6 +926,8 @@ Deno.serve(async (req) => {
   const { count: liveCount } = await uc.from("coach_messages")
     .select("id", { count: "exact", head: true })
     .eq("thread_id", threadId).gt("seq", mem.through);
+  const { count: msgs_total } = await uc.from("coach_messages")
+    .select("id", { count: "exact", head: true }).eq("thread_id", threadId);
 
   return json({
     thread_id: threadId,
@@ -933,7 +937,9 @@ Deno.serve(async (req) => {
       compact_at: COMPACT_AT,
       keep_tail: KEEP_TAIL,
       summarised: !!mem.summary,
+      summary: mem.summary || null,
       input_tokens: lastInputTokens,
+      total_messages: (msgs_total ?? 0),
     },
     used: [...new Set(used)],
     queued: allQueued,
