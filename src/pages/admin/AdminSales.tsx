@@ -156,10 +156,10 @@ export default function AdminSales() {
       toast({ title: "Couldn't set the chase", description: error.message, variant: "destructive" });
       return;
     }
-    toast({
-      title: next ? "Chase set" : "Chase cleared",
-      description: next ? fmtDate(next) : "This lead has nothing scheduled.",
-    });
+    // No confirmation toast. The row already shows it — the date changes, the
+    // colour changes, and it re-sorts. Now that a toast is modal and waits to be
+    // clicked, confirming something you can already see is pure friction.
+    // Failures still speak up; those you can't see.
   }
 
   function openAdd() { setEditId(null); setForm({ ...EMPTY, sector: "Interior Design" }); setEditOpen(true); }
@@ -293,7 +293,6 @@ export default function AdminSales() {
   async function markContacted() {
     if (!pitch) return;
     await supabase.from("leads").update({ status: "contacted", last_contacted_at: new Date().toISOString() }).eq("id", pitch.lead.id);
-    toast({ title: "Marked as contacted" });
     setPitch(null); load();
   }
 

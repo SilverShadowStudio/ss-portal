@@ -105,11 +105,8 @@ export default function AdminSalesCommitments() {
     setBusy(null);
     if (error) { toast({ title: "Couldn't update", description: error.message, variant: "destructive" }); return; }
     await load();
-    if (patch.due_date) {
-      toast({ title: "Pushed", description: `Now due ${fmtDate(patch.due_date)}. That's a slip — it's counted.` });
-    } else {
-      toast({ title: patch.status === "kept" ? "Marked kept" : patch.status === "missed" ? "Marked missed" : "Cancelled" });
-    }
+    // The row re-renders with the new date, status and slip count, so there's
+    // nothing a toast could add — and a modal one would cost a click each time.
   }
 
   function pushAWeek(r: Row) {
