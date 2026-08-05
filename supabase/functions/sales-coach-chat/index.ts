@@ -151,6 +151,18 @@ const TOOLS = [
     },
   },
   {
+    name: "recent_activity",
+    description:
+      "What has actually happened lately, across the whole pipeline — calls and debriefs logged, stage changes, leads added — newest first. Use this whenever Fred refers to something recent without naming the lead: 'the debrief', 'that call', 'what did I do today'. It is the only way to see a debrief on a lead you weren't already discussing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        since_hours: { type: "number", description: "Look back this many hours. Default 72." },
+        limit: { type: "number", description: "Default 20, cap 60." },
+      },
+    },
+  },
+  {
     name: "list_clients",
     description:
       "The studio's ACTUAL clients — companies already on the books — with what they've been invoiced and what's outstanding. Use this before pitching anyone: a lead that is already a client is not a cold lead, and treating it as one is embarrassing in a way a wrong forecast is not.",
@@ -249,7 +261,8 @@ HOW YOU WRITE
 - Numbers get stated plainly: "£45k, 40 days cold" not "a significant opportunity that has been dormant".
 
 HOW YOU WORK
-- NEVER answer a question about the pipeline from memory or assumption. Call search_pipeline, get_lead or pipeline_summary first. If a tool returns nothing, say so — do not fill the gap.
+- NEVER answer a question about the pipeline from memory or assumption. Call search_pipeline, get_lead, recent_activity or pipeline_summary first. If a tool returns nothing, say so — do not fill the gap.
+- "Nothing has come through" is a CLAIM ABOUT DATA and you may not make it without looking. When Fred mentions something recent without naming the lead — "the debrief", "that call", "how did today go" — call recent_activity. He logs debriefs from the leads table, so they arrive without passing through this conversation: your not having seen it means nothing.
 - When he describes something that happened, log it. Don't ask permission to log; that's what you're for.
 - When he names a company you can't find, search before assuming it's new. Offer to create it rather than creating it off an ambiguous mention.
 - Chase the next step. A conversation with no date attached is a conversation you should push back on.
@@ -427,6 +440,40 @@ async function runTool(
         },
         queued,
       };
+    }
+
+    case "recent_activity": {
+      const hours = Math.min(Math.max(Number(input.since_hours) || 72, 1), 24 * 30);
+      const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 60);
+      const since = new Date(Date.now() - hours * 3600_000).toISOString();
+
+      const [{ data: inter }, { data: evs }] = await Promise.all([
+        uc.from("interactions")
+          .select("id, lead_id, type, direction, outcome, summary, raw_debrief, objection, occurred_at, leads(company)")
+          .gte("occurred_at", since).order("occurred_at", { ascending: false }).limit(limit),
+        uc.from("lead_events")
+          .select("id, lead_id, event_type, from_value, to_value, source, created_at, leads(company)")
+          .gte("created_at", since).order("created_at", { ascending: false }).limit(limit),
+      ]);
+
+      // raw_debrief is Fred's own words. Hand them over whole — the summary is a
+      // normalisation of them, and reacting to a debrief means reacting to what
+      // he actually said.
+      const items = [
+        ...((inter ?? []) as Any[]).map((x) => ({
+          at: x.occurred_at, kind: "interaction",
+          company: x.leads?.company ?? null, lead_id: x.lead_id,
+          type: x.type, direction: x.direction, outcome: x.outcome,
+          summary: x.summary, objection: x.objection, in_his_words: x.raw_debrief,
+        })),
+        ...((evs ?? []) as Any[]).map((x) => ({
+          at: x.created_at, kind: "event",
+          company: x.leads?.company ?? null, lead_id: x.lead_id,
+          event: x.event_type, from: x.from_value, to: x.to_value, by: x.source,
+        })),
+      ].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, limit);
+
+      return { result: { since_hours: hours, count: items.length, activity: items }, queued };
     }
 
     case "list_clients": {
