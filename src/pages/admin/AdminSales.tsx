@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2, Phone, MessageSquare, ListChecks, ScrollText } from "lucide-react";
+import { Plus, Upload, Sparkles, Copy, Check, Pencil, Trash2, Phone, MessageSquare, ListChecks, ChevronRight } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -370,7 +370,32 @@ export default function AdminSales() {
                       }`}
                     >
                       <td className="px-4 py-3 text-strong">
-                        <span className="inline-flex items-center gap-2">{r.company}{r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-white/30 hover:text-gold">↗</a>}</span>
+                        {/* The name IS the lead. Opening the record needs no
+                            separate control — an icon in the action cluster was
+                            a button for the thing the row is already about. */}
+                        <span className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => setDossier(r.id)}
+                            title="Everything we know"
+                            className="group/name relative inline-block max-w-full text-left transition-colors duration-200 hover:text-[#ecd39c]"
+                          >
+                            <span className="relative inline-flex items-center gap-1.5">
+                              {r.company}
+                              {/* Arrives only on approach, and travels the
+                                  distance the eye expects it to. */}
+                              <ChevronRight
+                                className="h-3 w-3 shrink-0 -translate-x-1 opacity-0 transition-all duration-300 ease-out group-hover/name:translate-x-0 group-hover/name:opacity-70"
+                                strokeWidth={2}
+                              />
+                            </span>
+                            {/* A hairline drawn in from the left, not switched on. */}
+                            <span
+                              aria-hidden
+                              className="absolute -bottom-0.5 left-0 right-4 h-px origin-left scale-x-0 bg-[#C9A96A]/60 transition-transform duration-300 ease-out group-hover/name:scale-x-100"
+                            />
+                          </button>
+                          {r.website && <a href={r.website.startsWith("http") ? r.website : `https://${r.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-white/30 hover:text-gold">↗</a>}
+                        </span>
                         {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
                       </td>
                       <td className="px-4 py-3 text-standard">
@@ -435,7 +460,6 @@ export default function AdminSales() {
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
-                          <button onClick={() => setDossier(r.id)} className="text-white/40 hover:text-[#ecd39c]" title="Everything we know"><ScrollText className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                           <button onClick={() => draftPitch(r, "call")} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c]"><Sparkles className="h-3 w-3" strokeWidth={1.5} />Call script</button>
                           <button onClick={() => setDebrief({ id: r.id, company: r.company })} className="text-[10px] uppercase tracking-[0.14em] text-white/55 hover:text-[#ecd39c]">Debrief</button>
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
