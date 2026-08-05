@@ -507,8 +507,11 @@ export default function Onboarding() {
             IS the gap between its edge and each section, left and right.
             672px of content (max-w-2xl) + 34 either side. */}
         <div
-          className="ssr-panel ssr-panel--team mx-auto min-h-[calc(100vh-32px)]"
-          style={{ maxWidth: 740 }}
+          className="ssr-panel ssr-panel--team min-h-[calc(100vh-32px)]"
+          // The margins must be inline: .ssr-panel sets margin-left: 0 in the
+          // stylesheet and outranks Tailwind's mx-auto, which pinned the panel
+          // to the left however it was classed.
+          style={{ maxWidth: 740, marginLeft: "auto", marginRight: "auto" }}
         >
       <div>
         <div className="mb-12 animate-fade-in">
