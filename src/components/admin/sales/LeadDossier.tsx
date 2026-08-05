@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, ExternalLink, Phone, Mail, Linkedin } from "lucide-react";
+import { X, ExternalLink, Phone, Mail, Linkedin, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -108,6 +108,18 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
   const [consent, setConsent] = useState("Announced at the start of the call");
   const [assessing, setAssessing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  /** Take a wrong entry back out. Only Fred does this — the Director writes
+   *  history, it never edits it — and the removal itself is recorded. */
+  async function remove(kind: "interaction" | "commitment", id: string) {
+    setRemoving(id);
+    const { error } = await supabase.rpc("sales_delete_entry", { p_kind: kind, p_id: id });
+    setRemoving(null);
+    if (error) { setCaptureError(error.message); return; }
+    if (kind === "interaction") setInteractions((p) => p.filter((x) => x.id !== id));
+    else setCommitments((p) => p.filter((x) => x.id !== id));
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -280,10 +292,18 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                         </span>{" "}
                         {c.description}
                       </p>
-                      <p className="shrink-0 text-xs tabular-nums text-white/40">
+                      <p className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-white/40">
                         {day(c.due_date)}
-                        {c.slip_count > 0 && <span className="ml-2 text-[#F0544C]">slipped {c.slip_count}×</span>}
-                        <span className="ml-2 text-white/25">{c.status}</span>
+                        {c.slip_count > 0 && <span className="text-[#F0544C]">slipped {c.slip_count}×</span>}
+                        <span className="text-white/25">{c.status}</span>
+                        <button
+                          onClick={() => remove("commitment", c.id)}
+                          disabled={removing === c.id}
+                          title="Remove this — it shouldn't be here"
+                          className="text-white/20 transition-colors hover:text-[#F0544C] disabled:opacity-30"
+                        >
+                          <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+                        </button>
                       </p>
                     </div>
                   ))}
@@ -415,7 +435,15 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                     <li key={`${row.kind}-${row.kind === "interaction" ? row.x.id : row.x.id}`} className="relative">
                       <span className="absolute -left-[23px] top-[6px] h-1.5 w-1.5 rounded-full bg-[#C9A96A]/60" />
                       {row.kind === "interaction" ? (
-                        <>
+                        <div className="group/entry">
+                          <button
+                            onClick={() => remove("interaction", row.x.id)}
+                            disabled={removing === row.x.id}
+                            title="Remove this entry"
+                            className="float-right text-white/15 opacity-0 transition-all hover:text-[#F0544C] group-hover/entry:opacity-100 disabled:opacity-30"
+                          >
+                            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+                          </button>
                           <p className="text-sm text-strong">
                             {TYPE_LABEL[row.x.type] ?? row.x.type}
                             {row.x.direction && <span className="text-white/35"> · {row.x.direction}</span>}
@@ -433,7 +461,7 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                             </p>
                           )}
                           <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-white/25">{stamp(row.x.occurred_at)}</p>
-                        </>
+                        </div>
                       ) : (
                         <>
                           <p className="text-sm text-white/70">
