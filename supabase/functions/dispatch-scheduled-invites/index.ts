@@ -27,7 +27,9 @@ const MAX_ATTEMPTS = 5;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const auth = await requireCronOrAdmin(req, { corsHeaders });
+  // secretEnvVar is REQUIRED — omitting it made Deno.env.get(undefined) throw
+  // before any auth ran, so every cron tick got a 500 and no invite ever left.
+  const auth = await requireCronOrAdmin(req, { secretEnvVar: "CRON_SECRET", corsHeaders });
   if (!auth.ok) return auth.response;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
