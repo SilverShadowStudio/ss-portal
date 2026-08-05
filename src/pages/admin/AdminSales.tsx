@@ -34,6 +34,7 @@ interface Lead {
   value_estimate: number | null;
   last_contacted_at: string | null;
   next_action_at: string | null;
+  linkedin_url: string | null;
 }
 
 const STATUSES = ["new", "contacted", "replied", "meeting", "proposal", "won", "lost"] as const;
@@ -101,7 +102,7 @@ export default function AdminSales() {
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("leads")
-      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at")
+      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url")
       .order("next_action_at", { ascending: true, nullsFirst: false });
     setRows((data ?? []) as Lead[]);
     setLoading(false);
@@ -367,7 +368,25 @@ export default function AdminSales() {
                         {r.segment && segRank(r) <= 1 && <div className="mt-0.5 text-[8px] uppercase tracking-[0.18em] text-[#ecd39c]">{r.segment}</div>}
                       </td>
                       <td className="px-4 py-3 text-standard">
-                        {r.contact_name ?? "—"}
+                        {/* The name itself is the link — LinkedIn's own dark-mode
+                            blue, which holds 8:1 here where the brand blue manages 3:1.
+                            No icon: the colour is the affordance. */}
+                        {r.contact_name
+                          ? r.linkedin_url
+                            ? (
+                              <a
+                                href={r.linkedin_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open their LinkedIn profile"
+                                className="text-[#70B5F9] underline-offset-2 hover:underline"
+                              >
+                                {r.contact_name}
+                              </a>
+                            )
+                            : r.contact_name
+                          : "—"}
                         {r.phone && <a href={`tel:${r.phone.replace(/[^0-9+]/g, "")}`} onClick={(e) => e.stopPropagation()} className="ml-2 inline-flex items-center gap-1 text-[11px] text-[#C9A96A] hover:text-[#ecd39c]"><Phone className="h-3 w-3" strokeWidth={1.5} />{r.phone}</a>}
                         {r.email && <div className="text-[11px] text-white/35">{r.email}</div>}
                       </td>
