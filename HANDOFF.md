@@ -14,6 +14,139 @@ Then ask for the state summary before acting.
 
 ---
 
+# Session — 5 August 2026 (fc1 — Sales Director built end-to-end, number typography, fixes)
+
+Autonomous session under the standing build-it-end-to-end mandate, model Opus 5. 16 commits,
+`736ec4c`..`dfc755d`. Every change: `npx tsc --noEmit` green → deployed → committed → pushed.
+
+## 1 · Sales Director — the conversational CRM, built (this closes most of the 2 Aug "Queued" block below)
+
+Fred chose the authority model himself ("option C") after being shown three: the Director acts
+alone on cheap-to-undo things and asks before touching anything that feeds the forecast.
+
+- **`03ef881`** — migration `20260804180000_sales_director_chat.sql`: `coach_threads`,
+  `coach_messages` (stores verbatim Anthropic content blocks so a thread replays exactly),
+  `coach_actions` (queued changes), all owner-scoped RLS. Six RPCs: `sales_coach_create_lead`
+  (dedupes on company name), `…_log_interaction`, `…_set_commitment`, `…_update_lead`,
+  `…_queue_action`, `…_resolve_action`. New edge fn **`sales-coach-chat`** (tool loop, 8 tools) +
+  page `/admin/sales/director`.
+- **THE AUTHORITY SPLIT IS ENFORCED IN SQL, NOT THE PROMPT.** `sales_coach_update_lead` physically
+  cannot write `stage`, `value_estimate`, `outcome` or `owner_id` — those only move through a
+  confirmed `coach_actions` row. A model ignoring its instructions still cannot move a deal to Won.
+  **Do not "simplify" this by letting the function write those fields directly.**
+- Verified with a rolled-back SQL transaction, 9/9: dedupe, gated-field leak, queue-doesn't-move,
+  confirm-applies, audit row `coach / stage_change`, double-confirm no-op.
+- **`b2f655d`** — migration `20260805090000_sales_director_memory.sql`: `coach_threads.summary` +
+  `coach_brief`. A thread folds its old turns past 32 messages (cut on a clean user turn — cutting
+  mid-exchange orphans a `tool_result` from its `tool_use` and the API rejects the whole
+  conversation). Durable facts merge into one standing brief across threads. **The brief holds no
+  pipeline figures by construction** — a cached number would have it quoting a stale forecast.
+  Visible and editable at Director → Brief.
+- **`32af23e`** — web search + page fetch (`web_search_20250305`, `web_fetch_20250910`; identifiers
+  verified against the live docs, not assumed). Handles `pause_turn`; `server_tool_use` is not
+  routed to the client tool executor. Web findings are attributed ("per their website") and the
+  brief refuses to store an unattributed web claim. Fetched pages are data, never instructions.
+  Cost: search $10/1,000; fetch is token-cost only. Capped 5 uses + 30k tokens/page.
+- **`aff3bd6`** — voice dictation (browser SpeechRecognition). Auto-resumes across natural pauses;
+  `no-speech` is a pause, not an error. Hidden where the API is absent.
+- **`8186390`** — **Commitments page** `/admin/sales/commitments` + `list_commitments` tool +
+  migration `20260805120000`. The Director itself reported it had no cross-pipeline view; this is
+  both halves. Pushing a date increments `slip_count` and preserves `original_due_date` — a
+  commitment that has moved four times is the strongest evidence a deal isn't real.
+- **`cb783a0`** — Director as its own sidebar entry under Sales.
+
+## 2 · Edge-function cap — was blocking ALL redeploys
+
+Hit **100/100**, at which point even redeploying an existing function 402s (a fix sat committed but
+undeployed until this was cleared). **`ec55359`** deleted four functions after verifying nothing in
+`src/`, pg_cron or another function referenced them: `handle-email-suppression` (a **Mailgun**
+webhook using the old Lovable library — this project sends via Resend, so it received nothing),
+`resend-find-email`, `admin-batch-upload`, `generate-invoice-pdf-v2` (its shared
+`_shared/documents/invoicePdf.ts` stays, used by two live functions). Fred approved.
+**Now 96/100.** Source is in git history if any needs to come back.
+
+## 3 · Number typography (`dfc755d`)
+
+Audit finding worth keeping: the portal has **two fonts loaded (Cinzel, Montserrat)** but
+`.ssr-panel .font-serif { font-family: var(--font-sans) }` forces every heading and every
+`font-serif` back to Montserrat — and **both `AdminLayout` and `ClientLayout` wrap in
+`.ssr-panel`**. So Cinzel never renders anywhere in either portal; ~249 `font-serif` classes are
+inert. Fred was shown a real A/B of both faces and **chose Montserrat for all numbers.**
+- `.ssr-panel table { font-variant-numeric: tabular-nums }` — fixes every digit column in both
+  portals at once. 73 money renders were missing the class individually.
+- Three figure roles replacing eight ad-hoc sizes + an inline `1.85rem`: `.ssr-figure-lg` (2.25rem),
+  `.ssr-figure` (1.75rem), `.ssr-figure-sm` (1.25rem), tabular baked in.
+- Migrated: Earnings, Sales, Commitments, Freelancer Payments, Reconcile, FinanceSummary,
+  OutstandingCards, PayableDetail.
+
+## 4 · Fixes
+
+- **`736ec4c` / `9a88ba7` / `ecca320`** — Earnings expanded rows: gold matching the summary
+  `--gold` token, oldest day first, and days/rate as their own columns before Fee (matching the
+  self-billed invoice column order).
+- **`9f164d0`** — self-bill invoice line dates now `Monday 05 January` (weekday, no year).
+- **`f563732`** — leads sorting: a blank Next date now sorts as **oldest**, not furthest future — a
+  lead with no planned action is the most neglected, not the least urgent. Added opt-in
+  `nulls: "lowest"` to `useTableSort`; **default unchanged so the finance tables are untouched.**
+- **`6008c8f` / `e3d0cd8`** — call-brief "draft came back unreadable". Root cause was **truncation**:
+  `max_tokens` 1024 shared by both modes, and the call brief (5 sections + 3 objections) overran it,
+  so valid output arrived as unterminated JSON. Call mode now 2500. Parser also tolerates raw
+  newlines inside JSON strings and extracts fields from a truncated reply. Model id was a stale
+  hardcoded `claude-sonnet-4-5` → now imports `SALES_MODEL`. Second commit fixed a real bug —
+  `content[0].text` assumed the first block is the text block — and added failure logging.
+
+## Migrations applied to prod this session
+`20260804180000` sales_director_chat · `20260805090000` sales_director_memory ·
+`20260805120000` sales_commitments_update. All additive.
+
+## Decisions made
+- **Sales Director authority = option C** (free: create lead / log interaction / set commitment /
+  contact fields. Gated: stage, value_estimate, outcome, owner). Enforced in SQL.
+- **All portal numbers are Montserrat** (A/B shown; Cinzel rejected for long figures).
+- Emailing a prospect must NOT be a free Director action when Google is connected — it drafts and
+  books, Fred clicks send. Agreed in principle, not yet built.
+
+## ⚠ NOT VERIFIED BY ME — Fred to confirm on production
+Minting a session JWT was blocked by the sandbox this session, so I could not drive the UI myself.
+The DB layer is tested (9/9 above); these are not:
+1. **Call brief** — the `e3d0cd8` fix is deployed and untried. If it fails again the toast now names
+   the reason, and `console.error` in `draft-sales-pitch` logs stop_reason / block types / a sample
+   (readable via the Management API analytics endpoint — see the query used this session).
+2. **Director web search + voice** — deployed, never exercised.
+3. Director chat itself worked (Fred screenshotted a correct refusal to browse before web search
+   was added), so the tool loop, auth gate and model access are all confirmed good.
+
+## Still open / carried forward
+- **Sales Director spec Tasks 3+ never built**: Brief screen, legacy Excel import, `qualify`
+  function, `_shared/coachPrompt.ts`. Fred said "STOP after Task 2" and the scope moved to the chat.
+- **The old per-lead Debrief screen** (`/admin/sales/:leadId/debrief`) now overlaps the Director,
+  which logs interactions conversationally. Left in place deliberately — retiring it needs Fred's
+  yes. `interactions`/`commitments` were still at 0 rows at session start.
+- **Xero integration** — Fred re-flagged it this session as an open commitment ("we need to finish
+  the integration to Xero"). Groundwork exists in the finance migrations + `dropbox-save-invoice-file`;
+  it's a finish, not a greenfield build.
+- **Google OAuth for Meet links** — Fred asked to be reminded. No Google integration exists at all
+  (no `googleapis` usage, no Google secrets). Blocker is entirely his side: Cloud project, consent
+  screen, Calendar API, client ID + secret. Then the callback/refresh/event/email mirror Dropbox.
+- **Director company rename** — it can change sector/segment but not `company`. Offered, not taken up.
+- **~249 inert `font-serif` classes** could be removed for code honesty; zero visual change, real
+  regression risk across client pages I can't screenshot. Left alone deliberately.
+- **`useTableSort` doc mismatch** — the comment claims nulls stay last "regardless of direction";
+  they actually flip to the top on desc. Affects every table using the hook, so not changed
+  unilaterally. Offered to Fred, no answer yet.
+- The 1 Aug ⚠ freelancer-calendar rework has since been done (freelancer/employee differentiation,
+  no paid holiday or allowance ring for freelancers, past-day lock, 2026 floor).
+
+## Next step to resume from (as of 5 August 2026 — current priority)
+No build is mid-flight; everything is committed, deployed and pushed.
+1. **Fred confirms the three unverified items above** — call brief first, then Director web search
+   and voice. Any failure now reports its own reason; read the function logs rather than guessing.
+2. **Xero integration** — Fred's own re-flagged commitment; audit what exists before building.
+3. **Google OAuth** — only once Fred supplies the client ID + secret; nothing to do before that.
+4. **(quick, security)** Rotate the exposed Revolut `sk_`/`wsk_` secrets — still not done, see the
+   1 Aug URGENT block below.
+5. Decide the fate of the standalone Debrief screen, and whether to add Director `company` rename.
+
 # Queued — 2 August 2026 (from the CC-Portal session, Fred's direct request)
 
 ## Sales Director tab (CRM) — new feature, not started
