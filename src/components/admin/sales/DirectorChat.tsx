@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -254,6 +254,7 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
   const [briefBusy, setBriefBusy] = useState(false);
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [ctxOpen, setCtxOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Thread | null>(null);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -268,6 +269,19 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
 
   const scroll = (behavior: ScrollBehavior = "smooth") =>
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior, block: "end" }));
+
+  /** Remove a conversation. Housekeeping, not headroom: the replay window is
+   *  per-thread, so deleting an old one frees nothing in this one. What it does
+   *  do is take the messages with it — permanently. */
+  async function deleteThread(id: string) {
+    const { error } = await supabase.from("coach_threads").delete().eq("id", id);
+    if (error) { toast({ title: "Couldn't delete it", description: error.message, variant: "destructive" }); return; }
+    const left = await loadThreads();
+    if (id === threadId) {
+      if (left.length) await loadThread(left[0].id);
+      else { setThreadId(null); setMsgs([]); setActions([]); setCtx(null); }
+    }
+  }
 
   async function loadThreads() {
     const { data } = await supabase.functions.invoke("sales-coach-chat", { body: { list_threads: true } });
@@ -484,10 +498,19 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
                 <div className="fixed inset-0 z-40" onClick={() => setPicker(false)} />
                 <div className="absolute right-0 top-7 z-50 w-72 overflow-hidden rounded-md border border-white/10 bg-[#1a1013] shadow-2xl">
                   {threads.map((t) => (
-                    <button key={t.id} onClick={() => { loadThread(t.id); setPicker(false); }}
-                      className={`block w-full truncate px-4 py-2.5 text-left text-xs hover:bg-white/[0.05] ${t.id === threadId ? "text-[#ecd39c]" : "text-white/60"}`}>
-                      {t.title || "Untitled"}
-                    </button>
+                    <div key={t.id} className="group/thread flex items-center hover:bg-white/[0.05]">
+                      <button onClick={() => { loadThread(t.id); setPicker(false); }}
+                        className={`min-w-0 flex-1 truncate px-4 py-2.5 text-left text-xs ${t.id === threadId ? "text-[#ecd39c]" : "text-white/60"}`}>
+                        {t.title || "Untitled"}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(t); }}
+                        title="Delete this conversation"
+                        className="px-3 text-white/0 transition-colors group-hover/thread:text-white/30 hover:!text-[#F0544C]"
+                      >
+                        <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </>
@@ -645,6 +668,31 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
           What the Director carries between conversations. Visible and editable
           on purpose: memory that shapes every future answer shouldn't be
           something Fred can only infer from behaviour. */}
+      {confirmDelete && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6" style={{ pointerEvents: "auto" }}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={() => setConfirmDelete(null)} />
+          <div className="relative w-full max-w-sm rounded-xl border border-[#F0544C]/25 bg-[#1a1013] p-6 shadow-2xl">
+            <p className="text-[9px] uppercase tracking-[0.22em] text-[#F0544C]">Delete conversation</p>
+            <p className="mt-3 text-sm leading-relaxed text-strong">“{confirmDelete.title || "Untitled"}”</p>
+            <p className="mt-3 text-[11px] leading-relaxed text-white/35">
+              Every message in it goes, permanently. It won't free any room in the conversation you're in — each has its own
+              window — and anything it taught the Director stays in the Brief.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-5">
+              <button onClick={() => setConfirmDelete(null)}
+                className="text-[10px] uppercase tracking-[0.16em] text-white/40 hover:text-white/75">Keep it</button>
+              <button
+                onClick={() => { const t = confirmDelete; setConfirmDelete(null); setPicker(false); deleteThread(t.id); }}
+                className="rounded-lg border border-[#F0544C]/40 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-[#F0544C] hover:bg-[#F0544C]/10"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {ctxOpen && ctx && <ContextDetail ctx={ctx} onClose={() => setCtxOpen(false)} />}
 
       {briefOpen && (
