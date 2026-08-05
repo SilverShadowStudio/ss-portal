@@ -85,6 +85,10 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
         zIndex: 60,
         // Rounded on the right only; there is no left corner in view to round.
         borderRadius: "0 22px 22px 0",
+        // .ssr-panel carries its own 32/34/40 padding. The inner wrapper below
+        // sets the real inset — including the bleed on the left — so the class's
+        // padding has to be cleared or the two stack and double it.
+        padding: 0,
         transform: shown ? "translateX(0)" : "translateX(-100%)",
         opacity: shown ? 1 : 0,
         transition: "transform var(--duration-deliberate) var(--ease-signature), opacity 240ms ease",
