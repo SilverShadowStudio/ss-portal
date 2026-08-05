@@ -143,7 +143,8 @@ export default function AdminSalesDirector() {
   const items = useMemo(() => toItems(msgs), [msgs]);
   const pending = actions.filter((a) => a.status === "pending");
 
-  const scroll = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+  const scroll = (behavior: ScrollBehavior = "smooth") =>
+    requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior, block: "end" }));
 
   async function loadThreads() {
     const { data } = await supabase.functions.invoke("sales-coach-chat", { body: { list_threads: true } });
@@ -156,7 +157,7 @@ export default function AdminSalesDirector() {
     setMsgs((data?.messages ?? []) as Msg[]);
     setActions((data?.actions ?? []) as Action[]);
     setThreadId(id);
-    scroll();
+    scroll("auto");
   }
 
   useEffect(() => {
@@ -164,8 +165,14 @@ export default function AdminSalesDirector() {
       const t = await loadThreads();
       if (t.length) await loadThread(t[0].id);
       setBooting(false);
+      scroll("auto");
     })();
   }, []);
+
+  // The messages paint after booting flips; land on the newest once they exist.
+  useEffect(() => {
+    if (!booting && items.length) scroll("auto");
+  }, [booting, items.length]);
 
   // Company names for the confirmation cards — the model works in ids, Fred doesn't.
   useEffect(() => {
@@ -361,7 +368,10 @@ export default function AdminSalesDirector() {
       </div>
 
       <section className="ssr-zone mb-4">
-        <div className="ssr-tile flex min-h-[60vh] flex-col">
+        {/* Bounded to the viewport rather than growing with the conversation:
+            the message list scrolls inside, so the composer is always on screen
+            and the page itself never scrolls away from it. */}
+        <div className="ssr-tile flex h-[calc(100vh-236px)] min-h-[420px] flex-col">
           {/* ── Conversation ─────────────────────────────────────────────── */}
           <div className="flex-1 space-y-7 overflow-y-auto px-6 py-7">
             {booting ? (
