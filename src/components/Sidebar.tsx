@@ -106,6 +106,10 @@ export function Sidebar({
       : defaultMatchActive(item.path, location.pathname);
     const showBadge = !!item.badgeCount && item.badgeCount > 0;
     const badgeLabel = (item.badgeCount ?? 0) > 99 ? "99+" : String(item.badgeCount ?? 0);
+    // A circle up to two digits, a pill beyond. Horizontal padding is added only
+    // once the label outgrows the circle, so 1 and 2 digits are both centred in
+    // the SAME shape rather than one being padded wider than the other.
+    const badgeWide = badgeLabel.length > 2;
 
     const linkEl = (
       <Link
@@ -133,7 +137,16 @@ export function Sidebar({
           <span className="flex flex-1 items-center justify-between gap-2">
             <span>{item.label}</span>
             {showBadge && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-bold leading-none text-background">
+              <span
+                className={cn(
+                  "inline-grid h-5 min-w-[20px] place-items-center rounded-full bg-gold text-[10px] font-bold leading-none text-background",
+                  badgeWide && "px-1.5",
+                )}
+                // tabular-nums is the fix: proportional digits give '1' wider
+                // side bearings than '2', so it reads off-centre in a circle
+                // that is itself perfectly centred.
+                style={{ fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' }}
+              >
                 {badgeLabel}
               </span>
             )}
@@ -142,7 +155,13 @@ export function Sidebar({
           <span className="relative shrink-0 flex items-center justify-center">
             <item.Icon style={{ width: 15, height: 15 }} strokeWidth={1.5} />
             {showBadge && (
-              <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold leading-none text-background ring-2 ring-sidebar">
+              <span
+                className={cn(
+                  "absolute -top-2 left-full inline-grid h-4 min-w-[16px] -translate-x-1/2 place-items-center rounded-full bg-gold text-[9px] font-bold leading-none text-background ring-2 ring-sidebar",
+                  badgeWide && "px-1",
+                )}
+                style={{ fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' }}
+              >
                 {badgeLabel}
               </span>
             )}

@@ -124,13 +124,111 @@ function ContextDetail({ ctx, onClose }: { ctx: Ctx; onClose: () => void }) {
         </div>
 
         <p className="border-t border-white/[0.07] px-6 py-3.5 text-[10px] leading-relaxed text-white/25">
-          This is the fold, not the model's limit — its window is far larger and nowhere near full. Folding is what keeps a long
+          This is the fold, not the model&rsquo;s limit — its window is far larger and nowhere near full. Folding is what keeps a long
           conversation affordable and coherent; a fresh thread starts this at zero.
         </p>
       </div>
     </div>,
     document.body,
   );
+}
+
+const KIND_LABEL: Record<string, string> = {
+  stage_change: "Stage", value_change: "Value", outcome_set: "Outcome", owner_change: "Owner",
+};
+const TOOL_LABEL: Record<string, string> = {
+  search_pipeline: "searched the pipeline",
+  get_lead: "read the lead",
+  pipeline_summary: "totalled the pipeline",
+  create_lead: "created a lead",
+  log_interaction: "logged it",
+  set_commitment: "set a commitment",
+  list_commitments: "checked what's promised",
+  update_lead: "updated the lead",
+  web_search: "searched the web",
+  web_fetch: "read the page",
+};
+const STAGE_LABEL: Record<string, string> = {
+  new: "New", contacted: "Contacted", engaged: "Engaged", qualified: "Qualified",
+  proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost", dead: "Dead",
+};
+
+const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
+const prettyValue = (kind: string, v: string | null) => {
+  if (v == null || v === "") return "—";
+  if (kind === "stage_change") return STAGE_LABEL[v] ?? v;
+  if (kind === "value_change") return money(Number(v));
+  if (kind === "outcome_set") return v.charAt(0).toUpperCase() + v.slice(1);
+  return v;
+};
+
+/** Walk stored messages into display items. Tool-result turns are stored as
+ *  role:'user' with no body — they're wire traffic, not conversation. */
+function toItems(msgs: Msg[]) {
+  return msgs.flatMap((m) => {
+    if (m.role === "user") {
+      return m.body ? [{ id: m.id, who: "user" as const, text: m.body, tools: [] as string[], sources: [] as Source[] }] : [];
+    }
+    const blocks = m.blocks ?? [];
+    // server_tool_use is web search/fetch — run by Anthropic, but it's still
+    // work the Director did and Fred should see it happen.
+    const tools = blocks
+      .filter((b) => b.type === "tool_use" || b.type === "server_tool_use")
+      .map((b) => String(b.name));
+
+    // Citations ride on the text blocks. Dedupe by URL — one page cited six
+    // times is one source, not six.
+    const seen = new Set<string>();
+    const sources: Source[] = [];
+    for (const b of blocks) {
+      for (const c of b.citations ?? []) {
+        if (!c.url || seen.has(c.url)) continue;
+        seen.add(c.url);
+        sources.push({ url: c.url, title: c.title || new URL(c.url).hostname.replace(/^www\./, "") });
+      }
+    }
+
+    const text = m.body ?? "";
+    if (!text && !tools.length) return [];
+    return [{ id: m.id, who: "director" as const, text, tools, sources }];
+  });
+}
+
+// ── Voice ────────────────────────────────────────────────────────────────────
+// Browser SpeechRecognition. Free, no key, no per-minute cost — but Chrome and
+// Edge are where it's good, Safari is patchy and iOS weaker still. When it
+// isn't available we hide the button rather than showing one that fails:
+// macOS Fn-dictation types into the same box and works everywhere.
+
+interface SRAlternative { transcript: string }
+interface SRResult { isFinal: boolean; 0: SRAlternative; length: number }
+interface SREvent { resultIndex: number; results: { length: number; [i: number]: SRResult } }
+interface SRErrorEvent { error: string }
+interface SRInstance {
+  lang: string; continuous: boolean; interimResults: boolean;
+  start(): void; stop(): void;
+  onresult: ((e: SREvent) => void) | null;
+  onerror: ((e: SRErrorEvent) => void) | null;
+  onend: (() => void) | null;
+}
+type SRCtor = new () => SRInstance;
+
+const SpeechCtor: SRCtor | undefined =
+  (window as unknown as { SpeechRecognition?: SRCtor; webkitSpeechRecognition?: SRCtor }).SpeechRecognition ??
+  (window as unknown as { webkitSpeechRecognition?: SRCtor }).webkitSpeechRecognition;
+
+const SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Microphone access is blocked. Allow it for this site in your browser settings.",
+  "service-not-allowed": "Your browser refused the speech service.",
+  "audio-capture": "No microphone found.",
+  network: "The speech service couldn't be reached.",
+};
+
+interface ChatProps {
+  /** "page" fills a panel; "sheet" fills the slide-over. Only the chrome and
+   *  the chat's height differ — one implementation, two homes. */
+  variant?: "page" | "sheet";
+  onClose?: () => void;
 }
 
 export function DirectorChat({ variant = "page", onClose }: ChatProps) {
