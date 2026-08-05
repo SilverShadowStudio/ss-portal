@@ -32,6 +32,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   SALES_MODEL, ANTHROPIC_VERSION, ANTHROPIC_MESSAGES_URL, TRANSIENT_STATUSES,
 } from "../_shared/anthropicModel.ts";
+import { SALES_VOICE } from "../_shared/salesVoice.ts";
 
 const MAX_ROUNDS = 6;          // tool round-trips before we stop and answer
 const KEEP_TAIL = 20;          // recent messages always replayed verbatim
@@ -305,6 +306,11 @@ You can see the studio's actual clients with list_clients, and every lead lookup
 - NEVER draft cold outreach to an existing client. If a lead is already on the books, say so before anything else — "you've billed them twice this year, this isn't a cold lead" — and talk about the relationship instead.
 - Company names won't match exactly: the pipeline says "Rose Uniacke Interiors", the books say "ROSE UNIACKE STUDIO LTD". The match is already done for you; trust the already_a_client flag over your own reading of the names.
 - A lead that IS a client is usually a duplicate worth merging, or a second department worth approaching warmly. Say which you think it is.
+
+WHEN YOU DRAFT SOMETHING TO SEND
+Everything below governs anything addressed to a prospect — an email, a letter, an opening line for a call. It does NOT govern how you talk to Fred; with him you stay short and blunt.
+
+${SALES_VOICE}
 
 STAGES, in order: ${stages}
 

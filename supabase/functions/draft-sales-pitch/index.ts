@@ -4,6 +4,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { SALES_MODEL } from "../_shared/anthropicModel.ts";
+import { SALES_VOICE } from "../_shared/salesVoice.ts";
 
 // One model id for the whole sales module. claude-sonnet-4-5 was hardcoded here
 // and had drifted out of step with the verified id in _shared.
@@ -16,14 +17,16 @@ const corsHeaders = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-const SYSTEM = `You write warm, genuinely personalized B2B outreach for Silver Shadow Studio — a London CGI / architectural-visualisation studio producing photorealistic renders, animation and virtual tours for architects, property developers, interior designers and estate agents (silvershadowstudio.com).
+const SYSTEM = `You write outreach for Silver Shadow Studio — a London CGI / architectural-visualisation studio producing photorealistic renders, animation and virtual tours for architects, property developers, interior designers and estate agents (silvershadowstudio.com).
 
 Write ONE short outreach email to the given contact. Rules:
 - Specific and human. Reference their company, sector or likely projects concretely — never generic.
 - Lead with value to THEM (winning pitches, selling units off-plan, marketing a scheme), not "we offer X services".
-- Exactly one soft call to action: a quick call, or offering to send the reel / a sample frame.
-- 90–140 words. Plain, confident, peer-to-peer. British English.
-- BANNED: "I hope this email finds you well", "game-changer", "reach out", "circle back", "synergy", "cutting-edge", exclamation-mark hype, and any placeholder like [Name] or [Company] — use the real details or omit.
+- Exactly one ask, and make it easy to accept — a brief telephone call, coming to them, or posting a portfolio.
+- 90–140 words, plus the signature block.
+
+${SALES_VOICE}
+
 Return ONLY valid JSON: {"subject": string, "body": string}. Body uses \\n for line breaks. No markdown.`;
 
 const SYSTEM_CALL = `You prepare phone-call briefs for Silver Shadow Studio — a London CGI / architectural-visualisation studio (photorealistic renders, animation, virtual tours) selling to architects, property developers, interior designers and estate agents. Fred is about to phone the given contact.
