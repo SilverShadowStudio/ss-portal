@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff, Maximize2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -452,22 +452,21 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
   return (
     <>
       <div className={inSheet ? "mb-5" : "mb-8"}>
-        {inSheet ? (
-          <Link to="/admin/sales/director" onClick={onClose}
-            className="inline-flex items-center gap-2 text-xs text-white/35 hover:text-[#ecd39c]">
-            <Maximize2 className="h-3 w-3" strokeWidth={1.5} />Open in full
-          </Link>
-        ) : (
+        {/* In the sheet the title leads, level with the page title beside it —
+            expanding lives with the close control at the top right instead. */}
+        {!inSheet && (
           <Link to="/admin/sales" className="inline-flex items-center gap-2 text-xs text-white/40 hover:text-[#ecd39c]">
             <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />Sales
           </Link>
         )}
-        <div className={`flex items-end justify-between gap-4 ${inSheet ? "mt-3" : "mt-4"}`}>
+        <div className={`flex gap-4 ${inSheet ? "flex-col" : "items-end justify-between mt-4"}`}>
           <div className="flex items-center gap-3">
             <div className="h-px w-12 bg-gold-muted" />
             <span className="text-label-gold text-[#ecd39c]">Director</span>
           </div>
-          <div className="relative flex items-center gap-5">
+          {/* Below the title in the sheet, on the line the page uses for its
+              standfirst — so the two columns read at the same heights. */}
+          <div className={`relative flex items-center gap-5 ${inSheet ? "mt-1" : ""}`}>
             {ctx && ctx.messages > 0 && <ContextRing ctx={ctx} onClick={() => setCtxOpen(true)} />}
             <button onClick={openBrief} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
               <Brain className="h-3 w-3" strokeWidth={1.5} />Brief

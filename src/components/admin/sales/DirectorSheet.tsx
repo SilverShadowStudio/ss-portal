@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, MessageSquare } from "lucide-react";
+import { X, MessageSquare, Maximize2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { DirectorChat } from "@/components/admin/sales/DirectorChat";
 
 // The Director as a slide-over.
@@ -98,20 +99,33 @@ export function DirectorSheet({ open, onClose }: { open: boolean; onClose: () =>
         boxShadow: "none",
       }}
     >
-      <button
-        onClick={onClose}
-        aria-label="Close the Director"
-        className="absolute right-5 top-5 z-10 text-white/35 transition-colors hover:text-white/80"
-      >
-        <X className="h-4 w-4" strokeWidth={1.5} />
-      </button>
+      {/* Expand and close together, top right — both are about the window
+          rather than the conversation. */}
+      <div className="absolute right-5 top-5 z-10 flex items-center gap-4">
+        <Link
+          to="/admin/sales/director"
+          onClick={onClose}
+          title="Open in full"
+          aria-label="Open in full"
+          className="text-white/35 transition-colors hover:text-[#ecd39c]"
+        >
+          <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+        </Link>
+        <button
+          onClick={onClose}
+          aria-label="Close the Director"
+          className="text-white/35 transition-colors hover:text-white/80"
+        >
+          <X className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      </div>
 
       {/* The same 34px a normal panel gives its content — plus the bleed on
           the left, so the VISIBLE inset matches on both sides and the Director
           reads as one of the portal's own pages rather than a narrower card. */}
       <div
         className="flex min-h-0 flex-1 flex-col"
-        style={{ paddingLeft: BLEED + PANEL_PAD, paddingRight: PANEL_PAD, paddingTop: 26, paddingBottom: 22 }}
+        style={{ paddingLeft: BLEED + PANEL_PAD, paddingRight: PANEL_PAD, paddingTop: 32, paddingBottom: 22 }}
       >
         <DirectorChat variant="sheet" onClose={onClose} />
       </div>
