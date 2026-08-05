@@ -151,6 +151,17 @@ const TOOLS = [
     },
   },
   {
+    name: "list_clients",
+    description:
+      "The studio's ACTUAL clients — companies already on the books — with what they've been invoiced and what's outstanding. Use this before pitching anyone: a lead that is already a client is not a cold lead, and treating it as one is embarrassing in a way a wrong forecast is not.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Match part of a company name. Omit to list them all." },
+      },
+    },
+  },
+  {
     name: "update_lead",
     description:
       "Update a lead. Contact details, sector, notes and next action apply immediately. stage, value_estimate, outcome and owner_id are QUEUED for Fred to confirm — when you set one of those, tell him you've proposed it, never that it's done.",
@@ -250,6 +261,13 @@ Fred may ask you to find LinkedIn profiles for leads. When you do:
 - If the only profile you find is plainly a different person (wrong company, wrong country, wrong field), that is NOT a find. Say you couldn't confirm it.
 - Doing this across many leads costs a search each. Work through them in batches and tell Fred how many you got and how many you couldn't confirm.
 
+CLIENTS VERSUS LEADS
+You can see the studio's actual clients with list_clients, and every lead lookup tells you whether that company is already one.
+
+- NEVER draft cold outreach to an existing client. If a lead is already on the books, say so before anything else — "you've billed them twice this year, this isn't a cold lead" — and talk about the relationship instead.
+- Company names won't match exactly: the pipeline says "Rose Uniacke Interiors", the books say "ROSE UNIACKE STUDIO LTD". The match is already done for you; trust the already_a_client flag over your own reading of the names.
+- A lead that IS a client is usually a duplicate worth merging, or a second department worth approaching warmly. Say which you think it is.
+
 STAGES, in order: ${stages}
 
 If a tool errors, tell him what failed in one line. Don't retry the same call twice and don't invent the result.`;
@@ -283,7 +301,19 @@ async function runTool(
       }
       const { data, error } = await q.order("last_contacted_at", { ascending: true, nullsFirst: true });
       if (error) return { result: { error: error.message }, queued };
-      return { result: { count: data?.length ?? 0, leads: data ?? [] }, queued };
+      const clients = await liveClients(uc);
+      const leads = (data ?? []).map((l: Any) => {
+        const c = matchClient(l.company, clients);
+        return c ? { ...l, already_a_client: c.company_name } : l;
+      });
+      return {
+        result: {
+          count: leads.length,
+          leads,
+          note: "already_a_client means this company is ALREADY on the books. Never pitch it cold — say so.",
+        },
+        queued,
+      };
     }
 
     case "get_lead": {
@@ -304,7 +334,17 @@ async function runTool(
       const { data: ev } = await uc.from("lead_events")
         .select("event_type, from_value, to_value, source, created_at")
         .eq("lead_id", leadId).order("created_at", { ascending: false }).limit(8);
-      return { result: { lead, recent_interactions: inter ?? [], open_commitments: comm ?? [], recent_events: ev ?? [] }, queued };
+      const client = matchClient((lead as Any).company, await liveClients(uc));
+      return {
+        result: {
+          lead,
+          already_a_client: client
+            ? { company: client.company_name, client_code: client.client_code, client_since: client.created_at }
+            : null,
+          recent_interactions: inter ?? [], open_commitments: comm ?? [], recent_events: ev ?? [],
+        },
+        queued,
+      };
     }
 
     case "pipeline_summary": {
@@ -361,6 +401,31 @@ async function runTool(
         },
         queued,
       };
+    }
+
+    case "list_clients": {
+      const clients = await liveClients(uc);
+      const q = typeof input.query === "string" ? companyKey(input.query) : "";
+      const wanted = q ? clients.filter((c) => companyKey(c.company_name).includes(q)) : clients;
+      const rows = [];
+      for (const c of wanted) {
+        const { data: inv } = await uc.from("invoices")
+          .select("amount, status, due_date, paid_at, currency").eq("account_id", c.id);
+        const all = (inv ?? []) as Any[];
+        const billed = all.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+        const open = all.filter((i) => !i.paid_at);
+        rows.push({
+          company: c.company_name,
+          client_code: c.client_code,
+          country: c.country,
+          client_since: c.created_at,
+          invoices: all.length,
+          total_billed: Math.round(billed),
+          outstanding: Math.round(open.reduce((a, i) => a + (Number(i.amount) || 0), 0)),
+          currency: all[0]?.currency ?? "GBP",
+        });
+      }
+      return { result: { count: rows.length, clients: rows }, queued };
     }
 
     case "create_lead": {
@@ -454,6 +519,40 @@ async function callAnthropic(key: string, system: string, messages: Any[]): Prom
 
 const textOf = (blocks: Any[]): string =>
   (blocks ?? []).filter((b: Any) => b?.type === "text").map((b: Any) => b.text).join("\n").trim();
+
+// ── Clients ──────────────────────────────────────────────────────────────────
+
+/** Company names rarely match on the nose: the pipeline says "Rose Uniacke
+ *  Interiors" while the books say "ROSE UNIACKE STUDIO LTD". Strip the legal
+ *  and descriptive tail so the two land on the same key. */
+function companyKey(name: string): string {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[.,&'"()]/g, " ")
+    .replace(/\b(ltd|limited|llp|plc|inc|co|company|studios?|group|holdings?|interiors?|design|designs|architects?|partners(hip)?|associates|uk)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+interface ClientRow { id: string; company_name: string; country: string | null; client_code: string | null; created_at: string }
+
+async function liveClients(uc: SupabaseClient): Promise<ClientRow[]> {
+  const { data } = await uc.from("accounts")
+    .select("id, company_name, country, client_code, created_at")
+    .in("account_type", ["partnership", "project"])
+    .is("archived_at", null);
+  return (data ?? []) as ClientRow[];
+}
+
+/** The client this lead already is, if any. */
+function matchClient(company: string, clients: ClientRow[]): ClientRow | null {
+  const k = companyKey(company);
+  if (!k) return null;
+  return clients.find((c) => {
+    const ck = companyKey(c.company_name);
+    return ck === k || (ck.length > 4 && k.length > 4 && (ck.includes(k) || k.includes(ck)));
+  }) ?? null;
+}
 
 // ── Memory ───────────────────────────────────────────────────────────────────
 

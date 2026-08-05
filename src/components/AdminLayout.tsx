@@ -1,4 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { DirectorSheet, DirectorLauncher } from "@/components/admin/sales/DirectorSheet";
 import { AdminSidebar } from "./AdminSidebar";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +26,10 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
     localStorage.setItem("ss-admin-sidebar-expanded", String(expanded));
   }, [expanded]);
 
+  const { pathname } = useLocation();
+  const onDirectorPage = pathname.startsWith("/admin/sales/director");
+  const [directorOpen, setDirectorOpen] = useState(false);
+
   return (
     <div className={cn("min-h-screen", panel ? "ssr-shell" : "bg-background")}>
       <AdminSidebar expanded={expanded} onToggleExpand={() => setExpanded((e) => !e)} />
@@ -38,6 +44,15 @@ export function AdminLayout({ children, fullWidth = false, noPadding = false, pa
           </div>
         )}
       </main>
+
+      {/* The Director, reachable from any admin page. Hidden on its own page —
+          a launcher for the thing you're already looking at is just noise. */}
+      {!onDirectorPage && (
+        <>
+          <DirectorLauncher onClick={() => setDirectorOpen(true)} />
+          <DirectorSheet open={directorOpen} onClose={() => setDirectorOpen(false)} />
+        </>
+      )}
     </div>
   );
 }
