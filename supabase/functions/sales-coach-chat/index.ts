@@ -628,11 +628,25 @@ Deno.serve(async (req) => {
   // ── Replay a thread ────────────────────────────────────────────────────────
   if (b.history && typeof b.thread_id === "string") {
     const { data: msgs } = await uc.from("coach_messages")
-      .select("id, role, body, blocks, created_at").eq("thread_id", b.thread_id).order("seq");
+      .select("id, seq, role, body, blocks, created_at").eq("thread_id", b.thread_id).order("seq");
     const { data: acts } = await uc.from("coach_actions")
       .select("id, lead_id, kind, from_value, to_value, reason, status, created_at")
       .eq("thread_id", b.thread_id).order("created_at");
-    return json({ thread_id: b.thread_id, messages: msgs ?? [], actions: acts ?? [] });
+    const { data: tr } = await uc.from("coach_threads")
+      .select("summary, summary_through_seq").eq("id", b.thread_id).maybeSingle();
+    const through = Number(tr?.summary_through_seq ?? 0);
+    return json({
+      thread_id: b.thread_id,
+      messages: msgs ?? [],
+      actions: acts ?? [],
+      context: {
+        messages: (msgs ?? []).filter((m: Any) => Number(m.seq) > through).length,
+        compact_at: COMPACT_AT,
+        keep_tail: KEEP_TAIL,
+        summarised: !!tr?.summary,
+        input_tokens: 0,
+      },
+    });
   }
 
   const message = typeof b.message === "string" ? b.message.trim() : "";
@@ -731,6 +745,7 @@ Deno.serve(async (req) => {
   const allQueued: Any[] = [];
   let reply = "";
   let lastStored: string | null = null;
+  let lastInputTokens = 0;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const res = await callAnthropic(anthropicKey, system, messages);
@@ -741,6 +756,7 @@ Deno.serve(async (req) => {
       return json({ thread_id: threadId, error: `The Director is unavailable (${res.err})` }, 200);
     }
     const data = await res.json();
+    lastInputTokens = Number(data.usage?.input_tokens) || lastInputTokens;
     const content: Any[] = data.content ?? [];
 
     messages.push({ role: "assistant", content });
@@ -803,9 +819,23 @@ Deno.serve(async (req) => {
     .select("id, lead_id, kind, from_value, to_value, reason, status, created_at")
     .eq("thread_id", threadId).eq("status", "pending").order("created_at");
 
+  // How full the conversation is. The model's own window is nowhere near the
+  // limit — what actually bites is the fold, after which the oldest turns exist
+  // only as a summary. That's the number worth showing.
+  const { count: liveCount } = await uc.from("coach_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("thread_id", threadId).gt("seq", mem.through);
+
   return json({
     thread_id: threadId,
     reply: reply || "…",
+    context: {
+      messages: liveCount ?? 0,
+      compact_at: COMPACT_AT,
+      keep_tail: KEEP_TAIL,
+      summarised: !!mem.summary,
+      input_tokens: lastInputTokens,
+    },
     used: [...new Set(used)],
     queued: allQueued,
     actions: pending ?? [],

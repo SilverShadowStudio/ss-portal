@@ -23,6 +23,45 @@ interface Action {
   status: string; created_at: string;
 }
 interface Thread { id: string; title: string | null; last_message_at: string }
+interface Ctx {
+  messages: number; compact_at: number; keep_tail: number;
+  summarised: boolean; input_tokens: number;
+}
+
+/** How full the conversation is, as a ring.
+ *
+ *  It measures the distance to the FOLD, not the model's context window — the
+ *  window is 200k tokens and never the thing that bites. What bites is the
+ *  point where the oldest turns stop being replayed verbatim and become a
+ *  summary. That's what's worth watching, so that's what this counts. */
+function ContextRing({ ctx }: { ctx: Ctx }) {
+  const pct = Math.min(1, ctx.messages / ctx.compact_at);
+  const R = 7, C = 2 * Math.PI * R;
+  const tone = pct >= 0.85 ? "#ecd39c" : pct >= 0.6 ? "#C9A96A" : "rgba(201,169,106,0.55)";
+  const kb = ctx.input_tokens ? `${Math.round(ctx.input_tokens / 100) / 10}k tokens last turn · ` : "";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/35"
+      title={
+        `${kb}${ctx.messages} of ${ctx.compact_at} turns held in full.\n` +
+        (ctx.summarised
+          ? `Older turns are already summarised — nothing is lost, but they're condensed.`
+          : `At ${ctx.compact_at} the oldest fold into a summary and the last ${ctx.keep_tail} stay verbatim.`)
+      }
+    >
+      <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden>
+        <circle cx="9" cy="9" r={R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={2} />
+        <circle
+          cx="9" cy="9" r={R} fill="none" stroke={tone} strokeWidth={2} strokeLinecap="round"
+          strokeDasharray={`${C * pct} ${C}`} transform="rotate(-90 9 9)"
+          style={{ transition: "stroke-dasharray 400ms ease, stroke 400ms ease" }}
+        />
+        {ctx.summarised && <circle cx="9" cy="9" r="1.6" fill={tone} />}
+      </svg>
+      {Math.round(pct * 100)}%
+    </span>
+  );
+}
 
 const KIND_LABEL: Record<string, string> = {
   stage_change: "Stage", value_change: "Value", outcome_set: "Outcome", owner_change: "Owner",
@@ -131,6 +170,7 @@ export default function AdminSalesDirector() {
   const [brief, setBrief] = useState("");
   const [briefMeta, setBriefMeta] = useState<{ edited_by_user: boolean; updated_at: string | null } | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
+  const [ctx, setCtx] = useState<Ctx | null>(null);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -156,6 +196,7 @@ export default function AdminSalesDirector() {
     const { data } = await supabase.functions.invoke("sales-coach-chat", { body: { thread_id: id, history: true } });
     setMsgs((data?.messages ?? []) as Msg[]);
     setActions((data?.actions ?? []) as Action[]);
+    if (data?.context) setCtx(data.context as Ctx);
     setThreadId(id);
     scroll("auto");
   }
@@ -208,6 +249,7 @@ export default function AdminSalesDirector() {
       return;
     }
 
+    if (data?.context) setCtx(data.context as Ctx);
     // Re-read the thread rather than splicing: the server is the record of
     // what was actually said and done, including any tool rounds.
     await loadThread(data.thread_id);
@@ -320,7 +362,7 @@ export default function AdminSalesDirector() {
   }
 
   function newThread() {
-    setThreadId(null); setMsgs([]); setActions([]); setPicker(false);
+    setThreadId(null); setMsgs([]); setActions([]); setPicker(false); setCtx(null);
     taRef.current?.focus();
   }
 
@@ -336,6 +378,7 @@ export default function AdminSalesDirector() {
             <span className="text-label-gold text-[#ecd39c]">Director</span>
           </div>
           <div className="relative flex items-center gap-5">
+            {ctx && ctx.messages > 0 && <ContextRing ctx={ctx} />}
             <button onClick={openBrief} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-[#ecd39c]">
               <Brain className="h-3 w-3" strokeWidth={1.5} />Brief
             </button>
