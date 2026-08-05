@@ -58,9 +58,15 @@ interface Props {
   leadId: string;
   company: string;
   onClose: () => void;
+  /** "inline" drops the overlay and header and renders straight into the lead
+   *  card — a lead has one place, not a card and a popup over it. */
+  variant?: "modal" | "inline";
+  /** Called after anything is written, so the card can refresh around it. */
+  onLogged?: () => void;
 }
 
-export function DebriefSheet({ leadId, company, onClose }: Props) {
+export function DebriefSheet({ leadId, company, onClose, variant = "modal", onLogged }: Props) {
+  const inline = variant === "inline";
   const qc = useQueryClient();
   const { toast } = useToast();
   // Call or email. They're different acts: a call is one moment you describe,
@@ -87,6 +93,7 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
       // The extractor's reading of the call — shown back so it can be overruled.
       setDecidedOutcome(data.applied?.outcome ?? null);
       setErrorMsg(null);
+      onLogged?.();
       qc.invalidateQueries({ queryKey: ["leads"] });
       qc.invalidateQueries({ queryKey: ["lead", leadId] });
     },
@@ -131,7 +138,8 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
     // to a toast where it can be seen without holding the screen open.
     const n = data.inserted ?? 0;
     const skipped = data.skipped ?? 0;
-    onClose();
+    onLogged?.();
+    if (!inline) onClose();
     toast({
       title: n === 0 ? "Nothing new to file" : `${n} email${n === 1 ? "" : "s"} filed`,
       description: n === 0
@@ -156,24 +164,19 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
 
   const canSubmit = (!!quick || text.trim().length > 0) && !busy;
 
-  return (
-    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-      <div
-        // The sales panel gradient, so a debrief looks like it belongs to the
-        // pipeline rather than to a generic dialog.
-        className="ssr-panel ssr-panel--sales w-full sm:max-w-[560px] max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5 sm:p-6"
-        style={{ border: "1px solid rgba(201,169,106,0.18)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="font-sans uppercase text-[#C9A96A]" style={{ fontSize: 10, letterSpacing: "0.18em" }}>Debrief</p>
-            <p className="mt-1 truncate text-sm font-medium text-strong">{company}</p>
+  const body = (
+      <>
+        {!inline && (
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-sans uppercase text-[#C9A96A]" style={{ fontSize: 10, letterSpacing: "0.18em" }}>Debrief</p>
+              <p className="mt-1 truncate text-sm font-medium text-strong">{company}</p>
+            </div>
+            <button onClick={onClose} className="shrink-0 text-white/50 hover:text-white transition-colors" aria-label="Close">
+              <X className="h-5 w-5" strokeWidth={1.5} />
+            </button>
           </div>
-          <button onClick={onClose} className="shrink-0 text-white/50 hover:text-white transition-colors" aria-label="Close">
-            <X className="h-5 w-5" strokeWidth={1.5} />
-          </button>
-        </div>
+        )}
 
         {/* What kind of contact this was. */}
         {!result && (
@@ -382,6 +385,22 @@ export function DebriefSheet({ leadId, company, onClose }: Props) {
             </div>
           </>
         )}
+      </>
+  );
+
+  // Inline: the lead card supplies the surround. Modal: it brings its own.
+  if (inline) return body;
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div
+        // The sales panel gradient, so a debrief looks like it belongs to the
+        // pipeline rather than to a generic dialog.
+        className="ssr-panel ssr-panel--sales w-full sm:max-w-[560px] max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5 sm:p-6"
+        style={{ border: "1px solid rgba(201,169,106,0.18)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {body}
       </div>
     </div>
   );

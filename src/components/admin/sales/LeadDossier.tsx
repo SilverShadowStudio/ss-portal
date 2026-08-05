@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, ExternalLink, Phone, Mail, Linkedin, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
+import { DebriefSheet } from "@/components/admin/sales/DebriefSheet";
 
 // Everything the studio knows about one lead, and everything that has happened
 // to it.
@@ -155,6 +156,45 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
     })();
   }, [leadId]);
 
+  const [scripting, setScripting] = useState(false);
+  const [scriptError, setScriptError] = useState<string | null>(null);
+
+  /** Re-read everything the card shows, after something is written into it. */
+  async function reload() {
+    const [l, i, e, c, k] = await Promise.all([
+      supabase.from("leads").select("*").eq("id", leadId).maybeSingle(),
+      supabase.from("interactions").select("id, type, direction, outcome, summary, raw_debrief, objection, occurred_at")
+        .eq("lead_id", leadId).order("occurred_at", { ascending: false }),
+      supabase.from("lead_events").select("id, event_type, from_value, to_value, source, created_at")
+        .eq("lead_id", leadId).order("created_at", { ascending: false }),
+      supabase.from("commitments").select("id, party, description, due_date, status, slip_count, original_due_date")
+        .eq("lead_id", leadId).order("due_date"),
+      supabase.from("lead_calls")
+        .select("id, occurred_at, source, consent_note, transcript, performance_score, win_probability, assessment")
+        .eq("lead_id", leadId).order("occurred_at", { ascending: false }),
+    ]);
+    if (l.data) setLead(l.data as Lead);
+    setInteractions((i.data ?? []) as Interaction[]);
+    setEvents((e.data ?? []) as LeadEvent[]);
+    setCommitments((c.data ?? []) as Commitment[]);
+    setCalls((k.data ?? []) as Call[]);
+  }
+
+  async function draftScript() {
+    if (!lead) return;
+    setScripting(true); setScriptError(null);
+    const { data, error } = await supabase.functions.invoke("draft-sales-pitch", {
+      body: {
+        company: lead.company, contact_name: lead.contact_name, role: lead.role,
+        sector: lead.sector, website: lead.website, notes: lead.notes, mode: "call",
+      },
+    });
+    setScripting(false);
+    if (error || data?.error) { setScriptError(data?.error ?? error?.message ?? "Couldn't draft it."); return; }
+    await supabase.from("leads").update({ call_script: data.body }).eq("id", leadId);
+    setLead((p) => (p ? { ...p, call_script: data.body } : p));
+  }
+
   async function assess() {
     const text = transcript.trim();
     if (text.length < 40) { setCaptureError("That's too short to judge — paste the whole call."); return; }
@@ -191,7 +231,12 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
     <div className="fixed inset-0 z-[150] flex items-start justify-center overflow-y-auto p-6" style={{ pointerEvents: "auto" }}>
       <div className="fixed inset-0 bg-black/75 backdrop-blur-[3px] animate-in fade-in-0 duration-200" onClick={onClose} />
 
-      <div className="relative my-auto w-full max-w-3xl overflow-hidden rounded-xl border border-[#C9A96A]/20 bg-[#1a1013] shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200">
+      {/* The sales panel gradient, as the debrief card had — a lead belongs to
+          the pipeline, not to a generic dialog. */}
+      <div
+        className="ssr-panel ssr-panel--sales relative my-auto w-full max-w-3xl overflow-hidden shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200"
+        style={{ borderRadius: 18, border: "1px solid rgba(201,169,106,0.18)" }}
+      >
         {loading || !lead ? (
           <div className="flex justify-center py-24"><BrandLoader size="sm" /></div>
         ) : (
@@ -316,6 +361,41 @@ export function LeadDossier({ leadId, onClose }: { leadId: string; onClose: () =
                 </div>
               </Section>
             )}
+
+            {/* ── Log what happened ─────────────────────────────────────── */}
+            <Section title="Log a call or an email">
+              <DebriefSheet
+                leadId={leadId}
+                company={lead.company}
+                variant="inline"
+                onClose={() => { /* inline — the card is the surround */ }}
+                onLogged={reload}
+              />
+            </Section>
+
+            {/* ── The call script, where the lead is ─────────────────────── */}
+            <Section title="Call script">
+              {lead.call_script ? (
+                <>
+                  <p className="whitespace-pre-wrap rounded-md bg-black/25 p-4 text-sm leading-relaxed text-white/70">
+                    {lead.call_script}
+                  </p>
+                  <button onClick={() => draftScript()} disabled={scripting}
+                    className="mt-3 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-white/35 hover:text-[#ecd39c] disabled:opacity-40">
+                    {scripting ? <><BrandLoader size="sm" className="h-3 w-3" />Redrafting…</> : "Draft a new one"}
+                  </button>
+                </>
+              ) : (
+                <div>
+                  <p className="text-sm text-recessive">No script yet — one glance-able page for the call.</p>
+                  <button onClick={() => draftScript()} disabled={scripting}
+                    className="mt-3 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c] disabled:opacity-40">
+                    {scripting ? <><BrandLoader size="sm" className="h-3 w-3" />Drafting…</> : "Draft a call script"}
+                  </button>
+                </div>
+              )}
+              {scriptError && <p className="mt-2 text-xs text-[#F0544C]">{scriptError}</p>}
+            </Section>
 
             {/* ── Calls, and what the Director made of them ─────────────── */}
             <Section title="Calls" count={calls.length || undefined}>
