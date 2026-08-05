@@ -614,7 +614,9 @@ Deno.serve(async (req) => {
       body: {
         first_name: body.contact.firstName ?? '',
         surname: body.contact.lastName ?? '',
-        role: 'Client',
+        // A team member is whatever role was chosen in Add Member — only a
+        // client account is a Client.
+        role: accountType === 'team' ? (typeof body.role === 'string' && body.role ? body.role : 'Scene Manager') : 'Client',
         type_of_client: accountType,
         email,
         account_id: account.id,
@@ -737,7 +739,9 @@ Deno.serve(async (req) => {
       body: {
         first_name: body.contact.firstName ?? '',
         surname: body.contact.lastName ?? '',
-        role: 'Client',
+        // A team member is whatever role was chosen in Add Member — only a
+        // client account is a Client.
+        role: accountType === 'team' ? (typeof body.role === 'string' && body.role ? body.role : 'Scene Manager') : 'Client',
         type_of_client: accountType,
         email,
         account_id: account.id,

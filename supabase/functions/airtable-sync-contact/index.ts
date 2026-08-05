@@ -11,6 +11,9 @@ interface ContactBody {
   surname?: string;
   email?: string;
   account_id?: string;
+  /** "Scene Manager" | "Modeller" | "Photographer" | "Art Director" | "Client".
+   *  Validated against the Role field's real options before it's written. */
+  role?: string;
 }
 
 interface ContactConfig {
@@ -59,6 +62,26 @@ const REQUIRED_KEYS: (keyof ContactConfig)[] = [
   "field_client_link", "field_company_link",
   "clients_table_id", "field_company_name", "field_client_representative",
 ];
+
+/** The Role singleSelect's real choices, straight from the base schema.
+ *  Returns [] if the meta endpoint is unavailable — in which case Role is left
+ *  alone rather than guessed at. */
+async function roleOptions(
+  baseId: string, tableId: string, roleField: string, headers: Record<string, string>,
+): Promise<string[]> {
+  try {
+    const r = await fetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, { headers });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const table = (data.tables ?? []).find((t: { id: string }) => t.id === tableId);
+    const field = (table?.fields ?? []).find(
+      (f: { id: string; name: string }) => f.id === roleField || f.name === roleField,
+    );
+    return (field?.options?.choices ?? []).map((ch: { name: string }) => ch.name).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 function mapAccountType(accountType: string | null): string[] {
   if (accountType === "partnership") return ["Subscription"];
@@ -352,9 +375,28 @@ Deno.serve(async (req) => {
   const userFields: Record<string, unknown> = {
     [c.field_first_name]: body.first_name ?? "",
     [c.field_surname]: body.surname ?? "",
-    [c.field_role]: "Client",
     [c.field_email]: email,
   };
+
+  // Role was hardcoded to "Client", so every freelancer the portal invited
+  // landed in Airtable tagged as a client.
+  //
+  // It's a singleSelect, so an unrecognised value is not a harmless mistake:
+  // Airtable either rejects the write or, with typecast, ADDS the value as a
+  // new option in Kieran's base. So the real options are read first and the
+  // field is only written on an exact match — an unknown role leaves Role
+  // untouched (visibly blank, correctable) rather than inventing one.
+  const wantedRole = (body.role ?? "Client").trim();
+  const allowed = await roleOptions(c.base_id, c.table_id, c.field_role, atHeaders);
+  const match = allowed.find((o) => o.toLowerCase() === wantedRole.toLowerCase());
+  if (match) {
+    userFields[c.field_role] = match;
+  } else {
+    console.warn(
+      `[airtable-sync-contact] Role "${wantedRole}" is not an option on the Users table` +
+      `${allowed.length ? ` (has: ${allowed.join(", ")})` : " (options unreadable)"} — leaving Role blank`,
+    );
+  }
   if (typeOfClient.length > 0) {
     userFields[c.field_type_of_client] = typeOfClient;
   }
