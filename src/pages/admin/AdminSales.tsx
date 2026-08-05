@@ -135,7 +135,12 @@ export default function AdminSales() {
   // Summary
   const open = rows.filter((r) => r.status !== "won" && r.status !== "lost");
   const withEmail = rows.filter((r) => r.email && r.email.includes("@")).length;
-  const todayISO = new Date().toISOString().slice(0, 10);
+  // Local date, not UTC: toISOString() would still say yesterday between
+  // midnight and 01:00 BST, and this decides which row is marked today.
+  const todayISO = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
   const dueCount = open.filter((r) => r.next_action_at && r.next_action_at <= todayISO).length;
   const pipelineValue = open.reduce((s, r) => s + Number(r.value_estimate || 0), 0);
 
@@ -348,7 +353,20 @@ export default function AdminSales() {
                           {STATUSES.map((s) => <option key={s} value={s} className="bg-background text-foreground">{STATUS_LABEL[s]}</option>)}
                         </select>
                       </td>
-                      <td className={`px-4 py-3 tabular-nums ${r.next_action_at && r.next_action_at <= todayISO ? "text-[#ecd39c]" : "text-standard"}`}>{fmtDate(r.next_action_at)}</td>
+                      {/* Today is green — the one you act on now. Overdue stays gold, so the
+                          two read as different kinds of urgent rather than one bucket. */}
+                      <td
+                        className={`px-4 py-3 tabular-nums ${
+                          r.next_action_at === todayISO
+                            ? "text-[#8FD9A8]"
+                            : r.next_action_at && r.next_action_at < todayISO
+                            ? "text-[#ecd39c]"
+                            : "text-standard"
+                        }`}
+                        title={r.next_action_at === todayISO ? "Due today" : undefined}
+                      >
+                        {fmtDate(r.next_action_at)}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums text-standard">{r.value_estimate ? money(Number(r.value_estimate)) : "—"}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-4">
