@@ -626,19 +626,23 @@ export function OverheadForm({
                 </span>
               )}
             </div>
+            {/* The field spans two of the four columns: at a quarter width its
+                label wrapped onto two lines mid-phrase. */}
             {form.is_reverse_charge && (
               <div className="mt-4 grid grid-cols-4 gap-x-6">
-                <Field label={`Self-accounted VAT (${currencySymbol})`}>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    value={form.reverse_charge_vat}
-                    onChange={(e) => setForm((f) => ({ ...f, reverse_charge_vat: e.target.value }))}
-                    className="ssr-field"
-                  />
-                </Field>
-                <p className="col-span-3 self-end pb-1 text-[11px] leading-relaxed text-foreground/33">
+                <div className="col-span-2">
+                  <Field label={`Self-accounted VAT (${currencySymbol})`}>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={form.reverse_charge_vat}
+                      onChange={(e) => setForm((f) => ({ ...f, reverse_charge_vat: e.target.value }))}
+                      className="ssr-field"
+                    />
+                  </Field>
+                </div>
+                <p className="col-span-2 self-end pb-1 text-[11px] leading-relaxed text-foreground/33">
                   Net × 20% by default. Stored for reporting, excluded from the
                   cash-basis input-VAT figure.
                 </p>
@@ -655,7 +659,7 @@ export function OverheadForm({
               <Input
                 value={form.invoice_number}
                 onChange={(e) => setForm((f) => ({ ...f, invoice_number: e.target.value }))}
-                className="rounded-sm"
+                className="ssr-field"
               />
             </Field>
             <Field label="Invoice date (tax point)">
