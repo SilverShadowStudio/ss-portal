@@ -35,7 +35,8 @@ export async function recordOverheadUnattended(
     supplier_name: supplier,
     category_code: d.category_code ?? null,
     description: d.description?.trim() || null,
-    currency: "GBP",
+    // From the document. A EUR invoice recorded as GBP overstates the cost.
+    currency: d.currency || "GBP",
     net_amount: net,
     vat_amount: vat,
     gross_amount: gross,

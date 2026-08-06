@@ -239,6 +239,13 @@ export function mapExtractedToOverhead(data: Record<string, unknown>): Partial<O
   }
 
   const out: Partial<Overhead> = {};
+  // Currency is NOT cosmetic: a EUR invoice recorded as GBP overstates the
+  // cost and would send the wrong amount if paid. Only the three the parser
+  // is allowed to return are accepted; anything else falls back to GBP and
+  // Fred corrects it in the form.
+  const rawCurrency = str(data.currency)?.toUpperCase();
+  out.currency = rawCurrency && ["GBP", "EUR", "USD"].includes(rawCurrency) ? rawCurrency : "GBP";
+
   const supplier = str(data.supplier_name);
   if (supplier) out.supplier_name = supplier;
   const invNum = str(data.invoice_number);

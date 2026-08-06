@@ -5,6 +5,13 @@ import { useToast } from "@/hooks/use-toast";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { mapExtractedToOverhead } from "./OverheadUploadFlow";
 import { assessOverhead, type ConfidenceVerdict } from "@/lib/overheadConfidence";
+import {
+  computeProgress,
+  expectedParseMs,
+  formatRemaining,
+  recordParseDuration,
+  SEED_MS,
+} from "@/lib/parseProgress";
 import type { ExpenseCategory, Overhead } from "@/lib/finance";
 
 /** A parsed invoice plus the verdict on whether it can land unattended. */
@@ -26,12 +33,10 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function humanTime(sec: number): string {
-  if (!Number.isFinite(sec) || sec <= 0) return "finishing…";
-  const s = Math.ceil(sec);
-  if (s < 60) return `~${s}s remaining`;
-  const m = Math.floor(s / 60), r = s % 60;
-  return `~${m}m ${String(r).padStart(2, "0")}s remaining`;
+/** Elapsed as "0:07" — the one number on screen that is never an estimate. */
+function elapsedLabel(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 interface Props {
@@ -58,11 +63,16 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
   const [done, setDone] = useState(0);
   const [failed, setFailed] = useState(0);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
-  // ETA anchor: seconds-remaining as of a timestamp; a ticker interpolates.
-  const [eta, setEta] = useState<{ seconds: number; at: number } | null>(null);
+  // Start timestamp per in-flight file, keyed by index. Progress is derived
+  // from these on every tick rather than only when a file completes — which is
+  // why a single-file drop used to sit at 0% for its whole run.
+  const [inFlight, setInFlight] = useState<Record<number, number>>({});
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Calibrated from real parse durations on this machine, read once per run.
+  const expectedMsRef = useRef(SEED_MS);
   const [, forceTick] = useState(0);
 
-  // Smooth live countdown while parsing.
+  // Drives the live bar and countdown.
   useEffect(() => {
     if (!processing) return;
     const id = setInterval(() => forceTick((n) => n + 1), 250);
@@ -127,6 +137,9 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
     setEta(null);
 
     const startTs = Date.now();
+    setStartedAt(startTs);
+    setInFlight({});
+    expectedMsRef.current = expectedParseMs();
     const parsed: ParsedInvoice[] = [];
 
     let idx = 0, completed = 0, failures = 0;
@@ -134,19 +147,27 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
       while (true) {
         const i = idx++;
         if (i >= accepted.length) break;
-        try { parsed.push(await processOne(accepted[i])); }
-        catch { failures++; setFailed(failures); }
+        const fileStart = Date.now();
+        setInFlight((m) => ({ ...m, [i]: fileStart }));
+        try {
+          parsed.push(await processOne(accepted[i]));
+          // Only successful parses calibrate the estimate — a failure that
+          // returns in 200ms would otherwise make every later ETA far too
+          // optimistic.
+          recordParseDuration(Date.now() - fileStart);
+        } catch {
+          failures++;
+          setFailed(failures);
+        }
+        setInFlight((m) => { const next = { ...m }; delete next[i]; return next; });
         completed++;
         setDone(completed);
-        const elapsed = (Date.now() - startTs) / 1000;
-        const rate = completed / elapsed; // files per second
-        const remaining = rate > 0 ? (accepted.length - completed) / rate : 0;
-        setEta({ seconds: remaining, at: Date.now() });
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, accepted.length) }, worker));
 
     setProcessing(false);
+    setInFlight({});
     setFinishedAt(Date.now());
     if (failures > 0) {
       toast({
@@ -172,8 +193,16 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
     run(Array.from(e.dataTransfer.files));
   }
 
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const liveEta = eta ? Math.max(0, eta.seconds - (Date.now() - eta.at) / 1000) : NaN;
+  const now = Date.now();
+  const progress = computeProgress({
+    total,
+    completed: done,
+    inFlightStartedAt: Object.values(inFlight),
+    concurrency: CONCURRENCY,
+    expectedMs: expectedMsRef.current,
+    now,
+  });
+  const pct = Math.round(progress.fraction * 100);
 
   return (
     <div
@@ -207,8 +236,13 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
             <div className="h-full rounded-full bg-gradient-to-r from-[#C9A96A] to-[#ecd39c] transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
           </div>
           <div className="mt-2.5 flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">{humanTime(liveEta)}</span>
-            <span className="tabular-nums text-[10px] uppercase tracking-[0.18em] text-white/40">{pct}%{failed > 0 ? ` · ${failed} failed` : ""}</span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">
+              {formatRemaining(progress.remainingMs)}
+            </span>
+            <span className="tabular-nums text-[10px] uppercase tracking-[0.18em] text-white/40">
+              {startedAt != null && <>{elapsedLabel(now - startedAt)} elapsed · </>}
+              {pct}%{failed > 0 ? ` · ${failed} failed` : ""}
+            </span>
           </div>
         </div>
       ) : finishedAt != null ? (

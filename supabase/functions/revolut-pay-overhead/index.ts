@@ -138,6 +138,7 @@ function normalizeSupplier(name: string): string {
 async function resolveCounterparty(
   token: string,
   bank: BankRow,
+  currency: string,
 ): Promise<{ counterpartyId: string; accountId: string | null }> {
   if (bank.revolut_counterparty_id) {
     return { counterpartyId: bank.revolut_counterparty_id, accountId: bank.revolut_account_id };
@@ -156,14 +157,14 @@ async function resolveCounterparty(
     ? {
         company_name: bank.supplier_name,
         bank_country: bank.country || "GB",
-        currency: "GBP",
+        currency,
         account_no: bank.account_number,
         sort_code: bank.sort_code,
       }
     : {
         company_name: bank.supplier_name,
-        bank_country: bank.country || "GB",
-        currency: "GBP",
+        bank_country: bank.country || (bank.iban ? bank.iban.slice(0, 2) : "GB"),
+        currency,
         iban: bank.iban,
         ...(bank.bic ? { bic: bank.bic } : {}),
       };
@@ -223,11 +224,13 @@ Deno.serve(async (req) => {
       error: `The amount changed since you opened this (now ${gross.toFixed(2)}). Nothing was sent — reopen and check.`,
     }, 409);
   }
+  // Pay in the invoice's own currency out of the matching Revolut pocket, so a
+  // EUR bill is settled with euros rather than converted at our guess of a rate.
   const currency = (row.currency || "GBP").toUpperCase();
-  if (currency !== "GBP") {
+  if (!["GBP", "EUR", "USD"].includes(currency)) {
     return json({
       success: false,
-      error: `Only GBP transfers are supported for now — this invoice is in ${currency}. Pay it in Revolut directly.`,
+      error: `${currency} transfers aren't supported — pay this one in Revolut directly.`,
     }, 400);
   }
 
@@ -271,7 +274,7 @@ Deno.serve(async (req) => {
       revolut_account_id: remembered?.revolut_account_id ?? null,
     };
 
-    const { counterpartyId, accountId } = await resolveCounterparty(token, bank);
+    const { counterpartyId, accountId } = await resolveCounterparty(token, bank, currency);
 
     // Remember the counterparty (and the details behind it) so the next
     // invoice from this supplier is a single click.
@@ -283,7 +286,7 @@ Deno.serve(async (req) => {
       sort_code: bank.sort_code,
       bic: bank.bic,
       country: bank.country,
-      currency: "GBP",
+      currency,
       revolut_counterparty_id: counterpartyId,
       revolut_account_id: accountId,
       updated_by: u.user.id,
@@ -294,14 +297,23 @@ Deno.serve(async (req) => {
     const accountsRes = await revolut(token, "/accounts");
     if (!accountsRes.ok) throw new Error(await revolutError(accountsRes, "account lookup"));
     const accounts = await accountsRes.json();
-    const gbp = (accounts as Array<Record<string, unknown>>).find(
-      (a) => String(a.currency).toUpperCase() === "GBP" && a.state === "active",
+    // Pay a EUR bill out of the EUR pocket. Paying it from GBP would let
+    // Revolut convert at a rate nobody chose, on top of a figure the portal
+    // only ever held as an estimate.
+    const pocket = (accounts as Array<Record<string, unknown>>).find(
+      (a) => String(a.currency).toUpperCase() === currency && a.state === "active",
     );
-    if (!gbp) throw new Error("No active GBP pocket found in Revolut.");
-    const balance = Number(gbp.balance) || 0;
+    if (!pocket) {
+      throw new Error(
+        `No active ${currency} pocket in Revolut, so this can't be sent in ${currency}. ` +
+        `Open one, or pay this invoice in Revolut directly.`,
+      );
+    }
+    const balance = Number(pocket.balance) || 0;
     if (balance < gross) {
       throw new Error(
-        `Not enough in the GBP pocket — balance ${balance.toFixed(2)}, this invoice is ${gross.toFixed(2)}. Nothing was sent.`,
+        `Not enough in the ${currency} pocket — balance ${balance.toFixed(2)}, this invoice is ` +
+        `${gross.toFixed(2)} ${currency}. Nothing was sent.`,
       );
     }
 
@@ -314,10 +326,10 @@ Deno.serve(async (req) => {
       method: "POST",
       body: JSON.stringify({
         request_id: overheadId,
-        account_id: gbp.id,
+        account_id: pocket.id,
         receiver: { counterparty_id: counterpartyId, ...(accountId ? { account_id: accountId } : {}) },
         amount: Number(gross.toFixed(2)),
-        currency: "GBP",
+        currency,
         reference,
       }),
     });

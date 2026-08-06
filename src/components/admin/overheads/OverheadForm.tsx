@@ -90,6 +90,7 @@ interface OverheadFormProps {
 interface FormState {
   supplier_name: string;
   category_code: string;
+  currency: string;
   description: string;
   net_amount: string;
   vat_treatment: VatTreatment;
@@ -106,6 +107,7 @@ interface FormState {
 const EMPTY: FormState = {
   supplier_name: "",
   category_code: "",
+  currency: "GBP",
   description: "",
   net_amount: "",
   vat_treatment: "standard",
@@ -123,6 +125,7 @@ function fromOverhead(o: Overhead): FormState {
   return {
     supplier_name: o.supplier_name,
     category_code: o.category_code ?? "",
+    currency: o.currency || "GBP",
     description: o.description ?? "",
     net_amount: String(o.net_amount ?? ""),
     vat_treatment: o.vat_treatment,
@@ -141,6 +144,7 @@ function fromDefaults(v: Partial<Overhead>): FormState {
   return {
     supplier_name: v.supplier_name ?? "",
     category_code: v.category_code ?? "",
+    currency: v.currency || "GBP",
     description: v.description ?? "",
     net_amount: v.net_amount != null ? String(v.net_amount) : "",
     vat_treatment: v.vat_treatment ?? "standard",
@@ -222,6 +226,9 @@ export function OverheadForm({
     return () => { cancelled = true; };
   }, [open, previewStagingPath]);
 
+  const currencySymbol =
+    form.currency === "EUR" ? "€" : form.currency === "USD" ? "$" : "£";
+
   const net = parseFloat(form.net_amount) || 0;
   const vatAmount = parseFloat(form.vat_amount) || 0;
   const reverseChargeVat = parseFloat(form.reverse_charge_vat) || 0;
@@ -297,7 +304,9 @@ export function OverheadForm({
       supplier_name: form.supplier_name.trim(),
       category_code: form.category_code,
       description: form.description.trim() || null,
-      currency: "GBP",
+      // Carried from the document, never assumed. Stamping every invoice GBP
+      // silently converted EUR and USD bills into pounds at 1:1.
+      currency: form.currency || "GBP",
       net_amount: net,
       vat_amount: form.is_reverse_charge ? 0 : vatAmount,
       gross_amount: grossAmount,
@@ -481,9 +490,29 @@ export function OverheadForm({
             />
           </Field>
 
+          {/* Currency — read off the document; correctable, because getting it
+              wrong misstates the cost and would send the wrong amount. */}
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Currency">
+              <Select
+                value={form.currency}
+                onValueChange={(v) => setForm((f) => ({ ...f, currency: v }))}
+              >
+                <SelectTrigger className="rounded-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="z-[200]">
+                  <SelectItem value="GBP">GBP — £</SelectItem>
+                  <SelectItem value="EUR">EUR — €</SelectItem>
+                  <SelectItem value="USD">USD — $</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
           {/* Net / treatment / VAT */}
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Net (£)">
+            <Field label={`Net (${currencySymbol})`}>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -511,7 +540,7 @@ export function OverheadForm({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="VAT amount (£)">
+            <Field label={`VAT amount (${currencySymbol})`}>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -533,7 +562,9 @@ export function OverheadForm({
           {/* Gross readout */}
           <div className="flex items-baseline justify-between border-t border-divider pt-3">
             <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Gross</span>
-            <span className="font-serif text-xl text-strong">{formatCurrency(grossAmount)}</span>
+            <span className="font-serif text-xl text-strong">
+              {formatCurrency(grossAmount, form.currency || "GBP")}
+            </span>
           </div>
 
           {/* Reverse charge */}
