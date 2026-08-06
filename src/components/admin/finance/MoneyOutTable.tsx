@@ -220,14 +220,27 @@ export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAt
                       ) : (
                         <span className={STATUS_CLASS[r.status]}>{STATUS_LABELS[r.status]}</span>
                       )}
+                      {/* GBP only: revolut-pay-overhead refuses anything else,
+                          so offering Pay on a EUR/USD row would be a button
+                          that can only ever fail. Those are paid in Revolut
+                          directly until multi-currency is built. */}
                       {onPay && r.overhead && r.status === "unpaid" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onPay(r); }}
-                          className="text-[9px] uppercase tracking-[0.28em] text-gold hover:text-[#ecd39c] transition-colors"
-                          title="Pay this invoice from Revolut"
-                        >
-                          Pay
-                        </button>
+                        (r.currency ?? "GBP").toUpperCase() === "GBP" ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onPay(r); }}
+                            className="text-[9px] uppercase tracking-[0.28em] text-gold hover:text-[#ecd39c] transition-colors"
+                            title="Pay this invoice from Revolut"
+                          >
+                            Pay
+                          </button>
+                        ) : (
+                          <span
+                            className="text-[9px] uppercase tracking-[0.28em] text-foreground/30"
+                            title={`${(r.currency ?? "").toUpperCase()} invoice — pay this one in Revolut directly`}
+                          >
+                            {(r.currency ?? "").toUpperCase()}
+                          </span>
+                        )
                       )}
                     </span>
                   </TableCell>
