@@ -547,6 +547,44 @@ input:-webkit-autofill:active {
   background: linear-gradient(165deg, #3c1620 0%, #471421 26%, #191113 68%, #130c0e 100%);
 }
 
+/* A dialog wearing the panel's material — same gradient, same radius, without
+   the page geometry. .ssr-panel itself can't be reused here: its `position:
+   relative` would break the dialog's fixed centring and its `min-height:
+   100vh - 32px` would make a modal the height of a page.
+   Separation from the page behind comes from the overlay scrim (bg-black/80),
+   not from giving the modal a colour of its own — one material at two depths,
+   the same way the Director panel sits against a page. */
+.ssr-panel--dialog {
+  display: block;
+  border: 0;
+  border-radius: 22px;
+  padding: 28px 34px 30px;
+  background: linear-gradient(165deg, #352d42 0%, #3c2e4f 26%, #201b1f 68%, #17151a 100%);
+  box-shadow: 0 44px 90px -26px rgba(0, 0, 0, 0.9);
+}
+
+/* Field inside a zone: an underline, not a third box. With a panel and a zone
+   already carrying depth, a bordered rectangle around every input was what made
+   these forms read as grey admin. Same treatment as .auth-input on sign-in. */
+.ssr-field {
+  height: auto;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 0 7px;
+  box-shadow: 0 1px 0 0 transparent;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.ssr-field:focus,
+.ssr-field:focus-visible {
+  outline: none;
+  border-color: hsl(var(--gold));
+  box-shadow: 0 1px 0 0 hsl(var(--gold) / 0.6);
+}
+.ssr-field::placeholder { color: rgba(255, 255, 255, 0.26); }
+.ssr-field:disabled { opacity: 0.42; }
+
 /* brighter zone — distinguished by tone only (no border/highlight) */
 .ssr-zone { border-radius: 18px; padding: 22px 24px; background: rgba(150, 138, 177, 0.13); }
 .ssr-zone + .ssr-zone { margin-top: 16px; }

@@ -177,6 +177,10 @@ export function OverheadForm({
   const [invoiceDateOpen, setInvoiceDateOpen] = useState(false);
   const [dueDateOpen, setDueDateOpen] = useState(false);
   const [paymentDateOpen, setPaymentDateOpen] = useState(false);
+  // Which treatment you've explicitly kept against the category's default.
+  // Stored as the treatment itself, not a boolean: dismissing the warning for
+  // zero-rated must not silently suppress it if you later pick something else.
+  const [acceptedVatTreatment, setAcceptedVatTreatment] = useState<VatTreatment | null>(null);
   // Staging storage path is metadata (not user-editable), carried through
   // from defaultValues into the insert payload without polluting FormState.
   const stagingStoragePathRef = useRef<string | null>(null);
@@ -191,6 +195,9 @@ export function OverheadForm({
   // extracted-invoice drop zone).
   useEffect(() => {
     if (!open) return;
+    // A VAT deviation accepted on the last invoice must not carry into the next
+    // one in the queue.
+    setAcceptedVatTreatment(null);
     if (mode === "edit" && initial) {
       setForm(fromOverhead(initial));
       stagingStoragePathRef.current = null;
@@ -262,7 +269,8 @@ export function OverheadForm({
   const deviatesFromDefault =
     selectedCategory != null &&
     !form.is_reverse_charge &&
-    form.vat_treatment !== selectedCategory.default_vat_treatment;
+    form.vat_treatment !== selectedCategory.default_vat_treatment &&
+    form.vat_treatment !== acceptedVatTreatment;
 
   function handleCategoryChange(code: string) {
     const cat = categories.find((c) => c.code === code);
@@ -381,29 +389,30 @@ export function OverheadForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-sm border-divider bg-background"
-        hideClose
-      >
-        <DialogHeader>
+      {/* The modal is a page: panel gradient, 22px radius, the portal's 34px
+          inset. Its three tiers are panel → zone → tile, same as everywhere. */}
+      <DialogContent className="ssr-panel--dialog max-w-[720px] max-h-[90vh] overflow-y-auto" hideClose>
+        <DialogHeader className="mb-5 block space-y-0 text-left">
           <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">
             {mode === "edit" ? "Edit expense" : "New expense"}
             {queueLabel && <span className="ml-2 text-[#C9A96A]">· reviewing {queueLabel}</span>}
           </p>
-          <DialogTitle className="font-serif font-normal text-2xl">
+          <DialogTitle className="mt-2 font-serif font-normal text-2xl">
             {mode === "edit" ? initial?.supplier_name || "Expense" : "Record an expense"}
           </DialogTitle>
         </DialogHeader>
 
+        {/* The same gold sweep a flagged table row gets — one vocabulary for
+            "this one needs your eye", whether it's a row or a dialog. */}
         {reviewReason && (
-          <p className="rounded-sm border border-[#C9A96A]/30 bg-[#C9A96A]/[0.06] px-3 py-2 font-sans text-[11px] leading-relaxed text-[#ecd39c]">
-            Stopped for you to check — {reviewReason}. Everything else was filed
-            without asking.
+          <p className="mb-4 rounded-xl py-3 pl-4 pr-4 font-sans text-[11.5px] leading-relaxed text-[#ecd39c] ssr-row-sweep" data-open="true">
+            <b className="font-medium text-[#f4e2bb]">Stopped for you to check</b> — {reviewReason}.{" "}
+            <span className="text-[#ecd39c]/55">Everything else was filed without asking.</span>
           </p>
         )}
 
         {previewUrl && (
-          <div className="overflow-hidden rounded-sm border border-divider bg-black/20">
+          <div className="mb-4 overflow-hidden rounded-xl bg-black/25">
             {/\.(jpe?g|png)$/i.test(previewStagingPath ?? "") ? (
               <img src={previewUrl} alt="Dropped invoice" className="max-h-[38vh] w-full object-contain" />
             ) : (
@@ -412,14 +421,16 @@ export function OverheadForm({
           </div>
         )}
 
-        <div className="grid gap-5 py-2">
-          {/* Supplier + category */}
-          <div className="grid grid-cols-2 gap-4">
+        <div>
+          {/* ── Zone 1 ─────────────────────────────────────────────────── */}
+          <div className="ssr-zone">
+          <ZoneTitle>Who and what</ZoneTitle>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             <Field label="Supplier">
               <Input
                 value={form.supplier_name}
                 onChange={(e) => setForm((f) => ({ ...f, supplier_name: e.target.value }))}
-                className="rounded-sm"
+                className="ssr-field"
               />
             </Field>
             <Field label="Category">
@@ -429,7 +440,7 @@ export function OverheadForm({
                     type="button"
                     role="combobox"
                     aria-expanded={categoryOpen}
-                    className="flex h-10 w-full items-center justify-between rounded-sm border border-input bg-background px-3 py-2 text-sm text-left ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    className="ssr-field flex w-full items-center justify-between text-sm text-left"
                   >
                     <span className={selectedCategory ? "text-standard" : "text-muted-foreground"}>
                       {selectedCategory
@@ -482,23 +493,30 @@ export function OverheadForm({
             </Field>
           </div>
 
-          <Field label="Description">
-            <Input
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              className="rounded-sm"
-            />
-          </Field>
+          <div className="mt-4">
+            <Field label="Description">
+              <Input
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                className="ssr-field"
+              />
+            </Field>
+          </div>
+          </div>
 
-          {/* Currency — read off the document; correctable, because getting it
-              wrong misstates the cost and would send the wrong amount. */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* ── Zone 2 ─────────────────────────────────────────────────── */}
+          <div className="ssr-zone">
+          <ZoneTitle>The money</ZoneTitle>
+          {/* Currency sits first: it decides what every figure below it means.
+              Read off the document, correctable — getting it wrong misstates
+              the cost and would send the wrong amount. */}
+          <div className="grid grid-cols-4 gap-x-6 gap-y-4">
             <Field label="Currency">
               <Select
                 value={form.currency}
                 onValueChange={(v) => setForm((f) => ({ ...f, currency: v }))}
               >
-                <SelectTrigger className="rounded-sm">
+                <SelectTrigger className="ssr-field">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="z-[200]">
@@ -508,10 +526,6 @@ export function OverheadForm({
                 </SelectContent>
               </Select>
             </Field>
-          </div>
-
-          {/* Net / treatment / VAT */}
-          <div className="grid grid-cols-3 gap-4">
             <Field label={`Net (${currencySymbol})`}>
               <Input
                 type="number"
@@ -519,7 +533,7 @@ export function OverheadForm({
                 step="0.01"
                 value={form.net_amount}
                 onChange={(e) => setForm((f) => ({ ...f, net_amount: e.target.value }))}
-                className="rounded-sm"
+                className="ssr-field"
               />
             </Field>
             <Field label="VAT treatment">
@@ -528,7 +542,7 @@ export function OverheadForm({
                 onValueChange={(v) => setForm((f) => ({ ...f, vat_treatment: v as VatTreatment }))}
                 disabled={form.is_reverse_charge}
               >
-                <SelectTrigger className="rounded-sm">
+                <SelectTrigger className="ssr-field">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="z-[200]">
@@ -548,65 +562,95 @@ export function OverheadForm({
                 value={form.vat_amount}
                 onChange={(e) => setForm((f) => ({ ...f, vat_amount: e.target.value }))}
                 disabled={form.is_reverse_charge}
-                className="rounded-sm"
+                className="ssr-field"
               />
             </Field>
           </div>
 
-          {deviatesFromDefault && selectedCategory && (
-            <p className="text-xs text-gold-muted">
-              {selectedCategory.name} is normally {VAT_TREATMENT_LABELS[selectedCategory.default_vat_treatment]}. Confirm?
+          {/* The old copy ended "Confirm?" with nothing to confirm — a question
+              the screen asked and gave you no way to answer. Both choices now
+              act. */}
+          {deviatesFromDefault && selectedCategory && !form.is_reverse_charge && (
+            <p className="mt-3 text-[11.5px] leading-relaxed text-gold-muted">
+              {selectedCategory.name} is normally{" "}
+              {VAT_TREATMENT_LABELS[selectedCategory.default_vat_treatment]}.{" "}
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, vat_treatment: selectedCategory.default_vat_treatment }))}
+                className="text-[#ecd39c] underline underline-offset-[3px] hover:text-white"
+              >
+                Use {VAT_TREATMENT_LABELS[selectedCategory.default_vat_treatment]}
+              </button>
+              {" · "}
+              <button
+                type="button"
+                onClick={() => setAcceptedVatTreatment(form.vat_treatment)}
+                className="text-[#ecd39c] underline underline-offset-[3px] hover:text-white"
+              >
+                Keep {VAT_TREATMENT_LABELS[form.vat_treatment]}
+              </button>
             </p>
           )}
 
-          {/* Gross readout */}
-          <div className="flex items-baseline justify-between border-t border-divider pt-3">
-            <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Gross</span>
-            <span className="font-serif text-xl text-strong">
+          {/* Tier 3 — the one piece of real data on the screen. It shows its own
+              arithmetic so a wrong total is traceable without re-reading the
+              fields above it. */}
+          <div className="ssr-tile mt-5 flex items-baseline justify-between gap-4 px-5 py-4">
+            <div>
+              <span className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Gross</span>
+              <p className="mt-1 text-[10.5px] text-foreground/34">
+                {form.is_reverse_charge
+                  ? "You pay the net; the VAT is accounted both ways"
+                  : `Net ${formatCurrency(net, form.currency || "GBP")} + VAT ${formatCurrency(vatAmount, form.currency || "GBP")}`}
+              </p>
+            </div>
+            <span className="font-serif text-2xl text-strong tabular-nums">
               {formatCurrency(grossAmount, form.currency || "GBP")}
             </span>
           </div>
 
-          {/* Reverse charge */}
-          <div className="flex items-start justify-between gap-4 border border-divider rounded-sm p-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="rc-toggle"
-                  checked={form.is_reverse_charge}
-                  onCheckedChange={handleReverseChargeToggle}
-                />
-                <Label htmlFor="rc-toggle" className="text-sm cursor-pointer">
-                  Reverse charge
-                </Label>
-              </div>
+          {/* Reverse charge — a switch, not a bordered card inside a zone */}
+          <div className="mt-4 border-t border-white/[0.07] pt-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="rc-toggle"
+                checked={form.is_reverse_charge}
+                onCheckedChange={handleReverseChargeToggle}
+              />
+              <Label htmlFor="rc-toggle" className="cursor-pointer text-[13px]">
+                Reverse charge
+              </Label>
               {form.is_reverse_charge && (
-                <p className="mt-2 text-xs text-gold-muted">
-                  Flagged for accountant. Excluded from the cash-basis input-VAT figure.
-                  The notional self-accounted VAT below (net × 20% by default) is stored
-                  for reporting.
-                </p>
+                <span className="ml-auto text-[11px] text-foreground/33">
+                  Flagged for the accountant — out of the input-VAT figure
+                </span>
               )}
             </div>
             {form.is_reverse_charge && (
-              <div className="w-40">
-                <Label className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">
-                  Self-acc. VAT (£)
-                </Label>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={form.reverse_charge_vat}
-                  onChange={(e) => setForm((f) => ({ ...f, reverse_charge_vat: e.target.value }))}
-                  className="rounded-sm mt-1"
-                />
+              <div className="mt-4 grid grid-cols-4 gap-x-6">
+                <Field label={`Self-accounted VAT (${currencySymbol})`}>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={form.reverse_charge_vat}
+                    onChange={(e) => setForm((f) => ({ ...f, reverse_charge_vat: e.target.value }))}
+                    className="ssr-field"
+                  />
+                </Field>
+                <p className="col-span-3 self-end pb-1 text-[11px] leading-relaxed text-foreground/33">
+                  Net × 20% by default. Stored for reporting, excluded from the
+                  cash-basis input-VAT figure.
+                </p>
               </div>
             )}
           </div>
+          </div>
 
-          {/* Invoice + dates */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* ── Zone 3 ─────────────────────────────────────────────────── */}
+          <div className="ssr-zone">
+          <ZoneTitle>The paperwork</ZoneTitle>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             <Field label="Invoice number">
               <Input
                 value={form.invoice_number}
@@ -633,29 +677,33 @@ export function OverheadForm({
                 clearable
               />
             </Field>
-            <Field label="Payment date (blank = unpaid)">
+            <Field label="Payment date">
               <DatePickerButton
                 value={form.payment_date}
                 open={paymentDateOpen}
                 onOpenChange={setPaymentDateOpen}
                 onSelect={(iso) => setForm((f) => ({ ...f, payment_date: iso }))}
-                placeholder="—"
+                placeholder="Blank — unpaid"
                 clearable
               />
             </Field>
           </div>
 
-          <Field label="Notes">
-            <Textarea
-              value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              className="rounded-sm min-h-[80px]"
-            />
-          </Field>
+          <div className="mt-4">
+            <Field label="Notes">
+              <Textarea
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Anything you'll want to remember in a year"
+                className="ssr-field min-h-[70px] resize-y leading-relaxed"
+              />
+            </Field>
+          </div>
+          </div>
         </div>
 
         {/* Actions — text CTAs, no filled rectangles, no icons */}
-        <div className="flex items-center justify-end gap-6 border-t border-divider pt-4">
+        <div className="mt-6 flex items-center justify-end gap-6">
           <button
             type="button"
             onClick={() => onOpenChange(false)}
@@ -678,11 +726,20 @@ export function OverheadForm({
   );
 }
 
+/** Tier 2's heading. Left-aligned, like every column title in the portal. */
+function ZoneTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-4 text-left text-[9px] uppercase tracking-[0.22em] text-foreground/42">
+      {children}
+    </p>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <Label className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">{label}</Label>
-      <div className="mt-1">{children}</div>
+      <div className="mt-1.5">{children}</div>
     </div>
   );
 }
@@ -710,11 +767,12 @@ function DatePickerButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex h-10 w-full items-center justify-between rounded-sm border border-input bg-background px-3 py-2 text-sm text-left ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="ssr-field flex w-full items-center justify-between text-left text-sm"
         >
           <span className={value ? "text-standard" : "text-muted-foreground"}>
             {value ? formatDate(value) : placeholder}
           </span>
+          <span aria-hidden className="ml-2 text-[10px] text-recessive">▾</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
