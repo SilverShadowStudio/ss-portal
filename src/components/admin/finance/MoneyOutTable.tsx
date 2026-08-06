@@ -62,9 +62,12 @@ interface MoneyOutTableProps {
   onAttachPayslipFile?: (r: MoneyOutRow, file: File) => void | Promise<void>;
   /** Drop/click an invoice PDF straight onto an overhead row's "Invoice missing" chip. */
   onAttachInvoiceFile?: (r: MoneyOutRow, file: File) => void | Promise<void>;
+  /** Settle an unpaid overhead by transferring from Revolut. Fixed rows only —
+   *  freelancer payables are paid through Airtable, not from here. */
+  onPay?: (r: MoneyOutRow) => void;
 }
 
-export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAttachPayslipFile, onAttachInvoiceFile }: MoneyOutTableProps) {
+export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAttachPayslipFile, onAttachInvoiceFile, onPay }: MoneyOutTableProps) {
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<MoneyOutRow>(
     rows,
     COLUMNS,
@@ -209,13 +212,24 @@ export function MoneyOutTable({ rows, loading, onRowClick, onAttachInvoice, onAt
                     <CurrencyAmount amount={r.amount} currency={r.currency} rateDate={r.rateDate} />
                   </TableCell>
                   <TableCell>
-                    {urgency === "overdue" ? (
-                      <span className="text-xs font-medium uppercase tracking-[0.24em] text-gold">
-                        OVERDUE
-                      </span>
-                    ) : (
-                      <span className={STATUS_CLASS[r.status]}>{STATUS_LABELS[r.status]}</span>
-                    )}
+                    <span className="flex items-baseline gap-3">
+                      {urgency === "overdue" ? (
+                        <span className="text-xs font-medium uppercase tracking-[0.24em] text-gold">
+                          OVERDUE
+                        </span>
+                      ) : (
+                        <span className={STATUS_CLASS[r.status]}>{STATUS_LABELS[r.status]}</span>
+                      )}
+                      {onPay && r.overhead && r.status === "unpaid" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onPay(r); }}
+                          className="text-[9px] uppercase tracking-[0.28em] text-gold hover:text-[#ecd39c] transition-colors"
+                          title="Pay this invoice from Revolut"
+                        >
+                          Pay
+                        </button>
+                      )}
+                    </span>
                   </TableCell>
                 </TableRow>
               );

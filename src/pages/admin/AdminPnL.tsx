@@ -13,7 +13,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
-import { BulkOverheadDropzone } from "@/components/admin/overheads/BulkOverheadDropzone";
+import { BulkOverheadDropzone, type ParsedInvoice } from "@/components/admin/overheads/BulkOverheadDropzone";
+import { describeFlags } from "@/lib/overheadConfidence";
+import { recordOverheadUnattended, type RecordOutcome } from "@/lib/overheadRecord";
 import { RecurringOverheadsDialog } from "@/components/admin/overheads/RecurringOverheadsDialog";
 import { IncomeInvoiceUpload, IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState as IncomeFormState } from "@/components/admin/finance/IncomeInvoiceUpload";
 import { BulkIncomeDropzone } from "@/components/admin/finance/BulkIncomeDropzone";
@@ -27,6 +29,7 @@ import { MoneyInTable } from "@/components/admin/finance/MoneyInTable";
 import { MoneyOutTable } from "@/components/admin/finance/MoneyOutTable";
 import { OutstandingCards } from "@/components/admin/finance/OutstandingCards";
 import { PayableDetail } from "@/components/admin/finance/PayableDetail";
+import { PayOverheadDialog } from "@/components/admin/finance/PayOverheadDialog";
 import {
   InvoiceViewer,
   type InvoiceViewerData,
@@ -34,6 +37,7 @@ import {
 import {
   buildMoneyOutRows,
   computeQuarterVat,
+  formatCurrency,
   formatDate,
   getCurrentQuarter,
   getPreviousQuarter,
@@ -102,16 +106,24 @@ export default function AdminPnL() {
   // Non-null == an upload was staged to `overhead-invoices/staging/...` and
   // still needs cleanup if the review gate closes without a save.
   const pendingStagingPathRef = useRef<string | null>(null);
-  // Bulk-drop review queue: parsed invoices awaiting Fred's per-invoice
-  // validation. The form advances to the next on save OR skip (cancel).
-  const reviewQueueRef = useRef<Partial<Overhead>[]>([]);
+  // Bulk-drop review queue: only the invoices that FAILED the confidence gate.
+  // Confident ones are recorded and filed without ever opening the form.
+  const reviewQueueRef = useRef<ParsedInvoice[]>([]);
   const reviewTotalRef = useRef(0);
   const reviewPosRef = useRef(0);
   const justSavedRef = useRef(false);
   const [reviewLabel, setReviewLabel] = useState<string | null>(null);
+  // Why the invoice in front of Fred stopped, and whether to show him the
+  // document itself alongside the fields.
+  const [reviewReason, setReviewReason] = useState<string | null>(null);
+  const [reviewPreviewPath, setReviewPreviewPath] = useState<string | null>(null);
 
   const [overheadDetailOpen, setOverheadDetailOpen] = useState(false);
   const [selectedOverhead, setSelectedOverhead] = useState<Overhead | null>(null);
+
+  // Paying an overhead — the only outbound-money action on the page.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payingOverhead, setPayingOverhead] = useState<Overhead | null>(null);
 
   const [invoiceViewing, setInvoiceViewing] = useState<InvoiceViewerData | null>(null);
   const [editIncome, setEditIncome] = useState<{ id: string; initial: IncomeFormState } | null>(null);
@@ -509,13 +521,85 @@ export default function AdminPnL() {
     setEditing(selectedOverhead);
     setPrefillDefaults(null);
     pendingStagingPathRef.current = null;
+    setReviewReason(null);
+    setReviewPreviewPath(null);
     setFormMode("edit");
     setOverheadDetailOpen(false);
     setFormOpen(true);
   }
 
-  // ── Bulk-drop review queue ────────────────────────────────────────────────
-  function startReviewQueue(items: Partial<Overhead>[]) {
+  // ── Drop → file → record ──────────────────────────────────────────────────
+  // A drop is meant to be one action. Invoices that clear the confidence gate
+  // are recorded and filed straight away; only the doubtful ones stop for
+  // review. See src/lib/overheadConfidence.ts for where the bar sits.
+  async function handleParsed(items: ParsedInvoice[]) {
+    if (!items.length) return;
+    const confident = items.filter((i) => i.verdict.auto);
+    const doubtful = items.filter((i) => !i.verdict.auto);
+
+    if (confident.length) await recordConfidentInvoices(confident);
+    if (doubtful.length) startReviewQueue(doubtful);
+  }
+
+  async function recordConfidentInvoices(items: ParsedInvoice[]) {
+    const outcomes: RecordOutcome[] = [];
+    for (const item of items) {
+      const outcome = await recordOverheadUnattended(item.defaults);
+      // Nothing was inserted, so the staged upload has no owner — clean it,
+      // otherwise the staging prefix fills with orphans.
+      if (outcome.status !== "recorded" && item.defaults.staging_storage_path) {
+        void supabase.storage
+          .from("overhead-invoices")
+          .remove([item.defaults.staging_storage_path]);
+      }
+      outcomes.push(outcome);
+    }
+    fetchAll();
+    reportRecorded(outcomes);
+  }
+
+  // Say what actually landed. Reading a wrong amount off this toast is faster
+  // than confirming a hundred correct ones — which is the whole trade the
+  // confidence gate makes.
+  function reportRecorded(outcomes: RecordOutcome[]) {
+    const recorded = outcomes.filter(
+      (o): o is Extract<RecordOutcome, { status: "recorded" }> => o.status === "recorded",
+    );
+    const duplicates = outcomes.filter((o) => o.status === "duplicate");
+    const failed = outcomes.filter(
+      (o): o is Extract<RecordOutcome, { status: "failed" }> => o.status === "failed",
+    );
+
+    if (recorded.length === 1) {
+      const r = recorded[0];
+      toast({
+        title: `${r.supplier} — ${formatCurrency(r.gross)}`,
+        description: "Renamed, filed to Dropbox and recorded as unpaid. Pay it from its Money out row.",
+      });
+    } else if (recorded.length > 1) {
+      toast({
+        title: `${recorded.length} invoices filed`,
+        description: `${recorded.map((r) => `${r.supplier} ${formatCurrency(r.gross)}`).join(" · ")} — all recorded as unpaid.`,
+      });
+    }
+
+    if (duplicates.length) {
+      toast({
+        title: `${duplicates.length} already in your books`,
+        description: "Same supplier and invoice number — skipped, nothing was filed twice.",
+      });
+    }
+
+    if (failed.length) {
+      toast({
+        title: `${failed.length} couldn't be recorded`,
+        description: failed.map((f) => `${f.supplier}: ${f.error}`).join(" · "),
+        variant: "destructive",
+      });
+    }
+  }
+
+  function startReviewQueue(items: ParsedInvoice[]) {
     if (!items.length) return;
     reviewTotalRef.current = items.length;
     reviewPosRef.current = 1;
@@ -534,6 +618,8 @@ export default function AdminPnL() {
       reviewTotalRef.current = 0;
       reviewPosRef.current = 0;
       setReviewLabel(null);
+      setReviewReason(null);
+      setReviewPreviewPath(null);
     }
   }
 
@@ -542,6 +628,14 @@ export default function AdminPnL() {
     reviewTotalRef.current = 0;
     reviewPosRef.current = 0;
     setReviewLabel(null);
+    setReviewReason(null);
+    setReviewPreviewPath(null);
+  }
+
+  function openPayDialog(r: MoneyOutRow) {
+    if (!r.overhead) return;
+    setPayingOverhead(r.overhead);
+    setPayOpen(true);
   }
 
   function openCreateExpense() {
@@ -553,10 +647,16 @@ export default function AdminPnL() {
     setFormOpen(true);
   }
 
-  function openCreateExpenseFromUpload(defaults: Partial<Overhead>) {
+  function openCreateExpenseFromUpload(item: ParsedInvoice) {
     setEditing(null);
-    setPrefillDefaults(defaults);
-    pendingStagingPathRef.current = defaults.staging_storage_path ?? null;
+    setPrefillDefaults(item.defaults);
+    pendingStagingPathRef.current = item.defaults.staging_storage_path ?? null;
+    setReviewReason(describeFlags(item.verdict.flags) || null);
+    // Only when the figures don't reconcile and there's no history with this
+    // supplier — the extracted values alone aren't worth trusting there.
+    setReviewPreviewPath(
+      item.verdict.showDocument ? item.defaults.staging_storage_path ?? null : null,
+    );
     setFormMode("create");
     setFormOpen(true);
   }
@@ -813,9 +913,9 @@ export default function AdminPnL() {
             </div>
           </div>
           <div className="mb-5">
-            <BulkOverheadDropzone categories={categories} onParsed={startReviewQueue} />
+            <BulkOverheadDropzone categories={categories} onParsed={handleParsed} />
           </div>
-          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} onAttachInvoiceFile={handleInvoiceDropOnRow} />
+          <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} onAttachInvoiceFile={handleInvoiceDropOnRow} onPay={openPayDialog} />
         </section>
       )}
 
@@ -899,6 +999,14 @@ export default function AdminPnL() {
         categories={categories}
         onSaved={handleOverheadSaved}
         queueLabel={reviewLabel}
+        reviewReason={reviewReason}
+        previewStagingPath={reviewPreviewPath}
+      />
+      <PayOverheadDialog
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        overhead={payingOverhead}
+        onPaid={fetchAll}
       />
       <OverheadDetail
         open={overheadDetailOpen}

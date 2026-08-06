@@ -73,7 +73,13 @@ const OVERHEAD_SCHEMA = `{
   "currency": "GBP" | "EUR" | "USD",
   "already_paid": boolean | null,
   "payment_date": "YYYY-MM-DD" | null,
-  "category_code": "string" | null
+  "category_code": "string" | null,
+  "supplier_iban": "string" | null,
+  "supplier_account_number": "string" | null,
+  "supplier_sort_code": "string" | null,
+  "supplier_bic": "string" | null,
+  "supplier_country": "string" | null,
+  "payment_reference": "string" | null
 }`
 
 // Employment / freelance engagement contract → personal details to pre-fill a
@@ -149,6 +155,15 @@ function systemPrompt(documentType: DocumentType, categories?: CategoryChoice[])
       `payment_date=null.\n` +
       `- If the document has a future due date and no payment indicator, set already_paid=false ` +
       `and payment_date=null.\n` +
+      `- BANK DETAILS: read the SUPPLIER's own "remit to" / "payment details" / "bank details" ` +
+      `block — the account the studio is being asked to PAY INTO. Never return the studio's own ` +
+      `account, and never return a card number. supplier_sort_code as 6 digits with no dashes ` +
+      `(e.g. "040075"); supplier_account_number as 8 digits; supplier_iban and supplier_bic ` +
+      `uppercase with spaces stripped. supplier_country = ISO 2-letter code of the supplier's ` +
+      `address (e.g. "GB", "FR"). If no bank block appears at all, return null for all of them — ` +
+      `do NOT infer or invent an account. A wrong number here sends money to a stranger.\n` +
+      `- payment_reference = the reference the supplier asks to be quoted with payment (often the ` +
+      `invoice number or a customer/account number). Null if none is stated.\n` +
       (categories && categories.length > 0
         ? `- category_code = the SINGLE BEST-FIT code from the list below, chosen based on the ` +
           `supplier and any visible line items. Return the exact code string (e.g. "429"), not the ` +

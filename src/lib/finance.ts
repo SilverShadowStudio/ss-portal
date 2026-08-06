@@ -55,6 +55,16 @@ export interface Overhead {
   dropbox_path: string | null;
   staging_storage_path: string | null;
   notes: string | null;
+  // Supplier payment details read off the invoice, plus the audit trail of a
+  // transfer made from the Money Out row. See revolut-pay-overhead.
+  supplier_iban?: string | null;
+  supplier_account_number?: string | null;
+  supplier_sort_code?: string | null;
+  supplier_bic?: string | null;
+  payment_reference?: string | null;
+  paid_via?: string | null;
+  revolut_transaction_id?: string | null;
+  payment_error?: string | null;
 }
 
 export const VAT_RATES: Record<VatTreatment, number> = {

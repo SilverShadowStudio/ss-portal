@@ -77,6 +77,14 @@ interface OverheadFormProps {
   onSaved: () => void;
   /** When set (e.g. "2 of 7"), shows a bulk-review position in the header. */
   queueLabel?: string | null;
+  /** Why this drop stopped for review instead of filing itself — e.g.
+   *  "no invoice number and first invoice from this supplier". */
+  reviewReason?: string | null;
+  /** Staging path of the dropped file. When set, the document is shown above
+   *  the fields: reserved for the case where the figures don't reconcile AND
+   *  there's no history with this supplier, so the extracted values alone
+   *  aren't worth trusting. */
+  previewStagingPath?: string | null;
 }
 
 interface FormState {
@@ -156,6 +164,8 @@ export function OverheadForm({
   categories,
   onSaved,
   queueLabel,
+  reviewReason,
+  previewStagingPath,
 }: OverheadFormProps) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -166,6 +176,10 @@ export function OverheadForm({
   // Staging storage path is metadata (not user-editable), carried through
   // from defaultValues into the insert payload without polluting FormState.
   const stagingStoragePathRef = useRef<string | null>(null);
+  // Same idea for the supplier's bank details: read off the invoice, not
+  // user-editable here, but they must survive the review gate or a reviewed
+  // invoice would reach Money Out with no way to pay it.
+  const bankDetailsRef = useRef<Record<string, unknown>>({});
   const { toast } = useToast();
 
   // Reset form whenever the dialog opens (create) or the initial changes (edit).
@@ -176,14 +190,37 @@ export function OverheadForm({
     if (mode === "edit" && initial) {
       setForm(fromOverhead(initial));
       stagingStoragePathRef.current = null;
+      bankDetailsRef.current = {};
     } else if (mode === "create" && defaultValues) {
       setForm(fromDefaults(defaultValues));
       stagingStoragePathRef.current = defaultValues.staging_storage_path ?? null;
+      bankDetailsRef.current = {
+        supplier_iban: defaultValues.supplier_iban ?? null,
+        supplier_account_number: defaultValues.supplier_account_number ?? null,
+        supplier_sort_code: defaultValues.supplier_sort_code ?? null,
+        supplier_bic: defaultValues.supplier_bic ?? null,
+        payment_reference: defaultValues.payment_reference ?? null,
+      };
     } else {
       setForm(EMPTY);
       stagingStoragePathRef.current = null;
+      bankDetailsRef.current = {};
     }
   }, [open, mode, initial, defaultValues]);
+
+  // Signed URL for the staged document, minted only when the parent asks for a
+  // preview. The file isn't an overhead yet, so it's read straight out of the
+  // staging bucket rather than through overhead-file-preview.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !previewStagingPath) { setPreviewUrl(null); return; }
+    let cancelled = false;
+    void supabase.storage
+      .from("overhead-invoices")
+      .createSignedUrl(previewStagingPath, 600)
+      .then(({ data }) => { if (!cancelled) setPreviewUrl(data?.signedUrl ?? null); });
+    return () => { cancelled = true; };
+  }, [open, previewStagingPath]);
 
   const net = parseFloat(form.net_amount) || 0;
   const vatAmount = parseFloat(form.vat_amount) || 0;
@@ -287,6 +324,7 @@ export function OverheadForm({
       if (stagingStoragePathRef.current) {
         payload.staging_storage_path = stagingStoragePathRef.current;
       }
+      Object.assign(payload, bankDetailsRef.current);
       ({ error } = await supabase.from("overheads" as any).insert(payload));
     }
 
@@ -347,6 +385,23 @@ export function OverheadForm({
             {mode === "edit" ? initial?.supplier_name || "Expense" : "Record an expense"}
           </DialogTitle>
         </DialogHeader>
+
+        {reviewReason && (
+          <p className="rounded-sm border border-[#C9A96A]/30 bg-[#C9A96A]/[0.06] px-3 py-2 font-sans text-[11px] leading-relaxed text-[#ecd39c]">
+            Stopped for you to check — {reviewReason}. Everything else was filed
+            without asking.
+          </p>
+        )}
+
+        {previewUrl && (
+          <div className="overflow-hidden rounded-sm border border-divider bg-black/20">
+            {/\.(jpe?g|png)$/i.test(previewStagingPath ?? "") ? (
+              <img src={previewUrl} alt="Dropped invoice" className="max-h-[38vh] w-full object-contain" />
+            ) : (
+              <iframe src={previewUrl} title="Dropped invoice" className="h-[38vh] w-full" />
+            )}
+          </div>
+        )}
 
         <div className="grid gap-5 py-2">
           {/* Supplier + category */}

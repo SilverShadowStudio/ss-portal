@@ -4,7 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { mapExtractedToOverhead } from "./OverheadUploadFlow";
+import { assessOverhead, type ConfidenceVerdict } from "@/lib/overheadConfidence";
 import type { ExpenseCategory, Overhead } from "@/lib/finance";
+
+/** A parsed invoice plus the verdict on whether it can land unattended. */
+export interface ParsedInvoice {
+  defaults: Partial<Overhead>;
+  verdict: ConfidenceVerdict;
+}
 
 const STAGING_BUCKET = "overhead-invoices";
 const ACCEPT = ["application/pdf", "image/jpeg", "image/png"];
@@ -29,9 +36,10 @@ function humanTime(sec: number): string {
 
 interface Props {
   categories: ExpenseCategory[];
-  /** Called once every dropped file has been parsed + staged. The parent opens
-   *  the pre-filled review form for each in turn so Fred validates before save. */
-  onParsed: (items: Partial<Overhead>[]) => void;
+  /** Called once every dropped file has been parsed + staged. Each item carries
+   *  a confidence verdict: the parent records the confident ones straight into
+   *  the books and opens the review form only for the rest. */
+  onParsed: (items: ParsedInvoice[]) => void;
 }
 
 /**
@@ -66,7 +74,7 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
 
   // Parse one invoice and stage its original. Returns the pre-filled overhead
   // defaults (incl. staging path) for the review form — nothing is saved here.
-  async function processOne(file: File): Promise<Partial<Overhead>> {
+  async function processOne(file: File): Promise<ParsedInvoice> {
     const base64 = await fileToBase64(file);
     const { data, error } = await supabase.functions.invoke("parse-document", {
       body: {
@@ -79,27 +87,32 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
     if (error) throw error;
     if (!data?.success || !data?.data) throw new Error(data?.error || "Could not read the invoice");
 
-    const defaults = mapExtractedToOverhead(data.data as Record<string, unknown>);
+    const raw = data.data as Record<string, unknown>;
+    const defaults = mapExtractedToOverhead(raw);
 
     // Category: drop hallucinated codes; prefer Fred's supplier→category memory.
+    // Whether the memory hit is itself the confidence signal — a supplier we've
+    // filed before is a supplier whose category Fred already chose by hand.
     if (defaults.category_code && !activeCodes.has(defaults.category_code)) delete defaults.category_code;
+    let categoryFromMemory = false;
     if (defaults.supplier_name) {
       const key = normalizeSupplier(defaults.supplier_name);
       if (key) {
         const { data: mapping } = await supabase.from("supplier_category_map" as any)
           .select("category_code").eq("supplier_normalized", key).maybeSingle();
         const cat = (mapping as { category_code?: string } | null)?.category_code;
-        if (cat && activeCodes.has(cat)) defaults.category_code = cat;
+        if (cat && activeCodes.has(cat)) { defaults.category_code = cat; categoryFromMemory = true; }
       }
     }
 
-    // Stage the original so the review form's save can file it to Dropbox.
+    // Stage the original so the save (attended or not) can file it to Dropbox.
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();
     const stagingPath = `staging/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from(STAGING_BUCKET).upload(stagingPath, file, { contentType: file.type, upsert: false });
     if (upErr) throw upErr;
     defaults.staging_storage_path = stagingPath;
-    return defaults;
+
+    return { defaults, verdict: assessOverhead(raw, defaults, { categoryFromMemory }) };
   }
 
   const run = useCallback(async (files: File[]) => {
@@ -114,7 +127,7 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
     setEta(null);
 
     const startTs = Date.now();
-    const parsed: Partial<Overhead>[] = [];
+    const parsed: ParsedInvoice[] = [];
 
     let idx = 0, completed = 0, failures = 0;
     const worker = async () => {
@@ -204,14 +217,14 @@ export function BulkOverheadDropzone({ categories, onParsed }: Props) {
             ? <AlertTriangle className="h-4 w-4 text-[#C9A96A]" strokeWidth={1.5} />
             : <Check className="h-4 w-4 text-[#C9A96A]" strokeWidth={1.5} />}
           <span className="text-sm text-standard">{total - failed} parsed{failed > 0 ? ` · ${failed} failed` : ""}</span>
-          <span className="text-[11px] text-white/35">— review each to save</span>
+          <span className="text-[11px] text-white/35">— filing</span>
         </div>
       ) : (
         <div className="flex items-center justify-center gap-3 text-center">
           <UploadCloud className="h-5 w-5 text-white/35" strokeWidth={1.4} />
           <div className="flex flex-col items-start leading-tight">
-            <span className="text-sm text-standard">Drop invoices to parse<span className="text-white/35"> — or click to browse</span></span>
-            <span className="text-[10px] uppercase tracking-[0.16em] text-white/35">PDF, JPEG or PNG · as many as you like</span>
+            <span className="text-sm text-standard">Drop invoices to file<span className="text-white/35"> — or click to browse</span></span>
+            <span className="text-[10px] uppercase tracking-[0.16em] text-white/35">Renamed, filed to Dropbox and recorded · we only stop if something looks off</span>
           </div>
         </div>
       )}

@@ -255,5 +255,21 @@ export function mapExtractedToOverhead(data: Record<string, unknown>): Partial<O
   // AI's category pick — validated against active codes in handleExtracted.
   const aiCategory = str(data.category_code);
   if (aiCategory) out.category_code = aiCategory;
+
+  // Supplier bank details, for the Pay action on the Money Out row. Carried
+  // verbatim and never inferred — the parse prompt is explicit that a missing
+  // bank block means nulls. Normalised only for whitespace/case so the same
+  // account read off two invoice layouts compares equal.
+  const iban = str(data.supplier_iban);
+  if (iban) out.supplier_iban = iban.replace(/\s+/g, "").toUpperCase();
+  const acct = str(data.supplier_account_number);
+  if (acct) out.supplier_account_number = acct.replace(/\s+/g, "");
+  const sort = str(data.supplier_sort_code);
+  if (sort) out.supplier_sort_code = sort.replace(/[\s-]+/g, "");
+  const bic = str(data.supplier_bic);
+  if (bic) out.supplier_bic = bic.replace(/\s+/g, "").toUpperCase();
+  const payRef = str(data.payment_reference);
+  if (payRef) out.payment_reference = payRef;
+
   return out;
 }
