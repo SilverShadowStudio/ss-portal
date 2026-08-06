@@ -8,9 +8,10 @@ import { usePendingLeaveCount } from "@/hooks/usePendingLeaveCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
-  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare,
+  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare, MonitorDown,
 } from "lucide-react";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
+import { usePWAInstall } from "@/components/PWAInstallPrompt";
 
 // Admin sidebar — grouped by audience.
 //   Group 1: Overview + Timeline (overview).
@@ -74,6 +75,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   const newClientsCount = useNewClientsCount();
   const dueOverheadsCount = useDueOverheadsCount();
   const pendingLeaveCount = usePendingLeaveCount();
+  const { canInstall, isInstalled, promptInstall } = usePWAInstall();
 
   useEffect(() => {
     if (!user) return;
@@ -110,6 +112,12 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
 
   const accountMenuItems: SidebarAccountMenuItem[] = [
     { label: expanded ? "Compact" : "Expand", onClick: () => onToggleExpand?.(), separatorAfter: true, Icon: expanded ? ChevronsLeft : ChevronsRight },
+    // Clients get a full-screen install moment on first login; admins have
+    // accountType null, so that screen never fires for the people who run the
+    // studio. This is their way in — and it removes itself once taken.
+    ...(canInstall && !isInstalled
+      ? [{ label: "Install as app", onClick: () => { void promptInstall(); }, Icon: MonitorDown } as SidebarAccountMenuItem]
+      : []),
     { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true, Icon: Settings },
     { label: "Log off", onClick: handleSignOut, Icon: LogOut },
   ];
