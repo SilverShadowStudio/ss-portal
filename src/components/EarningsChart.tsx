@@ -97,20 +97,39 @@ export function EarningsChart({ periods, currency }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  const months = useMemo(
-    () =>
-      periods
-        .filter((p) => p.period_year && p.period_month)
-        .map((p) => ({
-          key: p.key,
-          year: p.period_year as number,
-          month: p.period_month as number,
-          label: MONTHS_SHORT[(p.period_month as number) - 1],
-          total: p.total,
-          balance: p.balance,
-        })),
-    [periods],
-  );
+  const months = useMemo(() => {
+    type M = { key: string; year: number; month: number; label: string; total: number; balance: number; worked: boolean };
+    const worked: M[] = periods
+      .filter((p) => p.period_year && p.period_month)
+      .map((p) => ({
+        key: p.key,
+        year: p.period_year as number,
+        month: p.period_month as number,
+        label: MONTHS_SHORT[(p.period_month as number) - 1],
+        total: p.total,
+        balance: p.balance,
+        worked: true,
+      }))
+      .sort((a, b) => a.year - b.year || a.month - b.month);
+    if (worked.length === 0) return [] as M[];
+
+    // Fill the calendar gaps between the first and last worked month with
+    // zero-value months, so the axis reads as a continuous run of months rather
+    // than only the ones that were billed. Un-worked months sit at 0.
+    const has = new Set(worked.map((w) => `${w.year}-${w.month}`));
+    const out: M[] = [];
+    const last = worked[worked.length - 1];
+    let y = worked[0].year, m = worked[0].month, wi = 0;
+    while (y < last.year || (y === last.year && m <= last.month)) {
+      if (has.has(`${y}-${m}`)) {
+        while (wi < worked.length && worked[wi].year === y && worked[wi].month === m) out.push(worked[wi++]);
+      } else {
+        out.push({ key: `gap-${y}-${m}`, year: y, month: m, label: MONTHS_SHORT[m - 1], total: 0, balance: 0, worked: false });
+      }
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return out;
+  }, [periods]);
 
   if (months.length === 0) return null;
 
@@ -220,7 +239,7 @@ export function EarningsChart({ periods, currency }: Props) {
 
         {months.map((b, i) => (
           <text key={b.key} x={xOf(i)} y={H - 12} textAnchor="middle"
-                fill={i === active ? GOLD_BRIGHT : "rgba(255,255,255,0.42)"} fontSize={10}
+                fill={i === active ? GOLD_BRIGHT : b.worked ? "rgba(255,255,255,0.42)" : "rgba(255,255,255,0.20)"} fontSize={10}
                 style={{ letterSpacing: "0.1em" }}>
             {multiYear ? `${b.label} ${String(b.year).slice(2)}` : b.label}
           </text>
@@ -233,18 +252,24 @@ export function EarningsChart({ periods, currency }: Props) {
           whichever month is being read, held still under the plot. */}
       <div className="mt-3 flex flex-wrap items-center gap-x-8 gap-y-1 border-t border-white/[0.05] pt-3 text-[11px]">
         <span className="text-white/35">{MONTHS_SHORT[ab.month - 1]} {ab.year}</span>
-        <span className="text-white/35">
-          Fee <span className="ml-1.5 tabular-nums text-gold">{money(ab.total, currency)}</span>
-        </span>
-        <span className="text-white/35">
-          {ab.balance > 0.005 ? (
-            <>Outstanding <span className="ml-1.5 tabular-nums text-[#ecd39c]">{money(ab.balance, currency)}</span></>
-          ) : (
-            <>Status <span className="ml-1.5 text-white/55">Paid in full</span></>
-          )}
-        </span>
+        {ab.worked ? (
+          <>
+            <span className="text-white/35">
+              Fee <span className="ml-1.5 tabular-nums text-gold">{money(ab.total, currency)}</span>
+            </span>
+            <span className="text-white/35">
+              {ab.balance > 0.005 ? (
+                <>Outstanding <span className="ml-1.5 tabular-nums text-[#ecd39c]">{money(ab.balance, currency)}</span></>
+              ) : (
+                <>Status <span className="ml-1.5 text-white/55">Paid in full</span></>
+              )}
+            </span>
+          </>
+        ) : (
+          <span className="text-white/35">No invoiced work this month</span>
+        )}
         <span className="ml-auto text-white/20">
-          {hover === null ? "Hover the curve to read a month" : `${months.length} months on record`}
+          {hover === null ? "Hover the curve to read a month" : `${months.filter((b) => b.worked).length} months on record`}
         </span>
       </div>
     </div>
