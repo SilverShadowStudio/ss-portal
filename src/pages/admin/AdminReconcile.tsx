@@ -4,6 +4,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Check, Search, UploadCloud, FilePlus2, RefreshCw } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { parseRevolutCsv } from "@/lib/bankImport";
 import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { useFx } from "@/contexts/FxContext";
@@ -303,7 +304,10 @@ export default function AdminReconcile() {
               <div className="ml-auto flex items-center gap-2 border-b border-white/15 px-1">
                 <Search className="h-3 w-3 text-white/30" strokeWidth={1.5} />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="SEARCH"
+                  onKeyDown={(e) => { if (e.key === "Escape" && search) { e.preventDefault(); setSearch(""); } }}
                   className="w-40 bg-transparent py-1 text-[11px] uppercase tracking-[0.16em] text-standard placeholder:text-white/25 focus:outline-none" />
+                <SearchClear show={search.length > 0} onClear={() => setSearch("")} size={15}
+                  className="hover:text-[#B8434F]" />
               </div>
             </div>
 

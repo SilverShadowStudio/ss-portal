@@ -3,6 +3,7 @@ import { supabase, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/clie
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, ExternalLink, AlertTriangle, Search } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { cn } from "@/lib/utils";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 
@@ -173,8 +174,10 @@ export function AirtableProductionTable() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search…"
-              className="h-8 w-44 pl-8 text-xs"
+              className="h-8 w-44 pl-8 pr-8 text-xs"
             />
+            <SearchClear show={search.length > 0} onClear={() => setSearch("")} size={16}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 hover:text-[#B8434F]" />
           </div>
           <Button variant="outline" size="sm" onClick={() => load(true)} disabled={refreshing || loading} className="h-8">
             {refreshing ? <BrandLoader size="sm" className="mr-1.5 h-3.5 w-3.5" /> : <RefreshCw size={13} className={cn("mr-1.5")} />}

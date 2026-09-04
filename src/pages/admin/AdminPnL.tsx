@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { TableSearch } from "@/components/ui/TableToolbar";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
 import {
@@ -855,18 +856,7 @@ export default function AdminPnL() {
           </div>
           <div className="mb-4 flex flex-wrap items-center gap-8">
             {/* Search — underline field, matching the members search bar */}
-            <div className="group relative flex w-[220px] items-center gap-2.5 pb-[7px]">
-              <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
-              <input
-                type="text"
-                value={moSearch}
-                onChange={(e) => setMoSearch(e.target.value)}
-                placeholder="SEARCH NAME"
-                className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
-              />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
-            </div>
+            <TableSearch value={moSearch} onChange={setMoSearch} placeholder="SEARCH NAME" width="w-[220px]" />
 
             {/* Type filter — underline select */}
             <div className="group relative w-[210px] pb-[7px]">
@@ -930,18 +920,7 @@ export default function AdminPnL() {
             <p className="text-xs text-recessive">Invoices · cash basis</p>
           </div>
           <div className="mb-4 flex flex-wrap items-center gap-8">
-            <div className="group relative flex w-[260px] items-center gap-2.5 pb-[7px]">
-              <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
-              <input
-                type="text"
-                value={invSearch}
-                onChange={(e) => setInvSearch(e.target.value)}
-                placeholder="SEARCH CLIENT OR INVOICE #"
-                className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
-              />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
-            </div>
+            <TableSearch value={invSearch} onChange={setInvSearch} placeholder="SEARCH CLIENT OR INVOICE #" width="w-[260px]" />
             <div className="group relative w-[150px] pb-[7px]">
               <Select value={invStatus} onValueChange={(v) => setInvStatus(v as InvoiceStatusFilter)}>
                 <SelectTrigger className="h-auto rounded-none border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 focus:ring-0 focus:ring-offset-0 [&>svg]:text-[#C9A96A]/60 [&>svg]:opacity-100">

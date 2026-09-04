@@ -13,6 +13,41 @@ export function TableToolbar({ children, className }: { children: React.ReactNod
   return <div className={cn("mb-4 flex flex-wrap items-center gap-8", className)}>{children}</div>;
 }
 
+/** The clear affordance, portal-wide.
+ *
+ *  An 18px hairline cross in dark red. The stroke is 0.8 on a 24 viewBox so the
+ *  drawn line stays the same 0.6px hairline it was at 9px — doubling the glyph
+ *  without halving the stroke would have thickened it, which is the opposite of
+ *  what was asked for.
+ *
+ *  Always mounted (never conditionally rendered) so it can fade rather than
+ *  appear, and marked `peer` so the red underline in TableSearch can react to
+ *  its hover without any JS. */
+export function SearchClear({
+  show, onClear, className, size = 18,
+}: { show: boolean; onClear: () => void; className?: string; size?: number }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label="Clear search"
+      aria-hidden={!show}
+      onClick={onClear}
+      className={cn(
+        "peer flex shrink-0 items-center justify-center text-[#9E2B35] transition-all duration-200 ease-out",
+        show ? "scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0",
+        className,
+      )}
+      style={{ height: size, width: size }}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={0.8 * (18 / size)}
+           strokeLinecap="round" style={{ height: size, width: size }}>
+        <path d="M18 6 6 18M6 6l12 12" />
+      </svg>
+    </button>
+  );
+}
+
 export function TableSearch({
   value, onChange, placeholder = "SEARCH", width = "w-[220px]",
 }: { value: string; onChange: (v: string) => void; placeholder?: string; width?: string }) {
@@ -23,11 +58,17 @@ export function TableSearch({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape" && value) { e.preventDefault(); onChange(""); } }}
         placeholder={placeholder}
         className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
       />
+      <SearchClear show={value.length > 0} onClear={() => onChange("")} />
       <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
+      {/* Gold arrives from the left on focus. */}
       <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
+      {/* Red arrives from the right when the cross is hovered — mirrored, and
+          painted last so it sits over the gold. */}
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-right scale-x-0 bg-[#9E2B35] transition-transform duration-500 ease-out peer-hover:scale-x-100" />
     </div>
   );
 }

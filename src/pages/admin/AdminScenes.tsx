@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -360,8 +361,10 @@ export default function AdminScenes() {
             placeholder="Search scenes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 pr-10"
           />
+          <SearchClear show={searchQuery.length > 0} onClear={() => setSearchQuery("")} size={16}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 hover:text-[#B8434F]" />
         </div>
       </div>
 

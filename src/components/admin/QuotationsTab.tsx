@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, MoreHorizontal, Eye } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -174,8 +175,10 @@ export function QuotationsTab() {
             placeholder="Search by number or client"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 pr-9"
           />
+          <SearchClear show={search.length > 0} onClear={() => setSearch("")} size={16}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 hover:text-[#B8434F]" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>

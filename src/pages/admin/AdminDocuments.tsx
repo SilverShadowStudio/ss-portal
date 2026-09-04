@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Download, Eye, FileText, MoreHorizontal, Search, Trash2 } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { formatDateTime } from "@/lib/invoiceUtils";
@@ -349,7 +350,9 @@ function AgreementsTab() {
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search by company, contact, version…" value={search}
-            onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+            onChange={(e) => setSearch(e.target.value)} className="pl-10 pr-10" />
+          <SearchClear show={search.length > 0} onClear={() => setSearch("")} size={16}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 hover:text-[#B8434F]" />
         </div>
       </div>
 

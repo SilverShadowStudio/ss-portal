@@ -19,6 +19,7 @@ import {
   Copy, Check, Trash2, Ghost, Pencil, FileText, Clock, FilePlus2,
   Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
 } from "lucide-react";
+import { TableSearch } from "@/components/ui/TableToolbar";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -2078,19 +2079,7 @@ export function AccountList({
               </button>
             )}
           </div>
-          <div className="group relative flex w-[230px] items-center gap-2.5 pb-[7px]">
-            <Search className="h-3.5 w-3.5 shrink-0 text-[#C9A96A]/55 transition-colors duration-300 group-focus-within:text-[#C9A96A]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="SEARCH"
-              aria-label={`Search ${title.toLowerCase()}`}
-              className="w-full border-0 bg-transparent p-0 text-[11px] uppercase tracking-[0.18em] text-white/85 placeholder:text-white/25 focus:outline-none focus:ring-0"
-            />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/[0.12]" />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[#C9A96A] transition-transform duration-500 ease-out group-focus-within:scale-x-100" />
-          </div>
+          <TableSearch value={searchQuery} onChange={setSearchQuery} width="w-[230px]" />
         </div>
 
       {/* List */}
