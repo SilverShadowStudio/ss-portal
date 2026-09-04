@@ -130,8 +130,17 @@ Deno.serve(async (req) => {
   if (!auth.ok) return auth.response;
 
   try {
-    const { invoiceId } = await req.json();
+    const { invoiceId, recipientEmail } = await req.json();
     if (!invoiceId) throw new Error("invoiceId is required");
+
+    // An admin may aim the invoice at someone other than the account's login
+    // address — the person who actually handles the billing is often not the
+    // person who signs into the portal. Validated here because this is the one
+    // input that decides where a real email lands.
+    const override = typeof recipientEmail === "string" ? recipientEmail.trim() : "";
+    if (override && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(override)) {
+      throw new Error(`Not a valid email address: ${override}`);
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -227,7 +236,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: FROM_ADDRESS,
-        to: [user.email],
+        to: [override || user.email],
         subject,
         html,
       }),
@@ -238,8 +247,8 @@ Deno.serve(async (req) => {
       throw new Error(`Resend error: ${err}`);
     }
 
-    console.log(`[send-invoice-email] Sent ${invoiceNumber} to ${user.email}`);
-    return new Response(JSON.stringify({ ok: true, to: user.email }), {
+    console.log(`[send-invoice-email] Sent ${invoiceNumber} to ${override || user.email}`);
+    return new Response(JSON.stringify({ ok: true, to: override || user.email }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: unknown) {

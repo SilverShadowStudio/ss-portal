@@ -33,7 +33,8 @@ const BANK_ACCOUNTS: BankAccount[] = [
     iban: "GB91 REVO 0099 6974 0692 71",
   },
 ];
-import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2, FolderUp, FilePlus2 } from "lucide-react";
+import { Plus, Search, Download, MoreHorizontal, Eye, CreditCard, Copy, Trash2, FolderUp, FilePlus2, Send } from "lucide-react";
+import { SearchClear } from "@/components/ui/TableToolbar";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { InvoiceFormDialog } from "@/components/admin/InvoiceFormDialog";
 import { InvoiceViewer, type InvoiceViewerData } from "@/components/invoices/InvoiceViewer";
 import {
@@ -93,6 +97,11 @@ export default function AdminInvoices() {
   const [filingId, setFilingId] = useState<string | null>(null);
   const [balanceId, setBalanceId] = useState<string | null>(null);
   const [creatingLinkId, setCreatingLinkId] = useState<string | null>(null);
+  // Sending is irreversible, so it goes through a confirm that names the invoice
+  // and lets the address be redirected before anything leaves.
+  const [sendFor, setSendFor] = useState<InvoiceRow | null>(null);
+  const [sendTo, setSendTo] = useState("");
+  const [sending, setSending] = useState(false);
   const [viewing, setViewing] = useState<InvoiceViewerData | null>(null);
   const [genAccounts, setGenAccounts] = useState<AccountForGenerator[]>([]);
   const [genAccountId, setGenAccountId] = useState<string>("");
@@ -232,6 +241,27 @@ export default function AdminInvoices() {
     }
   }
 
+  async function sendInvoiceEmail() {
+    if (!sendFor) return;
+    setSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-invoice-email", {
+        body: { invoiceId: sendFor.id, recipientEmail: sendTo.trim() || undefined },
+      });
+      // The real reason lives in data.error — error.message is always the same
+      // generic non-2xx string.
+      if (error) throw new Error((data as { error?: string } | null)?.error || error.message);
+      toast({ title: "Invoice sent", description: `Sent to ${(data as { to?: string })?.to ?? "the client"}.` });
+      setSendFor(null);
+      setSendTo("");
+      fetchInvoices();
+    } catch (e) {
+      toast({ title: "Could not send", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function fileToDropbox(r: InvoiceRow) {
     setFilingId(r.id);
     try {
@@ -362,8 +392,10 @@ export default function AdminInvoices() {
             placeholder="Search by number or client"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 pr-9"
           />
+          <SearchClear show={search.length > 0} onClear={() => setSearch("")} size={16}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 hover:text-[#B8434F]" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
@@ -492,6 +524,9 @@ export default function AdminInvoices() {
                               {balance ? "Creating…" : "Send Balance Invoice"}
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem onClick={() => { setSendFor(r); setSendTo(""); }}>
+                            <Send className="mr-2 h-4 w-4" /> Email to client
+                          </DropdownMenuItem>
                           {r.status !== "sent" && (
                             <DropdownMenuItem onClick={() => updateStatus(r.id, "sent")}>Mark as sent</DropdownMenuItem>
                           )}
@@ -521,6 +556,43 @@ export default function AdminInvoices() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Mounted unconditionally — a Dialog nested inside a conditional has no
+          consumer for its open state and the trigger reads as dead. */}
+      <Dialog open={!!sendFor} onOpenChange={(o) => { if (!o && !sending) { setSendFor(null); setSendTo(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Email this invoice</DialogTitle>
+            <DialogDescription>
+              {sendFor
+                ? `${sendFor.invoice_number || sendFor.reference_number || "This invoice"} — ${sendFor.account_company ?? "the client"}. The branded email links back to the portal; it carries no PDF attachment.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-xs text-muted-foreground" htmlFor="send-to">Send to</label>
+            <Input
+              id="send-to"
+              type="email"
+              value={sendTo}
+              onChange={(e) => setSendTo(e.target.value)}
+              placeholder="Leave blank to use the account's login address"
+            />
+            <p className="text-xs text-muted-foreground">
+              Fill this in when the person who handles the billing is not the person who signs in.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setSendFor(null); setSendTo(""); }} disabled={sending}>
+              Cancel
+            </Button>
+            <Button onClick={sendInvoiceEmail} disabled={sending}>
+              {sending ? <BrandLoader size="sm" className="mr-2 h-4 w-4" /> : null}
+              {sending ? "Sending…" : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <InvoiceFormDialog open={createOpen} onOpenChange={setCreateOpen} onSaved={fetchInvoices} />
       <InvoiceViewer
