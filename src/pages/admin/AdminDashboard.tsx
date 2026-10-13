@@ -8,6 +8,7 @@ import { DropboxConnectionStatus } from "@/components/admin/DropboxConnectionSta
 import { AirtableConnectionStatus } from "@/components/admin/AirtableConnectionStatus";
 import { RevolutConnectionStatus } from "@/components/admin/RevolutConnectionStatus";
 import { ActivityLogPreview } from "@/components/admin/ActivityLogPreview";
+import { DocumentInbox } from "@/components/admin/DocumentInbox";
 
 interface DashboardStats {
   activeClients: number;
@@ -110,6 +111,9 @@ export default function AdminDashboard() {
           <span className="text-label-gold text-[#ecd39c]">Studio Overview</span>
         </div>
       </div>
+
+      {/* Document Inbox — drop any document; it is read, renamed and filed to Dropbox. */}
+      <DocumentInbox />
 
       {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
       <div className="mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>

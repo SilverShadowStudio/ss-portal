@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { handleInbox } from './inbox.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -310,6 +311,11 @@ async function callAnthropic(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   if (req.method !== 'POST') return json({ success: false, error: 'Method not allowed' }, 405)
+
+  // Document inbox (?action=inbox) — read, classify, rename and file any
+  // dropped document to Dropbox. Self-contained in inbox.ts with its own auth;
+  // lives here only because the project is at its edge-function limit.
+  if (new URL(req.url).searchParams.get('action') === 'inbox') return handleInbox(req, corsHeaders)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
