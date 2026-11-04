@@ -724,7 +724,9 @@ async function callAnthropic(key: string, system: string, messages: Any[], on?: 
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
       body: JSON.stringify({
-        model: SALES_MODEL, max_tokens: 4000, stream: true,
+        // 16k: thinking and a fan-out of lookups (22 contacts in one go, 4 Nov)
+        // share this budget, and 4k cut a reply off mid-call. A ceiling, not a charge.
+        model: SALES_MODEL, max_tokens: 16000, stream: true,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         tools: CACHED_TOOLS,
         messages: withCacheBreakpoint(messages),
@@ -790,6 +792,12 @@ function matchClient(company: string, clients: ClientRow[]): ClientRow | null {
  *  Their indices are only valid inside the turn that produced them; replayed
  *  later they resolve to nothing and the API rejects the entire request. This
  *  is what un-bricks a thread that already has them stored. */
+/** Drop text blocks with nothing in them; the API refuses them outright. */
+function withoutEmptyText(blocks: Any): Any {
+  if (!Array.isArray(blocks)) return blocks;
+  return blocks.filter((b: Any) => !(b?.type === "text" && !String(b.text ?? "").trim()));
+}
+
 function stripDeadCitations(blocks: Any): Any {
   if (!Array.isArray(blocks)) return blocks;
   return blocks.map((b: Any) => {
@@ -1055,11 +1063,19 @@ Deno.serve(async (req) => {
     for (const b of kept) if (b?.type === "tool_use" && b.id) seenToolUse.add(b.id);
     return { ...m, blocks: kept };
   }).filter((m: Any) => !Array.isArray(m.blocks) || m.blocks.length > 0);
+  // The API rejects the WHOLE conversation over a single empty text block, so
+  // none is ever replayed: empty ones are dropped, and a message left with
+  // nothing (a reply cut off mid-lookup is stored with no blocks and no body)
+  // is skipped rather than padded with "" — padding it is what locked a thread
+  // on 4 Nov with "text content blocks must be non-empty".
   const history: Any[] = cleaned
-    .map((m: Any) => ({
-      role: m.role,
-      content: stripDeadCitations(m.blocks) ?? [{ type: "text", text: m.body ?? "" }],
-    }))
+    .map((m: Any) => {
+      const blocks = withoutEmptyText(stripDeadCitations(m.blocks));
+      const content = Array.isArray(blocks) && blocks.length
+        ? blocks
+        : (typeof m.body === "string" && m.body.trim() ? [{ type: "text", text: m.body }] : null);
+      return { role: m.role, content };
+    })
     .filter((m: Any) => Array.isArray(m.content) && m.content.length > 0);
 
   const messages: Any[] = [...history, { role: "user", content: [{ type: "text", text: message }] }];
@@ -1116,7 +1132,8 @@ Deno.serve(async (req) => {
         input: u.input_tokens ?? 0, cache_read: u.cache_read_input_tokens ?? 0,
         cache_write: u.cache_creation_input_tokens ?? 0, output: u.output_tokens ?? 0,
       }));
-      const content: Any[] = data.content ?? [];
+      // An empty text block stored here would poison every later turn.
+      const content: Any[] = withoutEmptyText(data.content ?? []) as Any[];
 
       messages.push({ role: "assistant", content });
       const { data: stored } = await uc.from("coach_messages").insert({
