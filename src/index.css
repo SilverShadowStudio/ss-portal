@@ -661,3 +661,50 @@ input:-webkit-autofill:active {
   .ssr-panelwrap { padding: 14px; }
   .ssr-panel { margin-left: 0; min-height: 0; }
 }
+
+/* ── Director heartbeat ────────────────────────────────────────────────────
+   The Sales Director's "working" mark: a heart that beats lub-dub, ringed by a
+   halo where the colours chase each other round. One hue number (--dp-h) walks
+   gold → peach → rose → violet → blue → teal and back, never through green.
+   Every colour is drawn in oklch at the same lightness and strength, so the
+   change reads as the light turning, never as a fade into something muddy.
+   Approved by Fred from the heartbeat preview, option C. */
+@property --dp-h { syntax: "<number>"; initial-value: 85; inherits: true; }
+@keyframes dp-journey { from { --dp-h: 85; } to { --dp-h: -170; } }
+@keyframes dp-lubdub { 0%, 42%, 100% { transform: scale(1); } 9% { transform: scale(1.5); } 19% { transform: scale(.95); } 27% { transform: scale(1.32); } }
+@keyframes dp-lub { 0%, 8% { transform: scale(.3); opacity: 0; } 10% { opacity: 1; } 62% { transform: scale(1.3); opacity: 0; } 100% { opacity: 0; } }
+@keyframes dp-dub { 0%, 25% { transform: scale(.3); opacity: 0; } 27% { opacity: .85; } 80% { transform: scale(1.3); opacity: 0; } 100% { opacity: 0; } }
+@keyframes dp-turn { to { transform: rotate(360deg); } }
+
+.director-pulse {
+  --dp-h: 85;
+  position: relative; width: 30px; height: 30px; flex: 0 0 auto;
+  animation: dp-journey 9s ease-in-out infinite alternate;
+}
+.director-pulse > i { position: absolute; border-radius: 50%; }
+.director-pulse .dp-core {
+  left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px;
+  background: radial-gradient(circle at 38% 34%, #fff 0, oklch(.92 .07 var(--dp-h)) 35%, oklch(.78 .15 var(--dp-h)) 100%);
+  box-shadow: 0 0 10px 3px oklch(.75 .16 var(--dp-h) / .65), 0 0 22px 6px oklch(.7 .16 var(--dp-h) / .25);
+  animation: dp-lubdub 1.5s cubic-bezier(.3, .7, .4, 1) infinite;
+}
+.director-pulse .dp-ring { inset: 0; opacity: 0; animation: dp-lub 1.5s ease-out infinite; }
+/* Each ring a step ahead on the journey: the outer one hints at what's next. */
+.director-pulse .dp-ring.one { border: 1.8px solid oklch(.8 .14 calc(var(--dp-h) - 22)); }
+.director-pulse .dp-ring.two { border: 1.4px solid oklch(.8 .14 calc(var(--dp-h) - 44)); animation-name: dp-dub; }
+.director-pulse .dp-halo {
+  inset: -3px;
+  background: conic-gradient(from 0deg,
+    oklch(.82 .13 var(--dp-h) / 0), oklch(.82 .13 var(--dp-h) / .9) 20%,
+    oklch(.8 .14 calc(var(--dp-h) - 60) / .9) 45%, oklch(.8 .14 calc(var(--dp-h) - 120) / .7) 70%,
+    oklch(.8 .14 calc(var(--dp-h) - 160) / 0) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 calc(100% - .8px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 calc(100% - .8px));
+  filter: drop-shadow(0 0 3px oklch(.75 .15 var(--dp-h) / .6));
+  animation: dp-turn 3.2s linear infinite;
+}
+/* Motion-sensitive viewers get the heart and its halo, still. */
+@media (prefers-reduced-motion: reduce) {
+  .director-pulse, .director-pulse > i { animation: none; }
+  .director-pulse .dp-ring.one { opacity: .7; transform: scale(.8); }
+}

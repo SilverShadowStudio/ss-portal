@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ArrowLeft, ArrowUp, Check, X, Plus, MessageSquare, Brain, Link as LinkIcon, Mic, MicOff, Trash2 } from "lucide-react";
 import { BrandLoader } from "@/components/ui/BrandLoader";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 // The Sales Director.
@@ -152,6 +152,49 @@ const TOOL_LABEL: Record<string, string> = {
   web_search: "searched the web",
   web_fetch: "read the page",
 };
+// What the Director is doing right now, for the live status line. Present
+// tense; TOOL_LABEL above is the past-tense record shown once it's done.
+const LIVE_LABEL: Record<string, string> = {
+  search_pipeline: "Searching the pipeline",
+  get_lead: "Reading the lead",
+  pipeline_summary: "Totalling the pipeline",
+  create_lead: "Creating a lead",
+  log_interaction: "Logging it",
+  set_commitment: "Setting a commitment",
+  list_commitments: "Checking what's promised",
+  recent_activity: "Catching up on what happened",
+  list_clients: "Checking the client book",
+  remember: "Committing it to memory",
+  draft_email: "Briefing the copywriter",
+  update_lead: "Preparing the change",
+  web_search: "Searching the web",
+  web_fetch: "Reading the page",
+};
+
+/** A reply as it streams in: one entry per model round, the way the finished
+ *  thread will show it, so nothing jumps when the stored version loads. */
+interface LiveTurn { rounds: { text: string; tools: string[] }[]; status: string | null }
+
+/** The Director's "working" mark — styles in index.css (.director-pulse). */
+function DirectorPulse() {
+  return (
+    <span className="director-pulse" aria-hidden>
+      <i className="dp-halo" /><i className="dp-ring one" /><i className="dp-ring two" /><i className="dp-core" />
+    </span>
+  );
+}
+
+/** Seconds since `since`, ticking on its own so the chat doesn't re-render. */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(t);
+  }, []);
+  const s = Math.max(0, (now - since) / 1000);
+  return <span className="normal-case tracking-normal tabular-nums text-white/45">{s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`}</span>;
+}
+
 const STAGE_LABEL: Record<string, string> = {
   new: "New", contacted: "Contacted", engaged: "Engaged", qualified: "Qualified",
   proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost", dead: "Dead",
@@ -246,6 +289,8 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
   const [input, setInput] = useState("");
   const [booting, setBooting] = useState(true);
   const [thinking, setThinking] = useState(false);
+  const [live, setLive] = useState<LiveTurn | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
   const [picker, setPicker] = useState(false);
   // The standing brief — what the Director carries between conversations.
   const [briefOpen, setBriefOpen] = useState(false);
@@ -312,6 +357,11 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
     if (!booting && items.length) scroll("auto");
   }, [booting, items.length]);
 
+  // Follow the reply down the page as it streams.
+  useEffect(() => {
+    if (live) scroll("auto");
+  }, [live]);
+
   // Company names for the confirmation cards — the model works in ids, Fred doesn't.
   useEffect(() => {
     const missing = [...new Set(actions.map((a) => a.lead_id))].filter((id) => !leadNames[id]);
@@ -331,27 +381,98 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
     // Optimistic echo so the message appears the instant it's sent.
     const temp: Msg = { id: `tmp-${Date.now()}`, role: "user", body: text, blocks: null, created_at: new Date().toISOString() };
     setMsgs((p) => [...p, temp]);
+    setLive({ rounds: [], status: null });
+    setStartedAt(Date.now());
     setThinking(true);
     scroll();
 
-    const { data, error } = await supabase.functions.invoke("sales-coach-chat", {
-      body: { message: text, thread_id: threadId },
-    });
-    setThinking(false);
+    const data = await streamTurn({ message: text, thread_id: threadId });
 
-    if (error || data?.error) {
+    if (data?.error || !data?.thread_id) {
+      setThinking(false);
+      setLive(null);
       setMsgs((p) => p.filter((m) => m.id !== temp.id));
       setInput(text);
-      toast({ title: "The Director didn't answer", description: data?.error ?? error?.message, variant: "destructive" });
+      toast({ title: "The Director didn't answer", description: data?.error ?? "No reply came back.", variant: "destructive" });
       return;
     }
 
-    if (data?.context) setCtx(data.context as Ctx);
+    if (data.context) setCtx(data.context as Ctx);
     // Re-read the thread rather than splicing: the server is the record of
-    // what was actually said and done, including any tool rounds.
+    // what was actually said and done, including any tool rounds. The live
+    // view stays up until it lands, so the swap doesn't flicker.
     await loadThread(data.thread_id);
+    setThinking(false);
+    setLive(null);
     if (!threadId) loadThreads();
     scroll();
+  }
+
+  /** Send a turn and follow it as it happens. The function streams server-sent
+   *  events (round · text · tool, then done or error); invoke() can't read a
+   *  stream, hence the direct fetch. Resolves to the final payload. */
+  async function streamTurn(body: Record<string, unknown>): Promise<Record<string, any> | null> {
+    const { data: { session } } = await supabase.auth.getSession();
+    let res: Response;
+    try {
+      res = await fetch(`${SUPABASE_URL}/functions/v1/sales-coach-chat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...body, stream: true }),
+      });
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Couldn't reach the Director." };
+    }
+    // Anything that fails before the turn starts comes back as plain JSON.
+    if (!res.body || !(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      return await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (value) buf += dec.decode(value, { stream: true });
+      let cut: number;
+      while ((cut = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        const event = frame.match(/^event: (.*)$/m)?.[1];
+        const raw = frame.match(/^data: (.*)$/m)?.[1];
+        if (!event || !raw) continue;
+        let d: any;
+        try { d = JSON.parse(raw); } catch { continue; }
+        if (event === "done" || event === "error") return d;
+        if (event === "round") {
+          setLive((l) => l && { ...l, rounds: [...l.rounds, { text: "", tools: [] }] });
+        } else if (event === "text") {
+          setLive((l) => {
+            if (!l) return l;
+            const rounds = l.rounds.length ? [...l.rounds] : [{ text: "", tools: [] }];
+            const i = rounds.length - 1;
+            rounds[i] = { ...rounds[i], text: rounds[i].text + String(d.text ?? "") };
+            return { rounds, status: null };
+          });
+        } else if (event === "tool") {
+          const name = String(d.name ?? "");
+          setLive((l) => {
+            if (!l) return l;
+            const rounds = l.rounds.length ? [...l.rounds] : [{ text: "", tools: [] }];
+            const i = rounds.length - 1;
+            rounds[i] = { ...rounds[i], tools: [...rounds[i].tools, name] };
+            const label = LIVE_LABEL[name] ?? "Working";
+            return { rounds, status: d.detail ? `${label} · ${d.detail}` : label };
+          });
+        }
+      }
+      if (done) break;
+    }
+    return { error: "The connection dropped before the Director finished. Its reply may still have been saved; reopen the conversation to check." };
   }
 
   async function resolve(a: Action, decision: "confirm" | "decline") {
@@ -579,9 +700,23 @@ export function DirectorChat({ variant = "page", onClose }: ChatProps) {
               )
             )}
 
+            {thinking && live?.rounds.map((r, i) => (r.text || r.tools.length) ? (
+              <div key={`live-${i}`} className="max-w-[85%]">
+                {r.tools.length > 0 && (
+                  <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-white/25">
+                    {[...new Set(r.tools)].map((t) => TOOL_LABEL[t] ?? t).join(" · ")}
+                  </p>
+                )}
+                {r.text && <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-strong">{r.text}</p>}
+              </div>
+            ) : null)}
+
             {thinking && (
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-white/30">
-                <span className="h-1 w-1 animate-pulse rounded-full bg-[#C9A96A]" />Thinking
+              <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] text-white/40" role="status" aria-live="polite">
+                <DirectorPulse />
+                {live?.status ?? (live?.rounds.some((r) => r.text) ? "Writing" : "Thinking")}
+                <span className="text-white/15">·</span>
+                <Elapsed since={startedAt} />
               </div>
             )}
 
