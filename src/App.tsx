@@ -11,6 +11,7 @@ import { ProtectedClient } from "@/components/ProtectedClient";
 import { ManagerOnlyRoute } from "@/components/ManagerOnlyRoute";
 import { NonTeamRoute } from "@/components/NonTeamRoute";
 import { AdminProtectedRoute } from "@/components/AdminProtectedRoute";
+import { SalesProtectedRoute } from "@/components/SalesProtectedRoute";
 import { RootRedirect } from "@/components/RootRedirect";
 import Index from "./pages/Index";
 import Delivery from "./pages/Delivery";
@@ -55,6 +56,7 @@ import AdminSales from "./pages/admin/AdminSales";
 import AdminSalesDebrief from "./pages/admin/AdminSalesDebrief";
 import AdminSalesDirector from "./pages/admin/AdminSalesDirector";
 import AdminSalesCommitments from "./pages/admin/AdminSalesCommitments";
+import AdminSalesKpis from "./pages/admin/AdminSalesKpis";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminEmailPreview from "./pages/admin/AdminEmailPreview";
 import AdminClientActivity from "./pages/admin/AdminClientActivity";
@@ -319,33 +321,41 @@ const App = () => (
             <Route
               path="/admin/sales"
               element={
-                <AdminProtectedRoute>
+                <SalesProtectedRoute>
                   <AdminSales />
-                </AdminProtectedRoute>
+                </SalesProtectedRoute>
               }
             />
             <Route
               path="/admin/sales/commitments"
               element={
-                <AdminProtectedRoute>
+                <SalesProtectedRoute>
                   <AdminSalesCommitments />
-                </AdminProtectedRoute>
+                </SalesProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/sales/kpis"
+              element={
+                <SalesProtectedRoute>
+                  <AdminSalesKpis />
+                </SalesProtectedRoute>
               }
             />
             <Route
               path="/admin/sales/director"
               element={
-                <AdminProtectedRoute>
+                <SalesProtectedRoute>
                   <AdminSalesDirector />
-                </AdminProtectedRoute>
+                </SalesProtectedRoute>
               }
             />
             <Route
               path="/admin/sales/:leadId/debrief"
               element={
-                <AdminProtectedRoute>
+                <SalesProtectedRoute>
                   <AdminSalesDebrief />
-                </AdminProtectedRoute>
+                </SalesProtectedRoute>
               }
             />
             <Route

@@ -52,13 +52,15 @@ export default function Auth() {
       const { data } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", userId)
-        .maybeSingle();
+        .eq("user_id", userId);
+      const roles = ((data ?? []) as { role: string }[]).map((r) => r.role);
 
       if (fromPath && fromPath !== "/auth") {
         setRedirectPath(fromPath);
-      } else if (data?.role === "admin") {
+      } else if (roles.includes("admin")) {
         setRedirectPath("/admin");
+      } else if (roles.includes("sales") || roles.includes("sales_manager")) {
+        setRedirectPath("/admin/sales");
       } else {
         setRedirectPath("/portfolio");
       }

@@ -8,8 +8,9 @@ import { usePendingLeaveCount } from "@/hooks/usePendingLeaveCount";
 import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
-  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare, MonitorDown,
+  Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare, MonitorDown, BarChart3,
 } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 import { usePWAInstall } from "@/components/PWAInstallPrompt";
 
@@ -44,6 +45,7 @@ const SECTIONS: SidebarNavSection[] = [
       { path: "/admin/sales", label: "Sales", Icon: Target, matchActive: (p) => p === "/admin/sales" },
       { path: "/admin/sales/director", label: "Director", Icon: MessageSquare, indent: true },
       { path: "/admin/sales/commitments", label: "Commitments", Icon: ListChecks, indent: true },
+      { path: "/admin/sales/kpis", label: "KPIs", Icon: BarChart3, indent: true },
     ],
   },
   {
@@ -76,6 +78,11 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   const dueOverheadsCount = useDueOverheadsCount();
   const pendingLeaveCount = usePendingLeaveCount();
   const { canInstall, isInstalled, promptInstall } = usePWAInstall();
+  // A sales rep sees the Sales group and nothing else. The other pages are
+  // also closed to them at the route (AdminProtectedRoute) and in the
+  // database (RLS); this just stops the sidebar offering doors that won't open.
+  const { isAdmin, isSales } = useUserRole();
+  const salesOnly = !isAdmin && isSales;
 
   useEffect(() => {
     if (!user) return;
@@ -93,7 +100,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   };
 
   // Attach the live badges: new-clients on Clients, due-overheads on Expenses.
-  const sections: SidebarNavSection[] = SECTIONS.map((section) => ({
+  const visibleSections = salesOnly
+    ? SECTIONS.filter((section) => section.items.some((item) => item.path.startsWith("/admin/sales")))
+    : SECTIONS;
+  const sections: SidebarNavSection[] = visibleSections.map((section) => ({
     ...section,
     items: section.items.map((item) => {
       if (item.path === "/admin/clients") {
@@ -118,7 +128,10 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     ...(canInstall && !isInstalled
       ? [{ label: "Install as app", onClick: () => { void promptInstall(); }, Icon: MonitorDown } as SidebarAccountMenuItem]
       : []),
-    { label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true, Icon: Settings },
+    // Admin settings are studio-wide; a rep has no business there.
+    ...(salesOnly
+      ? []
+      : [{ label: "Settings", onClick: () => navigate("/admin/settings"), active: location.pathname.startsWith("/admin/settings"), separatorAfter: true, Icon: Settings } as SidebarAccountMenuItem]),
     { label: "Log off", onClick: handleSignOut, Icon: LogOut },
   ];
 
@@ -126,7 +139,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
     profile?.full_name ||
     user?.user_metadata?.full_name ||
-    "Admin";
+    (salesOnly ? "Sales" : "Admin");
 
   const initials = profile?.first_name
     ? `${profile.first_name[0]}${profile?.last_name?.[0] ?? ""}`.toUpperCase()
@@ -137,7 +150,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
       sections={sections}
       accountMenuItems={accountMenuItems}
       accountDisplayName={displayName}
-      accountSubLabel="Admin"
+      accountSubLabel={salesOnly ? "Sales" : "Admin"}
       accountInitials={initials}
       expanded={expanded}
       onToggleExpand={onToggleExpand}

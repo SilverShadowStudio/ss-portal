@@ -29,6 +29,7 @@
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { loadSalesCaller, callerPreamble } from "../_shared/salesCaller.ts";
 import {
   SALES_MODEL, ANTHROPIC_VERSION, ANTHROPIC_MESSAGES_URL, TRANSIENT_STATUSES,
 } from "../_shared/anthropicModel.ts";
@@ -1092,7 +1093,10 @@ Deno.serve(async (req) => {
 
   const { data: stageRows } = await uc.from("pipeline_stages").select("key, label").order("sort_order");
   const stageList = (stageRows ?? []).map((s: Any) => s.key).join(" → ");
-  const system = systemPrompt(new Date().toISOString().slice(0, 10), stageList, mem.brief, mem.summary);
+  // A rep is not Fred: the preamble says who is really here (empty for Fred,
+  // so his prompt, and its cache, are unchanged).
+  const caller = await loadSalesCaller(admin, user.id);
+  const system = callerPreamble(caller) + systemPrompt(new Date().toISOString().slice(0, 10), stageList, mem.brief, mem.summary);
 
   // ── Tool loop ──────────────────────────────────────────────────────────────
   // One runner for both callers. `emit` reports progress as it happens — each

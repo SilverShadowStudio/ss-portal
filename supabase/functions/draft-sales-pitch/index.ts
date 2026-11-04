@@ -102,14 +102,16 @@ Deno.serve(async (req) => {
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) return json({ error: "Anthropic API key not configured" }, 500);
 
-  // Admin gate
+  // Sales gate: admins, sales managers and sales reps (reps are NOT admins).
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
   const uc = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
   const { data: { user } } = await uc.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: role } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle();
-  if (!role) return json({ error: "Forbidden — admin only" }, 403);
+  const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles ?? []).some((r: { role: string }) => ["admin", "sales_manager", "sales"].includes(r.role))) {
+    return json({ error: "Forbidden — sales access required" }, 403);
+  }
 
   const b = await req.json().catch(() => ({} as Record<string, string>));
   const facts = [

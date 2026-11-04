@@ -28,7 +28,8 @@ interface Lead {
   website: string | null;
   phone: string | null;
   segment: string | null;
-  status: string;
+  stage: string;
+  outcome: string | null;
   notes: string | null;
   pitch_subject: string | null;
   pitch_draft: string | null;
@@ -40,12 +41,39 @@ interface Lead {
   win_probability: number | null;
 }
 
-const STATUSES = ["new", "contacted", "replied", "meeting", "proposal", "won", "lost"] as const;
-const STATUS_LABEL: Record<string, string> = { new: "New", contacted: "Contacted", replied: "Replied", meeting: "Meeting", proposal: "Proposal", won: "Won", lost: "Lost" };
-const STATUS_CLS: Record<string, string> = {
-  new: "text-white/50", contacted: "text-[#C9A96A]", replied: "text-[#ecd39c]",
-  meeting: "text-sky-400", proposal: "text-amber-400", won: "text-emerald-400", lost: "text-white/30",
+// ONE pipeline field: `stage`, the same one the Director, the debrief, the lead
+// history and the KPIs read. This list used to edit the older `status` column,
+// which nothing else read, so a lead could say Meeting here and New everywhere
+// else. Keys match the seeded public.pipeline_stages table.
+const STAGES = ["new", "contacted", "engaged", "qualified", "proposal", "negotiation", "won", "lost", "dead"] as const;
+const STAGE_LABEL: Record<string, string> = {
+  new: "New", contacted: "Contacted", engaged: "Engaged", qualified: "Qualified", proposal: "Proposal",
+  negotiation: "Negotiation", won: "Won", lost: "Lost", dead: "Dead",
 };
+const STAGE_CLS: Record<string, string> = {
+  new: "text-white/50", contacted: "text-[#C9A96A]", engaged: "text-[#ecd39c]", qualified: "text-sky-400",
+  proposal: "text-amber-400", negotiation: "text-amber-300", won: "text-emerald-400", lost: "text-white/30", dead: "text-white/20",
+};
+const TERMINAL = new Set(["won", "lost", "dead"]);
+// The legacy `status` column is still written, mapped, so anything outside the
+// app that reads it stays roughly right. Nothing in the app reads it any more.
+const LEGACY_STATUS: Record<string, string> = {
+  new: "new", contacted: "contacted", engaged: "replied", qualified: "meeting",
+  proposal: "proposal", negotiation: "proposal", won: "won", lost: "lost", dead: "lost",
+};
+/** The fields to write when a lead moves to `stage`. A closed stage also sets
+ *  the outcome (which the Director's pipeline figures go by); reopening clears it. */
+function stagePatch(stage: string, prevOutcome: string | null) {
+  const closed = TERMINAL.has(stage);
+  return {
+    stage,
+    status: LEGACY_STATUS[stage] ?? "new",
+    outcome: closed ? stage : null,
+    ...(closed
+      ? (prevOutcome === stage ? {} : { closed_at: new Date().toISOString() })
+      : { closed_at: null }),
+  };
+}
 const money = (n: number) => "£" + new Intl.NumberFormat("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n || 0));
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const num = (v: string) => { const n = parseFloat(String(v).replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
@@ -69,8 +97,8 @@ function parseCSV(text: string): string[][] {
 }
 const isoOrNull = (v: string) => { const t = Date.parse(v); return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10); };
 // Call-first priority from your own CSV grouping.
-function segRank(r: { segment: string | null; status: string }): number {
-  if (r.status === "lost") return 9;
+function segRank(r: { segment: string | null; stage: string }): number {
+  if (r.stage === "lost" || r.stage === "dead") return 9;
   const s = (r.segment ?? "").toUpperCase();
   if (s.includes("NOW")) return 0;
   if (s.includes("CURRENT")) return 1;
@@ -78,7 +106,7 @@ function segRank(r: { segment: string | null; status: string }): number {
   return 4;
 }
 
-const EMPTY = { company: "", contact_name: "", email: "", role: "", sector: "", country: "", website: "", status: "new", notes: "", value_estimate: "", next_action_at: "" };
+const EMPTY = { company: "", contact_name: "", email: "", role: "", sector: "", country: "", website: "", stage: "new", notes: "", value_estimate: "", next_action_at: "" };
 
 export default function AdminSales() {
   const { toast } = useToast();
@@ -108,7 +136,7 @@ export default function AdminSales() {
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("leads")
-      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, status, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url, win_probability")
+      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, stage, outcome, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url, win_probability")
       .order("next_action_at", { ascending: true, nullsFirst: false });
     setRows((data ?? []) as Lead[]);
     setLoading(false);
@@ -118,8 +146,8 @@ export default function AdminSales() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (statusFilter === "open" && (r.status === "won" || r.status === "lost")) return false;
-      if (statusFilter !== "open" && statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (statusFilter === "open" && TERMINAL.has(r.stage)) return false;
+      if (statusFilter !== "open" && statusFilter !== "all" && r.stage !== statusFilter) return false;
       if (q && !`${r.company} ${r.contact_name ?? ""} ${r.email ?? ""} ${r.country ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -131,7 +159,7 @@ export default function AdminSales() {
     { id: "company", accessor: (r) => r.company, type: "text" },
     { id: "contact", accessor: (r) => r.contact_name ?? "", type: "text" },
     { id: "country", accessor: (r) => r.country ?? "", type: "text" },
-    { id: "status", accessor: (r) => STATUSES.indexOf(r.status as typeof STATUSES[number]), type: "number" },
+    { id: "status", accessor: (r) => STAGES.indexOf(r.stage as typeof STAGES[number]), type: "number" },
     // A lead with no chase date sorts last in both directions — it never pushes
     // a dated lead down the list. (Tried the opposite on 5 Aug 2026, ranking
     // blanks with the oldest; Fred reverted it — the dates are the work.)
@@ -142,7 +170,7 @@ export default function AdminSales() {
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Lead>(filtered, COLUMNS, { key: "priority", dir: "asc" });
 
   // Summary
-  const open = rows.filter((r) => r.status !== "won" && r.status !== "lost");
+  const open = rows.filter((r) => !TERMINAL.has(r.stage));
   const withEmail = rows.filter((r) => r.email && r.email.includes("@")).length;
   // Local date, not UTC: toISOString() would still say yesterday between
   // midnight and 01:00 BST, and this decides which row is marked today.
@@ -174,7 +202,7 @@ export default function AdminSales() {
     setEditId(r.id);
     setForm({
       company: r.company, contact_name: r.contact_name ?? "", email: r.email ?? "", role: r.role ?? "",
-      sector: r.sector ?? "", country: r.country ?? "", website: r.website ?? "", status: r.status,
+      sector: r.sector ?? "", country: r.country ?? "", website: r.website ?? "", stage: r.stage,
       notes: r.notes ?? "", value_estimate: r.value_estimate != null ? String(r.value_estimate) : "", next_action_at: r.next_action_at ?? "",
     });
     setEditOpen(true);
@@ -185,20 +213,32 @@ export default function AdminSales() {
     const patch = {
       company: form.company.trim(), contact_name: form.contact_name.trim() || null, email: form.email.trim() || null,
       role: form.role.trim() || null, sector: form.sector.trim() || null, country: form.country.trim() || null,
-      website: form.website.trim() || null, status: form.status, notes: form.notes.trim() || null,
+      website: form.website.trim() || null, notes: form.notes.trim() || null,
       value_estimate: form.value_estimate.trim() ? num(form.value_estimate) : null, next_action_at: form.next_action_at || null,
+      ...stagePatch(form.stage, editId ? rows.find((r) => r.id === editId)?.outcome ?? null : null),
     };
     const { error } = editId
       ? await supabase.from("leads").update(patch).eq("id", editId)
-      : await supabase.from("leads").insert({ ...patch, created_by: (await supabase.auth.getUser()).data.user?.id ?? null });
+      : await (async () => {
+          // owner_id is NOT NULL and RLS lets a rep write only rows she owns,
+          // so a new lead belongs to whoever adds it. Without it the insert
+          // failed for everyone; only Director-created leads ever saved.
+          const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+          return supabase.from("leads").insert({ ...patch, created_by: uid, owner_id: uid });
+        })();
     setSaving(false);
     if (error) { toast({ title: "Couldn't save", description: error.message, variant: "destructive" }); return; }
     toast({ title: editId ? "Lead updated" : "Lead added" });
     setEditOpen(false); load();
   }
-  async function quickStatus(r: Lead, status: string) {
-    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, status } : x));
-    await supabase.from("leads").update({ status }).eq("id", r.id);
+  async function quickStage(r: Lead, stage: string) {
+    const patch = stagePatch(stage, r.outcome);
+    setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, stage, outcome: patch.outcome } : x));
+    const { error } = await supabase.from("leads").update(patch).eq("id", r.id);
+    if (error) {
+      setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, stage: r.stage, outcome: r.outcome } : x));
+      toast({ title: "Couldn't change the stage", description: error.message, variant: "destructive" });
+    }
   }
   async function removeLead(r: Lead) {
     if (!window.confirm(`Remove ${r.company} from your leads?`)) return;
@@ -250,11 +290,12 @@ export default function AdminSales() {
           company: company || email, contact_name: contact || null, email: email || null,
           role: g(row, iTitle) || null, website: web || null, country: g(row, iCountry) || null,
           phone: phone || null, segment: section || null,
-          sector: importSector.trim() || null, status: isDead ? "lost" : "new", notes: notesParts || null,
+          sector: importSector.trim() || null, ...stagePatch(isDead ? "dead" : "new", null), notes: notesParts || null,
           value_estimate: g(row, iRev) ? num(g(row, iRev)) : (g(row, iPot) ? num(g(row, iPot)) : null),
           next_action_at: iNext >= 0 ? isoOrNull(g(row, iNext)) : null,
           last_contacted_at: iLast >= 0 && isoOrNull(g(row, iLast)) ? new Date(isoOrNull(g(row, iLast))!).toISOString() : null,
           created_by: uid,
+          owner_id: uid,
         });
       }
       if (toInsert.length === 0) { toast({ title: "Nothing new to import", description: `${skipped} rows skipped (separators/duplicates).` }); setImporting(false); return; }
@@ -299,7 +340,11 @@ export default function AdminSales() {
   }
   async function markContacted() {
     if (!pitch) return;
-    await supabase.from("leads").update({ status: "contacted", last_contacted_at: new Date().toISOString() }).eq("id", pitch.lead.id);
+    // Only a New lead moves to Contacted; one already further on keeps its stage.
+    await supabase.from("leads").update({
+      ...(pitch.lead.stage === "new" ? stagePatch("contacted", pitch.lead.outcome) : {}),
+      last_contacted_at: new Date().toISOString(),
+    }).eq("id", pitch.lead.id);
     setPitch(null); load();
   }
 
@@ -343,7 +388,7 @@ export default function AdminSales() {
               <TableSearch value={search} onChange={setSearch} placeholder="Search company, contact, country…" />
               <TableFilterSelect value={statusFilter} onChange={setStatusFilter} width="w-[150px]" options={[
                 { value: "open", label: "Open" }, { value: "all", label: "All" },
-                ...STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] })),
+                ...STAGES.map((s) => ({ value: s, label: STAGE_LABEL[s] })),
               ]} />
             </TableToolbar>
             <div className="ssr-tile overflow-x-auto">
@@ -353,7 +398,7 @@ export default function AdminSales() {
                     <SortTh id="company" label="Company" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="contact" label="Contact" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="country" label="Country" activeKey={sortKey} dir={sortDir} onClick={toggle} />
-                    <SortTh id="status" label="Status" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    <SortTh id="status" label="Stage" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="next" label="Chase" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="value" label="Value" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
                     <th className="px-4 py-3" />
@@ -440,8 +485,8 @@ export default function AdminSales() {
                       </td>
                       <td className="px-4 py-3 text-standard">{r.country ?? "—"}</td>
                       <td className="px-4 py-3">
-                        <select value={r.status} onChange={(e) => quickStatus(r, e.target.value)} className={`bg-transparent text-[11px] uppercase tracking-[0.14em] focus:outline-none cursor-pointer ${STATUS_CLS[r.status] ?? "text-white/50"}`}>
-                          {STATUSES.map((s) => <option key={s} value={s} className="bg-background text-foreground">{STATUS_LABEL[s]}</option>)}
+                        <select value={r.stage} onChange={(e) => quickStage(r, e.target.value)} className={`bg-transparent text-[11px] uppercase tracking-[0.14em] focus:outline-none cursor-pointer ${STAGE_CLS[r.stage] ?? "text-white/50"}`}>
+                          {STAGES.map((s) => <option key={s} value={s} className="bg-background text-foreground">{STAGE_LABEL[s]}</option>)}
                         </select>
                       </td>
                       {/* Today is green — the one you act on now. Overdue stays gold, so the
@@ -530,10 +575,10 @@ export default function AdminSales() {
             <div className="space-y-1.5"><Label>Sector</Label><Input value={form.sector} onChange={(e) => setForm((f) => ({ ...f, sector: e.target.value }))} className="rounded-sm" /></div>
             <div className="space-y-1.5"><Label>Country</Label><Input value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} className="rounded-sm" /></div>
             <div className="space-y-1.5"><Label>Website</Label><Input value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} className="rounded-sm" /></div>
-            <div className="space-y-1.5"><Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+            <div className="space-y-1.5"><Label>Stage</Label>
+              <Select value={form.stage} onValueChange={(v) => setForm((f) => ({ ...f, stage: v }))}>
                 <SelectTrigger className="rounded-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>{STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}</SelectContent>
+                <SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{STAGE_LABEL[s]}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5"><Label>Potential value (£)</Label><Input inputMode="decimal" value={form.value_estimate} onChange={(e) => setForm((f) => ({ ...f, value_estimate: e.target.value }))} className="rounded-sm" /></div>

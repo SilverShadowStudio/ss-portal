@@ -16,6 +16,7 @@
 // Deploy: npx supabase functions deploy sales-email-ingest \
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
+import { loadSalesCaller, callerPreamble } from "../_shared/salesCaller.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   SALES_MODEL, ANTHROPIC_VERSION, ANTHROPIC_MESSAGES_URL, TRANSIENT_STATUSES,
@@ -66,6 +67,8 @@ Deno.serve(async (req) => {
   if (!(roles ?? []).some((r: { role: string }) => ["admin", "sales_manager", "sales"].includes(r.role))) {
     return json({ error: "Forbidden — sales access required" }, 403);
   }
+  // Outbound = sent by the studio, which includes a rep's own emails.
+  const caller = await loadSalesCaller(admin, user.id);
 
   const b = await req.json().catch(() => ({} as Record<string, unknown>));
   const leadId = typeof b.lead_id === "string" ? b.lead_id : "";
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
       body: JSON.stringify({
-        model: SALES_MODEL, max_tokens: 4000, system: SYSTEM,
+        model: SALES_MODEL, max_tokens: 4000, system: callerPreamble(caller) + SYSTEM,
         messages: [{ role: "user", content: `Split this into individual emails.\n\n"""\n${raw.slice(0, 60000)}\n"""\n\nReturn the JSON now.` }],
       }),
     });

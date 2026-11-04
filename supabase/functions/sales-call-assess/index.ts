@@ -15,6 +15,7 @@
 // Deploy: npx supabase functions deploy sales-call-assess \
 //           --project-ref oodhsoiwnqxcimzmzick --no-verify-jwt
 
+import { loadSalesCaller, callerPreamble } from "../_shared/salesCaller.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   SALES_MODEL, ANTHROPIC_VERSION, ANTHROPIC_MESSAGES_URL, TRANSIENT_STATUSES,
@@ -87,6 +88,8 @@ Deno.serve(async (req) => {
   if (!(roles ?? []).some((r: { role: string }) => ["admin", "sales_manager", "sales"].includes(r.role))) {
     return json({ error: "Forbidden — sales access required" }, 403);
   }
+  // Whose call this is: a rep's calls are graded as hers, not Fred's.
+  const caller = await loadSalesCaller(admin, user.id);
 
   const b = await req.json().catch(() => ({} as Record<string, unknown>));
 
@@ -142,7 +145,7 @@ Return the JSON now.`;
     const r = await fetch(ANTHROPIC_MESSAGES_URL, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
-      body: JSON.stringify({ model: SALES_MODEL, max_tokens: 2500, system: SYSTEM, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: SALES_MODEL, max_tokens: 2500, system: callerPreamble(caller) + SYSTEM, messages: [{ role: "user", content: prompt }] }),
     });
     if (r.ok) { res = r; break; }
     lastStatus = r.status; lastBody = await r.text().catch(() => "");

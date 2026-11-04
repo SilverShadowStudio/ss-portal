@@ -7,6 +7,7 @@ import { BrandLoader } from "@/components/ui/BrandLoader";
 /**
  * Root route redirector. Sends authenticated users to the right home:
  *   • admins → /admin
+ *   • sales reps / sales managers → /admin/sales (the only admin pages they can open)
  *   • team members → /earnings
  *   • clients → /portfolio
  * Unauthenticated users go to /auth.
@@ -23,11 +24,15 @@ export function RootRedirect() {
     let cancelled = false;
     (async () => {
       const [{ data: roleData }, { data: memberData }] = await Promise.all([
-        supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", user.id),
         supabase.from("account_members").select("accounts(account_type, employment_type)").eq("user_id", user.id).maybeSingle(),
       ]);
       if (cancelled) return;
-      if (roleData?.role === "admin") { setTarget("/admin"); return; }
+      // Read every role row: a rep can carry a leftover team or client row,
+      // and maybeSingle() errors (and returns nothing) on more than one.
+      const roles = ((roleData ?? []) as { role: string }[]).map((r) => r.role);
+      if (roles.includes("admin")) { setTarget("/admin"); return; }
+      if (roles.includes("sales") || roles.includes("sales_manager")) { setTarget("/admin/sales"); return; }
       const account = (memberData as { accounts?: { account_type?: string; employment_type?: string } } | null)?.accounts;
       if (account?.account_type === "team") {
         // Employees have no Earnings page — send them to Documents.
