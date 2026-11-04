@@ -33,11 +33,22 @@ import {
   SALES_MODEL, ANTHROPIC_VERSION, ANTHROPIC_MESSAGES_URL, TRANSIENT_STATUSES,
 } from "../_shared/anthropicModel.ts";
 import { SALES_VOICE } from "../_shared/salesVoice.ts";
+import { readStream, type Completion, type StreamEvent } from "../_shared/anthropicStream.ts";
 
 const MAX_ROUNDS = 6;          // tool round-trips before we stop and answer
 const KEEP_TAIL = 20;          // recent messages always replayed verbatim
 const COMPACT_AT = 32;         // un-summarised messages that trigger a fold
+const COMPACT_LAG = 16;        // how far past COMPACT_AT before the fold runs in-line again
 const BRIEF_MAX = 2400;        // hard ceiling on the standing brief
+
+// Supabase's edge runtime keeps a promise alive after the response has gone.
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+
+/** Work that must finish but must not hold up the reply. */
+function inBackground(p: Promise<unknown>) {
+  const guarded = p.catch((e) => console.error("[sales-coach-chat] background:", e));
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(guarded);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -681,20 +692,59 @@ async function runTool(
   }
 }
 
-async function callAnthropic(key: string, system: string, messages: Any[]): Promise<Response | { err: string }> {
-  let lastStatus = 0, lastBody = "";
+// Prompt caching. The tools, the system prompt and the conversation so far are
+// identical on every round of a turn — and on the next turn too, up to the new
+// message — so they are marked cacheable rather than re-read from scratch on
+// each call. Three of the four allowed breakpoints: the last client tool, the
+// system prompt, and the tip of the conversation.
+const CACHED_TOOLS: Any[] = [
+  ...(TOOLS as Any[]).slice(0, -1),
+  { ...(TOOLS as Any[])[TOOLS.length - 1], cache_control: { type: "ephemeral" } },
+  ...SERVER_TOOLS,
+];
+const CACHEABLE_BLOCKS = new Set(["text", "tool_result", "tool_use", "image", "document"]);
+
+/** The request copy of the conversation, with a breakpoint on its last block.
+ *  A copy — the stored blocks never carry cache_control. */
+function withCacheBreakpoint(messages: Any[]): Any[] {
+  const last = messages[messages.length - 1];
+  const content = Array.isArray(last?.content) ? last.content : null;
+  const tip = content?.[content.length - 1];
+  if (!tip || !CACHEABLE_BLOCKS.has(tip.type)) return messages;
+  return [
+    ...messages.slice(0, -1),
+    { ...last, content: [...content!.slice(0, -1), { ...tip, cache_control: { type: "ephemeral" } }] },
+  ];
+}
+
+async function callAnthropic(key: string, system: string, messages: Any[], on?: (e: StreamEvent) => void): Promise<Completion | { err: string }> {
+  let lastErr = "";
   for (let i = 0; i < 3; i++) {
     const r = await fetch(ANTHROPIC_MESSAGES_URL, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
-      body: JSON.stringify({ model: SALES_MODEL, max_tokens: 4000, system, tools: [...TOOLS, ...SERVER_TOOLS], messages }),
+      body: JSON.stringify({
+        model: SALES_MODEL, max_tokens: 4000, stream: true,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        tools: CACHED_TOOLS,
+        messages: withCacheBreakpoint(messages),
+      }),
     });
-    if (r.ok) return r;
-    lastStatus = r.status; lastBody = await r.text().catch(() => "");
-    if (!TRANSIENT_STATUSES.includes(r.status) || i === 2) break;
+    if (r.ok && r.body) {
+      const out = await readStream(r.body, on);
+      if (!("err" in out)) return out;
+      lastErr = out.err;
+      // An overload that lands before a word was shown can be retried like a
+      // 529; once text is on Fred's screen a retry would say it twice.
+      if (!out.retryable || out.emitted || i === 2) break;
+    } else {
+      const body = await r.text().catch(() => "");
+      lastErr = `upstream ${r.status}: ${body.replace(/\s+/g, " ").slice(0, 240)}`;
+      if (!TRANSIENT_STATUSES.includes(r.status) || i === 2) break;
+    }
     await new Promise((rs) => setTimeout(rs, 500 * 2 ** i + Math.floor(Math.random() * 300)));
   }
-  return { err: `upstream ${lastStatus}: ${lastBody.replace(/\s+/g, " ").slice(0, 240)}` };
+  return { err: lastErr };
 }
 
 const textOf = (blocks: Any[]): string =>
@@ -953,11 +1003,18 @@ Deno.serve(async (req) => {
     brief: (briefRow?.brief as string | null) ?? "",
     through: Number(threadRow?.summary_through_seq ?? 0),
   };
-  // Fold the old part away once the tail gets long. Failure here degrades to
-  // "no compaction" — it never costs a turn.
-  try {
-    mem = await compact(uc, anthropicKey, threadId, user.id, mem.through, mem.summary, mem.brief);
-  } catch { /* keep the un-compacted memory */ }
+  // Folding the old part away is a model call of its own, so it now runs AFTER
+  // the reply, in the background (compactLatest, below) — it used to sit in
+  // front of the answer and was behind the slowest turns. It only runs in-line
+  // when the background fold evidently didn't happen and the tail has run well
+  // past the threshold. Failure degrades to "no compaction"; it never costs a turn.
+  const { count: unsummarised } = await uc.from("coach_messages")
+    .select("id", { count: "exact", head: true }).eq("thread_id", threadId).gt("seq", mem.through);
+  if ((unsummarised ?? 0) > COMPACT_AT + COMPACT_LAG) {
+    try {
+      mem = await compact(uc, anthropicKey, threadId, user.id, mem.through, mem.summary, mem.brief);
+    } catch { /* keep the un-compacted memory */ }
+  }
 
   // Replay the tail verbatim — the stored blocks ARE the wire format. Anything
   // older than summary_through_seq now lives in mem.summary instead.
@@ -1022,107 +1079,180 @@ Deno.serve(async (req) => {
   const system = systemPrompt(new Date().toISOString().slice(0, 10), stageList, mem.brief, mem.summary);
 
   // ── Tool loop ──────────────────────────────────────────────────────────────
-  const used: string[] = [];
-  const allQueued: Any[] = [];
-  let reply = "";
-  let lastStored: string | null = null;
-  let lastInputTokens = 0;
+  // One runner for both callers. `emit` reports progress as it happens — each
+  // model round starting, text as it's written, each tool as it's called — and
+  // is a no-op for the plain JSON caller.
+  type Emit = (event: string, data: unknown) => void;
+  const key = anthropicKey;
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    const res = await callAnthropic(anthropicKey, system, messages);
-    if ("err" in res) {
-      // Nothing came of this turn, so it leaves no trace. The message is handed
-      // back to the composer instead.
-      if (round === 0) await rollbackUserTurn();
-      return json({ thread_id: threadId, error: `The Director is unavailable (${res.err})` }, 200);
-    }
-    const data = await res.json();
-    lastInputTokens = Number(data.usage?.input_tokens) || lastInputTokens;
-    const content: Any[] = data.content ?? [];
+  const runTurn = async (emit: Emit): Promise<Record<string, unknown>> => {
+    const used: string[] = [];
+    const allQueued: Any[] = [];
+    let reply = "";
+    let lastStored: string | null = null;
+    let lastInputTokens = 0;
 
-    messages.push({ role: "assistant", content });
-    const { data: stored } = await uc.from("coach_messages").insert({
-      thread_id: threadId, owner_id: user.id, role: "assistant",
-      body: textOf(content) || null, blocks: content,
-    }).select("id").single();
-    lastStored = stored?.id ?? null;
-
-    // A long-running search pauses the turn. The only correct continuation is
-    // to send the assistant message back untouched and go round again.
-    if (data.stop_reason === "pause_turn") {
-      if (round === MAX_ROUNDS - 1) reply = textOf(content);
-      continue;
-    }
-
-    // Only CLIENT tools need executing — server_tool_use (web search/fetch) is
-    // run by Anthropic and its results are already in the content we just stored.
-    const toolUses = content.filter((c: Any) => c?.type === "tool_use");
-    if (!toolUses.length || data.stop_reason !== "tool_use") {
-      // We're stopping without running these. A stored tool_use with no
-      // tool_result after it makes the API reject the WHOLE conversation on
-      // every later turn — so the calls that never happened are not recorded.
-      // (This fires when a reply is cut off mid-tool-call: stop_reason is
-      // max_tokens, but the partial tool_use blocks are still in the content.)
-      if (toolUses.length && lastStored) {
-        const textOnly = content.filter((c: Any) => c?.type === "text");
-        await uc.from("coach_messages")
-          .update({ blocks: textOnly.length ? textOnly : null })
-          .eq("id", lastStored);
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      emit("round", { n: round });
+      const t0 = Date.now();
+      const res = await callAnthropic(key, system, messages, (e) => {
+        if (e.kind === "text") emit("text", { text: e.text });
+        else emit("tool", { name: e.name, detail: toolDetail(e.input) });
+      });
+      if ("err" in res) {
+        // Nothing came of this turn, so it leaves no trace. The message is handed
+        // back to the composer instead.
+        if (round === 0) await rollbackUserTurn();
+        return { thread_id: threadId, error: `The Director is unavailable (${res.err})` };
       }
-      reply = textOf(content);
-      break;
-    }
+      const data = res;
+      const u = data.usage ?? {};
+      // With caching, input_tokens counts only the uncached part — the context
+      // gauge wants the whole prompt.
+      lastInputTokens = (Number(u.input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0)
+        + (Number(u.cache_creation_input_tokens) || 0) || lastInputTokens;
+      console.log(JSON.stringify({
+        fn: "sales-coach-chat", round, ms: Date.now() - t0, stop: data.stop_reason,
+        input: u.input_tokens ?? 0, cache_read: u.cache_read_input_tokens ?? 0,
+        cache_write: u.cache_creation_input_tokens ?? 0, output: u.output_tokens ?? 0,
+      }));
+      const content: Any[] = data.content ?? [];
 
-    const results: Any[] = [];
-    for (const t of toolUses) {
-      used.push(t.name);
-      let out: { result: Any; queued: Any[] };
-      try {
-        out = await runTool(t.name, t.input ?? {}, uc, threadId, user.id, authHeader);
-      } catch (e) {
-        out = { result: { error: String((e as Error).message ?? e).slice(0, 300) }, queued: [] };
+      messages.push({ role: "assistant", content });
+      const { data: stored } = await uc.from("coach_messages").insert({
+        thread_id: threadId, owner_id: user.id, role: "assistant",
+        body: textOf(content) || null, blocks: content,
+      }).select("id").single();
+      lastStored = stored?.id ?? null;
+
+      // A long-running search pauses the turn. The only correct continuation is
+      // to send the assistant message back untouched and go round again.
+      if (data.stop_reason === "pause_turn") {
+        if (round === MAX_ROUNDS - 1) reply = textOf(content);
+        continue;
       }
-      allQueued.push(...out.queued);
-      results.push({ type: "tool_result", tool_use_id: t.id, content: JSON.stringify(out.result).slice(0, 20000) });
+
+      // Only CLIENT tools need executing — server_tool_use (web search/fetch) is
+      // run by Anthropic and its results are already in the content we just stored.
+      const toolUses = content.filter((c: Any) => c?.type === "tool_use");
+      if (!toolUses.length || data.stop_reason !== "tool_use") {
+        // We're stopping without running these. A stored tool_use with no
+        // tool_result after it makes the API reject the WHOLE conversation on
+        // every later turn — so the calls that never happened are not recorded.
+        // (This fires when a reply is cut off mid-tool-call: stop_reason is
+        // max_tokens, but the partial tool_use blocks are still in the content.)
+        if (toolUses.length && lastStored) {
+          const textOnly = content.filter((c: Any) => c?.type === "text");
+          await uc.from("coach_messages")
+            .update({ blocks: textOnly.length ? textOnly : null })
+            .eq("id", lastStored);
+        }
+        reply = textOf(content);
+        break;
+      }
+
+      const results: Any[] = [];
+      for (const t of toolUses) {
+        used.push(t.name);
+        let out: { result: Any; queued: Any[] };
+        try {
+          out = await runTool(t.name, t.input ?? {}, uc, threadId, user.id, authHeader);
+        } catch (e) {
+          out = { result: { error: String((e as Error).message ?? e).slice(0, 300) }, queued: [] };
+        }
+        allQueued.push(...out.queued);
+        results.push({ type: "tool_result", tool_use_id: t.id, content: JSON.stringify(out.result).slice(0, 20000) });
+      }
+
+      messages.push({ role: "user", content: results });
+      await uc.from("coach_messages").insert({ thread_id: threadId, owner_id: user.id, role: "user", body: null, blocks: results });
+
+      // Ran out of rounds with tools still pending — answer with what we have.
+      if (round === MAX_ROUNDS - 1) reply = textOf(content) || "That needed more lookups than I'm allowed in one go. Ask me again and I'll pick it up.";
     }
 
-    messages.push({ role: "user", content: results });
-    await uc.from("coach_messages").insert({ thread_id: threadId, owner_id: user.id, role: "user", body: null, blocks: results });
+    await uc.from("coach_threads").update({ last_message_at: new Date().toISOString() }).eq("id", threadId);
 
-    // Ran out of rounds with tools still pending — answer with what we have.
-    if (round === MAX_ROUNDS - 1) reply = textOf(content) || "That needed more lookups than I'm allowed in one go. Ask me again and I'll pick it up.";
+    // Pending cards for this thread, so a refresh never loses an unconfirmed change.
+    const { data: pending } = await uc.from("coach_actions")
+      .select("id, lead_id, kind, from_value, to_value, reason, status, created_at")
+      .eq("thread_id", threadId).eq("status", "pending").order("created_at");
+
+    // How full the conversation is. The model's own window is nowhere near the
+    // limit — what actually bites is the fold, after which the oldest turns exist
+    // only as a summary. That's the number worth showing.
+    const { count: liveCount } = await uc.from("coach_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("thread_id", threadId).gt("seq", mem.through);
+    const { count: msgs_total } = await uc.from("coach_messages")
+      .select("id", { count: "exact", head: true }).eq("thread_id", threadId);
+
+    return {
+      thread_id: threadId,
+      reply: reply || "…",
+      context: {
+        messages: liveCount ?? 0,
+        compact_at: COMPACT_AT,
+        keep_tail: KEEP_TAIL,
+        summarised: !!mem.summary,
+        summary: mem.summary || null,
+        input_tokens: lastInputTokens,
+        total_messages: (msgs_total ?? 0),
+      },
+      used: [...new Set(used)],
+      queued: allQueued,
+      actions: pending ?? [],
+    };
+  };
+
+  // The fold, re-reading memory fresh — another turn may have moved it on.
+  const compactLatest = async () => {
+    const { data: tr } = await uc.from("coach_threads")
+      .select("summary, summary_through_seq").eq("id", threadId).maybeSingle();
+    const { data: br } = await uc.from("coach_brief").select("brief").eq("owner_id", user.id).maybeSingle();
+    await compact(uc, key, threadId, user.id, Number(tr?.summary_through_seq ?? 0),
+      (tr?.summary as string | null) ?? "", (br?.brief as string | null) ?? "");
+  };
+
+  // ── Streamed reply ─────────────────────────────────────────────────────────
+  // Server-sent events: round · text · tool as the turn unfolds, then done (the
+  // same payload the JSON caller gets) or error. If Fred closes the panel the
+  // writes stop but the turn still completes and is stored.
+  if (b.stream === true) {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let open = true;
+        const emit: Emit = (event, data) => {
+          if (!open) return;
+          try { controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); }
+          catch { open = false; }
+        };
+        emit("start", { thread_id: threadId });
+        try {
+          const payload = await runTurn(emit);
+          emit(payload.error ? "error" : "done", payload);
+        } catch (e) {
+          emit("error", { thread_id: threadId, error: `The Director is unavailable (${String((e as Error).message ?? e).slice(0, 200)})` });
+        }
+        open = false;
+        try { controller.close(); } catch { /* already gone */ }
+        inBackground(compactLatest());
+      },
+    });
+    return new Response(stream, {
+      headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
+    });
   }
 
-  await uc.from("coach_threads").update({ last_message_at: new Date().toISOString() }).eq("id", threadId);
-
-  // Pending cards for this thread, so a refresh never loses an unconfirmed change.
-  const { data: pending } = await uc.from("coach_actions")
-    .select("id, lead_id, kind, from_value, to_value, reason, status, created_at")
-    .eq("thread_id", threadId).eq("status", "pending").order("created_at");
-
-  // How full the conversation is. The model's own window is nowhere near the
-  // limit — what actually bites is the fold, after which the oldest turns exist
-  // only as a summary. That's the number worth showing.
-  const { count: liveCount } = await uc.from("coach_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("thread_id", threadId).gt("seq", mem.through);
-  const { count: msgs_total } = await uc.from("coach_messages")
-    .select("id", { count: "exact", head: true }).eq("thread_id", threadId);
-
-  return json({
-    thread_id: threadId,
-    reply: reply || "…",
-    context: {
-      messages: liveCount ?? 0,
-      compact_at: COMPACT_AT,
-      keep_tail: KEEP_TAIL,
-      summarised: !!mem.summary,
-      summary: mem.summary || null,
-      input_tokens: lastInputTokens,
-      total_messages: (msgs_total ?? 0),
-    },
-    used: [...new Set(used)],
-    queued: allQueued,
-    actions: pending ?? [],
-  });
+  const payload = await runTurn(() => {});
+  inBackground(compactLatest());
+  return json(payload, 200);
 });
+
+/** A short tag for the live status line: which company, query or page. */
+function toolDetail(input: Any): string | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input.company ?? input.query ?? input.url ?? input.name ?? input.contact_name ?? null;
+  return typeof v === "string" && v.trim() ? v.trim().slice(0, 60) : null;
+}
