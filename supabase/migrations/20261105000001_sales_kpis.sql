@@ -1,5 +1,52 @@
--- Monthly sales KPIs per person (additive: one new function, nothing altered).
+-- Monthly sales KPIs per person (additive: one table, two functions, nothing altered).
 --
+-- ── 1. Content log ─────────────────────────────────────────────────────────
+-- Schedule 3's seventh indicator, "content published against the agreed
+-- content plan", has no home in the CRM: posts go out on Instagram and
+-- LinkedIn. One row per published post, entered from the KPI page.
+create table if not exists public.sales_content_log (
+  id           uuid primary key default gen_random_uuid(),
+  owner_id     uuid not null default auth.uid() references auth.users(id),
+  platform     text not null check (platform in ('instagram','linkedin','website','newsletter','other')),
+  published_on date not null default current_date,
+  url          text,
+  note         text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists sales_content_log_owner_idx on public.sales_content_log (owner_id, published_on);
+alter table public.sales_content_log enable row level security;
+drop policy if exists sales_content_log_visibility on public.sales_content_log;
+create policy sales_content_log_visibility on public.sales_content_log
+  for all
+  using      (owner_id = auth.uid() or public.can_see_all_sales())
+  with check (owner_id = auth.uid() or public.can_see_all_sales());
+grant all on public.sales_content_log to authenticated;
+
+-- ── 2. The sales team, for assigning leads ─────────────────────────────────
+-- Who can own a lead: admins, sales managers and reps. SECURITY DEFINER so it
+-- can read user_roles and profiles across users, but it returns the whole
+-- team only to someone who can see all sales; a rep gets just herself.
+create or replace function public.sales_team()
+returns table (user_id uuid, name text, role text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select distinct on (ur.user_id)
+         ur.user_id,
+         coalesce(nullif(btrim(concat_ws(' ', p.first_name, p.last_name)), ''), nullif(btrim(p.full_name), ''), 'Unnamed') as name,
+         ur.role::text
+    from public.user_roles ur
+    left join public.profiles p on p.user_id = ur.user_id
+   where ur.role::text in ('admin', 'sales_manager', 'sales')
+     and (public.can_see_all_sales() or ur.user_id = auth.uid())
+   order by ur.user_id,
+            case ur.role::text when 'admin' then 0 when 'sales_manager' then 1 else 2 end;
+$$;
+grant execute on function public.sales_team() to authenticated;
+
+-- ── 3. KPIs ────────────────────────────────────────────────────────────────
 -- The figures a monthly review is held against, counted from the CRM rather
 -- than remembered. Schedule 3 of the business development agreement names the
 -- same indicators, so the page and the contract use one vocabulary.
@@ -17,6 +64,7 @@
 --   pipeline_value open leads' estimated value NOW (a snapshot, not the value
 --                  at the end of the window, which the data cannot reconstruct)
 --   signed_*       leads marked Won during the window, and their value
+--   content_posts  posts logged in sales_content_log during the window
 --
 -- SECURITY INVOKER on purpose: it runs under the caller's RLS, so a rep gets
 -- one row (her own) and an admin or sales manager gets everyone. No new
@@ -32,7 +80,8 @@ returns table (
   opportunities   integer,
   pipeline_value  numeric,
   signed_count    integer,
-  signed_value    numeric
+  signed_value    numeric,
+  content_posts   integer
 )
 language sql
 stable
@@ -40,7 +89,10 @@ security invoker
 set search_path = public
 as $$
   with owners as (
-    select distinct l.owner_id from public.leads l
+    select l.owner_id from public.leads l
+    union
+    select c.owner_id from public.sales_content_log c
+     where c.published_on >= p_from and c.published_on < p_to
   ),
   acts as (
     select l.owner_id,
@@ -73,6 +125,12 @@ as $$
                   or (e.event_type = 'outcome_set'  and e.to_value = 'won')))
      group by l.owner_id
   ),
+  posts as (
+    select c.owner_id, count(*) as n
+      from public.sales_content_log c
+     where c.published_on >= p_from and c.published_on < p_to
+     group by c.owner_id
+  ),
   pipe as (
     select l.owner_id, sum(coalesce(l.value_estimate, 0)) as v
       from public.leads l
@@ -87,13 +145,15 @@ as $$
          coalesce(op.n, 0)::int,
          coalesce(pi.v, 0),
          coalesce(s.n, 0)::int,
-         coalesce(s.v, 0)
+         coalesce(s.v, 0),
+         coalesce(po.n, 0)::int
     from owners o
     left join public.profiles p on p.user_id = o.owner_id
     left join acts   a  on a.owner_id  = o.owner_id
     left join opps   op on op.owner_id = o.owner_id
     left join signed s  on s.owner_id  = o.owner_id
     left join pipe   pi on pi.owner_id = o.owner_id
+    left join posts  po on po.owner_id = o.owner_id
    order by owner_name;
 $$;
 

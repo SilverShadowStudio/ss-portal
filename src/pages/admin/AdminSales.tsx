@@ -16,6 +16,8 @@ import { DebriefSheet } from "@/components/admin/sales/DebriefSheet";
 import { NextActionPicker } from "@/components/admin/sales/NextActionPicker";
 import { LeadDossier } from "@/components/admin/sales/LeadDossier";
 import { useDirector } from "@/components/admin/sales/DirectorSheet";
+import { LogContactDialog } from "@/components/admin/sales/LogContactDialog";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface Lead {
   id: string;
@@ -39,6 +41,7 @@ interface Lead {
   next_action_at: string | null;
   linkedin_url: string | null;
   win_probability: number | null;
+  owner_id: string;
 }
 
 // ONE pipeline field: `stage`, the same one the Director, the debrief, the lead
@@ -115,6 +118,13 @@ export default function AdminSales() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("open");
+  const [ownerFilter, setOwnerFilter] = useState("all");
+  // Admins and sales managers see every lead and can hand one to someone else.
+  // A rep sees only her own (RLS), so for her the Owner column would be noise.
+  const { isAdmin, role } = useUserRole();
+  const canAssign = isAdmin || role === "sales_manager";
+  const [team, setTeam] = useState<{ user_id: string; name: string }[]>([]);
+  const [logFor, setLogFor] = useState<{ id: string; company: string } | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -136,22 +146,42 @@ export default function AdminSales() {
   async function load() {
     setLoading(true);
     const { data } = await supabase.from("leads")
-      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, stage, outcome, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url, win_probability")
+      .select("id, company, contact_name, email, role, sector, country, website, phone, segment, stage, outcome, notes, pitch_subject, pitch_draft, call_script, value_estimate, last_contacted_at, next_action_at, linkedin_url, win_probability, owner_id")
       .order("next_action_at", { ascending: true, nullsFirst: false });
     setRows((data ?? []) as Lead[]);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!canAssign) return;
+    // sales_team is newer than the generated types, hence the narrow cast.
+    (supabase as unknown as { rpc: (fn: string) => Promise<{ data: { user_id: string; name: string }[] | null }> })
+      .rpc("sales_team")
+      .then(({ data }) => setTeam(data ?? []));
+  }, [canAssign]);
+  const ownerName = (id: string) => team.find((t) => t.user_id === id)?.name ?? "—";
+
+  /** Hand a lead to someone else. Logged as owner_change in the lead's history. */
+  async function assignOwner(r: Lead, owner_id: string) {
+    if (owner_id === r.owner_id) return;
+    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, owner_id } : x)));
+    const { error } = await supabase.from("leads").update({ owner_id }).eq("id", r.id);
+    if (error) {
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, owner_id: r.owner_id } : x)));
+      toast({ title: "Couldn't reassign the lead", description: error.message, variant: "destructive" });
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (statusFilter === "open" && TERMINAL.has(r.stage)) return false;
       if (statusFilter !== "open" && statusFilter !== "all" && r.stage !== statusFilter) return false;
+      if (ownerFilter !== "all" && r.owner_id !== ownerFilter) return false;
       if (q && !`${r.company} ${r.contact_name ?? ""} ${r.email ?? ""} ${r.country ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, ownerFilter]);
 
   const COLUMNS: SortableColumn<Lead>[] = [
     // Priority = your own segment (CONTACT NOW → CURRENT → rest → DEAD), then soonest follow-up.
@@ -390,6 +420,12 @@ export default function AdminSales() {
                 { value: "open", label: "Open" }, { value: "all", label: "All" },
                 ...STAGES.map((s) => ({ value: s, label: STAGE_LABEL[s] })),
               ]} />
+              {canAssign && team.length > 1 && (
+                <TableFilterSelect value={ownerFilter} onChange={setOwnerFilter} width="w-[170px]" options={[
+                  { value: "all", label: "Everyone" },
+                  ...team.map((t) => ({ value: t.user_id, label: t.name })),
+                ]} />
+              )}
             </TableToolbar>
             <div className="ssr-tile overflow-x-auto">
               <table className="w-full text-sm">
@@ -398,6 +434,7 @@ export default function AdminSales() {
                     <SortTh id="company" label="Company" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="contact" label="Contact" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="country" label="Country" activeKey={sortKey} dir={sortDir} onClick={toggle} />
+                    {canAssign && <th className="px-4 py-3 text-left text-[10px] font-normal uppercase tracking-[0.16em] text-white/45">Owner</th>}
                     <SortTh id="status" label="Stage" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="next" label="Chase" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="value" label="Value" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
@@ -484,6 +521,19 @@ export default function AdminSales() {
                         {r.email && <div className="text-[11px] text-white/35">{r.email}</div>}
                       </td>
                       <td className="px-4 py-3 text-standard">{r.country ?? "—"}</td>
+                      {canAssign && (
+                        <td className="px-4 py-3">
+                          <select
+                            value={r.owner_id}
+                            onChange={(e) => assignOwner(r, e.target.value)}
+                            title="Who works this lead"
+                            className="max-w-[6.5rem] bg-transparent text-[11px] text-standard focus:outline-none cursor-pointer"
+                          >
+                            {!team.some((t) => t.user_id === r.owner_id) && <option value={r.owner_id} className="bg-background text-foreground">{ownerName(r.owner_id)}</option>}
+                            {team.map((t) => <option key={t.user_id} value={t.user_id} className="bg-background text-foreground">{t.name.split(" ")[0]}</option>)}
+                          </select>
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <select value={r.stage} onChange={(e) => quickStage(r, e.target.value)} className={`bg-transparent text-[11px] uppercase tracking-[0.14em] focus:outline-none cursor-pointer ${STAGE_CLS[r.stage] ?? "text-white/50"}`}>
                           {STAGES.map((s) => <option key={s} value={s} className="bg-background text-foreground">{STAGE_LABEL[s]}</option>)}
@@ -526,6 +576,7 @@ export default function AdminSales() {
                               They live in the lead card now — one place per lead
                               rather than a card and two sheets above it. */}
                           <button onClick={() => setDossier(r.id)} className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-[#C9A96A] hover:text-[#ecd39c]"><Sparkles className="h-3 w-3" strokeWidth={1.5} />Call script</button>
+                          <button onClick={() => setLogFor({ id: r.id, company: r.company })} title="Log a call, email, message or meeting" className="text-[10px] uppercase tracking-[0.14em] text-white/55 hover:text-[#ecd39c]">Log</button>
                           <button onClick={() => setDossier(r.id)} className="text-[10px] uppercase tracking-[0.14em] text-white/55 hover:text-[#ecd39c]">Debrief</button>
                           <button onClick={() => openEdit(r)} className="text-white/40 hover:text-gold" title="Edit"><Pencil className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
                           <button onClick={() => removeLead(r)} className="text-white/30 hover:text-rose-400" title="Remove"><Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
@@ -628,6 +679,8 @@ export default function AdminSales() {
       </Dialog>
 
       {dossier && <LeadDossier leadId={dossier} onClose={() => setDossier(null)} />}
+
+      <LogContactDialog lead={logFor} onClose={() => setLogFor(null)} onLogged={load} />
 
       {debrief && (
         <DebriefSheet

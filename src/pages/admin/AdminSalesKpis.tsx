@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +30,7 @@ interface KpiRow {
   pipeline_value: number;
   signed_count: number;
   signed_value: number;
+  content_posts: number;
 }
 
 const money = (n: number) =>
@@ -47,7 +53,20 @@ const COLUMNS: { key: keyof KpiRow | "reply_rate"; label: string; hint: string }
   { key: "opportunities", label: "Opportunities", hint: "Leads moved to Qualified or later" },
   { key: "pipeline_value", label: "Pipeline", hint: "Open leads' estimated value today" },
   { key: "signed_value", label: "Signed", hint: "Leads marked Won this month" },
+  { key: "content_posts", label: "Content", hint: "Posts published, as logged here" },
 ];
+
+const PLATFORMS = [
+  { value: "instagram", label: "Instagram" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "website", label: "Website" },
+  { value: "newsletter", label: "Newsletter" },
+  { value: "other", label: "Other" },
+];
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export default function AdminSalesKpis() {
   const { toast } = useToast();
@@ -55,6 +74,27 @@ export default function AdminSalesKpis() {
   const [rows, setRows] = useState<KpiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const month = monthStart(offset);
+  const [reload, setReload] = useState(0);
+  // Log a published post: the one indicator that lives outside the CRM.
+  const [postOpen, setPostOpen] = useState(false);
+  const [post, setPost] = useState({ platform: "instagram", published_on: todayLocal(), url: "", note: "" });
+  const [savingPost, setSavingPost] = useState(false);
+  async function savePost() {
+    setSavingPost(true);
+    const { error } = await (supabase as unknown as {
+      from: (t: string) => { insert: (r: Record<string, unknown>) => Promise<{ error: { message: string } | null }> };
+    }).from("sales_content_log").insert({
+      platform: post.platform,
+      published_on: post.published_on || todayLocal(),
+      url: post.url.trim() || null,
+      note: post.note.trim() || null,
+    });
+    setSavingPost(false);
+    if (error) { toast({ title: "Couldn't log the post", description: error.message, variant: "destructive" }); return; }
+    setPostOpen(false);
+    setPost({ platform: post.platform, published_on: todayLocal(), url: "", note: "" });
+    setReload((n) => n + 1);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +113,7 @@ export default function AdminSalesKpis() {
     return () => { cancelled = true; };
     // month.iso is derived from offset; offset is the trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset]);
+  }, [offset, reload]);
 
   const cell = (r: KpiRow, key: (typeof COLUMNS)[number]["key"]) => {
     if (key === "reply_rate") return r.outreach ? `${Math.round((r.replies / r.outreach) * 100)}%` : "—";
@@ -115,8 +155,11 @@ export default function AdminSalesKpis() {
       </div>
 
       <section className="ssr-zone mb-4">
-        <div className="mb-5 flex items-center gap-3 border-b border-white/[0.07] pb-3">
-          <div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Results</h2>
+        <div className="mb-5 flex items-center justify-between gap-4 border-b border-white/[0.07] pb-3">
+          <div className="flex items-center gap-3"><div className="h-px w-6 bg-gold-muted" /><h2 className="text-label">Results</h2></div>
+          <button onClick={() => setPostOpen(true)} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c]">
+            <Plus className="h-3 w-3" strokeWidth={1.5} />Log a post
+          </button>
         </div>
         {loading ? (
           <div className="flex justify-center py-10"><BrandLoader size="sm" /></div>
@@ -149,9 +192,39 @@ export default function AdminSalesKpis() {
           </div>
         )}
         <p className="mt-3 px-1 text-[10px] uppercase tracking-[0.16em] text-white/35">
-          Activity counts by the lead's owner · Pipeline is today's figure, not the month-end one · Content published is tracked on Instagram and LinkedIn, not here
+          Activity counts by the lead's owner · Pipeline is today's figure, not the month-end one · Content counts the posts logged with Log a post
         </p>
       </section>
+
+      <Dialog open={postOpen} onOpenChange={setPostOpen}>
+        <DialogContent className="max-w-md rounded-sm border-divider bg-background">
+          <DialogHeader>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Sales · Content</p>
+            <DialogTitle className="font-serif font-normal text-2xl">Log a post</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1.5"><Label>Platform</Label>
+              <Select value={post.platform} onValueChange={(v) => setPost((p) => ({ ...p, platform: v }))}>
+                <SelectTrigger className="rounded-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>{PLATFORMS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label>Published</Label>
+              <Input type="date" value={post.published_on} max={todayLocal()} onChange={(e) => setPost((p) => ({ ...p, published_on: e.target.value }))} className="rounded-sm" />
+            </div>
+            <div className="col-span-2 space-y-1.5"><Label>Link (optional)</Label>
+              <Input value={post.url} onChange={(e) => setPost((p) => ({ ...p, url: e.target.value }))} placeholder="https://" className="rounded-sm" />
+            </div>
+            <div className="col-span-2 space-y-1.5"><Label>Note (optional)</Label>
+              <Input value={post.note} onChange={(e) => setPost((p) => ({ ...p, note: e.target.value }))} placeholder="What it was" className="rounded-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button type="button" onClick={() => setPostOpen(false)} className="text-sm text-recessive hover:text-standard">Cancel</button>
+            <Button onClick={savePost} disabled={savingPost} className="rounded-sm">{savingPost ? "Logging…" : "Log it"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
