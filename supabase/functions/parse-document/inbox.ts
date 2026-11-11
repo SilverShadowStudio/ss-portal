@@ -25,7 +25,7 @@
 //                       {date}_AP_{VENDOR}_{InvoiceNo}_{Description-MonYY}_{AmountCCY}
 //   freelancer_invoice  03_Invoices/INV002_Payable/01_Freelancers/Freelancers_{YYYY-MM}_{Month}/
 //                       Freelancer_Invoice_{First-Last}_{YYYY-MM}
-//   quotation           02_Quotations/  {CLI}_Quotation_{QuoteNo}_{date}_{SENT|SIGNED}
+//   quotation           02_Quotations/  SilverShadowStudio_Quotation_{QuoteNo}_{Project}_{SENT|SIGNED}
 //   client_project_agreement      01_Agreements/AGR001_Clients/CLI001_Project-Agreements/PRO{NNN}_{CLI}_{Client}/
 //                                 {CLI}_Agreement-Project_{date}_{SENT|SIGNED}
 //   client_partnership_agreement  01_Agreements/AGR001_Clients/CLI002_Partnership-Agreements/PAR{NNN}_{CLI}_{Client}/
@@ -348,7 +348,7 @@ Document types:
 - ar_invoice: invoice issued by the studio to a client. counterparty_name = client. document_number = invoice number.
 - ap_invoice: supplier invoice, bill or receipt the studio pays (software, rent, food, accountant, hardware, travel). counterparty_name = supplier. description = what was bought in 2 to 5 words.
 - freelancer_invoice: invoice from a freelancer to the studio. person = the freelancer. period = the month worked (YYYY-MM).
-- quotation: a studio quotation or fee proposal / programme to a client. document_number = quotation number (e.g. ZAN003, MAY001-RCN02). signed = true only if the client has signed or accepted it.
+- quotation: a studio quotation or fee proposal / programme to a client. document_number = quotation number (e.g. ZAN003, MAY001-RCN02). description = the PROJECT name exactly as the quote names it (e.g. Havenwood, Charles Street) — the project, not the client company; null if the quote names no project. signed = true only if the client has signed or accepted it.
 - client_project_agreement / client_partnership_agreement: services agreement with a client, per-project or partnership/subscription.
 - employee_document: anything about an EMPLOYEE (employment contract, variation letter, HMRC starter checklist, P45, P60, equipment loan, recommendation, termination or disciplinary letter). person = the employee.
 - payslip: an employee's monthly payslip. person = the employee. period = pay month (YYYY-MM).
@@ -500,9 +500,13 @@ async function planPath(ctx: Ctx, c: Classification, original: string): Promise<
       if (!ym || !person) return null
       return { folder: `${INVOICES}/INV002_Payable/01_Freelancers/${monthFolder('Freelancers', ym)}`, stem: `Freelancer_Invoice_${person}_${ym}` }
     case 'quotation': {
+      // Fred, 11 Nov 2026: SilverShadowStudio_Quotation_CRE004_Havenwood_SIGNED.
+      // The studio's name leads (the client is already in the number), and the
+      // project replaces the date — a quote is found by job, not by day. With no
+      // project on the quote the slot is simply left out.
       if (!c.document_number) return null
-      const { code } = resolveClient(ctx, c)
-      return { folder: `${ADMIN_ROOT}/02_Quotations`, stem: [code || 'SilverShadowStudio', 'Quotation', numberToken(c.document_number), d, signedTag(c)].join('_') }
+      const project = hyphenSlug(c.description, 4) || null
+      return { folder: `${ADMIN_ROOT}/02_Quotations`, stem: ['SilverShadowStudio', 'Quotation', numberToken(c.document_number), project, signedTag(c)].filter(Boolean).join('_') }
     }
     case 'client_project_agreement':
     case 'client_partnership_agreement': {
