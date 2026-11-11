@@ -247,7 +247,7 @@ export default function AdminReconcile() {
       <div className="mb-8 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">Reconciliation</span>
+          <span className="text-label-gold text-[#ecd39c]">Bank</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={syncNow} disabled={syncing}

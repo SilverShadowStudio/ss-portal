@@ -133,7 +133,7 @@ export default function AdminFreelancerPayments() {
         <div className="mb-4 flex items-end justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="h-px w-12 bg-gold-muted" />
-            <span className="text-label-gold text-[#ecd39c]">Debts</span>
+            <span className="text-label-gold text-[#ecd39c]">To Pay</span>
           </div>
           {!loading && (
             <div className="text-right">

@@ -214,7 +214,7 @@ export default function AdminRecurring() {
       }
       // Materialise past + upcoming bills for this commitment immediately.
       const { data: gen } = await supabase.functions.invoke("recurring-overheads-generate", { body: { recurring_overhead_id: id } });
-      toast({ title: form.id ? "Commitment updated" : "Commitment added", description: `${(gen as { created?: number })?.created ?? 0} bill(s) generated into P&L & Debts.` });
+      toast({ title: form.id ? "Commitment updated" : "Commitment added", description: `${(gen as { created?: number })?.created ?? 0} bill(s) generated into the Ledger and To Pay.` });
       setOpen(false);
       load();
     } catch (e) {
@@ -225,7 +225,7 @@ export default function AdminRecurring() {
   }
 
   async function remove(r: Commitment) {
-    if (!window.confirm(`Remove the recurring commitment for ${r.supplier_name}? Bills already generated stay in the P&L/Debts; no new ones will be created.`)) return;
+    if (!window.confirm(`Remove the recurring commitment for ${r.supplier_name}? Bills already generated stay in the Ledger and To Pay; no new ones will be created.`)) return;
     const { error } = await supabase.from("recurring_overheads").delete().eq("id", r.id);
     if (error) { toast({ title: "Couldn't remove", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Commitment removed" });
@@ -277,9 +277,9 @@ export default function AdminRecurring() {
       <div className="mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">Recurring costs</span>
+          <span className="text-label-gold text-[#ecd39c]">Fixed Costs</span>
         </div>
-        <p className="mt-3 text-sm text-recessive">Rents and subscriptions that repeat — set once, and every past-and-future bill flows into the P&amp;L and Debts automatically.</p>
+        <p className="mt-3 text-sm text-recessive">Rents and subscriptions that repeat — set once, and every past-and-future bill flows into the Ledger and To Pay automatically.</p>
       </div>
 
       <section className="ssr-zone mb-4">
@@ -355,7 +355,7 @@ export default function AdminRecurring() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg rounded-sm border-divider bg-background max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Recurring costs</p>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Fixed Costs</p>
             <DialogTitle className="font-serif font-normal text-2xl">{form.id ? "Edit commitment" : "New commitment"}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">

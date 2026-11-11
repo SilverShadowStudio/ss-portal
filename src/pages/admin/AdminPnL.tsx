@@ -1,5 +1,6 @@
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, UploadCloud } from "lucide-react";
 import { TableSearch } from "@/components/ui/TableToolbar";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Input } from "@/components/ui/input";
@@ -14,12 +15,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { OverheadDetail } from "@/components/admin/overheads/OverheadDetail";
-import { BulkOverheadDropzone, type ParsedInvoice } from "@/components/admin/overheads/BulkOverheadDropzone";
+import { type ParsedInvoice } from "@/components/admin/overheads/BulkOverheadDropzone";
 import { describeFlags } from "@/lib/overheadConfidence";
 import { recordOverheadUnattended, type RecordOutcome } from "@/lib/overheadRecord";
 import { RecurringOverheadsDialog } from "@/components/admin/overheads/RecurringOverheadsDialog";
 import { IncomeInvoiceUpload, IncomeInvoiceReviewDialog, EMPTY_INCOME_FORM, type FormState as IncomeFormState } from "@/components/admin/finance/IncomeInvoiceUpload";
-import { BulkIncomeDropzone } from "@/components/admin/finance/BulkIncomeDropzone";
 import {
   FinanceSummary,
   type FinanceSectionKey,
@@ -767,7 +767,7 @@ export default function AdminPnL() {
       <div className="mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">P&amp;L</span>
+          <span className="text-label-gold text-[#ecd39c]">Ledger</span>
         </div>
         <p className="mt-3 text-sm text-recessive">
           Revenue, costs, and cash-basis VAT — choose the period below.
@@ -902,9 +902,13 @@ export default function AdminPnL() {
               </button>
             </div>
           </div>
-          <div className="mb-5">
-            <BulkOverheadDropzone categories={categories} onParsed={handleParsed} />
-          </div>
+          {/* One drop zone for the whole portal (Fred, 11 Nov 2026): invoices are
+              dropped on the Overview Dropzone and arrive here through the same
+              intake this page used. */}
+          <Link to="/admin" className="mb-5 flex items-center gap-2.5 text-[11px] uppercase tracking-[0.18em] text-white/35 transition-colors hover:text-[#ecd39c]">
+            <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Drop supplier invoices on the Dropzone, on Overview — they land here
+          </Link>
           <MoneyOutTable rows={filteredMoneyOut} loading={loading} onRowClick={openMoneyOutRow} onAttachInvoice={attachOverheadInvoice} onAttachPayslipFile={handlePayslipDropOnRow} onAttachInvoiceFile={handleInvoiceDropOnRow} onPay={openPayDialog} />
         </section>
       )}
@@ -943,9 +947,13 @@ export default function AdminPnL() {
               <IncomeInvoiceUpload onSaved={fetchAll} />
             </div>
           </div>
-          <div className="mb-5">
-            <BulkIncomeDropzone onSaved={fetchAll} />
-          </div>
+          {/* One drop zone for the whole portal (Fred, 11 Nov 2026): invoices are
+              dropped on the Overview Dropzone and arrive here through the same
+              intake this page used. */}
+          <Link to="/admin" className="mb-5 flex items-center gap-2.5 text-[11px] uppercase tracking-[0.18em] text-white/35 transition-colors hover:text-[#ecd39c]">
+            <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Drop client invoices on the Dropzone, on Overview — they land here
+          </Link>
           <MoneyInTable rows={filteredInvoices} loading={loading} onRowClick={openInvoiceViewer} />
         </section>
       )}

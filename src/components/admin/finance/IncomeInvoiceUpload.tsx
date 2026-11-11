@@ -242,7 +242,7 @@ export function IncomeInvoiceReviewDialog({ open, onOpenChange, initial, sourceF
 
   async function handleDelete() {
     if (!editId) return;
-    if (!window.confirm("Delete this income invoice? This removes it from your P&L. This cannot be undone.")) return;
+    if (!window.confirm("Delete this income invoice? This removes it from your Ledger. This cannot be undone.")) return;
     setDeleting(true);
     // Best-effort remove the stored original (we don't track the extension).
     await Promise.all(["pdf", "png", "jpg", "jpeg"].map((ext) => supabase.storage.from("income-invoices").remove([`${editId}.${ext}`]).catch(() => {})));

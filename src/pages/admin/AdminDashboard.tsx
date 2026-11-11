@@ -112,7 +112,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Document Inbox — drop any document; it is read, renamed and filed to Dropbox. */}
+      {/* Dropzone — drop any document; it is read, renamed and filed to Dropbox. */}
       <DocumentInbox />
 
       {/* Status Overview — metrics as tiles inside a zone. Same labels + values. */}
