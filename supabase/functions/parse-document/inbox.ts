@@ -217,6 +217,32 @@ async function listFolders(d: Dbx, path: string): Promise<string[]> {
   return names
 }
 
+/** Is a file with this path's NAME still in its folder? Checked by name only,
+ *  case-insensitively as Dropbox itself is. true / false when Dropbox answers;
+ *  null when it can't be asked, so the caller keeps its old answer rather than
+ *  filing a second copy on the strength of an outage. */
+export async function stillInDropbox(d: Dbx, path: string): Promise<boolean | null> {
+  const cut = path.lastIndexOf('/')
+  if (cut < 0) return null
+  const folder = path.slice(0, cut)
+  const name = path.slice(cut + 1).toLowerCase()
+  const headers = dbxHeaders(d, { 'Content-Type': 'application/json' })
+  let r = await fetch('https://api.dropboxapi.com/2/files/list_folder', { method: 'POST', headers, body: JSON.stringify({ path: folder, limit: 2000 }) })
+  if (!r.ok) {
+    // The whole folder gone means the file is gone too.
+    const body = await r.text().catch(() => '')
+    return r.status === 409 && body.includes('not_found') ? false : null
+  }
+  let data = await r.json()
+  for (;;) {
+    for (const e of data.entries ?? []) if (e['.tag'] === 'file' && String(e.name).toLowerCase() === name) return true
+    if (!data.has_more) return false
+    r = await fetch('https://api.dropboxapi.com/2/files/list_folder/continue', { method: 'POST', headers, body: JSON.stringify({ cursor: data.cursor }) })
+    if (!r.ok) return null
+    data = await r.json()
+  }
+}
+
 async function upload(d: Dbx, path: string, bytes: Uint8Array): Promise<string> {
   const r = await fetch('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
@@ -588,10 +614,20 @@ async function fileOne(req: Request, sb: SB): Promise<Record<string, unknown>> {
   // dry_run=1 (service callers only): classify and plan, write nothing anywhere.
   const dryRun = form.get('dry_run') === '1' && createdBy === null
 
-  // Same bytes already filed → don't file twice; point at the existing copy.
+  // Same bytes already filed → don't file twice; point at the existing copy —
+  // but only if that copy is still there. The record of a filing outlives the
+  // file: Fred deleted one from Dropbox (11 Nov) and every re-drop was still
+  // turned away as "already filed". So the folder is checked, by name only;
+  // if the name has gone, this drop is filed afresh, under today's naming.
   const { data: prior } = dryRun ? { data: null } : await sb.from('document_inbox').select('id, dropbox_path')
     .eq('sha256', hash).in('status', ['filed', 'to_check']).order('created_at', { ascending: false }).limit(1).maybeSingle()
-  if (prior) {
+  let refiledFrom: string | null = null
+  if (prior?.dropbox_path) {
+    let present: boolean | null = null
+    try { present = await stillInDropbox(await dropbox(sb), prior.dropbox_path as string) } catch { present = null }
+    if (present === false) refiledFrom = prior.dropbox_path as string
+  }
+  if (prior && !refiledFrom) {
     const { data: row } = await sb.from('document_inbox').insert({
       created_by: createdBy, original_filename: filename, mime_type: mime, size_bytes: bytes.length, sha256: hash,
       status: 'duplicate', dropbox_path: prior.dropbox_path, summary: 'Already filed — this exact file was dropped before.',
@@ -631,7 +667,8 @@ async function fileOne(req: Request, sb: SB): Promise<Record<string, unknown>> {
     const path = dryRun ? target : await upload(dbx, target, bytes)
     return await finish({
       status: plan ? 'filed' : 'to_check', doc_type: c.doc_type, confidence: c.confidence, summary: c.summary,
-      reasoning: plan ? c.reasoning : `${c.reasoning} ${confident ? 'Missing a detail its filename needs' : 'Not confident enough to file it'} — parked in To-Check.`,
+      reasoning: (plan ? c.reasoning : `${c.reasoning} ${confident ? 'Missing a detail its filename needs' : 'Not confident enough to file it'} — parked in To-Check.`)
+        + (refiledFrom ? ` Filed again: this exact file was filed before as ${refiledFrom.split('/').pop()}, which is no longer in Dropbox.` : ''),
       extracted: c, dropbox_path: path, model,
     })
   } catch (err) {
