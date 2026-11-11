@@ -6,16 +6,20 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { FeedList, useFeedDismissals } from "@/components/ui/FeedList";
 
-// Document Inbox — drop any document; the portal reads it, works out what it
-// is, renames it to the studio convention and files it in Dropbox. The filing
-// strategy lives in supabase/functions/parse-document/inbox.ts.
+// The Dropzone (called the Document Inbox until 11 Nov 2026) — drop any
+// document; the portal reads it, works out what it is, renames it to the studio
+// convention and files it in Dropbox. The filing strategy lives in
+// supabase/functions/parse-document/inbox.ts. Its history is a standard feed
+// (components/ui/FeedList): click a line to clear it, the title shows it all.
 
 const sb = supabase as any;
 const ENDPOINT = `${SUPABASE_URL}/functions/v1/parse-document?action=inbox`;
 const ADMIN_ROOT = "/03_Portal_Admin_Docs";
 const CONCURRENCY = 2;
-const RECENT_LIMIT = 12;
+// Enough to be "the whole history" for years at the studio's pace.
+const HISTORY_LIMIT = 300;
 
 type Status = "processing" | "filed" | "to_check" | "duplicate" | "failed";
 
@@ -92,6 +96,8 @@ export function DocumentInbox() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [moveRow, setMoveRow] = useState<InboxRow | null>(null);
+  const [history, setHistory] = useState(false);
+  const { dismissed, dismiss } = useFeedDismissals("dropzone");
 
   const loadRecent = useCallback(async () => {
     const { data } = await sb
@@ -99,7 +105,7 @@ export function DocumentInbox() {
       .select("id, created_at, original_filename, status, doc_type, summary, reasoning, dropbox_path, error_text")
       .neq("status", "processing")
       .order("created_at", { ascending: false })
-      .limit(RECENT_LIMIT);
+      .limit(HISTORY_LIMIT);
     setRows((data ?? []) as InboxRow[]);
   }, []);
 
@@ -124,7 +130,7 @@ export function DocumentInbox() {
         const q = queue[idx++];
         try {
           const row = await fileOne(q.file);
-          if (row) setRows((r) => [row, ...r.filter((x) => x.id !== row.id)].slice(0, RECENT_LIMIT));
+          if (row) setRows((r) => [row, ...r.filter((x) => x.id !== row.id)].slice(0, HISTORY_LIMIT));
         } catch (err) {
           toast({ title: `${q.file.name} couldn't be filed`, description: err instanceof Error ? err.message : String(err), variant: "destructive" });
         }
@@ -148,7 +154,12 @@ export function DocumentInbox() {
       <div className="ssr-zone">
         <div className="mb-6 flex items-center gap-3">
           <div className="h-px w-6 bg-gold-muted" />
-          <h2 className="text-label">Document Inbox</h2>
+          {/* Same as every feed's title: it brings the whole history back. */}
+          <button type="button" onClick={() => setHistory((h) => !h)}
+            title={history ? "Back to what's new" : "Show everything ever dropped"}
+            className="text-label transition-colors hover:text-foreground">
+            Dropzone
+          </button>
         </div>
 
         <div
@@ -193,9 +204,24 @@ export function DocumentInbox() {
         </div>
 
         {rows.length > 0 && (
-          <div className="mt-3 flex flex-col gap-2">
-            <p className="text-label mt-3 mb-1">Recently filed</p>
-            {rows.map((row) => <InboxRowTile key={row.id} row={row} onMove={() => setMoveRow(row)} />)}
+          <div className="mt-6">
+            <div className="mb-3 flex items-center">
+              <p className="text-label">{history ? "Everything dropped" : "Recently filed"}</p>
+              <span className="ml-auto text-[10px] tracking-[0.2em] text-muted-foreground">
+                {history ? `${rows.length} IN HISTORY` : `${rows.filter((r) => !dismissed.has(r.id)).length} NEW`}
+              </span>
+            </div>
+            <FeedList
+              headerless
+              title="Dropzone"
+              items={rows}
+              dismissed={dismissed}
+              onDismiss={dismiss}
+              history={history}
+              onHistoryChange={setHistory}
+              emptyText="All caught up — click Dropzone for the history"
+              renderItem={(row) => <InboxRowTile row={row} onMove={() => setMoveRow(row)} />}
+            />
           </div>
         )}
       </div>
@@ -213,7 +239,7 @@ function InboxRowTile({ row, onMove }: { row: InboxRow; onMove: () => void }) {
   const { folder, name } = splitPath(row.dropbox_path);
   const canMove = !!row.dropbox_path && row.status !== "duplicate";
   return (
-    <div className="ssr-tile flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-start sm:gap-4">
+    <div className="ssr-tile ssr-tile-hover flex flex-col gap-1.5 px-4 py-3 pr-10 sm:flex-row sm:items-start sm:gap-4">
       <div className="flex shrink-0 items-center gap-2 sm:w-36 sm:flex-col sm:items-start sm:gap-1">
         <span className={`rounded-sm px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${STATUS_CHIP[row.status]}`}>
           {STATUS_LABEL[row.status]}
@@ -231,7 +257,7 @@ function InboxRowTile({ row, onMove }: { row: InboxRow; onMove: () => void }) {
         )}
       </div>
       {canMove && (
-        <div className="flex shrink-0 items-center gap-4 sm:pt-0.5">
+        <div className="flex shrink-0 items-center gap-4 sm:pt-0.5" onClick={(e) => e.stopPropagation()}>
           <a
             href={`https://www.dropbox.com/home${encodeURI(folder)}`}
             target="_blank"
@@ -304,7 +330,7 @@ function MoveDialog({ row, onClose, onMoved }: { row: InboxRow | null; onClose: 
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent hideClose className="max-w-xl rounded-sm border-divider bg-background">
         <DialogHeader>
-          <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Document inbox · re-file</p>
+          <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Dropzone · re-file</p>
           <DialogTitle className="font-serif font-normal text-2xl">Move document</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-2">
