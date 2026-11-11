@@ -29,3 +29,16 @@ export function teamCategoryOf(employmentType: string | null | undefined, role: 
 
 /** Does this member's category have an Earnings page? (Employees get Salary.) */
 export const hasEarnings = (c: TeamCategory) => c !== "Employees" && c !== "Freelancers";
+
+/** A team member's own pages, in menu order. One list for both menus: their
+ *  team sidebar, and the Sales sidebar when Sales is shared with them. */
+export type TeamPage = { path: string; label: "Earnings" | "Calendar" | "Documents" | "Salary" };
+export function teamPagesFor(c: TeamCategory): TeamPage[] {
+  if (c === "Employees") return [
+    { path: "/documents", label: "Documents" }, { path: "/calendar", label: "Calendar" }, { path: "/salary", label: "Salary" },
+  ];
+  return [
+    ...(hasEarnings(c) ? [{ path: "/earnings", label: "Earnings" } as TeamPage] : []),
+    { path: "/calendar", label: "Calendar" }, { path: "/documents", label: "Documents" },
+  ];
+}

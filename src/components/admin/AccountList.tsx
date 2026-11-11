@@ -290,6 +290,9 @@ export function AccountList({
   const postGhostPath = isTeamOnly ? "/documents" : "/";
 
   const [accountUsers, setAccountUsers] = useState<AccountUserRow[]>([]);
+  // Team members the Sales module is shared with (a 'sales' role on top of
+  // their team category) — shown as a tag on their card.
+  const [salesShared, setSalesShared] = useState<Set<string>>(new Set());
   // Client accounts that are in current production (own at least one active
   // project). Used to split the Clients directory into Active / Inactive.
   const [activeAccountIds, setActiveAccountIds] = useState<Set<string>>(new Set());
@@ -357,7 +360,7 @@ export function AccountList({
   // Portal-emails viewer, opened from the account-card mail icon.
   const [emailsModal, setEmailsModal] = useState<{ accountId: string; name: string } | null>(null);
   // Admin edit of a team member's admin-owned info (name/engagement/position/salary/role).
-  const [editMember, setEditMember] = useState<null | { accountId: string; userId: string | null; firstName: string; lastName: string; engagement: "freelancer" | "employee"; position: string; salary: string; role: string; startDate: string }>(null);
+  const [editMember, setEditMember] = useState<null | { accountId: string; userId: string | null; firstName: string; lastName: string; engagement: "freelancer" | "employee"; position: string; salary: string; role: string; startDate: string; sales: boolean }>(null);
   const [savingMember, setSavingMember] = useState(false);
   // Templates for the template-pick step
   const [teamTemplates, setTeamTemplates] = useState<Array<{ id: string; name: string; description: string | null; default_fields: Record<string, unknown> }>>([]);
@@ -419,6 +422,7 @@ export function AccountList({
     { state: "idle" | "checking" } | { state: "found"; name: string | null; role: string | null } | { state: "missing" } | { state: "unknown" }
   >({ state: "idle" });
   const [inviteRole, setInviteRole] = useState("");
+  const [inviteSales, setInviteSales] = useState(false);
 
   // Airtable pre-flight match panel. Populated by a debounced lookup on
   // the company-name input — surfaces existing Clients rows so the admin
@@ -550,6 +554,27 @@ export function AccountList({
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    if (!isTeamOnly) return;
+    const ids = Array.from(new Set(accountUsers.map((u) => u.user_id)));
+    if (!ids.length) { setSalesShared(new Set()); return; }
+    supabase.from("user_roles").select("user_id, role").in("user_id", ids).in("role", ["sales", "sales_manager"] as never[])
+      .then(({ data }) => setSalesShared(new Set(((data ?? []) as { user_id: string }[]).map((r) => r.user_id))));
+  }, [accountUsers, isTeamOnly]);
+
+  /** Share (or stop sharing) the Sales module with a team member: the 'sales'
+   *  role on top of their team category. A sales_manager role is left alone. */
+  async function setSalesAccess(userId: string, share: boolean) {
+    if (share) {
+      const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: "sales" } as never);
+      if (error && !/duplicate|unique/i.test(error.message)) throw error;
+    } else {
+      const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "sales" as never);
+      if (error) throw error;
+    }
+    setSalesShared((prev) => { const next = new Set(prev); if (share) next.add(userId); else next.delete(userId); return next; });
   }
 
   // Fetch + reconstruct recent sessions per user once the user list loads.
@@ -1110,6 +1135,7 @@ export function AccountList({
       salary: a?.gross_salary_annual != null ? String(a.gross_salary_annual) : "",
       role: (fp as { role?: string | null } | null)?.role ?? a?.team_role ?? "",
       startDate: a?.work_start_date ?? "",
+      sales: !!u?.user_id && salesShared.has(u.user_id),
     });
   }
 
@@ -1141,6 +1167,7 @@ export function AccountList({
         }).eq("user_id", m.userId);
         if (fErr) throw fErr;
       }
+      if (m.userId && m.sales !== salesShared.has(m.userId)) await setSalesAccess(m.userId, m.sales);
       toast({ title: "Member updated" });
       setEditMember(null);
       fetchAccounts();
@@ -1286,8 +1313,22 @@ export function AccountList({
           role: inviteRole,
         });
         if (ok) {
+          if (inviteSales) {
+            // The invite only reports success, so find the member it just created.
+            const { data: acct } = await supabase.from("accounts").select("id")
+              .eq("account_type", "team").eq("company_name", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+            const { data: mem } = acct ? await supabase.from("account_members").select("user_id").eq("account_id", (acct as { id: string }).id).limit(1).maybeSingle() : { data: null };
+            const uid = (mem as { user_id?: string } | null)?.user_id;
+            try {
+              if (!uid) throw new Error("couldn't find the new member");
+              await setSalesAccess(uid, true);
+            } catch (e) {
+              toast({ title: "Invited, but Sales wasn't shared", description: `${(e as Error).message} — open their card and tick Share the Sales module.`, variant: "destructive" });
+            }
+          }
           setInviteEmail("");
           setInviteRole("");
+          setInviteSales(false);
           setResultBanner({ email });
           setIsAddDialogOpen(false);
           fetchAccounts();
@@ -1605,6 +1646,13 @@ export function AccountList({
                         <option value="Photographer">Photographer</option>
                       </select>
                     </div>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 px-3 py-2.5">
+                      <input type="checkbox" checked={inviteSales} onChange={(e) => setInviteSales(e.target.checked)} className="mt-0.5 accent-[#C9A96A]" />
+                      <span>
+                        <span className="block text-sm text-strong">Share the Sales module</span>
+                        <span className="block text-[11px] text-muted-foreground">Sales, Director, Commitments and KPIs, on their own leads only, as well as their own pages.</span>
+                      </span>
+                    </label>
                     <div className="flex gap-2">
                       <Button variant="ghost" onClick={() => setTeamAddMode("choice")} disabled={isCreating} className="text-muted-foreground">
                         Back
@@ -2177,6 +2225,9 @@ export function AccountList({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2.5 min-w-0">
                               <span className="font-sans text-sm font-medium text-strong truncate">{displayName}</span>
+                              {isTeamOnly && salesShared.has(u.user_id) && (
+                                <span title="The Sales module is shared with them" className="shrink-0 rounded-sm bg-gold/15 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] text-[#ecd39c]">Sales</span>
+                              )}
                               {online ? (
                                 <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px]" style={{ color: "#6FBE8A" }}>
                                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#6FBE8A", boxShadow: "0 0 6px rgba(111,190,138,0.75)" }} />
@@ -2568,6 +2619,15 @@ export function AccountList({
               ) : (
                 <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Role</label>
                   <Input value={editMember.role} onChange={(e) => setEditMember((m) => m && { ...m, role: e.target.value })} placeholder="Scene Manager / Modeller …" /></div>
+              )}
+              {editMember.userId && (
+                <label className="col-span-2 flex cursor-pointer items-start gap-3 rounded-md border border-white/10 px-3 py-2.5">
+                  <input type="checkbox" checked={editMember.sales} onChange={(e) => setEditMember((m) => m && { ...m, sales: e.target.checked })} className="mt-0.5 accent-[#C9A96A]" />
+                  <span>
+                    <span className="block text-sm text-strong">Share the Sales module</span>
+                    <span className="block text-[11px] text-muted-foreground">Sales, Director, Commitments and KPIs, on their own leads only. They keep their own pages too.</span>
+                  </span>
+                </label>
               )}
               <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Start date at the studio</label>
                 <Input type="date" value={editMember.startDate} onChange={(e) => setEditMember((m) => m && { ...m, startDate: e.target.value })} />

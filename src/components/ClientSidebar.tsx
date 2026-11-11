@@ -6,6 +6,7 @@ import { teamCategoryOf, hasEarnings } from "@/lib/teamCategory";
 import {
   CalendarDays, Inbox, Images, FileText, Users, Wallet, Banknote,
   LayoutDashboard, Package, Settings, LogOut, ChevronsLeft, ChevronsRight,
+  Target,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -55,6 +56,14 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     role: string | null;
   } | null>(null);
 
+  // Sales shared with this team member: a way back to it from their own pages.
+  const [salesShared, setSalesShared] = useState(false);
+  useEffect(() => {
+    if (!user || accountType !== "team") return;
+    supabase.from("user_roles").select("role").eq("user_id", user.id)
+      .then(({ data }) => setSalesShared(((data ?? []) as { role: string }[]).some((r) => r.role === "sales" || r.role === "sales_manager")));
+  }, [user, accountType]);
+
   useEffect(() => {
     if (!user) return;
     Promise.all([
@@ -91,6 +100,10 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     : accountType === "project"
     ? PROJECT_NAV
     : PARTNERSHIP_NAV;
+
+  const nav = accountType === "team" && salesShared
+    ? [{ path: "/admin/sales", label: "Sales", Icon: Target } as SidebarNavItem, ...navItems]
+    : navItems;
 
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [
@@ -132,7 +145,7 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
 
   return (
     <Sidebar
-      sections={[{ items: navItems }]}
+      sections={[{ items: nav }]}
       accountMenuItems={accountMenuItems}
       accountDisplayName={displayName}
       accountSubLabel={accountType === "team" ? (profile?.role ?? "Team") : (profile?.company ?? null)}

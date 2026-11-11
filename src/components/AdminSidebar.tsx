@@ -9,8 +9,10 @@ import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
   Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare, MonitorDown, BarChart3,
+  Wallet, FileText, Banknote,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { teamCategoryOf, teamPagesFor } from "@/lib/teamCategory";
 import { Sidebar, type SidebarNavSection, type SidebarAccountMenuItem } from "./Sidebar";
 import { usePWAInstall } from "@/components/PWAInstallPrompt";
 
@@ -68,7 +70,7 @@ interface AdminSidebarProps {
 export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, accountType, employmentType } = useAuth();
   const [profile, setProfile] = useState<{
     first_name: string | null;
     last_name: string | null;
@@ -83,6 +85,22 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   // database (RLS); this just stops the sidebar offering doors that won't open.
   const { isAdmin, isSales } = useUserRole();
   const salesOnly = !isAdmin && isSales;
+
+  // Sales shared with a team member (e.g. a freelance business developer):
+  // their own pages sit under Sales, so neither world is a dead end.
+  const [ownRole, setOwnRole] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!salesOnly || accountType !== "team" || !user) return;
+    supabase.from("account_members").select("accounts(position, team_role)").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => {
+        const a = (data as { accounts?: { position?: string | null; team_role?: string | null } } | null)?.accounts;
+        setOwnRole(a?.position ?? a?.team_role ?? null);
+      });
+  }, [salesOnly, accountType, user]);
+  const OWN_ICON = { Earnings: Wallet, Calendar: CalendarDays, Documents: FileText, Salary: Banknote } as const;
+  const ownSection: SidebarNavSection | null = salesOnly && accountType === "team" && ownRole !== undefined
+    ? { title: "Yours", items: teamPagesFor(teamCategoryOf(employmentType, ownRole)).map((p) => ({ path: p.path, label: p.label, Icon: OWN_ICON[p.label] })) }
+    : null;
 
   useEffect(() => {
     if (!user) return;
@@ -101,7 +119,7 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
 
   // Attach the live badges: new-clients on Clients, due-overheads on Expenses.
   const visibleSections = salesOnly
-    ? SECTIONS.filter((section) => section.items.some((item) => item.path.startsWith("/admin/sales")))
+    ? [...SECTIONS.filter((section) => section.items.some((item) => item.path.startsWith("/admin/sales"))), ...(ownSection ? [ownSection] : [])]
     : SECTIONS;
   const sections: SidebarNavSection[] = visibleSections.map((section) => ({
     ...section,
