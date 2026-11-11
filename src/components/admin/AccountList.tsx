@@ -20,6 +20,7 @@ import {
   Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
 } from "lucide-react";
 import { TableSearch } from "@/components/ui/TableToolbar";
+import { TEAM_CATEGORY_ORDER, teamCategoryOf } from "@/lib/teamCategory";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -183,18 +184,14 @@ function fullNameOf(u: AccountUserRow): string {
   );
 }
 
-// Team members are shown grouped by discipline. Employees come first, then the
-// freelance disciplines. Anyone who doesn't match a named bucket — or hasn't
-// been given a role yet — falls into "Other" so nobody is ever hidden.
-const TEAM_SECTION_ORDER = ["Employees", "Scene Managers", "Modellers", "Photographers", "Other"];
+// Team members are shown grouped by category (lib/teamCategory — the same rule
+// decides which pages each member gets). Anyone who doesn't match a named
+// bucket, or hasn't been given a role yet, falls into "Other" so nobody is
+// ever hidden; a category with nobody in it isn't shown at all.
+const TEAM_SECTION_ORDER: readonly string[] = TEAM_CATEGORY_ORDER;
 function teamSectionOf(g: AccountGroup): string {
   const u = g.users[0];
-  if (u?.employment_type === "employee") return "Employees";
-  const raw = (u?.position ?? u?.member_role ?? "").toLowerCase();
-  if (raw.includes("scene manager")) return "Scene Managers";
-  if (raw.includes("modell") || raw.includes("modeler")) return "Modellers";
-  if (raw.includes("photograph")) return "Photographers";
-  return "Other";
+  return teamCategoryOf(u?.employment_type, u?.position ?? u?.member_role);
 }
 
 // Derive 3-letter client-code suggestions from the company name.
@@ -1601,6 +1598,7 @@ export function AccountList({
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                       >
                         <option value="" disabled>Select a role…</option>
+                        <option value="Freelancer">Freelancer — Calendar and Documents</option>
                         <option value="Scene Manager">Scene Manager</option>
                         <option value="Modeller">Modeller</option>
                         <option value="Art Director">Art Director</option>

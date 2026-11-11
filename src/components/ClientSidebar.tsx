@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { teamCategoryOf, hasEarnings } from "@/lib/teamCategory";
 import {
   CalendarDays, Inbox, Images, FileText, Users, Wallet, Banknote,
   LayoutDashboard, Package, Settings, LogOut, ChevronsLeft, ChevronsRight,
@@ -23,6 +24,14 @@ const TEAM_NAV: SidebarNavItem[] = [
   { path: "/documents", label: "Documents",  Icon: FileText    },
 ];
 // Employees are salaried (payroll), not paid per work — Salary replaces Earnings.
+// Freelancers outside the Airtable disciplines: no Earnings (their pay isn't in
+// Airtable's work logs). Also what any team member sees until their role has
+// loaded, so a page can appear but never flash in and vanish.
+const TEAM_NAV_FREELANCER: SidebarNavItem[] = [
+  { path: "/calendar",  label: "Calendar",   Icon: CalendarDays },
+  { path: "/documents", label: "Documents",  Icon: FileText    },
+];
+
 const TEAM_NAV_EMPLOYEE: SidebarNavItem[] = [
   { path: "/documents", label: "Documents",  Icon: FileText    },
   { path: "/calendar",  label: "Calendar",   Icon: CalendarDays },
@@ -73,8 +82,12 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     navigate("/auth");
   };
 
+  // Which pages a team member gets follows their category (lib/teamCategory).
+  const teamCategory = teamCategoryOf(employmentType, profile?.role);
   const navItems = accountType === "team"
-    ? (employmentType === "employee" ? TEAM_NAV_EMPLOYEE : TEAM_NAV)
+    ? (employmentType === "employee" ? TEAM_NAV_EMPLOYEE
+      : !profile || !hasEarnings(teamCategory) ? TEAM_NAV_FREELANCER
+      : TEAM_NAV)
     : accountType === "project"
     ? PROJECT_NAV
     : PARTNERSHIP_NAV;
