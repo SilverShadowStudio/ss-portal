@@ -11,6 +11,11 @@
 // in Airtable's work logs, so they have no Earnings page: Calendar and
 // Documents only.
 
+/** The roles an admin picks from when bringing someone in. One list for every
+ *  place a role is chosen — the invite, "existing agreement", and onboarding's
+ *  fallback — so they can't drift apart again (onboarding's lacked Freelancer). */
+export const TEAM_ROLES = ["Freelancer", "Scene Manager", "Modeller", "Art Director", "Photographer"] as const;
+
 export const TEAM_CATEGORY_ORDER = [
   "Employees", "Freelancers", "Scene Managers", "Modellers", "Photographers", "Other",
 ] as const;

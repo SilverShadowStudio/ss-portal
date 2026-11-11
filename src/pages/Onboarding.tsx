@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
+import { TEAM_ROLES } from "@/lib/teamCategory";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
@@ -562,10 +563,7 @@ export default function Onboarding() {
                 ) : (
                   <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
                     <option value="" disabled>Select a role…</option>
-                    <option value="Scene Manager">Scene Manager</option>
-                    <option value="Modeller">Modeller</option>
-                    <option value="Art Director">Art Director</option>
-                    <option value="Photographer">Photographer</option>
+                    {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 )}
                 {!roleLocked && showError("role") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}

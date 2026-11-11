@@ -20,7 +20,7 @@ import {
   Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
 } from "lucide-react";
 import { TableSearch } from "@/components/ui/TableToolbar";
-import { TEAM_CATEGORY_ORDER, teamCategoryOf } from "@/lib/teamCategory";
+import { TEAM_CATEGORY_ORDER, TEAM_ROLES, teamCategoryOf } from "@/lib/teamCategory";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -375,6 +375,10 @@ export function AccountList({
   // Position + gross annual salary, and later feeds Debts → Salaries.
   const [presignedEmploymentType, setPresignedEmploymentType] = useState<"freelancer" | "employee">("freelancer");
   const [presignedPosition, setPresignedPosition] = useState("");
+  // A freelancer's role is chosen here by the admin, as on the plain invite,
+  // and locked at onboarding. Without it onboarding asked the member instead.
+  const [presignedRole, setPresignedRole] = useState("");
+  const [presignedSales, setPresignedSales] = useState(false);
   const [presignedSalary, setPresignedSalary] = useState("");
   const [presignedPdfFile, setPresignedPdfFile] = useState<File | null>(null);
   const [isPresignedUploading, setIsPresignedUploading] = useState(false);
@@ -912,6 +916,8 @@ export function AccountList({
   };
 
   const resetPresignedForm = () => {
+    setPresignedRole("");
+    setPresignedSales(false);
     setPresignedFirstName("");
     setPresignedLastName("");
     setPresignedEmail("");
@@ -1027,6 +1033,10 @@ export function AccountList({
       toast({ title: "PDF must be 10 MB or smaller", variant: "destructive" });
       return;
     }
+    if (!presignedForExisting && presignedEmploymentType === "freelancer" && !presignedRole) {
+      toast({ title: "Choose their role", description: "It's set by you here and locked when they onboard.", variant: "destructive" });
+      return;
+    }
     if (!presignedForExisting && presignedEmploymentType === "employee" && (!presignedPosition.trim() || !(parseFloat(presignedSalary.replace(/[^0-9.]/g, "")) > 0))) {
       toast({ title: "Position and gross annual salary are required for an employee", variant: "destructive" });
       return;
@@ -1044,6 +1054,9 @@ export function AccountList({
       fd.append("signing_date", presignedSigningDate);
       if (presignedSubjectLine.trim()) fd.append("subject_line", presignedSubjectLine.trim());
       fd.append("employment_type", presignedEmploymentType);
+      // A freelancer's role travels as "position": the function stores it as
+      // their team_role (it keeps position itself for employees only).
+      if (!presignedForExisting && presignedEmploymentType === "freelancer" && presignedRole) fd.append("position", presignedRole);
       if (presignedEmploymentType === "employee") {
         fd.append("position", presignedPosition.trim());
         fd.append("gross_salary_annual", String(parseFloat(presignedSalary.replace(/[^0-9.]/g, ""))));
@@ -1060,6 +1073,16 @@ export function AccountList({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.error) throw new Error(data?.error || `Upload failed (${res.status})`);
       toast({ title: "Pre-signed contract uploaded", description: `Invite sent to ${presignedEmail.trim()}` });
+      if (!presignedForExisting && presignedSales) {
+        // The upload doesn't return the member, so find the account it made.
+        const name = `${presignedFirstName.trim()} ${presignedLastName.trim()}`.trim();
+        const { data: acct } = await supabase.from("accounts").select("id").eq("account_type", "team").eq("company_name", name)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const { data: mem } = acct ? await supabase.from("account_members").select("user_id").eq("account_id", (acct as { id: string }).id).limit(1).maybeSingle() : { data: null };
+        const uid = (mem as { user_id?: string } | null)?.user_id;
+        try { if (!uid) throw new Error("couldn't find the new member"); await setSalesAccess(uid, true); }
+        catch (e) { toast({ title: "Added, but Sales wasn't shared", description: `${(e as Error).message} — tick Share the Sales module on their card.`, variant: "destructive" }); }
+      }
       setIsAddDialogOpen(false);
       setTeamAddMode("choice");
       resetPresignedForm();
@@ -1639,11 +1662,7 @@ export function AccountList({
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                       >
                         <option value="" disabled>Select a role…</option>
-                        <option value="Freelancer">Freelancer — Calendar and Documents</option>
-                        <option value="Scene Manager">Scene Manager</option>
-                        <option value="Modeller">Modeller</option>
-                        <option value="Art Director">Art Director</option>
-                        <option value="Photographer">Photographer</option>
+                        {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                     <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 px-3 py-2.5">
@@ -1769,6 +1788,26 @@ export function AccountList({
                         })}
                       </div>
                     </div>
+                    )}
+
+                    {/* Role — chosen by you, locked at their onboarding (freelancers;
+                        an employee's role is the position entered below). */}
+                    {!presignedForExisting && presignedEmploymentType === "freelancer" && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/60">Role *</span>
+                        <select value={presignedRole} onChange={(e) => setPresignedRole(e.target.value)}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                          <option value="" disabled>Select a role…</option>
+                          {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 px-3 py-2.5">
+                          <input type="checkbox" checked={presignedSales} onChange={(e) => setPresignedSales(e.target.checked)} className="mt-0.5 accent-[#C9A96A]" />
+                          <span>
+                            <span className="block text-sm text-strong">Share the Sales module</span>
+                            <span className="block text-[11px] text-muted-foreground">Sales, Director, Commitments and KPIs, on their own leads only, as well as their own pages.</span>
+                          </span>
+                        </label>
+                      </div>
                     )}
 
                     {/* Contract first — read it to prefill everything below */}
