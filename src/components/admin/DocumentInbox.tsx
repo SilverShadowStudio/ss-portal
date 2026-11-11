@@ -7,6 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { FeedList, useFeedDismissals } from "@/components/ui/FeedList";
+import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
+import { IncomeInvoiceReviewDialog, mapInvoiceToForm, type FormState } from "@/components/admin/finance/IncomeInvoiceUpload";
+import { parseOverheadFile, fileToBase64, OVERHEAD_STAGING_BUCKET, type ParsedInvoice } from "@/lib/overheadIntake";
+import { recordOverheadUnattended } from "@/lib/overheadRecord";
+import { describeFlags } from "@/lib/overheadConfidence";
+import type { ExpenseCategory } from "@/lib/finance";
 
 // The Dropzone (called the Document Inbox until 11 Nov 2026) — drop any
 // document; the portal reads it, works out what it is, renames it to the studio
@@ -35,7 +41,15 @@ interface InboxRow {
   error_text: string | null;
 }
 
-interface Pending { key: string; name: string }
+interface Pending { key: string; name: string; note?: string }
+
+/** The function hands supplier and client invoices back for the P&L intake. */
+type Handoff = "ap_invoice" | "ar_invoice";
+type ReviewOutcome = "saved" | "cancelled";
+
+const money = (n: number, ccy = "GBP") =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency: ccy || "GBP", maximumFractionDigits: 2 }).format(n || 0);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const STATUS_LABEL: Record<Status, string> = {
   processing: "Reading",
@@ -99,6 +113,123 @@ export function DocumentInbox() {
   const [history, setHistory] = useState(false);
   const { dismissed, dismiss } = useFeedDismissals("dropzone");
 
+  // ── Invoices go to the books ────────────────────────────────────────────
+  // The Dropzone is the only drop zone, so a supplier or client invoice has to
+  // end up in the P&L, not just in Dropbox. The function hands those back and
+  // they run through the P&L's own intake — the same confidence gate, the same
+  // review forms, the same filing — one at a time, since a review is modal.
+  const [categories, setCategories] = useState<ExpenseCategory[] | null>(null);
+  const [expenseReview, setExpenseReview] = useState<{ item: ParsedInvoice; label: string | null } | null>(null);
+  const [incomeReview, setIncomeReview] = useState<{ form: FormState; file: File } | null>(null);
+  const reviewDone = useRef<((o: ReviewOutcome) => void) | null>(null);
+  const reviewSaved = useRef(false);
+  const intakeChain = useRef<Promise<void>>(Promise.resolve());
+
+  const loadCategories = useCallback(async (): Promise<ExpenseCategory[]> => {
+    if (categories) return categories;
+    const { data } = await sb.from("expense_categories").select("*").order("code");
+    const list = (data ?? []) as ExpenseCategory[];
+    setCategories(list);
+    return list;
+  }, [categories]);
+
+  const settle = useCallback(async (id: string, fields: Record<string, unknown>): Promise<InboxRow | null> => {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "settle", id, ...fields }),
+    });
+    const body = await res.json().catch(() => ({}));
+    return (body.row as InboxRow) ?? null;
+  }, []);
+
+  /** Wait for whichever review form is open to be saved or closed. */
+  const awaitReview = () => new Promise<ReviewOutcome>((resolve) => {
+    reviewSaved.current = false;
+    reviewDone.current = resolve;
+  });
+  const closeReview = () => {
+    const done = reviewDone.current;
+    reviewDone.current = null;
+    setExpenseReview(null);
+    setIncomeReview(null);
+    done?.(reviewSaved.current ? "saved" : "cancelled");
+  };
+
+  /** Where Dropbox put an expense: the trigger files it moments after the row lands. */
+  const filedPathFor = async (stagingPath: string): Promise<string | null> => {
+    for (let i = 0; i < 15; i++) {
+      const { data } = await sb.from("overheads").select("dropbox_path").eq("staging_storage_path", stagingPath).maybeSingle();
+      if (data?.dropbox_path) return data.dropbox_path as string;
+      await sleep(2000);
+    }
+    return null;
+  };
+
+  const intakeExpense = async (row: InboxRow, file: File) => {
+    const cats = await loadCategories();
+    const item = await parseOverheadFile(file, cats);
+    const staged = item.defaults.staging_storage_path ?? null;
+    const supplier = item.defaults.supplier_name ?? "Supplier";
+    const gross = money(item.defaults.gross_amount ?? 0, item.defaults.currency ?? "GBP");
+
+    if (item.verdict.auto) {
+      const outcome = await recordOverheadUnattended(item.defaults);
+      if (outcome.status !== "recorded" && staged) void supabase.storage.from(OVERHEAD_STAGING_BUCKET).remove([staged]);
+      if (outcome.status === "duplicate") {
+        return settle(row.id, { status: "duplicate", summary: `${supplier} — already in your books (same supplier and invoice number). Nothing was filed twice.` });
+      }
+      if (outcome.status === "failed") {
+        return settle(row.id, { status: "to_check", reasoning: `Read as a supplier invoice but couldn't be recorded: ${outcome.error}` });
+      }
+      const path = staged ? await filedPathFor(staged) : null;
+      return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} ${gross} — recorded in P&L, Money out, as unpaid. Pay it from its row.` });
+    }
+
+    // Not sure enough to land unattended: the P&L's own review form, right here.
+    setExpenseReview({ item, label: describeFlags(item.verdict.flags) || null });
+    const outcome = await awaitReview();
+    if (outcome === "cancelled") {
+      if (staged) void supabase.storage.from(OVERHEAD_STAGING_BUCKET).remove([staged]);
+      return settle(row.id, { status: "to_check", reasoning: "Read as a supplier invoice, but the review was closed without saving, so it isn't in the books. Drop it again to record it." });
+    }
+    const path = staged ? await filedPathFor(staged) : null;
+    return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} — reviewed and recorded in P&L, Money out, as unpaid.` });
+  };
+
+  const intakeIncome = async (row: InboxRow, file: File) => {
+    const { data, error } = await supabase.functions.invoke("parse-document", {
+      body: { document_type: "invoice", file_data_base64: await fileToBase64(file), file_mime_type: file.type },
+    });
+    if (error || !data?.success || !data?.data) {
+      return settle(row.id, { status: "to_check", reasoning: `Read as a client invoice but its figures couldn't be extracted: ${(data as { error?: string } | null)?.error ?? error?.message ?? "unknown error"}` });
+    }
+    // Client invoices always get a look before they count as income, as in the P&L.
+    setIncomeReview({ form: mapInvoiceToForm(data.data as Record<string, unknown>), file });
+    const outcome = await awaitReview();
+    return outcome === "saved"
+      ? settle(row.id, { status: "filed", summary: "Recorded in P&L, Money in, and filed to Dropbox with the invoice." })
+      : settle(row.id, { status: "to_check", reasoning: "Read as a client invoice, but the review was closed without saving, so it isn't in the books. Drop it again to record it." });
+  };
+
+  /** Queue an invoice for the books. Runs strictly one after another. */
+  const intake = (row: InboxRow, file: File, kind: Handoff, key: string) => {
+    intakeChain.current = intakeChain.current.then(async () => {
+      setPending((p) => p.map((x) => (x.key === key ? { ...x, note: "into the books" } : x)));
+      try {
+        const settled = kind === "ap_invoice" ? await intakeExpense(row, file) : await intakeIncome(row, file);
+        if (settled) setRows((r) => [settled, ...r.filter((x) => x.id !== settled.id)].slice(0, HISTORY_LIMIT));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const settled = await settle(row.id, { status: "to_check", reasoning: `Couldn't be recorded in the books: ${msg}` });
+        if (settled) setRows((r) => [settled, ...r.filter((x) => x.id !== settled.id)].slice(0, HISTORY_LIMIT));
+        toast({ title: `${file.name} wasn't recorded`, description: msg, variant: "destructive" });
+      }
+      setPending((p) => p.filter((x) => x.key !== key));
+    });
+    return intakeChain.current;
+  };
+
   const loadRecent = useCallback(async () => {
     const { data } = await sb
       .from("document_inbox")
@@ -111,13 +242,14 @@ export function DocumentInbox() {
 
   useEffect(() => { loadRecent(); }, [loadRecent]);
 
-  const fileOne = useCallback(async (file: File): Promise<InboxRow | null> => {
+  const fileOne = useCallback(async (file: File): Promise<{ row: InboxRow; handoff: Handoff | null }> => {
     const form = new FormData();
     form.append("file", file, file.name);
+    form.append("route_invoices", "1");
     const res = await fetch(ENDPOINT, { method: "POST", headers: await authHeaders(), body: form });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body.row) throw new Error(body.error ?? `Upload failed (${res.status})`);
-    return body.row as InboxRow;
+    return { row: body.row as InboxRow, handoff: (body.handoff as Handoff | undefined) ?? null };
   }, []);
 
   const run = useCallback(async (files: File[]) => {
@@ -129,8 +261,9 @@ export function DocumentInbox() {
       while (idx < queue.length) {
         const q = queue[idx++];
         try {
-          const row = await fileOne(q.file);
-          if (row) setRows((r) => [row, ...r.filter((x) => x.id !== row.id)].slice(0, HISTORY_LIMIT));
+          const { row, handoff } = await fileOne(q.file);
+          if (handoff) { void intake(row, q.file, handoff, q.key); continue; } // pending until settled
+          setRows((r) => [row, ...r.filter((x) => x.id !== row.id)].slice(0, HISTORY_LIMIT));
         } catch (err) {
           toast({ title: `${q.file.name} couldn't be filed`, description: err instanceof Error ? err.message : String(err), variant: "destructive" });
         }
@@ -138,8 +271,9 @@ export function DocumentInbox() {
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+    await intakeChain.current;
     loadRecent();
-  }, [fileOne, loadRecent, toast]);
+  }, [fileOne, loadRecent, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -189,14 +323,14 @@ export function DocumentInbox() {
             {!busy && <span className="text-white/35"> — or click to browse</span>}
           </span>
           <span className="mt-2 text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Read, classified, renamed and filed to Dropbox
+            Read, classified, renamed and filed to Dropbox · invoices go into the P&amp;L
           </span>
           {busy && (
             <div className="mt-5 flex w-full max-w-md flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
               {pending.map((p) => (
                 <div key={p.key} className="flex items-center gap-2 text-left text-xs text-white/50">
                   <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                  <span className="truncate">{p.name}</span>
+                  <span className="truncate">{p.name}{p.note && <span className="text-white/30"> — {p.note}</span>}</span>
                 </div>
               ))}
             </div>
@@ -225,6 +359,28 @@ export function DocumentInbox() {
           </div>
         )}
       </div>
+
+      {/* The P&L review forms. OverheadForm stays mounted (CLAUDE.md); the income dialog mounts with its data, as on the P&L page. */}
+      <OverheadForm
+        open={!!expenseReview}
+        onOpenChange={(o) => { if (!o) closeReview(); }}
+        mode="create"
+        initial={null}
+        defaultValues={expenseReview?.item.defaults ?? null}
+        categories={categories ?? []}
+        onSaved={() => { reviewSaved.current = true; }}
+        reviewReason={expenseReview?.label ?? null}
+        previewStagingPath={expenseReview?.item.verdict.showDocument ? expenseReview.item.defaults.staging_storage_path ?? null : null}
+      />
+      {incomeReview && (
+        <IncomeInvoiceReviewDialog
+          open
+          onOpenChange={(o) => { if (!o) closeReview(); }}
+          initial={incomeReview.form}
+          sourceFile={incomeReview.file}
+          onSaved={() => { reviewSaved.current = true; }}
+        />
+      )}
 
       <MoveDialog
         row={moveRow}

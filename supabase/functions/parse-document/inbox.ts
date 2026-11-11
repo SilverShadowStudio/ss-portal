@@ -613,6 +613,12 @@ async function fileOne(req: Request, sb: SB): Promise<Record<string, unknown>> {
   const createdBy = await callerId(req, sb)
   // dry_run=1 (service callers only): classify and plan, write nothing anywhere.
   const dryRun = form.get('dry_run') === '1' && createdBy === null
+  // The Overview Dropzone is the ONE drop zone (Fred, 11 Nov 2026). Invoices
+  // must land in the books, not just in Dropbox, so with route_invoices=1 a
+  // confident supplier or client invoice is not filed here: it is handed back
+  // to the browser, which runs it through the P&L's own intake (same
+  // confidence gate, same review form, same filing), then settles this row.
+  const routeInvoices = form.get('route_invoices') === '1' && !dryRun && createdBy !== null
 
   // Same bytes already filed → don't file twice; point at the existing copy —
   // but only if that copy is still there. The record of a filing outlives the
@@ -662,6 +668,14 @@ async function fileOne(req: Request, sb: SB): Promise<Record<string, unknown>> {
     const ext = extOf(filename)
 
     const confident = c.confidence >= CONFIDENCE_FLOOR
+    if (routeInvoices && confident && (c.doc_type === 'ap_invoice' || c.doc_type === 'ar_invoice')) {
+      // Stays 'processing' (hidden from the list) until the browser settles it.
+      const { data: handed } = await sb.from('document_inbox').update({
+        doc_type: c.doc_type, confidence: c.confidence, summary: c.summary, reasoning: c.reasoning,
+        extracted: c, model, updated_at: new Date().toISOString(),
+      }).eq('id', row.id).select().single()
+      return { ok: true, handoff: c.doc_type, row: handed }
+    }
     const plan = confident ? await planPath({ dbx, clients }, c, filename) : null
     const target = plan ? `${plan.folder}/${plan.stem}.${ext}` : `${TO_CHECK}/${toCheckStem(c, filename)}.${ext}`
     const path = dryRun ? target : await upload(dbx, target, bytes)
@@ -686,7 +700,27 @@ export async function handleInbox(req: Request, corsHeaders: Record<string, stri
     if ((req.headers.get('content-type') ?? '').includes('multipart/form-data')) {
       return json(await fileOne(req, sb))
     }
-    const body = await req.json().catch(() => ({})) as { op?: string; id?: string; path?: string }
+    const body = await req.json().catch(() => ({})) as {
+      op?: string; id?: string; path?: string; status?: string; summary?: string; reasoning?: string; dropbox_path?: string | null
+    }
+
+    // How a handed-over invoice ended up: recorded in the P&L (filed), already
+    // in the books (duplicate), or not recorded (to_check). Only rows still
+    // waiting on the browser can be settled.
+    if (body.op === 'settle') {
+      const status = body.status ?? ''
+      if (!body.id || !['filed', 'to_check', 'duplicate'].includes(status)) return json({ ok: false, error: 'id and a valid status required' }, 400)
+      const { data, error } = await sb.from('document_inbox').update({
+        status,
+        ...(typeof body.summary === 'string' ? { summary: body.summary.slice(0, 1000) } : {}),
+        ...(typeof body.reasoning === 'string' ? { reasoning: body.reasoning.slice(0, 2000) } : {}),
+        ...(typeof body.dropbox_path === 'string' && body.dropbox_path ? { dropbox_path: body.dropbox_path } : {}),
+        updated_at: new Date().toISOString(),
+      }).eq('id', body.id).eq('status', 'processing').select().maybeSingle()
+      if (error) return json({ ok: false, error: error.message }, 500)
+      if (!data) return json({ ok: false, error: 'That document is not waiting to be settled' }, 409)
+      return json({ ok: true, row: data })
+    }
 
     if (body.op === 'tree') {
       const dbx = await dropbox(sb)
