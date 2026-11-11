@@ -75,7 +75,7 @@ export function RecurringOverheadsDialog({ categories, onChange }: { categories:
       });
       if (genErr) throw genErr;
       const n = gen?.created ?? 0;
-      toast({ title: "Recurring bill added", description: n > 0 ? `${n} month${n === 1 ? "" : "s"} created as unpaid — see Debts → Overheads.` : "Set up. Entries will appear as each month falls due." });
+      toast({ title: "Recurring bill added", description: n > 0 ? `${n} month${n === 1 ? "" : "s"} created as unpaid — see To Pay → Overheads.` : "Set up. Entries will appear as each month falls due." });
       setF({ supplier_name: "", category_code: "", description: "", gross: "", vat: "0", day_of_month: "1", start_date: "", end_date: "" });
       load();
       onChange();

@@ -255,7 +255,7 @@ export function DebtsTaxes({ onTotal }: { onTotal?: (n: number) => void } = {}) 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md rounded-sm border-divider bg-background">
           <DialogHeader>
-            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">Debts · Taxes</p>
+            <p className="text-[9px] uppercase tracking-[0.28em] text-foreground/40">To Pay · Taxes</p>
             <DialogTitle className="font-serif font-normal text-2xl">Add tax liability</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">

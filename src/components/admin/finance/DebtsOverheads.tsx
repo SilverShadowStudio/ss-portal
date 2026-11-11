@@ -102,7 +102,7 @@ export function DebtsOverheads({ onTotal }: { onTotal?: (n: number) => void } = 
       {loading ? (
         <div className="flex justify-center py-10"><BrandLoader size="sm" /></div>
       ) : rows.length === 0 ? (
-        <div className="ssr-tile p-10 text-center text-recessive text-sm">No unpaid overheads. Add them in P&amp;L → Money out.</div>
+        <div className="ssr-tile p-10 text-center text-recessive text-sm">No unpaid overheads. Add them in Ledger → Money out.</div>
       ) : (
         <>
         <TableToolbar>

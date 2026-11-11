@@ -49,11 +49,11 @@ const SECTIONS: SidebarNavSection[] = [
   {
     title: "Finance",
     items: [
-      { path: "/admin/finance/pnl",         label: "P&L",         Icon: TrendingUp, indent: true },
-      { path: "/admin/finance/reconcile",   label: "Reconcile",   Icon: Landmark,   indent: true },
-      { path: "/admin/finance/reconciliation", label: "Reconciliation", Icon: FileCheck2, indent: true },
-      { path: "/admin/finance/freelancers", label: "Debts",       Icon: HandCoins,  indent: true },
-      { path: "/admin/finance/recurring",   label: "Recurring",   Icon: Repeat,     indent: true },
+      { path: "/admin/finance/pnl",         label: "Ledger",      Icon: TrendingUp, indent: true },
+      { path: "/admin/finance/reconcile",   label: "Bank",        Icon: Landmark,   indent: true },
+      { path: "/admin/finance/reconciliation", label: "Receipts",    Icon: FileCheck2, indent: true },
+      { path: "/admin/finance/freelancers", label: "To Pay",      Icon: HandCoins,  indent: true },
+      { path: "/admin/finance/recurring",   label: "Fixed Costs", Icon: Repeat,     indent: true },
     ],
   },
 ];

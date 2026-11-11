@@ -183,7 +183,7 @@ export function DocumentInbox() {
         return settle(row.id, { status: "to_check", reasoning: `Read as a supplier invoice but couldn't be recorded: ${outcome.error}` });
       }
       const path = staged ? await filedPathFor(staged) : null;
-      return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} ${gross} — recorded in P&L, Money out, as unpaid. Pay it from its row.` });
+      return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} ${gross} — recorded in the Ledger, Money out, as unpaid. Pay it from its row.` });
     }
 
     // Not sure enough to land unattended: the P&L's own review form, right here.
@@ -194,7 +194,7 @@ export function DocumentInbox() {
       return settle(row.id, { status: "to_check", reasoning: "Read as a supplier invoice, but the review was closed without saving, so it isn't in the books. Drop it again to record it." });
     }
     const path = staged ? await filedPathFor(staged) : null;
-    return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} — reviewed and recorded in P&L, Money out, as unpaid.` });
+    return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} — reviewed and recorded in the Ledger, Money out, as unpaid.` });
   };
 
   const intakeIncome = async (row: InboxRow, file: File) => {
@@ -208,7 +208,7 @@ export function DocumentInbox() {
     setIncomeReview({ form: mapInvoiceToForm(data.data as Record<string, unknown>), file });
     const outcome = await awaitReview();
     return outcome === "saved"
-      ? settle(row.id, { status: "filed", summary: "Recorded in P&L, Money in, and filed to Dropbox with the invoice." })
+      ? settle(row.id, { status: "filed", summary: "Recorded in the Ledger, Money in, and filed to Dropbox with the invoice." })
       : settle(row.id, { status: "to_check", reasoning: "Read as a client invoice, but the review was closed without saving, so it isn't in the books. Drop it again to record it." });
   };
 
@@ -323,7 +323,7 @@ export function DocumentInbox() {
             {!busy && <span className="text-white/35"> — or click to browse</span>}
           </span>
           <span className="mt-2 text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Read, classified, renamed and filed to Dropbox · invoices go into the P&amp;L
+            Read, classified, renamed and filed to Dropbox · invoices go into the Ledger
           </span>
           {busy && (
             <div className="mt-5 flex w-full max-w-md flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>

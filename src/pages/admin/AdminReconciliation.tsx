@@ -86,7 +86,7 @@ export default function AdminReconciliation() {
       <div className="mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
-          <span className="text-label-gold text-[#ecd39c]">Reconciliation</span>
+          <span className="text-label-gold text-[#ecd39c]">Receipts</span>
         </div>
         <p className="mt-3 text-sm text-recessive">Match every Revolut entry to its invoice/receipt in Dropbox 03_Invoices. Missing receipts and orphan files are listed below.</p>
       </div>
