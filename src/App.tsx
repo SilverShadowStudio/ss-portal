@@ -64,6 +64,7 @@ import AdminTeam from "./pages/admin/AdminTeam";
 import AdminTeamCalendar from "./pages/admin/AdminTeamCalendar";
 import AdminTeamEarnings from "./pages/admin/AdminTeamEarnings";
 import Calendar from "./pages/Calendar";
+import Hours from "./pages/Hours";
 import AdminPnL from "./pages/admin/AdminPnL";
 import AdminRecurring from "./pages/admin/AdminRecurring";
 import AdminFreelancerPayments from "./pages/admin/AdminFreelancerPayments";
@@ -259,6 +260,14 @@ const App = () => (
               element={
                 <ProtectedClient>
                   <Calendar />
+                </ProtectedClient>
+              }
+            />
+            <Route
+              path="/hours"
+              element={
+                <ProtectedClient>
+                  <Hours />
                 </ProtectedClient>
               }
             />

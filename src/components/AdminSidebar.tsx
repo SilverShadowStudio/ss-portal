@@ -9,7 +9,7 @@ import {
   LayoutDashboard, CalendarDays, Users2, UserPlus, Activity,
   Landmark, ScrollText, TrendingUp, HandCoins, Repeat, FileCheck2,
   Settings, LogOut, ChevronsLeft, ChevronsRight, Target, ListChecks, MessageSquare, MonitorDown, BarChart3,
-  Wallet, FileText, Banknote,
+  Wallet, FileText, Banknote, Clock,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { teamCategoryOf, teamPagesFor } from "@/lib/teamCategory";
@@ -89,17 +89,23 @@ export function AdminSidebar({ expanded = false, onToggleExpand }: AdminSidebarP
   // Sales shared with a team member (e.g. a freelance business developer):
   // their own pages sit under Sales, so neither world is a dead end.
   const [ownRole, setOwnRole] = useState<string | null | undefined>(undefined);
+  const [ownHours, setOwnHours] = useState(false);
   useEffect(() => {
     if (!salesOnly || accountType !== "team" || !user) return;
-    supabase.from("account_members").select("accounts(position, team_role)").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => {
-        const a = (data as { accounts?: { position?: string | null; team_role?: string | null } } | null)?.accounts;
-        setOwnRole(a?.position ?? a?.team_role ?? null);
+    supabase.from("account_members").select("account_id, accounts(position, team_role)").eq("user_id", user.id).maybeSingle()
+      .then(async ({ data }) => {
+        const row = data as { account_id?: string; accounts?: { position?: string | null; team_role?: string | null } } | null;
+        // Paid by the hour? (an admin gave her weekly hours → she gets Hours)
+        if (row?.account_id) {
+          const { data: hs } = await (supabase as any).from("team_hours_settings").select("account_id").eq("account_id", row.account_id).maybeSingle();
+          setOwnHours(!!hs);
+        }
+        setOwnRole(row?.accounts?.position ?? row?.accounts?.team_role ?? null);
       });
   }, [salesOnly, accountType, user]);
-  const OWN_ICON = { Earnings: Wallet, Calendar: CalendarDays, Documents: FileText, Salary: Banknote } as const;
+  const OWN_ICON = { Earnings: Wallet, Hours: Clock, Calendar: CalendarDays, Documents: FileText, Salary: Banknote } as const;
   const ownSection: SidebarNavSection | null = salesOnly && accountType === "team" && ownRole !== undefined
-    ? { title: "Yours", items: teamPagesFor(teamCategoryOf(employmentType, ownRole)).map((p) => ({ path: p.path, label: p.label, Icon: OWN_ICON[p.label] })) }
+    ? { title: "Yours", items: teamPagesFor(teamCategoryOf(employmentType, ownRole), { hours: ownHours }).map((p) => ({ path: p.path, label: p.label, Icon: OWN_ICON[p.label] })) }
     : null;
 
   useEffect(() => {

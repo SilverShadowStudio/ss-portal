@@ -6,7 +6,7 @@ import { teamCategoryOf, hasEarnings } from "@/lib/teamCategory";
 import {
   CalendarDays, Inbox, Images, FileText, Users, Wallet, Banknote,
   LayoutDashboard, Package, Settings, LogOut, ChevronsLeft, ChevronsRight,
-  Target,
+  Target, Clock,
 } from "lucide-react";
 import { Sidebar, type SidebarNavItem, type SidebarAccountMenuItem } from "./Sidebar";
 
@@ -56,6 +56,19 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     role: string | null;
   } | null>(null);
 
+  // Paid by the hour: an admin gave this member weekly hours → an Hours page.
+  const [hoursOn, setHoursOn] = useState(false);
+  useEffect(() => {
+    if (!user || accountType !== "team") return;
+    supabase.from("account_members").select("account_id").eq("user_id", user.id).limit(1).maybeSingle()
+      .then(async ({ data }) => {
+        const id = (data as { account_id?: string } | null)?.account_id;
+        if (!id) return;
+        const { data: hs } = await (supabase as any).from("team_hours_settings").select("account_id").eq("account_id", id).maybeSingle();
+        setHoursOn(!!hs);
+      });
+  }, [user, accountType]);
+
   // Sales shared with this team member: a way back to it from their own pages.
   const [salesShared, setSalesShared] = useState(false);
   useEffect(() => {
@@ -101,9 +114,12 @@ export function ClientSidebar({ expanded = true, onToggleExpand }: ClientSidebar
     ? PROJECT_NAV
     : PARTNERSHIP_NAV;
 
-  const nav = accountType === "team" && salesShared
-    ? [{ path: "/admin/sales", label: "Sales", Icon: Target } as SidebarNavItem, ...navItems]
+  const ownNav = accountType === "team" && hoursOn
+    ? [{ path: "/hours", label: "Hours", Icon: Clock } as SidebarNavItem, ...navItems]
     : navItems;
+  const nav = accountType === "team" && salesShared
+    ? [{ path: "/admin/sales", label: "Sales", Icon: Target } as SidebarNavItem, ...ownNav]
+    : ownNav;
 
   const accountMenuItems: SidebarAccountMenuItem[] = accountType === "team"
     ? [

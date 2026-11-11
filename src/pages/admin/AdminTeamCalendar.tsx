@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { TeamCalendar } from "@/components/team/TeamCalendar";
+import { TeamHours } from "@/components/team/TeamHours";
 
 export default function AdminTeamCalendar() {
   const { accountId } = useParams();
@@ -28,6 +29,9 @@ export default function AdminTeamCalendar() {
             : "Worked days, availability and paid holiday. Approve requests and adjust the allowance."}
         </p>
       </div>
+      {/* Hourly work sits above the calendar: weekly hours, rate and the extra
+          hours waiting for a decision, like the leave requests below. */}
+      {accountId && <TeamHours accountId={accountId} />}
       {accountId && <TeamCalendar accountId={accountId} onLoaded={onLoaded} />}
     </AdminLayout>
   );

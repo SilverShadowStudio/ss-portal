@@ -32,13 +32,16 @@ export const hasEarnings = (c: TeamCategory) => c !== "Employees" && c !== "Free
 
 /** A team member's own pages, in menu order. One list for both menus: their
  *  team sidebar, and the Sales sidebar when Sales is shared with them. */
-export type TeamPage = { path: string; label: "Earnings" | "Calendar" | "Documents" | "Salary" };
-export function teamPagesFor(c: TeamCategory): TeamPage[] {
-  if (c === "Employees") return [
+export type TeamPage = { path: string; label: "Earnings" | "Hours" | "Calendar" | "Documents" | "Salary" };
+export function teamPagesFor(c: TeamCategory, opts: { hours?: boolean } = {}): TeamPage[] {
+  // Hours: members paid by the hour (an admin gave them weekly hours).
+  const hours: TeamPage[] = opts.hours ? [{ path: "/hours", label: "Hours" }] : [];
+  if (c === "Employees") return [...hours,
     { path: "/documents", label: "Documents" }, { path: "/calendar", label: "Calendar" }, { path: "/salary", label: "Salary" },
   ];
   return [
     ...(hasEarnings(c) ? [{ path: "/earnings", label: "Earnings" } as TeamPage] : []),
+    ...hours,
     { path: "/calendar", label: "Calendar" }, { path: "/documents", label: "Documents" },
   ];
 }
