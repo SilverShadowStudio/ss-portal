@@ -20,7 +20,7 @@ import {
   Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
 } from "lucide-react";
 import { TableSearch } from "@/components/ui/TableToolbar";
-import { TEAM_CATEGORY_ORDER, TEAM_ROLES, teamCategoryOf } from "@/lib/teamCategory";
+import { TEAM_CATEGORY_ORDER, TEAM_ROLES, teamCategoryOf, sharesSalesByDefault } from "@/lib/teamCategory";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1658,7 +1658,7 @@ export function AccountList({
                       <label className="text-xs text-muted-foreground">Role *</label>
                       <select
                         value={inviteRole}
-                        onChange={(e) => setInviteRole(e.target.value)}
+                        onChange={(e) => { setInviteRole(e.target.value); setInviteSales(sharesSalesByDefault(e.target.value)); }}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                       >
                         <option value="" disabled>Select a role…</option>
@@ -1795,7 +1795,7 @@ export function AccountList({
                     {!presignedForExisting && presignedEmploymentType === "freelancer" && (
                       <div className="space-y-2">
                         <span className="text-[10px] uppercase tracking-[0.2em] text-foreground/60">Role *</span>
-                        <select value={presignedRole} onChange={(e) => setPresignedRole(e.target.value)}
+                        <select value={presignedRole} onChange={(e) => { setPresignedRole(e.target.value); setPresignedSales(sharesSalesByDefault(e.target.value)); }}
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                           <option value="" disabled>Select a role…</option>
                           {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}

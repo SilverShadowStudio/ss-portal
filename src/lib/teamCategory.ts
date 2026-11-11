@@ -10,14 +10,18 @@
 // disciplines — not a scene manager, modeller or photographer. Their pay isn't
 // in Airtable's work logs, so they have no Earnings page: Calendar and
 // Documents only.
+//
+// Business Development (Fred, 11 Nov 2026): sales and marketing — Isabella's
+// role. Paid by the hour through Hours, not Airtable work logs, so no Earnings
+// page either; choosing the role shares the Sales module by default.
 
 /** The roles an admin picks from when bringing someone in. One list for every
  *  place a role is chosen — the invite, "existing agreement", and onboarding's
  *  fallback — so they can't drift apart again (onboarding's lacked Freelancer). */
-export const TEAM_ROLES = ["Freelancer", "Scene Manager", "Modeller", "Art Director", "Photographer"] as const;
+export const TEAM_ROLES = ["Freelancer", "Business Development Executive", "Scene Manager", "Modeller", "Art Director", "Photographer"] as const;
 
 export const TEAM_CATEGORY_ORDER = [
-  "Employees", "Freelancers", "Scene Managers", "Modellers", "Photographers", "Other",
+  "Employees", "Freelancers", "Business Development", "Scene Managers", "Modellers", "Photographers", "Other",
 ] as const;
 export type TeamCategory = (typeof TEAM_CATEGORY_ORDER)[number];
 
@@ -25,6 +29,7 @@ export function teamCategoryOf(employmentType: string | null | undefined, role: 
   if (employmentType === "employee") return "Employees";
   const raw = (role ?? "").toLowerCase();
   // Checked by role only — every non-employee has employment_type 'freelancer'.
+  if (raw.includes("business development")) return "Business Development";
   if (raw.includes("freelance")) return "Freelancers";
   if (raw.includes("scene manager")) return "Scene Managers";
   if (raw.includes("modell") || raw.includes("modeler")) return "Modellers";
@@ -33,7 +38,12 @@ export function teamCategoryOf(employmentType: string | null | undefined, role: 
 }
 
 /** Does this member's category have an Earnings page? (Employees get Salary.) */
-export const hasEarnings = (c: TeamCategory) => c !== "Employees" && c !== "Freelancers";
+export const hasEarnings = (c: TeamCategory) =>
+  c !== "Employees" && c !== "Freelancers" && c !== "Business Development";
+
+/** Roles that come with the Sales module — picking one ticks "Share the Sales
+ *  module" for the admin (who can still untick it). */
+export const sharesSalesByDefault = (role: string) => teamCategoryOf("freelancer", role) === "Business Development";
 
 /** A team member's own pages, in menu order. One list for both menus: their
  *  team sidebar, and the Sales sidebar when Sales is shared with them. */
