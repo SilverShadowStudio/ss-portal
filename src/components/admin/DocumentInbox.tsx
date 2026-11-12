@@ -11,8 +11,9 @@ import { OverheadForm } from "@/components/admin/overheads/OverheadForm";
 import { IncomeInvoiceReviewDialog, mapInvoiceToForm, type FormState } from "@/components/admin/finance/IncomeInvoiceUpload";
 import { parseOverheadFile, fileToBase64, OVERHEAD_STAGING_BUCKET, type ParsedInvoice } from "@/lib/overheadIntake";
 import { recordOverheadUnattended } from "@/lib/overheadRecord";
+import { normalizeSupplier } from "@/lib/supplierNormalize";
 import { describeFlags } from "@/lib/overheadConfidence";
-import type { ExpenseCategory } from "@/lib/finance";
+import type { ExpenseCategory, Overhead } from "@/lib/finance";
 
 // The Dropzone (called the Document Inbox until 11 Nov 2026) — drop any
 // document; the portal reads it, works out what it is, renames it to the studio
@@ -166,12 +167,63 @@ export function DocumentInbox() {
     return null;
   };
 
+  /** The database pairs a filed receipt with the bank line that paid it (same
+   *  amount, within 21 days). Say which, so the summary is the whole story. */
+  const paidLineFor = async (path: string | null): Promise<string | null> => {
+    if (!path) return null;
+    const { data } = await sb.from("bank_transactions").select("date_completed").eq("receipt_dropbox_path", path).maybeSingle();
+    const d = (data as { date_completed?: string | null } | null)?.date_completed;
+    return d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+  };
+  const expenseSummary = async (lead: string, path: string | null) => {
+    const paidOn = await paidLineFor(path);
+    return paidOn
+      ? `${lead} — recorded in the Ledger, Money out, and matched to the bank payment of ${paidOn}: marked paid, receipt attached.`
+      : `${lead} — recorded in the Ledger, Money out. No bank payment for it yet: it matches itself when one arrives; until then it shows as unpaid.`;
+  };
+
+  /** A receipt for a Fixed Cost already has its Ledger entry — the recurring
+   *  engine wrote it on the 1st. Same supplier, same amount and currency,
+   *  within 21 days, no file yet: that entry gets the receipt, rather than the
+   *  month's cost going in twice. */
+  const recurringTwinFor = async (d: Partial<Overhead>): Promise<{ id: string; invoice_date: string } | null> => {
+    const amt = Number(d.gross_amount);
+    if (!d.supplier_name || !d.invoice_date || !(amt > 0)) return null;
+    const day = new Date(d.invoice_date).getTime();
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const { data } = await sb.from("overheads")
+      .select("id, supplier_name, invoice_date, invoice_number")
+      .eq("source", "recurring").is("dropbox_path", null).is("staging_storage_path", null)
+      .eq("currency", d.currency ?? "GBP")
+      .gte("gross_amount", amt - 0.004).lte("gross_amount", amt + 0.004)
+      .gte("invoice_date", iso(day - 21 * 864e5)).lte("invoice_date", iso(day + 21 * 864e5));
+    const first = (n: string) => normalizeSupplier(n).split(/\s+/).find((w) => w.length >= 3) ?? "";
+    const want = first(d.supplier_name);
+    const twins = ((data ?? []) as { id: string; supplier_name: string; invoice_date: string; invoice_number: string | null }[])
+      .filter((o) => want && first(o.supplier_name) === want)
+      .sort((a, b) => Math.abs(new Date(a.invoice_date).getTime() - day) - Math.abs(new Date(b.invoice_date).getTime() - day));
+    if (!twins[0]) return null;
+    // Handing it the staged file is what files it: the Dropbox trigger takes it from there.
+    const { error } = await sb.from("overheads").update({
+      staging_storage_path: d.staging_storage_path,
+      invoice_number: twins[0].invoice_number ?? d.invoice_number ?? null,
+    }).eq("id", twins[0].id);
+    return error ? null : twins[0];
+  };
+
   const intakeExpense = async (row: InboxRow, file: File) => {
     const cats = await loadCategories();
     const item = await parseOverheadFile(file, cats);
     const staged = item.defaults.staging_storage_path ?? null;
     const supplier = item.defaults.supplier_name ?? "Supplier";
     const gross = money(item.defaults.gross_amount ?? 0, item.defaults.currency ?? "GBP");
+
+    const twin = staged ? await recurringTwinFor(item.defaults) : null;
+    if (twin) {
+      const path = await filedPathFor(staged!);
+      const when = new Date(twin.invoice_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+      return settle(row.id, { status: "filed", dropbox_path: path, summary: await expenseSummary(`${supplier} ${gross}, your Fixed Cost of ${when} (receipt attached, not counted twice)`, path) });
+    }
 
     if (item.verdict.auto) {
       const outcome = await recordOverheadUnattended(item.defaults);
@@ -183,7 +235,7 @@ export function DocumentInbox() {
         return settle(row.id, { status: "to_check", reasoning: `Read as a supplier invoice but couldn't be recorded: ${outcome.error}` });
       }
       const path = staged ? await filedPathFor(staged) : null;
-      return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} ${gross} — recorded in the Ledger, Money out, as unpaid. Pay it from its row.` });
+      return settle(row.id, { status: "filed", dropbox_path: path, summary: await expenseSummary(`${supplier} ${gross}`, path) });
     }
 
     // Not sure enough to land unattended: the P&L's own review form, right here.
@@ -194,7 +246,7 @@ export function DocumentInbox() {
       return settle(row.id, { status: "to_check", reasoning: "Read as a supplier invoice, but the review was closed without saving, so it isn't in the books. Drop it again to record it." });
     }
     const path = staged ? await filedPathFor(staged) : null;
-    return settle(row.id, { status: "filed", dropbox_path: path, summary: `${supplier} — reviewed and recorded in the Ledger, Money out, as unpaid.` });
+    return settle(row.id, { status: "filed", dropbox_path: path, summary: await expenseSummary(`${supplier}, reviewed`, path) });
   };
 
   const intakeIncome = async (row: InboxRow, file: File) => {
