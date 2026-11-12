@@ -351,6 +351,13 @@ Deno.serve(async (req) => {
 
     const address = formatAddress(p)
 
+    // The role is the admin's to set (Fred, 12 Nov 2026): taken from the
+    // account (team_role, or position for an employee), never the payload.
+    const { data: roleMem } = await admin.from('account_members').select('accounts(team_role, position)').eq('user_id', user.id).maybeSingle()
+    const roleAcct = (roleMem as { accounts?: { team_role?: string | null; position?: string | null } } | null)?.accounts
+    const { data: roleProfile } = await admin.from('freelancer_profiles').select('role').eq('user_id', user.id).maybeSingle()
+    const adminRole = roleAcct?.position || roleAcct?.team_role || (roleProfile as { role?: string | null } | null)?.role || null
+
     const { data: profile, error: profileErr } = await admin
       .from('freelancer_profiles')
       .upsert({
@@ -361,7 +368,7 @@ Deno.serve(async (req) => {
         // silently empty calendar — the field is read-only in the UI and this
         // makes that authoritative rather than merely cosmetic.
         email: user.email ?? p.email,
-        role: p.role || null, day_rate: p.rateAmount || null,
+        role: adminRole, day_rate: p.rateAmount || null,
         rate_currency: p.rateCurrency || 'GBP', rate_period: p.ratePeriod || 'day',
         flat_number: p.flatNumber || null, house_number: p.houseNumber || null,
         street_name: p.streetName || null, city: p.city || null,

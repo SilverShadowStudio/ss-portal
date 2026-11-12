@@ -69,6 +69,14 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!profile) return json({ error: "No team profile found for this user" }, 404);
 
+  // The role is the admin's to set (Fred, 12 Nov 2026): it comes from the
+  // account (team_role, or position for an employee), never from what the
+  // member submits. Falls back to whatever the profile already holds.
+  const { data: mem } = await admin.from("account_members").select("accounts(team_role, position)").eq("user_id", user.id).maybeSingle();
+  const acctRole = (mem as { accounts?: { team_role?: string | null; position?: string | null } } | null)?.accounts;
+  const { data: existing } = await admin.from("freelancer_profiles").select("role").eq("user_id", user.id).maybeSingle();
+  const role = acctRole?.position || acctRole?.team_role || (existing as { role?: string | null } | null)?.role || null;
+
   const rateNum = typeof body.rateAmount === "number"
     ? body.rateAmount
     : parseFloat(String(body.rateAmount ?? "").replace(/[^0-9.]/g, ""));
@@ -76,7 +84,7 @@ Deno.serve(async (req) => {
   const { error: upErr } = await admin
     .from("freelancer_profiles")
     .update({
-      role: s(body.role) || null,
+      role,
       day_rate: Number.isFinite(rateNum) && rateNum > 0 ? rateNum : null,
       rate_currency: s(body.rateCurrency) || "GBP",
       rate_period: s(body.ratePeriod) || "day",

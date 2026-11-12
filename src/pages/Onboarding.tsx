@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
-import { TEAM_ROLES } from "@/lib/teamCategory";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import SignaturePad, { type SignaturePadRef } from "@/components/SignaturePad";
@@ -306,7 +305,6 @@ export default function Onboarding() {
   });
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [touched, setTouched] = useState<Touched>({});
-  const [roleLocked, setRoleLocked] = useState(false);
   // Pre-signed members proofread & confirm instead of signing (their paper
   // agreement is already on file). Employees additionally have no rate/earnings.
   const [preSignedMode, setPreSignedMode] = useState(false);
@@ -314,7 +312,7 @@ export default function Onboarding() {
   const [confirming, setConfirming] = useState(false);
 
   // Prefill from the invite (accounts.team_role/position) and, for a pre-signed
-  // member, from their existing profile — then lock the role.
+  // member, from their existing profile. The role is shown, never chosen.
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -324,7 +322,8 @@ export default function Onboarding() {
       ]);
       const acct = (memberData as { accounts?: { team_role?: string | null; employment_type?: string | null; position?: string | null } } | null)?.accounts;
       const preset = acct?.team_role || acct?.position || null;
-      if (preset) { setForm((f) => ({ ...f, role: preset })); setRoleLocked(true); }
+      // Always the studio's value — never a role left over in a saved draft.
+      setForm((f) => ({ ...f, role: preset ?? (profileData as { role?: string | null } | null)?.role ?? "" }));
       setIsEmployee(acct?.employment_type === "employee");
       const p = profileData as Record<string, any> | null;
       if (p && p.onboarding_confirmed === false) {
@@ -334,7 +333,7 @@ export default function Onboarding() {
           firstName: p.first_name ?? f.firstName,
           lastName: p.last_name ?? f.lastName,
           email: p.email ?? f.email,
-          role: preset ?? p.role ?? f.role,
+          role: preset ?? p.role ?? "",
           flatNumber: p.flat_number ?? f.flatNumber,
           houseNumber: p.house_number ?? f.houseNumber,
           streetName: p.street_name ?? f.streetName,
@@ -558,15 +557,8 @@ export default function Onboarding() {
                 <label className="text-[9px] uppercase tracking-[0.2em] text-white/40">
                   {FIELD_LABELS.role}{REQUIRED_FIELDS.includes("role") && <span className="ml-1 text-gold">*</span>}
                 </label>
-                {roleLocked ? (
-                  <p className="w-full rounded-md border border-white/[0.06] bg-black/15 px-3.5 py-2.5 text-sm text-white/60">{form.role}</p>
-                ) : (
-                  <select value={form.role} onChange={(e) => handleChange("role", e.target.value)} onBlur={() => handleBlur("role")} className={selectClass("role")}>
-                    <option value="" disabled>Select a role…</option>
-                    {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                )}
-                {!roleLocked && showError("role") && <p className="font-sans text-destructive" style={{ fontSize: 10 }}>Required</p>}
+                {/* Set by the studio — a member never chooses their own role. */}
+                <p className={`w-full rounded-md border border-white/[0.06] bg-black/15 px-3.5 py-2.5 text-sm ${form.role ? "text-white/60" : "text-white/30"}`}>{form.role || "Set by Silver Shadow Studio"}</p>
               </div>
             </div>
           </section>

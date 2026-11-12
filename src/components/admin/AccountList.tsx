@@ -2657,7 +2657,14 @@ export function AccountList({
                 </>
               ) : (
                 <div className="col-span-2 space-y-1"><label className="text-xs text-muted-foreground">Role</label>
-                  <Input value={editMember.role} onChange={(e) => setEditMember((m) => m && { ...m, role: e.target.value })} placeholder="Scene Manager / Modeller …" /></div>
+                  <select value={editMember.role}
+                    onChange={(e) => { const role = e.target.value; setEditMember((m) => m && { ...m, role, sales: m.sales || sharesSalesByDefault(role) }); }}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="" disabled>Select a role…</option>
+                    {/* A role typed in before the list existed stays selectable. */}
+                    {editMember.role && !(TEAM_ROLES as readonly string[]).includes(editMember.role) && <option value={editMember.role}>{editMember.role}</option>}
+                    {TEAM_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select></div>
               )}
               {editMember.userId && (
                 <label className="col-span-2 flex cursor-pointer items-start gap-3 rounded-md border border-white/10 px-3 py-2.5">
