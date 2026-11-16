@@ -64,6 +64,7 @@ import AdminTeam from "./pages/admin/AdminTeam";
 import AdminTeamCalendar from "./pages/admin/AdminTeamCalendar";
 import AdminTeamEarnings from "./pages/admin/AdminTeamEarnings";
 import Calendar from "./pages/Calendar";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import Hours from "./pages/Hours";
 import AdminPnL from "./pages/admin/AdminPnL";
 import AdminRecurring from "./pages/admin/AdminRecurring";
@@ -125,6 +126,8 @@ const App = () => (
           <DirectorProvider>
           {/* Reachable from every page, signed in or not it renders nothing. */}
           <PocketAssistant />
+          {/* A page that crashes says so (and is recorded) instead of going black. */}
+          <PageErrorBoundary>
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/forgot-password" element={<Auth />} />
@@ -570,6 +573,7 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </PageErrorBoundary>
           </DirectorProvider>
           </GhostModeShell>
           </BrowserRouter>
