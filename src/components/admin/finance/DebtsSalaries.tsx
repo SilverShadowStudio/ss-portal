@@ -157,15 +157,19 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
   useEffect(() => { load(); }, []);
 
   const grace = useGraceTimers();
-  const now = useNowTicker(slips.some((s) => s.justPaid));
+  // A part-payment gets the same 5-minute undo as "Mark paid": which payment
+  // to take back, and whether it was the one that settled the month. Kept apart
+  // from the slips so a reload doesn't lose it.
+  const [partUndo, setPartUndo] = useState<Record<string, { paymentId: string; at: number; amount: number; settled: boolean }>>({});
+  const now = useNowTicker(slips.some((s) => s.justPaid) || Object.keys(partUndo).length > 0);
   const empName = (id: string) => rows.find((r) => r.id === id)?.name ?? "—";
 
   // Unpaid NET salary for due months (period_end ≤ today), oldest first — the
   // salary owed to employees. (Tax owed to HMRC lives in Debts → Taxes.)
   const owed = slips
-    .filter((s) => Number(s.net) > 0 && (!s.period_end || s.period_end <= isoToday) && (!s.salary_paid_at || s.justPaid))
+    .filter((s) => Number(s.net) > 0 && (!s.period_end || s.period_end <= isoToday) && (!s.salary_paid_at || s.justPaid || partUndo[s.id]?.settled))
     .sort((a, b) => (a.period_end ?? "").localeCompare(b.period_end ?? ""));
-  const totalOwed = owed.filter((s) => !s.justPaid).reduce((sum, s) => sum + Number(s.net || 0), 0);
+  const totalOwed = owed.filter((s) => !s.justPaid && !partUndo[s.id]?.settled).reduce((sum, s) => sum + Number(s.net || 0), 0);
   useEffect(() => { onTotal?.(totalOwed); }, [totalOwed, onTotal]);
 
   const hasDoc = (s: Payslip) => !!s.document_path || !!s.dropbox_path;
@@ -210,16 +214,30 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
     if (!partTarget) return;
     const amount = num(partForm.amount);
     if (!(amount > 0)) { toast({ title: "Enter an amount", variant: "destructive" }); return; }
+    // Never pay more than is owed (Fred, 16 Nov 2026 — £1,500 went against a
+    // £1,047 month). The database refuses it too.
+    const left = Math.max(0, Number(partTarget.net || 0) - paidFor(partTarget.id));
+    if (amount > left + 0.005) {
+      toast({ title: "That's more than is owed", description: `${partTarget.period_label ?? "This month"} has ${money2(left)} left to pay. Enter ${money2(left)} or less.`, variant: "destructive" });
+      return;
+    }
     setPartBusy(true);
     try {
       const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
-      const { error } = await supabase.from("salary_payments").insert({ payslip_id: partTarget.id, amount, paid_at: partForm.date || isoToday, created_by: userId });
+      const { data: inserted, error } = await supabase.from("salary_payments")
+        .insert({ payslip_id: partTarget.id, amount, paid_at: partForm.date || isoToday, created_by: userId })
+        .select("id").single();
       if (error) throw error;
       // Settle the month once the instalments cover the net.
       const net = Number(partTarget.net || 0);
-      if (paidFor(partTarget.id) + amount >= net - 0.01) {
+      const settled = paidFor(partTarget.id) + amount >= net - 0.01;
+      if (settled) {
         await supabase.from("payslips").update({ salary_paid_at: new Date().toISOString() }).eq("id", partTarget.id);
       }
+      const slipId = partTarget.id;
+      const paymentId = (inserted as { id: string }).id;
+      setPartUndo((u) => ({ ...u, [slipId]: { paymentId, at: Date.now(), amount, settled } }));
+      grace.schedule(`part:${slipId}`, GRACE_MS, () => setPartUndo((u) => { const n = { ...u }; delete n[slipId]; return n; }));
       toast({ title: "Payment recorded", description: `${money2(amount)} towards ${partTarget.period_label ?? "the month"}.` });
       setPartOpen(false);
       load();
@@ -259,6 +277,20 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
     const { error } = await supabase.from("payslips").delete().eq("id", s.id);
     if (error) { toast({ title: "Couldn't delete payslip", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Payslip deleted" });
+    load();
+  }
+
+  async function revertPartPay(s: Payslip) {
+    // Undo a part-payment: take back exactly that payment, and unsettle the
+    // month if it was the one that settled it.
+    const u = partUndo[s.id];
+    if (!u) return;
+    const { error } = await supabase.from("salary_payments").delete().eq("id", u.paymentId);
+    if (error) { toast({ title: "Couldn't revert", description: error.message, variant: "destructive" }); return; }
+    if (u.settled) await supabase.from("payslips").update({ salary_paid_at: null }).eq("id", s.id);
+    grace.cancel(`part:${s.id}`);
+    setPartUndo((p) => { const n = { ...p }; delete n[s.id]; return n; });
+    toast({ title: "Part-payment reverted", description: `${money2(u.amount)} taken off ${s.period_label ?? "the month"}.` });
     load();
   }
 
@@ -479,7 +511,9 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
                           documentPath={s.document_path} filed={!!s.document_path || !!s.dropbox_path} onDone={load} />
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {s.justPaid
+                        {partUndo[s.id] && !s.justPaid
+                          ? <span className="inline-flex items-center gap-3"><span className="text-[10px] tabular-nums text-white/45">{money2(partUndo[s.id].amount)} paid</span><span className="text-[11px] tabular-nums text-gold">{formatCountdown(partUndo[s.id].at + GRACE_MS - now)}</span><button onClick={() => revertPartPay(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
+                          : s.justPaid
                           ? <span className="inline-flex items-center gap-3"><span className="text-[11px] tabular-nums text-gold">{formatCountdown((s.paidAt ?? 0) + GRACE_MS - now)}</span><button onClick={() => revertSalary(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button></span>
                           : <span className="inline-flex items-center gap-4">
                               <button onClick={() => openEditSlip(s)} className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/80">Edit</button>

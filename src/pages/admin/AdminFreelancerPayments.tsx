@@ -27,6 +27,7 @@ interface Row {
   balance: number;
   paid_status: string | null;
   justPaid?: boolean;   // fully paid, still in the 5-min revert window
+  partUndo?: { at: number; prevPaid: number; amount: number }; // a part-payment, still in its 5-min revert window
   paidAt?: number;      // when it was marked paid (for the countdown)
 }
 
@@ -101,9 +102,9 @@ export default function AdminFreelancerPayments() {
   // Default: largest outstanding first. Any column is click-sortable (asc↔desc).
   const { sortedRows, sortKey, sortDir, toggle } = useTableSort<Row>(rows, COLUMNS, { key: "due", dir: "desc" });
   const grace = useGraceTimers();
-  const now = useNowTicker(rows.some((r) => r.justPaid));
+  const now = useNowTicker(rows.some((r) => r.justPaid || r.partUndo));
 
-  async function pay(row: Row, action: "paid" | "partial" | "unpaid", amount?: number) {
+  async function pay(row: Row, action: "paid" | "partial" | "unpaid", amount?: number, opts: { reverting?: boolean } = {}) {
     setSaving(row.airtable_record_id);
     try {
       const { data, error } = await supabase.functions.invoke("pay-freelancer", {
@@ -113,10 +114,15 @@ export default function AdminFreelancerPayments() {
       const d = data as { amount_paid: number; balance: number; paid_status: string };
       const fullyPaid = d.balance <= 0.005;
       const id = row.airtable_record_id;
+      // A part-payment (not an undo) gets the same 5-minute revert as "Mark paid":
+      // undoing puts back what had been paid before it.
+      const partUndo = action === "partial" && !fullyPaid && !opts.reverting
+        ? { at: Date.now(), prevPaid: row.amount_paid, amount: d.amount_paid - row.amount_paid } : undefined;
       setRows((prev) => prev.map((r) => r.airtable_record_id === id
-        ? { ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status, justPaid: fullyPaid, paidAt: fullyPaid ? Date.now() : undefined } : r));
+        ? { ...r, amount_paid: d.amount_paid, balance: d.balance, paid_status: d.paid_status, justPaid: fullyPaid, paidAt: fullyPaid ? Date.now() : undefined, partUndo } : r));
       // Fully paid: keep it 5 min so a mistake can be reverted, then drop it.
       if (fullyPaid) grace.schedule(id, GRACE_MS, () => setRows((prev) => prev.filter((r) => r.airtable_record_id !== id)));
+      else if (partUndo) grace.schedule(id, GRACE_MS, () => setRows((prev) => prev.map((r) => r.airtable_record_id === id ? { ...r, partUndo: undefined } : r)));
       else grace.cancel(id);
       setPartialFor(null); setPartialAmt("");
       toast({ title: "Payment recorded in Airtable" });
@@ -125,6 +131,17 @@ export default function AdminFreelancerPayments() {
     } finally {
       setSaving(null);
     }
+  }
+
+  // The amount typed is THIS payment; Airtable stores the running total paid,
+  // so it is added to what was already paid. Never more than the balance.
+  function payPart(row: Row, amount: number) {
+    if (!(amount > 0)) { toast({ title: "Enter an amount", variant: "destructive" }); return; }
+    if (amount > row.balance + 0.005) {
+      toast({ title: "That's more than is owed", description: `${humanName(row.payee_name)} has ${money(row.balance)} left to pay. Enter ${money(row.balance)} or less.`, variant: "destructive" });
+      return;
+    }
+    void pay(row, "partial", Math.round((row.amount_paid + amount) * 100) / 100);
   }
 
   return (
@@ -197,13 +214,20 @@ export default function AdminFreelancerPayments() {
                                 placeholder={r.balance.toFixed(2)}
                                 className="w-20 bg-transparent border-b border-white/20 text-right text-standard text-[12px] focus:outline-none focus:border-[#C9A96A]"
                               />
-                              <button disabled={busy} onClick={() => pay(r, "partial", parseFloat(partialAmt.replace(/[^0-9.]/g, "")))}
+                              <button disabled={busy} onClick={() => payPart(r, parseFloat(partialAmt.replace(/[^0-9.]/g, "")))}
                                 className="text-[10px] uppercase tracking-[0.16em] text-[#C9A96A] hover:text-[#ecd39c] disabled:opacity-40">Save</button>
                               <button onClick={() => { setPartialFor(null); setPartialAmt(""); }}
                                 className="text-[10px] uppercase tracking-[0.16em] text-white/35 hover:text-white/60">Cancel</button>
                             </span>
                           ) : busy ? (
                             <BrandLoader size="sm" className="h-3 w-3 inline-block" />
+                          ) : r.partUndo ? (
+                            <span className="inline-flex items-center gap-3">
+                              <span className="text-[10px] tabular-nums text-white/45">{money(r.partUndo.amount)} paid</span>
+                              <span className="text-[11px] tabular-nums text-gold">{formatCountdown(r.partUndo.at + GRACE_MS - now)}</span>
+                              <button onClick={() => r.partUndo!.prevPaid > 0.005 ? pay(r, "partial", r.partUndo!.prevPaid, { reverting: true }) : pay(r, "unpaid", undefined, { reverting: true })}
+                                className="text-[10px] uppercase tracking-[0.16em] text-white/45 hover:text-white/75">Revert</button>
+                            </span>
                           ) : r.justPaid ? (
                             <span className="inline-flex items-center gap-3">
                               <span className="text-[11px] tabular-nums text-gold">{formatCountdown((r.paidAt ?? 0) + GRACE_MS - now)}</span>
