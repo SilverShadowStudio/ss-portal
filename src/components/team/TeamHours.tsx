@@ -105,28 +105,32 @@ export function TeamHours({ accountId, className }: { accountId?: string; classN
   const entries = data?.entries ?? [];
   const sumWeek = (wk: { from: string; to: string }) =>
     entries.filter((e) => e.work_date >= wk.from && e.work_date <= wk.to && e.status !== "declined").reduce((t, e) => t + Number(e.hours), 0);
-  const weekUsed = data ? sumWeek(data.week) : 0;
-  const weekEntries = data ? entries.filter((e) => e.work_date >= data.week.from && e.work_date <= data.week.to) : [];
+  // Not set up = the reply carries no week or month: guard every use, or a date
+  // built from "undefined" throws and takes the whole calendar page down
+  // (Fred, 16 Nov 2026 — every member's admin calendar went black).
+  const ready = !!(data?.setup && data.week && data.month);
+  const weekUsed = ready ? sumWeek(data!.week) : 0;
+  const weekEntries = ready ? entries.filter((e) => e.work_date >= data.week.from && e.work_date <= data.week.to) : [];
 
   // What the member is about to log does to that week — said before she saves.
   const preview = useMemo(() => {
     const n = Number(form.hours);
-    if (!data || data.isAdmin || !(n > 0) || !form.date) return null;
+    if (!ready || !data || data.isAdmin || !(n > 0) || !form.date) return null;
     const room = Math.max(0, data.weekly_hours - sumWeek(weekOf(form.date)));
     const over = Math.max(0, Math.round((n - room) * 100) / 100);
     return over > 0 ? { within: Math.round((n - over) * 100) / 100, over } : null;
   }, [form, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const monthEntries = data ? entries.filter((e) => e.work_date.startsWith(data.month)) : [];
+  const monthEntries = ready ? entries.filter((e) => e.work_date.startsWith(data!.month)) : [];
   const approved = monthEntries.filter((e) => e.status === "approved").reduce((t, e) => t + Number(e.hours), 0);
   const awaiting = monthEntries.filter((e) => e.status === "pending").reduce((t, e) => t + Number(e.hours), 0);
-  const monthDate = data ? d(`${data.month}-01`) : new Date();
+  const monthDate = ready ? d(`${data!.month}-01`) : new Date();
   const invoiceDay = format(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1), "d MMM");
 
   if (loading) return <div className={className}><div className="ssr-zone py-10 text-center text-sm text-recessive">Loading hours…</div></div>;
 
   // An admin can switch hourly work on; a member without it never gets here.
-  if (!data?.setup) {
+  if (!ready || !data) {
     if (!accountId) return null;
     return (
       <div className={className}>
