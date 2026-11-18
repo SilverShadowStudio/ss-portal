@@ -134,7 +134,7 @@ export default function Salary() {
       },
     },
     {
-      id: "payslip", label: "Payslip", align: "center",
+      id: "payslip", label: "Payslip", align: "left",
       render: (s) => busyId === s.id ? <BrandLoader size="sm" className="h-3.5 w-3.5 inline-block" /> : s.document_path ? (
         <span className="inline-flex items-center gap-4" style={{ fontSize: 10, letterSpacing: "0.16em" }}>
           <button onClick={() => openPayslip(s, false)} className="flex items-center gap-1.5 text-white/40 hover:text-gold transition-colors"><Eye style={{ width: 12, height: 12 }} strokeWidth={1.5} /><span className="font-sans uppercase">View</span></button>

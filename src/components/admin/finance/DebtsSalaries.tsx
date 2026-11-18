@@ -491,22 +491,31 @@ export function DebtsSalaries({ onTotal }: { onTotal?: (n: number) => void } = {
                     <SortTh id="employee" label="Employee" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="month" label="Month" activeKey={sortKey} dir={sortDir} onClick={toggle} />
                     <SortTh id="net" label="Net owed" activeKey={sortKey} dir={sortDir} onClick={toggle} align="right" />
+                    <th className="py-3 pr-4" />
                     <th className="px-4 py-3 text-left text-[9px] uppercase tracking-[0.2em] text-white/40 font-normal">Payslip</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
                   {sortedOwed.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-8 text-center text-recessive text-sm">No months match.</td></tr>
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-recessive text-sm">No months match.</td></tr>
                   ) : sortedOwed.map((s) => (
                     <tr key={s.id} className={`border-b border-white/[0.05] last:border-0 ${s.justPaid ? "opacity-45" : ""}`}>
                       <td className="px-4 py-3 text-strong">{empName(s.account_id)}</td>
                       <td className="px-4 py-3 text-standard">{s.period_label ?? s.period_end ?? "—"}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-strong">
                         {money2(Number(s.net))}
-                        {paidFor(s.id) > 0.01 && <span className="ml-2 text-[10px] tabular-nums text-[#ecd39c]">{money2(paidFor(s.id))} paid</span>}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      {/* Part-paid: paid (green) over remaining (red), beside the total so the totals stay right-aligned. */}
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        {paidFor(s.id) > 0.01 && (
+                          <div className="flex flex-col leading-tight text-[11px] tabular-nums">
+                            <span className="text-emerald-400">{money2(paidFor(s.id))}<span className="ml-2 text-[9px] uppercase tracking-[0.16em] text-emerald-400/70">Paid</span></span>
+                            <span className="text-rose-400">{money2(Math.max(0, Number(s.net) - paidFor(s.id)))}<span className="ml-2 text-[9px] uppercase tracking-[0.16em] text-rose-400/70">Remaining</span></span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-left">
                         <PayslipFlag payslipId={s.id} accountId={s.account_id} employeeName={empName(s.account_id)} periodEnd={s.period_end}
                           documentPath={s.document_path} filed={!!s.document_path || !!s.dropbox_path} onDone={load} />
                       </td>

@@ -94,10 +94,9 @@ export function TableFilterSelect({
 
 /** Sortable header cell for hand-rolled <table>s.
  *
- *  Column TITLES always sit left, portal-wide, whatever the column contains —
- *  the header is a label for the column, not a sample of its values. `align` is
- *  kept so existing call sites don't need editing, but it no longer moves the
- *  label; numeric CELLS stay right-aligned so their digits still line up. */
+ *  Portal-wide rule (Fred, 18 Nov 2026): a column's title sits on the same side
+ *  as its contents — words left, numbers right. Pass `align="right"` on every
+ *  numeric column so the title lines up with the digits beneath it. */
 export function SortTh({
   id, label, activeKey, dir, onClick, align = "left",
 }: { id: string; label: string; activeKey: string | null; dir: SortDir; onClick: (id: string) => void; align?: "left" | "right" | "center" }) {
@@ -106,7 +105,8 @@ export function SortTh({
     <th
       onClick={() => onClick(id)}
       className={cn(
-        "px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal cursor-pointer select-none transition-colors text-left",
+        "px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal cursor-pointer select-none transition-colors",
+        align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
         active ? "text-gold" : "text-white/40 hover:text-white/70",
       )}
     >

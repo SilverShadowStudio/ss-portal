@@ -178,7 +178,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                   <tr className="border-b border-white/[0.08]">
                     {["Month", "Fee", "Due", "Payments", "Status", "Invoice"].map((h, i) => (
                       <th key={h}
-                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal text-white/40 ${i === 1 ? "text-left" : i === 5 ? "text-left" : "text-left"}`}>
+                        className={`px-4 py-3 text-[9px] uppercase tracking-[0.2em] font-normal text-white/40 ${i === 1 || i === 3 ? "text-right" : "text-left"}`}>
                         {h}
                       </th>
                     ))}
@@ -208,7 +208,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-strong">{money(p.total, ccy)}</td>
                           <td className="px-4 py-3 text-standard">{shortDate(p.due_date)}</td>
-                          <td className="px-4 py-3 text-[12px] text-recessive tabular-nums">
+                          <td className="px-4 py-3 text-right text-[12px] text-recessive tabular-nums">
                             {p.amount_paid > 0.005 ? money(p.amount_paid, ccy) : "—"}
                           </td>
                           <td className="px-4 py-3">
@@ -218,7 +218,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
                                 : "text-[11px] uppercase tracking-[0.16em] text-[#C9A96A]"
                             }>{st.label}</span>
                           </td>
-                          <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-3 text-left" onClick={(e) => e.stopPropagation()}>
                             {busyInvoice === p.invoice?.id ? (
                               <BrandLoader size="sm" className="inline-block h-3.5 w-3.5" />
                             ) : p.invoice?.filed ? (
