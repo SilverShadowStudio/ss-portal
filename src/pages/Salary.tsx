@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Download, Eye, X } from "lucide-react";
+import { ArrowLeft, Download, Eye, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AdminLayout } from "@/components/AdminLayout";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 import { ClientLayout } from "@/components/ClientLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,7 +42,11 @@ const monthLabel = (s: Slip) => (s.period_end
  * employer NI…) between Gross and Net. Every column is sortable — Month sorts by
  * date value, not alphabetically. RLS limits every query to the signed-in person.
  */
-export default function Salary() {
+export default function Salary({ accountId, memberName }: { accountId?: string; memberName?: string | null } = {}) {
+  // With `accountId`, this is the admin's read-only copy of that member's page
+  // (opened from Team) — same view, scoped to their payslips, no ghost mode needed.
+  const isAdminView = !!accountId;
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [slips, setSlips] = useState<Slip[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -51,10 +57,11 @@ export default function Salary() {
 
   useEffect(() => {
     (async () => {
-      const { data: ps } = await supabase
+      let q = supabase
         .from("payslips")
-        .select("id, period_label, period_end, gross, net, back_pay, income_tax, employee_ni, student_loan, taxable_gross_pay, employer_ni, document_path, dropbox_path, salary_paid_at")
-        .order("period_end", { ascending: true });
+        .select("id, period_label, period_end, gross, net, back_pay, income_tax, employee_ni, student_loan, taxable_gross_pay, employer_ni, document_path, dropbox_path, salary_paid_at");
+      if (accountId) q = q.eq("account_id", accountId);
+      const { data: ps } = await q.order("period_end", { ascending: true });
       const list = (ps ?? []) as Slip[];
       setSlips(list);
       if (list.length) {
@@ -66,7 +73,7 @@ export default function Salary() {
       }
       setLoading(false);
     })();
-  }, []);
+  }, [accountId]);
 
   const paidFor = (id: string) => payments.filter((p) => p.payslip_id === id).reduce((s, p) => s + Number(p.amount || 0), 0);
   const paymentsFor = (id: string) => payments.filter((p) => p.payslip_id === id).sort((a, b) => a.paid_at.localeCompare(b.paid_at));
@@ -166,14 +173,14 @@ export default function Salary() {
 
   const alignCls = (a: Col["align"]) => a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left";
 
-  return (
-    <ClientLayout panel>
+  const body = (
+    <>
       <div className="mb-10 animate-fade-in">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px w-12 bg-gold-muted" />
           <span className="text-label-gold">Salary</span>
         </div>
-        <p className="mt-3 text-sm text-recessive">Your monthly salary, payments and payslips</p>
+        <p className="mt-3 text-sm text-recessive">{isAdminView ? `${memberName ?? "Their"}${memberName ? "’s" : ""} monthly salary, payments and payslips` : "Your monthly salary, payments and payslips"}</p>
       </div>
 
       {loading ? (
@@ -254,6 +261,18 @@ export default function Salary() {
           </div>
         </div>
       )}
-    </ClientLayout>
+    </>
   );
+
+  if (isAdminView) {
+    return (
+      <AdminLayout panel panelClassName="ssr-panel--team">
+        <button onClick={() => navigate("/admin/team")} className="mb-4 inline-flex items-center gap-2 text-xs text-recessive hover:text-standard">
+          <ArrowLeft className="h-3.5 w-3.5" /> Team
+        </button>
+        {body}
+      </AdminLayout>
+    );
+  }
+  return <ClientLayout panel>{body}</ClientLayout>;
 }

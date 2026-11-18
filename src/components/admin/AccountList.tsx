@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Search, MoreHorizontal, Mail, Building2, Users2,
   Copy, Check, Trash2, Ghost, Pencil, FileText, Clock, FilePlus2,
-  Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet,
+  Archive, ArchiveRestore, ChevronRight, CalendarDays, Wallet, Banknote,
 } from "lucide-react";
 import { TableSearch } from "@/components/ui/TableToolbar";
 import { TEAM_CATEGORY_ORDER, TEAM_ROLES, teamCategoryOf, sharesSalesByDefault } from "@/lib/teamCategory";
@@ -2346,6 +2346,15 @@ export function AccountList({
                                   label="Earnings"
                                   active={false}
                                   onClick={() => navigate(`/admin/team/${accountId}/earnings?name=${encodeURIComponent(displayName)}`)}
+                                />
+                              )}
+                              {/* Salary is employee-only — the admin's read-only copy of their Salary page. */}
+                              {isTeamOnly && u.employment_type === "employee" && (
+                                <CircleButton
+                                  icon={Banknote}
+                                  label="Salary"
+                                  active={false}
+                                  onClick={() => navigate(`/admin/team/${accountId}/salary?name=${encodeURIComponent(displayName)}`)}
                                 />
                               )}
                               <CircleButton

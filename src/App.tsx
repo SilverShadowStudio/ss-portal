@@ -63,6 +63,7 @@ import AdminClientActivity from "./pages/admin/AdminClientActivity";
 import AdminTeam from "./pages/admin/AdminTeam";
 import AdminTeamCalendar from "./pages/admin/AdminTeamCalendar";
 import AdminTeamEarnings from "./pages/admin/AdminTeamEarnings";
+import AdminTeamSalary from "./pages/admin/AdminTeamSalary";
 import Calendar from "./pages/Calendar";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import Hours from "./pages/Hours";
@@ -567,6 +568,14 @@ const App = () => (
               element={
                 <AdminProtectedRoute>
                   <AdminTeamEarnings />
+                </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/team/:accountId/salary"
+              element={
+                <AdminProtectedRoute>
+                  <AdminTeamSalary />
                 </AdminProtectedRoute>
               }
             />
