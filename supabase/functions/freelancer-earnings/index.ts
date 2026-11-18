@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
   });
 
   // Role for the header: the freelancer's profile role, else the first source seen.
-  const { data: prof } = await sb.from("freelancer_profiles").select("first_name, last_name, role, rate_currency").ilike("email", email).maybeSingle();
+  const { data: prof } = await sb.from("freelancer_profiles").select("first_name, last_name, role, rate_currency, day_rate, rate_period").ilike("email", email).maybeSingle();
   const currency = prof?.rate_currency || "GBP";
 
   return json({
@@ -192,6 +192,9 @@ Deno.serve(async (req) => {
     payee_email: email,
     role: prof?.role ?? (periods[0]?.role ?? null),
     currency,
+    // Their agreed rate — the Earnings chart caps its axis at 30 × a day rate.
+    day_rate: prof?.day_rate != null ? Number(prof.day_rate) : null,
+    rate_period: prof?.rate_period ?? null,
     totals: { earned, paid, outstanding },
     periods,
   });

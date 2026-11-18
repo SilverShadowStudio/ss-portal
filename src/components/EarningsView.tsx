@@ -26,6 +26,8 @@ export interface EarningsPeriod {
 export interface EarningsData {
   name: string | null; role: string | null; currency: string;
   payee_email?: string | null;
+  day_rate?: number | null;
+  rate_period?: string | null;
   totals: { earned: number; paid: number; outstanding: number };
   periods: EarningsPeriod[];
 }
@@ -160,7 +162,7 @@ export function EarningsView({ data, loading, error, eyebrow = "Earnings", nameO
               <div className="h-px w-6 bg-gold-muted" />
               <h2 className="text-label">Earnings by month</h2>
             </div>
-            <EarningsChart periods={data.periods} currency={ccy} />
+            <EarningsChart periods={data.periods} currency={ccy} dayRate={data.rate_period === "day" ? data.day_rate ?? null : null} />
           </div>
 
           {/* ── Monthly statement ─────────────────────────────────────── */}

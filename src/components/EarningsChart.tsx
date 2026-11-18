@@ -21,6 +21,9 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 interface Props {
   periods: EarningsPeriod[];
   currency: string;
+  /** Their day rate. When set, the axis tops out at 30 × it (a full month's
+   *  work) instead of scaling to the busiest month. */
+  dayRate?: number | null;
 }
 
 function money(n: number, ccy: string, dp = 2) {
@@ -82,7 +85,7 @@ function monotonePath(pts: { x: number; y: number }[]): string {
   return d;
 }
 
-export function EarningsChart({ periods, currency }: Props) {
+export function EarningsChart({ periods, currency, dayRate }: Props) {
   const [hover, setHover] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -140,9 +143,12 @@ export function EarningsChart({ periods, currency }: Props) {
   const slot = Math.max(56, avail / months.length);
   const W = PAD_L + PAD_R + slot * months.length;
 
-  const max = niceCeil(Math.max(...months.map((b) => b.total)));
+  // Axis ceiling: 30 × the day rate when one is on file, else the busiest
+  // month rounded up. A month above the cap pins to the top line; its pill
+  // still reads the true figure.
+  const max = dayRate && dayRate > 0 ? dayRate * 30 : niceCeil(Math.max(...months.map((b) => b.total)));
   const ticks = [0, max / 2, max];
-  const yOf = (v: number) => PAD_T + plotH - (v / max) * plotH;
+  const yOf = (v: number) => PAD_T + plotH - (Math.min(v, max) / max) * plotH;
   const xOf = (i: number) => PAD_L + slot * i + slot / 2;
 
   const pts = months.map((b, i) => ({ x: xOf(i), y: yOf(b.total) }));
